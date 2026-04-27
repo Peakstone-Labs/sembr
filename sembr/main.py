@@ -6,9 +6,12 @@ if Qdrant isn't up yet, /health reports 503 and the platform's readiness probe r
 """
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+logging.getLogger("sembr").setLevel(logging.INFO)
 
 from sembr.api.feeds import router as feeds_router
 from sembr.api.health import router as health_router
