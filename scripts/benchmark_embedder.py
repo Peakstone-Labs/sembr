@@ -27,6 +27,7 @@ import httpx
 DB_PATH = "/app/data/sembr.db"
 BATCH_SIZES = [1, 4, 8, 16, 32]
 REPEATS = 3  # calls per batch size; median smooths first-call TCP setup
+EMBED_CHARS_MAX = 24_000  # must match _EMBED_CHARS_MAX in sembr/embedder/scheduler.py
 
 BASE_URL = os.environ.get("EMBEDDER_API_BASE_URL", "https://api.siliconflow.cn/v1").rstrip("/")
 MODEL = os.environ.get("EMBEDDER_MODEL", "BAAI/bge-m3")
@@ -59,7 +60,7 @@ async def main() -> None:
     while len(rows) < 32:
         rows = rows + rows
     rows = rows[:32]
-    texts = [f"{r[0]}\n\n{r[1]}" for r in rows]
+    texts = [(f"{r[0]}\n\n{r[1]}")[:EMBED_CHARS_MAX] for r in rows]
 
     print(f"model  : {MODEL}")
     print(f"endpoint: {BASE_URL}")

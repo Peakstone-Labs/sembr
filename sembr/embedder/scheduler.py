@@ -45,6 +45,10 @@ logger = logging.getLogger(__name__)
 # SiliconFlow accepts up to 32 inputs per request. Verify worst-case token budget
 # (top-32 longest articles) on Mac Mini before shipping — see design Risk row 5.
 BATCH_SIZE = 32
+
+# BGE-M3 context window is 8192 tokens. At ~3 chars/token (mixed EN/ZH), 24 000 chars
+# ≈ 8000 tokens — stays within the model limit with a small safety margin.
+_EMBED_CHARS_MAX = 24_000
 MAX_ATTEMPTS = 3  # total embed+upsert attempts before a row is demoted to dead_articles
 POLL_INTERVAL_SECONDS = 30
 
@@ -96,7 +100,7 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> N
     if not batch:
         return
 
-    texts = [row.title + "\n\n" + row.body for row in batch]
+    texts = [(row.title + "\n\n" + row.body)[:_EMBED_CHARS_MAX] for row in batch]
     md5s = [row.md5 for row in batch]
 
     # Compute which rows are one retry away from exhaustion BEFORE incrementing
