@@ -31,10 +31,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_data:/qdrant/storage
+      - ./data/qdrant:/qdrant/storage
     mem_limit: 4g
     mem_reservation: 2g
     restart: unless-stopped
-
-volumes:
-  qdrant_data:
