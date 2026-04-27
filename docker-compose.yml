@@ -1,9 +1,17 @@
 services:
+  rsshub:
+    image: diygod/rsshub:latest
+    container_name: sembr-rsshub
+    restart: unless-stopped
+    ports:
+      - "1200:1200"
+
   api:
     build: .
     container_name: sembr-api
     depends_on:
       - qdrant
+      - rsshub
     ports:
       - "${SEMBR_HOST_PORT:-8000}:8000"
     env_file:
