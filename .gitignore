@@ -1,8 +1,7 @@
-# Internal docs (kept in private sibling repo: sembr-dev-docs)
-docs/internal/
-docs/private/
-docs/development/
-docs/research/
+# Internal docs are kept in a private sibling repo (sembr-dev-docs)
+# and surfaced here via a Windows junction at ./docs (see DEVELOPING.md).
+# Ignore the entire path so the junction contents never leak.
+/docs/
 
 # Python
 __pycache__/

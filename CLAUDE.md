@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation Paths
+
+Internal development & strategy docs are kept in a **private sibling repository**, not in this repo.
+
+- **Dev docs root**: `../sembr-dev-docs/development/` (relative to project root)
+- **Research root**: `../sembr-dev-docs/research/`
+
+**Per-feature convention** — every feature gets its own kebab-case folder under the dev docs root; all agents (clarify / architect / dev / qa / review / retro) collaborating on the feature write into the same folder:
+
+```text
+../sembr-dev-docs/development/<feature-name>/
+  requirements.md     ← clarify
+  design.md           ← architect
+  implementation.md   ← dev
+  progress.md         ← shared progress tracker
+  test_report.md      ← qa
+  review.md           ← review
+  retro.md            ← retro
+```
+
+`<feature-name>` is **kebab-case** (e.g. `rss-collector`, `intent-crud`). The main repo's `.gitignore` excludes `/docs/` defensively; do not create a `docs/` directory in this repository.
+
 ## Project Overview
 
 **sembr** (semantic + embrace) is an open-source "Reverse RAG" news monitoring tool built by Peakstone-Labs. Unlike traditional RAG (where users query documents), sembr stores user intent vectors and continuously scans incoming news vectors for semantic matches, then pushes summaries via Telegram/Discord/Slack.
