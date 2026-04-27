@@ -50,7 +50,7 @@ The core data flow: RSS feeds → BGE-M3 embeddings → Qdrant → intent vector
 | Machine | Role | Notes |
 | ------- | ---- | ----- |
 | Windows dev machine | Code editing, static tests | No Docker runtime for sembr; `py_compile` / `asyncio` tests run here |
-| Mac Mini (same LAN, `ssh mac-mini`) | Docker runtime, E2E validation | M4 16GB — matches the target resource profile in this file |
+| Mac Mini (same LAN, `ssh mac-mini`) | Docker runtime, E2E validation | M4 16GB — project directory: `~/sembr` |
 
 **uv:** not globally installed on Windows. Run `pip install uv` when `uv lock` / `uv sync` is needed. Mac Mini should have uv installed natively.
 
