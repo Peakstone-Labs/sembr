@@ -45,11 +45,40 @@ The core data flow: RSS feeds → BGE-M3 embeddings → Qdrant → intent vector
 | LLM (local) | Qwen3-4B-4bit via mlx-lm | ~2.5GB, ~80 tok/s on M4 |
 | LLM (API) | DeepSeek / OpenAI | Via abstract factory |
 
+## Development Environment
+
+| Machine | Role | Notes |
+| ------- | ---- | ----- |
+| Windows dev machine | Code editing, static tests | No Docker runtime for sembr; `py_compile` / `asyncio` tests run here |
+| Mac Mini (same LAN, `ssh mac-mini`) | Docker runtime, E2E validation | M4 16GB — matches the target resource profile in this file |
+
+**uv:** not globally installed on Windows. Run `pip install uv` when `uv lock` / `uv sync` is needed. Mac Mini should have uv installed natively.
+
+**Static tests** (run on Windows Python / Anaconda — no runtime deps needed):
+
+```bash
+python -m py_compile sembr/**/*.py
+python -c "import sembr, sembr.api, sembr.collector, sembr.embedder, sembr.vector_store, sembr.matcher, sembr.summarizer, sembr.notifier, sembr.db; print('ok')"
+pytest tests/ -v
+```
+
+**E2E validation** (run on Mac Mini after `git pull`):
+
+```bash
+cp .env.example .env
+docker compose up --build          # AC#1 — one-click start
+curl -i http://localhost:8000/health  # AC#2 — /health 200
+docker compose exec api python -c \
+  "import sqlite3; c=sqlite3.connect('/app/data/sembr.db'); print(c.execute('PRAGMA journal_mode').fetchone())"  # AC#4 — WAL
+docker compose exec api python -c \
+  "import sembr.api, sembr.collector, sembr.embedder, sembr.vector_store, sembr.matcher, sembr.summarizer, sembr.notifier, sembr.db; print('ok')"  # AC#6
+```
+
 ## Commands
 
 ```bash
-# Start all services
-docker-compose up
+# Start all services (on Mac Mini)
+docker compose up --build
 
 # Start with rebuild
 docker-compose up --build
