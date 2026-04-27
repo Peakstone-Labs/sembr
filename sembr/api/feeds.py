@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from sembr.collector.scheduler import add_feed_job, remove_feed_job
 from sembr.db.feeds import create_feed, delete_feed, list_feeds
@@ -52,7 +52,7 @@ async def get_feeds() -> list[Feed]:
     return await list_feeds(get_conn())
 
 
-@router.delete("/{feed_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{feed_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 async def remove_feed(feed_id: int, request: Request) -> None:
     conn = get_conn()
     existed = await delete_feed(conn, feed_id)
