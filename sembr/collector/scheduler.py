@@ -94,7 +94,7 @@ async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed, jitter_seconds: 
         args=[feed.id, feed.name, str(feed.url), feed.source_type, feed.config],
         coalesce=True,
         max_instances=1,
-        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=jitter_seconds),
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=60 + jitter_seconds),
         replace_existing=True,
     )
 

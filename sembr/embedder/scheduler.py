@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import httpx
@@ -82,7 +82,7 @@ def add_embedder_worker_job(
         args=[embedder, qdrant],
         coalesce=True,
         max_instances=1,
-        next_run_time=datetime.now(timezone.utc),
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
         replace_existing=True,
     )
 
