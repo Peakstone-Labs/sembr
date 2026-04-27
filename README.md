@@ -33,6 +33,57 @@ The `embedder` field is intentionally `"not_loaded"` in 0.1.0 — model loading 
 
 **Port override**: set `SEMBR_HOST_PORT=8080` in `.env` (or as a shell env var) to expose the API on `localhost:8080`. `API_PORT` controls the in-container bind port and should stay at `8000`. See `.env.example` for the full settings surface.
 
+## RSS Feeds
+
+sembr comes with 23 pre-loaded free RSS sources. They start collecting on first launch — no configuration needed.
+
+### Pre-loaded sources
+
+| Category | Sources |
+| -------- | ------- |
+| International news | AP News, BBC, CNN, The Guardian, Al Jazeera, NPR, Washington Post |
+| International finance | Bloomberg Markets, Financial Times, The Economist, WSJ, Nikkei Asia, MarketWatch, Seeking Alpha, Investing.com |
+| Asia-Pacific | NYT World, SCMP |
+| Chinese finance (via RSSHub) | 华尔街见闻, 财联社电报, 第一财经, 36氪, 虎嗅 |
+| Chinese general (via RSSHub) | 澎湃新闻 |
+
+Chinese sources route through the bundled [RSSHub](https://rsshub.app/) sidecar (`rsshub:1200`), which starts automatically alongside the API.
+
+### Add a feed
+
+```bash
+curl -X POST http://localhost:8000/feeds \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Hacker News",
+    "url": "https://hnrss.org/frontpage",
+    "poll_interval_minutes": 30
+  }'
+# returns the created Feed object with its id
+```
+
+`poll_interval_minutes` must be between 5 and 1440. The feed starts collecting immediately — no restart needed.
+
+### List feeds
+
+```bash
+curl http://localhost:8000/feeds
+```
+
+### Delete a feed
+
+```bash
+# get the feed id from GET /feeds first
+curl -X DELETE http://localhost:8000/feeds/3
+# 204 No Content on success
+```
+
+Deleted feeds do not come back on restart. To restore a pre-loaded source, re-add it via POST.
+
+### Data persistence
+
+Feed list and collected article fingerprints are stored in `./data/sembr.db` (SQLite, bind-mounted from the host). They survive `docker compose up --build`, container restarts, and image rebuilds. Only `rm -rf ./data/` permanently deletes them.
+
 ## Status
 
 🚧 Pre-release — under active development. The 0.1.0 MVP targets:
