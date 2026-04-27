@@ -1,0 +1,25 @@
+"""Embedder abstract base.
+
+设计决策 #7 / Option Set D-2: only the smallest surface this Feature can justify is fixed
+now. Real model loading lands in a later feature; nothing in this scaffold imports
+this module yet. Subclasses MAY add async / batching variants without breaking callers.
+"""
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+
+
+class BaseEmbedder(ABC):
+    @property
+    @abstractmethod
+    def model_version(self) -> str:
+        """Identifier persisted in payload `embedding_model_version` for collection aliasing."""
+
+    @property
+    @abstractmethod
+    def is_loaded(self) -> bool:
+        """False until the underlying model weights are in memory."""
+
+    @abstractmethod
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Returns one vector per input text in the same order."""
