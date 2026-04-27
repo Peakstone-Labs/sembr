@@ -46,9 +46,11 @@ logger = logging.getLogger(__name__)
 # (top-32 longest articles) on Mac Mini before shipping — see design Risk row 5.
 BATCH_SIZE = 32
 
-# BGE-M3 context window is 8192 tokens. At ~3 chars/token (mixed EN/ZH), 24 000 chars
-# ≈ 8000 tokens — stays within the model limit with a small safety margin.
-_EMBED_CHARS_MAX = 24_000
+# BGE-M3 context window is 8192 tokens.
+# Chinese tokenizes at ~1 char/token (BERT BPE), English at ~4 chars/token.
+# 8 000 chars is the safe upper bound for pure Chinese; English articles get ~2000 tokens
+# which is more than enough for semantic matching on news headlines + lead paragraphs.
+_EMBED_CHARS_MAX = 8_000
 MAX_ATTEMPTS = 3  # total embed+upsert attempts before a row is demoted to dead_articles
 POLL_INTERVAL_SECONDS = 30
 
