@@ -41,11 +41,21 @@ from sembr.embedder.scheduler import (
 # ---------------------------------------------------------------------------
 
 async def _make_conn() -> aiosqlite.Connection:
-    """In-memory DB with all tables + foreign_keys=ON."""
+    """In-memory DB with all tables + foreign_keys=ON.
+
+    Also registers the connection as the transaction() singleton so that
+    articles.py functions (which call transaction() internally) operate on
+    the same in-memory DB as the rest of the test.
+    """
+    import asyncio as _asyncio
+    from sembr.db import sqlite as _sqlite_mod
+
     conn = await aiosqlite.connect(":memory:")
     await conn.execute("PRAGMA foreign_keys=ON")
     await init_feed_tables(conn)
     await init_article_tables(conn)
+    _sqlite_mod._conn = conn
+    _sqlite_mod._WRITE_LOCK = _asyncio.Lock()
     return conn
 
 
