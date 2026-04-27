@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import aiosqlite
 
 from sembr.collector.base import RawArticle
+from sembr.db.sqlite import transaction
 
 _BODY_CAP_BYTES = 1_048_576  # 1 MB sanity cap (D11)
 _MD5_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -90,8 +91,7 @@ async def insert_article_pending(
     """
     if not _MD5_RE.match(article.feed_md5):
         raise ValueError(f"feed_md5 must be 32 lowercase hex chars, got {article.feed_md5!r}")
-    await conn.execute("BEGIN")
-    try:
+    async with transaction() as conn:
         await conn.execute(
             "INSERT OR IGNORE INTO feed_items (md5, feed_id) VALUES (?, ?)",
             (article.feed_md5, feed_id),
@@ -99,8 +99,7 @@ async def insert_article_pending(
         async with conn.execute("SELECT changes()") as cur:
             n = (await cur.fetchone())[0]
         if n == 0:
-            await conn.execute("ROLLBACK")
-            return False
+            return False  # empty COMMIT is a no-op; no row was actually changed
         body_capped = article.body[:_BODY_CAP_BYTES]
         await conn.execute(
             "INSERT INTO pending_articles (md5, feed_id, url, title, body, published_at) "
@@ -114,11 +113,7 @@ async def insert_article_pending(
                 article.published_at.isoformat() if article.published_at else None,
             ),
         )
-        await conn.execute("COMMIT")
         return True
-    except Exception:
-        await conn.execute("ROLLBACK")
-        raise
 
 
 async def pull_pending_batch(
@@ -138,22 +133,22 @@ async def increment_retry(conn: aiosqlite.Connection, md5s: list[str]) -> None:
     if not md5s:
         return
     placeholders = ",".join("?" * len(md5s))
-    await conn.execute(
-        f"UPDATE pending_articles SET retry_count = retry_count + 1 WHERE md5 IN ({placeholders})",
-        md5s,
-    )
-    await conn.commit()
+    async with transaction() as conn:
+        await conn.execute(
+            f"UPDATE pending_articles SET retry_count = retry_count + 1 WHERE md5 IN ({placeholders})",
+            md5s,
+        )
 
 
 async def delete_pending(conn: aiosqlite.Connection, md5s: list[str]) -> None:
     if not md5s:
         return
     placeholders = ",".join("?" * len(md5s))
-    await conn.execute(
-        f"DELETE FROM pending_articles WHERE md5 IN ({placeholders})",
-        md5s,
-    )
-    await conn.commit()
+    async with transaction() as conn:
+        await conn.execute(
+            f"DELETE FROM pending_articles WHERE md5 IN ({placeholders})",
+            md5s,
+        )
 
 
 async def demote_to_dead(
@@ -166,8 +161,7 @@ async def demote_to_dead(
     INSERT OR REPLACE preserves the latest failed_at and error_message if
     a row was previously demoted (🔴-1 fix: OR IGNORE silently lost re-queued rows).
     """
-    await conn.execute("BEGIN")
-    try:
+    async with transaction() as conn:
         await conn.execute(
             "INSERT OR REPLACE INTO dead_articles "
             "(md5, feed_id, url, title, body, published_at, error_message, failed_at) "
@@ -181,11 +175,7 @@ async def demote_to_dead(
         )
         async with conn.execute("SELECT changes()") as cur:
             count = (await cur.fetchone())[0]
-        await conn.execute("COMMIT")
         return count
-    except Exception:
-        await conn.execute("ROLLBACK")
-        raise
 
 
 async def demote_md5s_to_dead(
@@ -199,8 +189,7 @@ async def demote_md5s_to_dead(
     if not md5s:
         return 0
     placeholders = ",".join("?" * len(md5s))
-    await conn.execute("BEGIN")
-    try:
+    async with transaction() as conn:
         await conn.execute(
             "INSERT OR REPLACE INTO dead_articles "
             "(md5, feed_id, url, title, body, published_at, error_message, failed_at) "
@@ -214,8 +203,4 @@ async def demote_md5s_to_dead(
         )
         async with conn.execute("SELECT changes()") as cur:
             count = (await cur.fetchone())[0]
-        await conn.execute("COMMIT")
         return count
-    except Exception:
-        await conn.execute("ROLLBACK")
-        raise

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import aiosqlite
 
 from sembr.collector.initial_feeds import INITIAL_FEEDS
+from sembr.db.sqlite import transaction
 from sembr.models import Feed
 
 _CREATE_FEEDS = """
@@ -148,8 +149,8 @@ async def insert_fingerprint(conn: aiosqlite.Connection, md5: str, feed_id: int)
 
 async def update_last_collected(conn: aiosqlite.Connection, feed_id: int) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    await conn.execute(
-        "UPDATE feeds SET last_collected_at=? WHERE id=?",
-        (now, feed_id),
-    )
-    await conn.commit()
+    async with transaction() as conn:
+        await conn.execute(
+            "UPDATE feeds SET last_collected_at=? WHERE id=?",
+            (now, feed_id),
+        )

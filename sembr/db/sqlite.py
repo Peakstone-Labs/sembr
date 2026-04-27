@@ -6,6 +6,9 @@ is safe and avoids re-applying pragmas per request.
 """
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
+
 import aiosqlite
 
 _WAL_PRAGMAS = (
@@ -17,13 +20,19 @@ _WAL_PRAGMAS = (
 )
 
 _conn: aiosqlite.Connection | None = None
+# Serialises all writers on the shared connection. Without this, two coroutines
+# (e.g. concurrent collect_feed jobs) racing to issue BEGIN trigger SQLite's
+# "cannot start a transaction within a transaction" error. SQLite WAL only
+# admits one writer anyway, so the lock costs nothing in throughput.
+_WRITE_LOCK: asyncio.Lock | None = None
 
 
 async def init_sqlite(path: str) -> aiosqlite.Connection:
     """Open the global connection and apply WAL pragmas. Idempotent within a process."""
-    global _conn
+    global _conn, _WRITE_LOCK
     if _conn is not None:
         return _conn
+    _WRITE_LOCK = asyncio.Lock()
     conn = await aiosqlite.connect(path)
     for pragma in _WAL_PRAGMAS:
         await conn.execute(pragma)
@@ -46,10 +55,32 @@ def get_conn() -> aiosqlite.Connection:
 
 
 async def close_sqlite() -> None:
-    global _conn
+    global _conn, _WRITE_LOCK
     if _conn is not None:
         await _conn.close()
         _conn = None
+    _WRITE_LOCK = None
+
+
+@asynccontextmanager
+async def transaction():
+    """Acquire the write lock and run a BEGIN…COMMIT block on the shared connection.
+
+    Use for every multi-statement write path. Single-statement writes that follow
+    `await conn.execute(...); await conn.commit()` should also wrap in this so they
+    can't interleave with a multi-statement transaction in another coroutine.
+    """
+    if _conn is None or _WRITE_LOCK is None:
+        raise RuntimeError("SQLite not initialised; call init_sqlite() first")
+    async with _WRITE_LOCK:
+        await _conn.execute("BEGIN")
+        try:
+            yield _conn
+        except Exception:
+            await _conn.execute("ROLLBACK")
+            raise
+        else:
+            await _conn.execute("COMMIT")
 
 
 async def sqlite_ok() -> bool:
