@@ -1,13 +1,17 @@
 """POST/GET/DELETE /feeds router."""
 from __future__ import annotations
 
+import logging
+import sqlite3
+
 from fastapi import APIRouter, HTTPException, Request, status
 
+from sembr.collector.scheduler import add_feed_job, remove_feed_job
 from sembr.db.feeds import create_feed, delete_feed, list_feeds
 from sembr.db.sqlite import get_conn
 from sembr.models import Feed, FeedCreate
-from sembr.collector.scheduler import add_feed_job, remove_feed_job
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/feeds", tags=["feeds"])
 
 
@@ -18,18 +22,28 @@ async def post_feed(body: FeedCreate, request: Request) -> Feed:
         feed = await create_feed(
             conn,
             name=body.name,
-            url=str(body.url),
+            url=body.url,
             source_type=body.source_type,
             config=body.config,
             poll_interval_minutes=body.poll_interval_minutes,
         )
-    except Exception as exc:
-        if "UNIQUE constraint failed" in str(exc):
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="feed URL already exists")
-        raise
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="feed URL already exists") from exc
 
     scheduler = request.app.state.scheduler
-    await add_feed_job(scheduler, feed)
+    try:
+        await add_feed_job(scheduler, feed)
+    except Exception as exc:
+        try:
+            await delete_feed(conn, feed.id)
+        except Exception as rollback_exc:
+            logger.error("rollback failed for feed_id=%d: %s", feed.id, rollback_exc)
+        try:
+            scheduler.remove_job(f"feed_{feed.id}")
+        except Exception:
+            pass
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="failed to schedule feed") from exc
+
     return feed
 
 

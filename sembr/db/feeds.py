@@ -35,6 +35,16 @@ CREATE TABLE IF NOT EXISTS feed_items (
 )
 """
 
+# Tracks URLs that were ever seeded from INITIAL_FEEDS — NOT all feed URLs.
+# Scope: INITIAL_FEEDS entries only; user-POST feeds are not written here.
+# Invariant: once a URL is in seeded_feeds it stays forever, even if the feed
+# row is deleted, so auto-seed never revives a user-deleted feed (SC3).
+_CREATE_SEEDED_INITIAL_FEEDS = """
+CREATE TABLE IF NOT EXISTS seeded_feeds (
+    url TEXT PRIMARY KEY
+)
+"""
+
 _CREATE_IDX = """
 CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id)
 """
@@ -43,34 +53,33 @@ CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id)
 async def init_feed_tables(conn: aiosqlite.Connection) -> None:
     await conn.execute(_CREATE_FEEDS)
     await conn.execute(_CREATE_FEED_ITEMS)
+    await conn.execute(_CREATE_SEEDED_INITIAL_FEEDS)
     await conn.execute(_CREATE_IDX)
     await conn.commit()
 
 
 async def seed_initial_feeds(conn: aiosqlite.Connection) -> int:
-    """Seed INITIAL_FEEDS on first startup (when feeds table is empty).
+    """Seed INITIAL_FEEDS entries not yet recorded in seeded_feeds.
 
-    Seed-once semantics: if any rows exist we do nothing, so feeds deleted via
-    the API never come back on restart (satisfies SC3 / 已删源重启不复现).
-    Returns count of rows inserted (0 if table already had rows).
+    seeded_feeds tracks every INITIAL_FEEDS URL ever seeded:
+    - User deletes feed → seeded_feeds still has URL → not re-inserted (SC3)
+    - Dev adds new entry to INITIAL_FEEDS → seeded_feeds missing URL → seeded on next startup
     """
-    async with conn.execute("SELECT COUNT(*) FROM feeds") as cur:
-        row = await cur.fetchone()
-    if row and row[0] > 0:
-        return 0
+    async with conn.execute("SELECT url FROM seeded_feeds") as cur:
+        seeded = {row[0] for row in await cur.fetchall()}
+    to_seed = [f for f in INITIAL_FEEDS if f["url"] not in seeded]
 
-    count = 0
-    for f in INITIAL_FEEDS:
-        cursor = await conn.execute(
-            "INSERT INTO feeds (name, url, poll_interval_minutes) VALUES (?, ?, ?)",
+    for f in to_seed:
+        await conn.execute(
+            "INSERT OR IGNORE INTO feeds (name, url, poll_interval_minutes) VALUES (?, ?, ?)",
             (f["name"], f["url"], f["poll_interval_minutes"]),
         )
-        count += cursor.rowcount
+        await conn.execute("INSERT OR IGNORE INTO seeded_feeds (url) VALUES (?)", (f["url"],))
     await conn.commit()
-    return count
+    return len(to_seed)
 
 
-def _row_to_feed(row: aiosqlite.Row) -> Feed:
+def _row_to_feed(row: tuple) -> Feed:
     return Feed(
         id=row[0],
         name=row[1],
@@ -81,6 +90,8 @@ def _row_to_feed(row: aiosqlite.Row) -> Feed:
         last_collected_at=row[6],
         created_at=row[7],
     )
+
+_SELECT_FEEDS = "SELECT id,name,url,source_type,config,poll_interval_minutes,last_collected_at,created_at FROM feeds"
 
 
 async def create_feed(
@@ -94,7 +105,7 @@ async def create_feed(
     cursor = await conn.execute(
         """INSERT INTO feeds (name, url, source_type, config, poll_interval_minutes)
            VALUES (?, ?, ?, ?, ?)""",
-        (name, str(url), source_type, json.dumps(config or {}), poll_interval_minutes),
+        (name, url, source_type, json.dumps(config or {}), poll_interval_minutes),
     )
     await conn.commit()
     feed_id = cursor.lastrowid
@@ -102,16 +113,14 @@ async def create_feed(
 
 
 async def list_feeds(conn: aiosqlite.Connection) -> list[Feed]:
-    conn.row_factory = aiosqlite.Row
-    async with conn.execute("SELECT id,name,url,source_type,config,poll_interval_minutes,last_collected_at,created_at FROM feeds") as cur:
+    async with conn.execute(_SELECT_FEEDS) as cur:
         rows = await cur.fetchall()
     return [_row_to_feed(r) for r in rows]
 
 
 async def get_feed(conn: aiosqlite.Connection, feed_id: int) -> Feed | None:
-    conn.row_factory = aiosqlite.Row
     async with conn.execute(
-        "SELECT id,name,url,source_type,config,poll_interval_minutes,last_collected_at,created_at FROM feeds WHERE id=?",
+        _SELECT_FEEDS + " WHERE id=?",
         (feed_id,),
     ) as cur:
         row = await cur.fetchone()

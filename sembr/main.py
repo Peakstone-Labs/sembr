@@ -28,8 +28,8 @@ async def lifespan(app: FastAPI):
     qdrant = QdrantHandle(settings.qdrant_url)
     scheduler = make_scheduler()
     feeds = await list_feeds(conn)
-    for feed in feeds:
-        await add_feed_job(scheduler, feed)
+    for i, feed in enumerate(feeds):
+        await add_feed_job(scheduler, feed, jitter_seconds=i * 2)
     scheduler.start()
     app.state.qdrant = qdrant
     app.state.scheduler = scheduler

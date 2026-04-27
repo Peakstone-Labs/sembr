@@ -7,14 +7,14 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 from textwrap import dedent
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
 import pytest
 import respx
 import httpx
+from pydantic import ValidationError
 
-from sembr.collector.rss import RSSSource, _compute_md5
+from sembr.collector.rss import FetchError, RSSSource, _compute_md5
 from sembr.db.feeds import (
     fingerprint_exists,
     init_feed_tables,
@@ -22,29 +22,12 @@ from sembr.db.feeds import (
     seed_initial_feeds,
 )
 from sembr.collector.initial_feeds import INITIAL_FEEDS
+from sembr.models import FeedCreate
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Feed XML fixtures
 # ---------------------------------------------------------------------------
-
-_FULL_FEED = dedent("""
-    <?xml version="1.0" encoding="UTF-8"?>
-    <rss version="2.0">
-      <channel>
-        <title>Test Feed</title>
-        <item>
-          <title>Article with full body</title>
-          <link>https://example.com/article-1</link>
-          <pubDate>Mon, 27 Apr 2026 10:00:00 +0000</pubDate>
-          <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/">
-            {"value": "This is a full article body that is longer than five hundred characters. " * 10}
-          </content:encoded>
-          <description>Short summary here.</description>
-        </item>
-      </channel>
-    </rss>
-""").strip().encode()
 
 _STUB_FEED = dedent("""
     <?xml version="1.0" encoding="UTF-8"?>
@@ -91,7 +74,7 @@ _HTML_PAGE = b"<html><body>Not RSS</body></html>"
 @respx.mock
 @pytest.mark.asyncio
 async def test_rss_source_fetch_full():
-    """Guardian-style source with full body → content_quality='full' only when content tag present."""
+    """Guardian-style source with full body → content_quality='full'."""
     feed_xml = dedent("""
         <?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
@@ -155,19 +138,35 @@ async def test_rss_source_fetch_since_filter():
 
 
 # ---------------------------------------------------------------------------
-# Test: RSSSource.fetch — bozo (non-RSS response)
+# Test: RSSSource.fetch — bozo raises FetchError (🟡-8 regression)
 # ---------------------------------------------------------------------------
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_rss_source_bozo():
-    """feedparser bozo=True with no entries → empty list, no exception."""
+async def test_rss_source_bozo_raises():
+    """feedparser bozo=True with no entries → FetchError raised (not empty list)."""
     respx.get("https://example-bozo.com/rss").mock(
         return_value=httpx.Response(200, content=_HTML_PAGE)
     )
     src = RSSSource("https://example-bozo.com/rss")
-    articles = await src.fetch()
-    assert articles == []
+    with pytest.raises(FetchError):
+        await src.fetch()
+
+
+# ---------------------------------------------------------------------------
+# Test: RSSSource.fetch — HTTP error raises FetchError (🟡-8 regression)
+# ---------------------------------------------------------------------------
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_rss_source_http_error_raises():
+    """HTTP 4xx/5xx → FetchError raised so caller knows fetch failed."""
+    respx.get("https://example-err.com/rss").mock(
+        return_value=httpx.Response(503)
+    )
+    src = RSSSource("https://example-err.com/rss")
+    with pytest.raises(FetchError):
+        await src.fetch()
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +175,7 @@ async def test_rss_source_bozo():
 
 @pytest.mark.asyncio
 async def test_seed_idempotent():
-    """Two consecutive seeds must produce exactly 23 rows, no IntegrityError."""
+    """Two consecutive seeds must produce exactly 23 rows; second seed returns 0."""
     async with aiosqlite.connect(":memory:") as conn:
         await init_feed_tables(conn)
         first = await seed_initial_feeds(conn)
@@ -186,31 +185,33 @@ async def test_seed_idempotent():
         total = row[0]
 
     assert first == 23
-    assert second == 0  # all ignored on second run
+    assert second == 0
     assert total == 23
 
 
 # ---------------------------------------------------------------------------
-# Test: seed_initial_feeds — respects manual deletion
+# Test: seed_initial_feeds — respects deletion (SC3)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_seed_respects_deletion():
-    """After deleting one feed, re-seed must NOT re-insert it (url UNIQUE + INSERT OR IGNORE)."""
+    """After deleting one feed, re-seed must NOT re-insert it.
+
+    seeded_feeds table records the URL as seeded; deletion removes from feeds
+    but not seeded_feeds, so next seed skips it.
+    """
     async with aiosqlite.connect(":memory:") as conn:
         await init_feed_tables(conn)
         await seed_initial_feeds(conn)
-        # Delete the first seeded feed by URL
         first_url = INITIAL_FEEDS[0]["url"]
         await conn.execute("DELETE FROM feeds WHERE url=?", (first_url,))
         await conn.commit()
-        # Re-seed: deleted entry must not come back
         inserted = await seed_initial_feeds(conn)
         async with conn.execute("SELECT COUNT(*) FROM feeds WHERE url=?", (first_url,)) as cur:
             row = await cur.fetchone()
 
-    assert inserted == 0  # or 0 since all other URLs already exist
-    assert row[0] == 0  # deleted entry not re-inserted
+    assert inserted == 0
+    assert row[0] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +234,6 @@ async def test_collect_feed_dedup():
         assert not await fingerprint_exists(conn, md5)
         await insert_fingerprint(conn, md5, feed_id)
         assert await fingerprint_exists(conn, md5)
-        # Second insert must be silently ignored
         await insert_fingerprint(conn, md5, feed_id)
         async with conn.execute("SELECT COUNT(*) FROM feed_items WHERE md5=?", (md5,)) as cur:
             count = (await cur.fetchone())[0]
@@ -252,3 +252,77 @@ def test_md5_fingerprint():
     expected = hashlib.md5((url + title).encode()).hexdigest()
     assert _compute_md5(url, title) == expected
     assert _compute_md5(url, title) == _compute_md5(url, title)
+
+
+# ---------------------------------------------------------------------------
+# Test: ON DELETE CASCADE clears feed_items (🔴-1 regression)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_delete_feed_cascades_fingerprints():
+    """Deleting a feed must remove all its feed_items via ON DELETE CASCADE.
+
+    foreign_keys=ON is applied here explicitly; test_wal_pragmas_include_foreign_keys
+    verifies that _WAL_PRAGMAS also applies it in production.
+    """
+    async with aiosqlite.connect(":memory:") as conn:
+        await conn.execute("PRAGMA foreign_keys=ON")
+        await init_feed_tables(conn)
+        await conn.execute(
+            "INSERT INTO feeds (name, url, poll_interval_minutes) VALUES ('X', 'http://x.com', 30)"
+        )
+        await conn.commit()
+        async with conn.execute("SELECT id FROM feeds LIMIT 1") as cur:
+            feed_id = (await cur.fetchone())[0]
+
+        await insert_fingerprint(conn, "aaa", feed_id)
+        await insert_fingerprint(conn, "bbb", feed_id)
+
+        async with conn.execute("SELECT COUNT(*) FROM feed_items WHERE feed_id=?", (feed_id,)) as cur:
+            before = (await cur.fetchone())[0]
+
+        await conn.execute("DELETE FROM feeds WHERE id=?", (feed_id,))
+        await conn.commit()
+
+        async with conn.execute("SELECT COUNT(*) FROM feed_items WHERE feed_id=?", (feed_id,)) as cur:
+            after = (await cur.fetchone())[0]
+
+    assert before == 2
+    assert after == 0
+
+
+# ---------------------------------------------------------------------------
+# Test: _WAL_PRAGMAS contains foreign_keys=ON (Minor-3 — locks the 🔴-1 fix)
+# ---------------------------------------------------------------------------
+
+def test_wal_pragmas_include_foreign_keys():
+    """_WAL_PRAGMAS must include PRAGMA foreign_keys=ON.
+
+    Guards against accidental removal — the cascade test above manually sets
+    the pragma and would stay green even if _WAL_PRAGMAS lost it.
+    """
+    from sembr.db.sqlite import _WAL_PRAGMAS
+    assert any("foreign_keys=ON" in p for p in _WAL_PRAGMAS)
+
+
+# ---------------------------------------------------------------------------
+# Test: FeedCreate.url scheme validation (🟡-6 regression)
+# ---------------------------------------------------------------------------
+
+def test_feed_create_invalid_url_raises():
+    """FeedCreate must reject URLs without http:// or https:// scheme."""
+    with pytest.raises(ValidationError):
+        FeedCreate(name="Bad", url="not-a-url")
+    with pytest.raises(ValidationError):
+        FeedCreate(name="Bad", url="ftp://example.com/rss")
+
+
+def test_feed_create_valid_url_passes():
+    """Both http:// and https:// URLs must be accepted, including HTTPS:// upper-case."""
+    f1 = FeedCreate(name="A", url="https://example.com/rss")
+    assert f1.url == "https://example.com/rss"
+    f2 = FeedCreate(name="B", url="http://rsshub:1200/apnews/topics/apf-topnews")
+    assert f2.url.startswith("http://")
+    # RFC 3986: scheme is case-insensitive
+    f3 = FeedCreate(name="C", url="HTTPS://example.com/rss")
+    assert f3.url == "HTTPS://example.com/rss"

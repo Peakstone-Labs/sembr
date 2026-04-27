@@ -6,13 +6,14 @@ Each feed gets its own IntervalTrigger job so poll_interval_minutes is exact.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from sembr.collector.base import BaseSource
-from sembr.collector.rss import RSSSource
+from sembr.collector.rss import FetchError, RSSSource
+from sembr.db.feeds import fingerprint_exists, insert_fingerprint, update_last_collected
 from sembr.db.sqlite import get_conn
 from sembr.models import Feed
 
@@ -39,7 +40,6 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
 
     conn = get_conn()
 
-    # Fetch last_collected_at to pass as since, avoiding reprocessing old items
     async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=?", (feed_id,)) as cur:
         row = await cur.fetchone()
     since: datetime | None = None
@@ -54,24 +54,29 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
 
     try:
         articles = await source.fetch(since=since)
-    except Exception as exc:
+    except FetchError as exc:
+        # Don't advance last_collected_at on failure — next run will retry the
+        # same since window so articles published during the outage aren't lost.
         logger.error("fetch failed for feed %r (id=%d): %s", feed_name, feed_id, exc)
         return
+    except Exception as exc:
+        logger.error("unexpected error in collect_feed for %r (id=%d): %s", feed_name, feed_id, exc, exc_info=True)
+        return
 
+    # Fetch succeeded (articles may be empty if the source has no new content).
+    # Always advance the cursor so we don't re-scan the same window next run.
     new_count = 0
     for article in articles:
-        from sembr.db.feeds import fingerprint_exists, insert_fingerprint  # local import avoids circular at module load
         if not await fingerprint_exists(conn, article.feed_md5):
             await insert_fingerprint(conn, article.feed_md5, feed_id)
             new_count += 1
 
-    from sembr.db.feeds import update_last_collected
     await update_last_collected(conn, feed_id)
 
     logger.info("fetched %d new items from %r (feed_id=%d, total_seen=%d)", new_count, feed_name, feed_id, len(articles))
 
 
-async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
+async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed, jitter_seconds: int = 0) -> None:
     scheduler.add_job(
         collect_feed,
         trigger=IntervalTrigger(minutes=feed.poll_interval_minutes),
@@ -79,7 +84,7 @@ async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
         args=[feed.id, feed.name, str(feed.url), feed.source_type, feed.config],
         coalesce=True,
         max_instances=1,
-        next_run_time=datetime.now(timezone.utc),  # D3: immediate first run
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=jitter_seconds),
         replace_existing=True,
     )
 

@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 _USER_AGENT = "sembr/0.1 feedparser"
 
 
+class FetchError(Exception):
+    """HTTP request failed or feedparser could not parse the response.
+
+    Raised instead of returning [] so callers can distinguish a genuine fetch
+    failure (don't advance since cursor) from a legitimate empty result
+    (source has no new articles — cursor should still advance).
+    """
+
+
 def _compute_md5(url: str, title: str) -> str:
     return hashlib.md5((url + title).encode()).hexdigest()
 
@@ -61,13 +70,14 @@ class RSSSource(BaseSource):
                 resp = await client.get(self._url, headers={"User-Agent": _USER_AGENT})
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            logger.error("HTTP error fetching %s: %s", self._url, exc)
-            return []
+            raise FetchError(f"HTTP error: {exc}") from exc
 
         feed = feedparser.parse(resp.content)
-        if feed.bozo and not feed.entries:
-            logger.error("feedparser bozo on %s: %s", self._url, feed.bozo_exception)
-            return []
+        # Raise on parse failure: bozo (malformed XML) or unrecognized format (version="")
+        # with no entries. If entries exist despite bozo, process them (D4 err-on-inclusion).
+        if not feed.entries and (feed.bozo or not feed.version):
+            detail = feed.bozo_exception if feed.bozo else "unrecognized feed format"
+            raise FetchError(f"feedparser: {detail}")
 
         articles: list[RawArticle] = []
         for entry in feed.entries:

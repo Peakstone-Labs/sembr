@@ -13,6 +13,7 @@ _WAL_PRAGMAS = (
     "PRAGMA synchronous=NORMAL",
     "PRAGMA cache_size=-64000",
     "PRAGMA busy_timeout=5000",
+    "PRAGMA foreign_keys=ON",
 )
 
 _conn: aiosqlite.Connection | None = None
