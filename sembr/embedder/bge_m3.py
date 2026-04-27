@@ -48,7 +48,15 @@ class BgeM3Embedder(BaseEmbedder):
         try:
             from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
-            self._model = await asyncio.to_thread(SentenceTransformer, self.MODEL_NAME)
+            # low_cpu_mem_usage shards weight loading so peak RAM stays near 1x model
+            # size (~2.2 GB) instead of 2x (~4.4 GB), keeping the container under
+            # mem_limit on 16 GB Mac Mini that also runs Open WebUI / cron jobs.
+            self._model = await asyncio.to_thread(
+                lambda: SentenceTransformer(
+                    self.MODEL_NAME,
+                    model_kwargs={"low_cpu_mem_usage": True},
+                )
+            )
             self._status = "ok"
             logger.info("bge-m3 loaded (dim=%d)", self.DIM)
         except Exception as exc:

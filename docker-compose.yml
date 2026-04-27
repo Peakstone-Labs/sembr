@@ -21,7 +21,7 @@ services:
       # SQLite WAL fsync is unsafe on network shares.
       - ./data:/app/data
       - ./models:/app/models
-    mem_limit: 5g
+    mem_limit: 4g
     restart: unless-stopped
 
   qdrant:
