@@ -12,6 +12,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+# Attach a stream handler so INFO-level app logs actually reach stderr.
+# Setting only the level is not enough: without a handler, the lastResort
+# handler kicks in at WARNING, silently dropping every logger.info() call.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 logging.getLogger("sembr").setLevel(logging.INFO)
 
 from sembr.api.feeds import router as feeds_router
