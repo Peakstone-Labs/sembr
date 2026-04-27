@@ -38,11 +38,11 @@ import httpx
 
 # -- International general news (native RSS) ---------------------------------
 GENERAL_INTL = [
-    ("Reuters Top",         "https://feeds.reuters.com/reuters/topNews",            False),
+    # Reuters: feeds.reuters.com TLS dead; RSSHub routes all 503 -- dropped
     ("BBC News",            "http://feeds.bbci.co.uk/news/rss.xml",                 False),
     ("The Guardian",        "https://www.theguardian.com/world/rss",                False),
     ("CNN Edition",         "http://rss.cnn.com/rss/edition.rss",                   False),
-    ("AP News",             "https://feeds.apnews.com/apnews/topnews",              False),
+    ("AP News",             "/apnews/topics/apf-topnews",                           True),   # via RSSHub
     ("Al Jazeera",          "https://www.aljazeera.com/xml/rss/all.xml",            False),
     ("SCMP",                "https://www.scmp.com/rss/91/feed",                     False),
     ("NYT World",           "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", False),
@@ -52,7 +52,7 @@ GENERAL_INTL = [
 
 # -- International finance (native RSS) --------------------------------------
 FINANCE_INTL = [
-    ("Reuters Business",    "https://feeds.reuters.com/reuters/businessNews",       False),
+    # Reuters Business: same TLS issue + RSSHub 503 -- dropped
     ("Financial Times",     "https://www.ft.com/?format=rss",                      False),
     ("The Economist",       "https://www.economist.com/latest/rss.xml",            False),
     ("Bloomberg Markets",   "https://feeds.bloomberg.com/markets/news.rss",        False),
