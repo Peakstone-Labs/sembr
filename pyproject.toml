@@ -1,0 +1,41 @@
+[project]
+name = "sembr"
+version = "0.1.0.dev0"
+description = "Reverse-RAG news monitoring: define an intent, receive matched news pushes."
+readme = "README.md"
+requires-python = "==3.12.*"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Peakstone Labs" }]
+
+dependencies = [
+    "fastapi==0.115.14",
+    "uvicorn[standard]>=0.30,<0.32",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.4,<3",
+    "aiosqlite>=0.20,<0.21",
+    "qdrant-client==1.17.1",
+    "pyyaml>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2,<9",
+    "pytest-asyncio>=0.23,<0.25",
+    "httpx>=0.27,<0.28",
+    "ruff>=0.6,<0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sembr"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

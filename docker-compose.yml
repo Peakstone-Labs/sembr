@@ -1,0 +1,38 @@
+services:
+  api:
+    build: .
+    container_name: sembr-api
+    depends_on:
+      - qdrant
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - QDRANT_URL=http://qdrant:6333
+      - SQLITE_PATH=/app/data/sembr.db
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      # NOTE: keep ./data on a local POSIX-ish FS (ext4 / APFS / NTFS local).
+      # SQLite WAL fsync is unsafe on network shares.
+      - ./data:/app/data
+      - ./models:/app/models
+    mem_limit: 3g
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.17.1
+    container_name: sembr-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    mem_limit: 4g
+    mem_reservation: 2g
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
