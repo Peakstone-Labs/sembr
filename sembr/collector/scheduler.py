@@ -13,6 +13,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from sembr.collector.base import BaseSource
 from sembr.collector.rss import FetchError, RSSSource
+from sembr.db.articles import insert_article_pending
 from sembr.db.feeds import fingerprint_exists, insert_fingerprint, update_last_collected
 from sembr.db.sqlite import get_conn
 from sembr.models import Feed
@@ -67,9 +68,18 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
     # Always advance the cursor so we don't re-scan the same window next run.
     new_count = 0
     for article in articles:
-        if not await fingerprint_exists(conn, article.feed_md5):
-            await insert_fingerprint(conn, article.feed_md5, feed_id)
-            new_count += 1
+        try:
+            if await insert_article_pending(conn, article, feed_id):
+                new_count += 1
+        except Exception as exc:
+            # One bad article must not abort the rest of the feed's batch.
+            logger.error(
+                "failed to buffer article %r (feed_id=%d): %s",
+                article.url,
+                feed_id,
+                exc,
+                exc_info=True,
+            )
 
     await update_last_collected(conn, feed_id)
 
