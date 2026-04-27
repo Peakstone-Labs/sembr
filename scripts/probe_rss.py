@@ -68,19 +68,19 @@ FINANCE_INTL = [
 FINANCE_CN = [
     ("华尔街见闻",           "/wallstreetcn/news/global",                            True),
     ("财联社电报",           "/cls/telegraph",                                       True),
-    ("东方财富",             "/eastmoney/news/cjxw",                                 True),
+    ("东方财富",             "/eastmoney/news/cjyw",                                 True),  # was cjxw -> 503, try cjyw
     ("第一财经",             "/yicai/news",                                          True),
     ("36氪",                "/36kr/news/latest",                                    True),
     ("虎嗅",                "/huxiu/article",                                       True),
-    ("钛媒体",              "/tmtpost/latest",                                      True),
+    ("钛媒体",              "/tmtpost/article",                                     True),  # was latest -> 503, try article
 ]
 
 # -- Chinese general news (native RSS + RSSHub) ------------------------------
 GENERAL_CN = [
-    ("新华网",              "http://www.xinhuanet.com/rss/newscenter.xml",          False),
+    ("新华网",              "https://xinhuarss.xinhua.org/zh_news_2016010601/rss.xml", False),  # old URL 404, try new
     ("澎湃新闻",            "/thepaper/featured",                                   True),
     ("界面新闻",            "/jiemian/news/latest",                                 True),
-    ("南方周末",            "/infzm/news/latest",                                   True),
+    ("南方周末",            "/infzm/latest",                                        True),  # was /infzm/news/latest -> 503
 ]
 
 SECTIONS = [
