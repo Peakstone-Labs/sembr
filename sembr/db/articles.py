@@ -5,6 +5,7 @@ Dead articles are kept for forensics even after their feed is deleted (no FK cas
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import aiosqlite
@@ -12,6 +13,7 @@ import aiosqlite
 from sembr.collector.base import RawArticle
 
 _BODY_CAP_BYTES = 1_048_576  # 1 MB sanity cap (D11)
+_MD5_RE = re.compile(r"^[0-9a-f]{32}$")
 
 _CREATE_PENDING = """
 CREATE TABLE IF NOT EXISTS pending_articles (
@@ -43,7 +45,11 @@ _CREATE_IDX_PENDING_FEED = (
     "CREATE INDEX IF NOT EXISTS idx_pending_articles_feed_id ON pending_articles(feed_id)"
 )
 _CREATE_IDX_PENDING_RETRY = (
-    "CREATE INDEX IF NOT EXISTS idx_pending_articles_retry_id ON pending_articles(retry_count, md5)"
+    # Index on retry_count covers WHERE retry_count < ?; SQLite implicitly stores rowid as
+    # the B-tree secondary key, so ORDER BY rowid within the filtered set costs a sort over
+    # at most BATCH_SIZE * max_retry rows — acceptable at MVP scale.
+    # The old (retry_count, md5) index was useless because md5 TEXT has no relation to rowid order.
+    "CREATE INDEX IF NOT EXISTS idx_pending_articles_retry ON pending_articles(retry_count)"
 )
 _CREATE_IDX_DEAD_FAILED = (
     "CREATE INDEX IF NOT EXISTS idx_dead_articles_failed_at ON dead_articles(failed_at)"
@@ -65,6 +71,9 @@ async def init_article_tables(conn: aiosqlite.Connection) -> None:
     await conn.execute(_CREATE_PENDING)
     await conn.execute(_CREATE_DEAD)
     await conn.execute(_CREATE_IDX_PENDING_FEED)
+    # Drop old indexes that no longer match the current plan (schema migrations)
+    await conn.execute("DROP INDEX IF EXISTS idx_pending_articles_retry_id")
+    await conn.execute("DROP INDEX IF EXISTS idx_pending_articles_retry_rowid")
     await conn.execute(_CREATE_IDX_PENDING_RETRY)
     await conn.execute(_CREATE_IDX_DEAD_FAILED)
     await conn.commit()
@@ -79,6 +88,8 @@ async def insert_article_pending(
     always consistent — prevents an article slipping between dedup check and buffer write.
     Uses SELECT changes() rather than cursor.rowcount (aiosqlite rowcount is unreliable).
     """
+    if not _MD5_RE.match(article.feed_md5):
+        raise ValueError(f"feed_md5 must be 32 lowercase hex chars, got {article.feed_md5!r}")
     await conn.execute("BEGIN")
     try:
         await conn.execute(

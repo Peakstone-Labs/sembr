@@ -374,11 +374,26 @@ async def test_embedder_worker_phase3b_upsert_then_delete(monkeypatch):
     embedder = _mock_embedder()
     qdrant = _mock_qdrant()
 
+    # Track D2 invariant: upsert must happen strictly before delete
+    import sembr.embedder.scheduler as _sched_mod
+    call_order: list[str] = []
+    _real_delete = _sched_mod.delete_pending
+
+    async def _tracking_delete(conn, md5s):
+        call_order.append("delete")
+        return await _real_delete(conn, md5s)
+
+    async def _tracking_upsert(**kwargs):
+        call_order.append("upsert")
+
+    qdrant.client.upsert = AsyncMock(side_effect=_tracking_upsert)
+    monkeypatch.setattr("sembr.embedder.scheduler.delete_pending", _tracking_delete)
+
     await embedder_worker(embedder, qdrant)
 
+    assert call_order == ["upsert", "delete"], f"D2 violation: expected upsert→delete, got {call_order}"
     qdrant.client.upsert.assert_called_once()
-    call_kwargs = qdrant.client.upsert.call_args
-    assert call_kwargs.kwargs["collection_name"] == ALIAS_NAME
+    assert qdrant.client.upsert.call_args.kwargs["collection_name"] == ALIAS_NAME
 
     async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
         assert (await cur.fetchone())[0] == 0

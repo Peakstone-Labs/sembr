@@ -43,3 +43,16 @@ target-version = "py312"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# On Linux x86_64 (CI / server deployments) sentence-transformers would otherwise pull
+# the CUDA-enabled torch wheel (~2 GB extra). Force the CPU index on that platform only;
+# arm64 (Mac M4 Docker) gets the default wheel which has no CUDA anyway.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+]

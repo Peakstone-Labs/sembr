@@ -59,6 +59,4 @@ class BgeM3Embedder(BaseEmbedder):
     def embed(self, texts: list[str]) -> list[list[float]]:
         if self._model is None:
             raise RuntimeError("embedder not loaded")
-        return self._model.encode(
-            texts, batch_size=16, normalize_embeddings=True
-        ).tolist()
+        return self._model.encode(texts, normalize_embeddings=True).tolist()
