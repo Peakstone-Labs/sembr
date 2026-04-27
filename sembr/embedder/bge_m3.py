@@ -55,7 +55,7 @@ class BgeM3Embedder(BaseEmbedder):
             self._model = await asyncio.to_thread(
                 lambda: SentenceTransformer(
                     self.MODEL_NAME,
-                    model_kwargs={"torch_dtype": "float16", "low_cpu_mem_usage": True},
+                    model_kwargs={"dtype": "float16", "low_cpu_mem_usage": True},
                 )
             )
             self._status = "ok"
