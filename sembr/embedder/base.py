@@ -6,6 +6,7 @@ this module yet. Subclasses MAY add async / batching variants without breaking c
 """
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 
 
@@ -22,4 +23,12 @@ class BaseEmbedder(ABC):
 
     @abstractmethod
     def embed(self, texts: list[str]) -> list[list[float]]:
-        """Returns one vector per input text in the same order."""
+        """Synchronous inference. Consumers must call `await aembed(...)` instead."""
+
+    async def aembed(self, texts: list[str]) -> list[list[float]]:
+        """Async wrapper that offloads sync `embed` to a thread pool.
+
+        Remote/async backends can override this directly without changing the
+        sync signature — the only requirement for subclasses is implementing `embed`.
+        """
+        return await asyncio.to_thread(self.embed, texts)

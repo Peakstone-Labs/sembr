@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request, Response, status
 
+from sembr.db.sqlite import sqlite_ok as _sqlite_ok
+
 router = APIRouter()
 
 
@@ -15,8 +17,6 @@ async def health(request: Request, response: Response) -> dict:
     qdrant = request.app.state.qdrant
     qdrant_ok = await qdrant.ping()
 
-    # Late import — avoids touching the global handle before lifespan ran.
-    from sembr.db.sqlite import sqlite_ok as _sqlite_ok
     sqlite_ok_value = await _sqlite_ok()
 
     components = {

@@ -5,15 +5,9 @@ services:
     depends_on:
       - qdrant
     ports:
-      - "${API_PORT:-8000}:8000"
-    environment:
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-      - QDRANT_URL=http://qdrant:6333
-      - SQLITE_PATH=/app/data/sembr.db
+      - "${SEMBR_HOST_PORT:-8000}:8000"
     env_file:
-      - path: .env
-        required: false
+      - .env
     volumes:
       # NOTE: keep ./data on a local POSIX-ish FS (ext4 / APFS / NTFS local).
       # SQLite WAL fsync is unsafe on network shares.

@@ -54,12 +54,13 @@ logs/
 *.sqlite
 *.sqlite3
 
-# Secrets
+# Secrets / local config
 .env
 .env.local
 .env.*.local
 *.pem
 secrets/
+sembr.yaml
 
 # Docker
 .docker/
