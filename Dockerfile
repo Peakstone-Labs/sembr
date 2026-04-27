@@ -12,6 +12,7 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev
 
 COPY sembr/ ./sembr/
+COPY scripts/ ./scripts/
 
 RUN mkdir -p /app/data
 
