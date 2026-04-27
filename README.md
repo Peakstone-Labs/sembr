@@ -90,7 +90,16 @@ Feed list and collected article fingerprints are stored in `./data/sembr.db` (SQ
 
 ## Embedder
 
-sembr currently supports one embedding backend: **SiliconFlow** (`BAAI/bge-m3` via the SiliconFlow `/v1/embeddings` API). The [`BaseEmbedder`](sembr/embedder/base.py) abstract class defines the contract (`model_version`, `is_loaded`, `aembed(texts) -> list[list[float]]`) — community contributors can implement a local backend (e.g. mlx-lm, Ollama) by subclassing it and registering it in [`sembr/embedder/factory.py`](sembr/embedder/factory.py).
+sembr ships with **BGE-M3** as its default embedding model — and on [SiliconFlow](https://siliconflow.cn) it's **free to use**. Unlimited semantic monitoring with a top-tier multilingual model at zero inference cost.
+
+**Why BGE-M3?** It's currently the best open-source embedder for Chinese + English mixed news content:
+
+- **1024 dimensions, 8192-token context** — handles full article bodies, not just titles
+- **Native bilingual** (CN/EN, plus 100+ languages) — critical for sembr's mixed RSS sources (财联社/Bloomberg/SCMP/Al Jazeera all in one intent)
+- **MTEB top-tier on retrieval** — what reverse-RAG actually needs (intent vector ↔ article vector ANN match)
+- **Trained by [BAAI](https://huggingface.co/BAAI/bge-m3)** — production-grade, not a research toy
+
+The backend speaks the OpenAI-compatible `/v1/embeddings` protocol via [SiliconFlow](https://siliconflow.cn) (free tier covers BGE-M3) — point `EMBEDDER_API_BASE_URL` at any OpenAI-compatible endpoint to swap providers. The [`BaseEmbedder`](sembr/embedder/base.py) abstract class defines the contract (`model_version`, `is_loaded`, `aembed(texts) -> list[list[float]]`) — community contributors can drop in a local backend (e.g. mlx-lm, Ollama) by subclassing it and registering in [`sembr/embedder/factory.py`](sembr/embedder/factory.py).
 
 ## Status
 
