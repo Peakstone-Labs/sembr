@@ -52,10 +52,11 @@ async def get_feeds() -> list[Feed]:
     return await list_feeds(get_conn())
 
 
-@router.delete("/{feed_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
-async def remove_feed(feed_id: int, request: Request) -> None:
+@router.delete("/{feed_id}")
+async def remove_feed(feed_id: int, request: Request) -> Response:
     conn = get_conn()
     existed = await delete_feed(conn, feed_id)
     if not existed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
     remove_feed_job(request.app.state.scheduler, feed_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
