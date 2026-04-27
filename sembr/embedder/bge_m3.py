@@ -48,13 +48,14 @@ class BgeM3Embedder(BaseEmbedder):
         try:
             from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
-            # low_cpu_mem_usage shards weight loading so peak RAM stays near 1x model
-            # size (~2.2 GB) instead of 2x (~4.4 GB), keeping the container under
-            # mem_limit on 16 GB Mac Mini that also runs Open WebUI / cron jobs.
+            # fp16 + low_cpu_mem_usage cuts peak RAM from ~4.5 GB to ~1.5 GB.
+            # low_cpu_mem_usage alone wasn't enough on this path (sentence-transformers
+            # 3.4.1 + BGE-M3 still peaked past 6g). fp16 quality loss is negligible
+            # for sub-1k-token RSS articles; only ~8k-token inputs risk numerical drift.
             self._model = await asyncio.to_thread(
                 lambda: SentenceTransformer(
                     self.MODEL_NAME,
-                    model_kwargs={"low_cpu_mem_usage": True},
+                    model_kwargs={"torch_dtype": "float16", "low_cpu_mem_usage": True},
                 )
             )
             self._status = "ok"
