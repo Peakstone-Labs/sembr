@@ -30,7 +30,7 @@ from sembr.db.articles import init_article_tables
 from sembr.db.feeds import init_feed_tables, list_feeds, seed_initial_feeds
 from sembr.db.intents import init_intent_tables
 from sembr.db.sqlite import close_sqlite, init_sqlite
-from sembr.embedder.bge_m3 import BgeM3Embedder
+from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
 from sembr.vector_store.intents import ensure_intents_collection
 from sembr.vector_store.news import ensure_news_collection
@@ -40,6 +40,8 @@ from sembr.vector_store.qdrant import QdrantHandle
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    # Validate embedder config before any I/O — raises ValueError if EMBEDDER_API_KEY unset.
+    embedder = build_embedder(settings)
     conn = await init_sqlite(settings.sqlite_path)
     await init_feed_tables(conn)
     await init_article_tables(conn)
@@ -48,7 +50,6 @@ async def lifespan(app: FastAPI):
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client)
     await ensure_intents_collection(qdrant.client)
-    embedder = BgeM3Embedder()
     load_task = asyncio.create_task(embedder.load())  # background; /health probes status
     scheduler = make_scheduler()
     feeds = await list_feeds(conn)
@@ -56,7 +57,7 @@ async def lifespan(app: FastAPI):
         await add_feed_job(scheduler, feed, jitter_seconds=i * 2)
     add_embedder_worker_job(scheduler, embedder, qdrant)
     # Assign state before scheduler.start() so /health and request handlers see
-    # consistent state from the first worker tick (🟡-11).
+    # consistent state from the first worker tick.
     app.state.qdrant = qdrant
     app.state.scheduler = scheduler
     app.state.settings = settings
@@ -65,13 +66,20 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        # wait=False: for AsyncIOScheduler, wait=True only blocks on ThreadPoolExecutor
+        # jobs — it does NOT await async coroutines like embedder_worker. Blocking the
+        # event loop here risks hitting Docker's 10s SIGKILL before aclose/close_sqlite
+        # complete. Async jobs that finish naturally between shutdown() and aclose() are
+        # fine; those still mid-flight see ClientClosed → increment_retry (idempotent).
         scheduler.shutdown(wait=False)
         load_task.cancel()
         try:
-            # Await so the thread pool doesn't race with interpreter teardown (🟡-2)
+            # Await so the thread pool doesn't race with interpreter teardown.
             await asyncio.wait_for(load_task, timeout=2.0)
         except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
+        if hasattr(embedder, "aclose"):
+            await embedder.aclose()
         await qdrant.close()
         await close_sqlite()
 

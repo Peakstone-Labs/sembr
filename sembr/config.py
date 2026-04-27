@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
@@ -51,7 +51,26 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000)
     qdrant_url: str = Field(default="http://qdrant:6333")
     sqlite_path: str = Field(default="/app/data/sembr.db")
-    embedder_backend: Literal["docker_cpu", "host_mlx"] = Field(default="docker_cpu")
+    embedder_backend: Literal["siliconflow"] = Field(
+        default="siliconflow",
+        description="Embedding backend. Only 'siliconflow' is supported in this release.",
+    )
+    embedder_api_base_url: str = Field(
+        default="https://api.siliconflow.cn/v1",
+        description="Base URL for the OpenAI-compatible /v1/embeddings endpoint.",
+    )
+    embedder_api_key: SecretStr = Field(
+        default="",
+        description="API key for the embeddings endpoint. Required; startup fails if empty.",
+    )
+    embedder_model: str = Field(
+        default="BAAI/bge-m3",
+        description="Model name passed to the embeddings endpoint.",
+    )
+    embedder_timeout_seconds: float = Field(
+        default=30.0,
+        description="Per-request HTTP timeout in seconds for embedding calls.",
+    )
 
     @classmethod
     def settings_customise_sources(

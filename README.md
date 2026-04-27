@@ -18,16 +18,20 @@ Requires Docker + Docker Compose. First image pull (`qdrant/qdrant:v1.17.1` ~100
 ```bash
 git clone https://github.com/Peakstone-Labs/sembr.git
 cd sembr
-cp .env.example .env            # required — Compose loads .env for settings
+# 1. Copy the example env file:
+cp .env.example .env
+# 2. Open .env and replace the placeholder with your real SiliconFlow key:
+#    EMBEDDER_API_KEY=sk-your-actual-key-here
+# 3. Start all services:
 docker compose up --build
 
 # in another shell, once both containers are running:
 curl -i http://localhost:8000/health
-# expected: HTTP/1.1 200 OK
-# {"status":"ok","components":{"qdrant":"ok","sqlite":"ok","embedder":"not_loaded"}}
+# expected while embedder probe is running: HTTP/1.1 503 {"status":"degraded","components":{"embedder":"loading",...}}
+# expected after probe succeeds:            HTTP/1.1 200 {"status":"ok","components":{"embedder":"ok",...}}
 ```
 
-The `embedder` field is intentionally `"not_loaded"` in 0.1.0 — model loading lands in a later release and does not gate `/health`.
+`EMBEDDER_API_KEY` is required — the container will exit non-zero immediately at startup if the key is missing or blank. Get a free key at [siliconflow.cn](https://siliconflow.cn).
 
 **Filesystem note**: keep `./data/` on a local POSIX-ish filesystem (ext4 / APFS / NTFS local). SQLite WAL is unsafe on network shares (NFS, SMB, virtio-9p).
 
@@ -84,11 +88,15 @@ Deleted feeds do not come back on restart. To restore a pre-loaded source, re-ad
 
 Feed list and collected article fingerprints are stored in `./data/sembr.db` (SQLite, bind-mounted from the host). They survive `docker compose up --build`, container restarts, and image rebuilds. Only `rm -rf ./data/` permanently deletes them.
 
+## Embedder
+
+sembr currently supports one embedding backend: **SiliconFlow** (`BAAI/bge-m3` via the SiliconFlow `/v1/embeddings` API). The [`BaseEmbedder`](sembr/embedder/base.py) abstract class defines the contract (`model_version`, `is_loaded`, `aembed(texts) -> list[list[float]]`) — community contributors can implement a local backend (e.g. mlx-lm, Ollama) by subclassing it and registering it in [`sembr/embedder/factory.py`](sembr/embedder/factory.py).
+
 ## Status
 
 🚧 Pre-release — under active development. The 0.1.0 MVP targets:
 
-- RSS ingestion + BGE-M3 embeddings + Qdrant vector store
+- RSS ingestion + BGE-M3 embeddings via SiliconFlow API + Qdrant vector store
 - Intent CRUD via REST API
 - 5-minute scheduled semantic matching with configurable threshold
 - LLM-generated summaries (OpenAI / DeepSeek / local)

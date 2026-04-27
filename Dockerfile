@@ -2,8 +2,7 @@ FROM python:3.12
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/app/models
+    PIP_NO_CACHE_DIR=1
 
 RUN pip install --no-cache-dir uv
 
@@ -14,7 +13,7 @@ RUN uv sync --frozen --no-dev
 
 COPY sembr/ ./sembr/
 
-RUN mkdir -p /app/data /app/models
+RUN mkdir -p /app/data
 
 EXPOSE 8000
 

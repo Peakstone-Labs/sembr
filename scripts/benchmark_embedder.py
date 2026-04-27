@@ -1,90 +1,94 @@
-"""Measure BGE-M3 encode latency at different max_seq_length values.
+"""Benchmark SiliconFlow /v1/embeddings latency at different batch sizes.
 
-Stop the api container first so this script doesn't compete with embedder_worker
-for CPU, then run inside a one-off container that shares the data volume:
+Run inside the api container (requires EMBEDDER_API_KEY in the environment):
 
-    docker compose stop api
-    docker compose run --rm api python /app/scripts/benchmark_embedder.py
-    docker compose start api  # restore service after measuring
+    docker compose run --rm \\
+        -e EMBEDDER_API_KEY=$EMBEDDER_API_KEY \\
+        api python /app/scripts/benchmark_embedder.py
 
-Picks the longest article currently in pending_articles as the worst-case input,
-plus a batch of 16 to mirror the production BATCH_SIZE.
+Outputs p50 / max wall-clock latency and ms-per-item for batch_size in
+[1, 4, 8, 16, 32] — the range covers single-article intent checks through
+the production BATCH_SIZE ceiling.
+
+Also validates the worst-case token budget for BATCH_SIZE=32 (design Risk row 5):
+if SiliconFlow rejects the request, prints the error and suggests reducing
+BATCH_SIZE in sembr/embedder/scheduler.py.
 """
 from __future__ import annotations
 
+import asyncio
+import os
 import sqlite3
+import statistics
 import time
 
-from sentence_transformers import SentenceTransformer
+import httpx
 
 DB_PATH = "/app/data/sembr.db"
-SEQ_LENGTHS = [256, 512, 1024, 2048, 4096, 8192]
-BATCH_SEQ_LENGTHS = [512, 1024, 2048, 8192]
-BATCH_SIZE = 16
+BATCH_SIZES = [1, 4, 8, 16, 32]
+REPEATS = 3  # calls per batch size; median smooths first-call TCP setup
+
+BASE_URL = os.environ.get("EMBEDDER_API_BASE_URL", "https://api.siliconflow.cn/v1").rstrip("/")
+MODEL = os.environ.get("EMBEDDER_MODEL", "BAAI/bge-m3")
+API_KEY = os.environ.get("EMBEDDER_API_KEY")
+if not API_KEY:
+    raise SystemExit("EMBEDDER_API_KEY env var is required (see module docstring).")
+TIMEOUT = float(os.environ.get("EMBEDDER_TIMEOUT_SECONDS", "30"))
 
 
-def main() -> None:
-    print("Loading model with prod settings (fp16, low_cpu_mem_usage)...")
-    t0 = time.perf_counter()
-    model = SentenceTransformer(
-        "BAAI/bge-m3",
-        model_kwargs={"dtype": "float16", "low_cpu_mem_usage": True},
+async def _call(client: httpx.AsyncClient, texts: list[str]) -> list[list[float]]:
+    resp = await client.post(
+        f"{BASE_URL}/embeddings",
+        headers={"Authorization": f"Bearer {API_KEY}"},
+        json={"model": MODEL, "input": texts, "encoding_format": "float"},
     )
-    print(f"Model loaded in {time.perf_counter() - t0:.1f}s")
-    print(f"Default max_seq_length: {model.max_seq_length}")
-    print(f"Tokenizer: {type(model.tokenizer).__name__}\n")
+    resp.raise_for_status()
+    return [item["embedding"] for item in resp.json()["data"]]
 
+
+async def main() -> None:
     conn = sqlite3.connect(DB_PATH)
-
-    row = conn.execute(
-        "SELECT title, body, length(body) FROM pending_articles "
-        "ORDER BY length(body) DESC LIMIT 1"
-    ).fetchone()
-    if row is None:
-        print("No pending articles to benchmark against. Aborting.")
+    rows = conn.execute(
+        "SELECT title, body FROM pending_articles ORDER BY length(body) DESC LIMIT 32"
+    ).fetchall()
+    if not rows:
+        print("No pending articles in DB — run the collector first to populate pending_articles.")
         raise SystemExit(1)
 
-    title, body, body_len = row
-    text = f"{title}\n\n{body}"
-    char_count = len(text)
-    tokens = model.tokenizer.encode(text, add_special_tokens=False)
-    token_count = len(tokens)
-    print("Test article (longest in pending):")
-    print(f"  title={len(title)} chars, body={body_len} chars, total={char_count} chars")
-    print(f"  token count (untruncated): {token_count}\n")
-
-    print("Single-article encode time at various max_seq_length (after warmup):")
-    for msl in SEQ_LENGTHS:
-        model.max_seq_length = msl
-        model.encode([text])  # warmup
-        t0 = time.perf_counter()
-        model.encode([text])
-        dt = time.perf_counter() - t0
-        effective = min(msl, token_count)
-        print(f"  msl={msl:>4} (effective {effective:>4} tok): {dt * 1000:>7.0f} ms")
-
-    rows = conn.execute(
-        "SELECT title, body FROM pending_articles LIMIT ?",
-        (BATCH_SIZE,),
-    ).fetchall()
-    if len(rows) < BATCH_SIZE:
-        print(f"\nOnly {len(rows)} pending rows available — batch test will be smaller.")
+    # Pad to 32 with the longest articles (worst-case token budget)
+    while len(rows) < 32:
+        rows = rows + rows
+    rows = rows[:32]
     texts = [f"{r[0]}\n\n{r[1]}" for r in rows]
-    avg_toks = sum(
-        len(model.tokenizer.encode(t, add_special_tokens=False)) for t in texts
-    ) / len(texts)
-    print(f"\nBatch of {len(texts)} articles, avg {avg_toks:.0f} tokens each:")
-    for msl in BATCH_SEQ_LENGTHS:
-        model.max_seq_length = msl
-        model.encode(texts)  # warmup
-        t0 = time.perf_counter()
-        model.encode(texts)
-        dt = time.perf_counter() - t0
-        print(
-            f"  msl={msl:>4}: {dt:>5.1f} s for batch of {len(texts)} "
-            f"({dt / len(texts) * 1000:>5.0f} ms/article)"
-        )
+
+    print(f"model  : {MODEL}")
+    print(f"endpoint: {BASE_URL}")
+    print(f"articles: {len(rows)} (sorted longest-first for worst-case token probe)")
+    print()
+    print(f"{'batch':>6}  {'p50 ms':>8}  {'max ms':>8}  {'ms/item':>8}  note")
+
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        for bs in BATCH_SIZES:
+            batch = texts[:bs]
+            durations: list[float] = []
+            note = ""
+            try:
+                for _ in range(REPEATS):
+                    t0 = time.perf_counter()
+                    await _call(client, batch)
+                    durations.append((time.perf_counter() - t0) * 1000)
+            except httpx.HTTPStatusError as exc:
+                note = f"FAIL {exc.response.status_code} — consider reducing BATCH_SIZE"
+                print(f"{bs:>6}  {'—':>8}  {'—':>8}  {'—':>8}  {note}")
+                continue
+
+            p50 = statistics.median(durations)
+            p_max = max(durations)
+            if bs == 32:
+                sc1_ok = "✓ SC-1 ok" if p50 < 12_000 else "✗ SC-1 FAIL (>12s)"
+                note = sc1_ok
+            print(f"{bs:>6}  {p50:>8.0f}  {p_max:>8.0f}  {p50 / bs:>8.1f}  {note}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

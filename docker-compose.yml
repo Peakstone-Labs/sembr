@@ -18,10 +18,10 @@ services:
       - .env
     volumes:
       # NOTE: keep ./data on a local POSIX-ish FS (ext4 / APFS / NTFS local).
-      # SQLite WAL fsync is unsafe on network shares.
+      # SQLite WAL fsync and Qdrant mmap (./data/qdrant) are both unsafe on network shares.
       - ./data:/app/data
-      - ./models:/app/models
-    mem_limit: 5g
+    mem_limit: 3g
+    mem_reservation: 1g
     restart: unless-stopped
 
   qdrant:

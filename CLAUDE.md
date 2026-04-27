@@ -40,8 +40,8 @@ The core data flow: RSS feeds → BGE-M3 embeddings → Qdrant → intent vector
 | Qdrant Server | **1.17.1** | `qdrant/qdrant:v1.17.1` docker image |
 | qdrant-client | 1.17.1 | Use `AsyncQdrantClient` |
 | aiosqlite | 0.20.x | SQLite WAL mode required |
-| sentence-transformers | 3.4.1 | For bge-m3 |
-| Embedding model | bge-m3 (BAAI/bge-m3) | 1024-dim, 8192 token ctx, MLX 4-bit = 321MB |
+| httpx | >=0.27,<0.28 | Async HTTP client for SiliconFlow embeddings API |
+| Embedding model | bge-m3 via SiliconFlow API | 1024-dim, 8192 token ctx, OpenAI-compatible `/v1/embeddings` |
 | LLM (local) | Qwen3-4B-4bit via mlx-lm | ~2.5GB, ~80 tok/s on M4 |
 | LLM (API) | DeepSeek / OpenAI | Via abstract factory |
 
@@ -118,7 +118,8 @@ sembr/
 │   ├── rss.py               # feedparser-based RSSSource
 │   └── http.py              # httpx-based HTTPSource
 ├── embedder/
-│   └── engine.py            # asyncio.Queue + asyncio.to_thread() worker pool
+│   ├── openai_compat.py     # SiliconFlowEmbedder — httpx async client for /v1/embeddings
+│   └── factory.py           # build_embedder(settings) → BaseEmbedder
 ├── vector_store/
 │   └── qdrant.py            # AsyncQdrantClient wrapper; dual-collection design
 ├── matcher/
@@ -145,7 +146,7 @@ sembr/
 
 **LLM Abstract Factory**: `LLMFactory.create(config)` returns either `OllamaBackend` or `APIBackend` implementing `BaseLLMBackend`. On 16GB M4: use mlx-lm directly (Ollama 0.19 requires 32GB+ for MLX backend). The factory auto-detects available memory and selects the appropriate path.
 
-**Embedding engine threading**: sentence-transformers is synchronous. Use `asyncio.to_thread()` to offload inference to a thread pool. Batch size = 16 for M4 Metal GPU (~2000 tok/s). Never block the FastAPI event loop.
+**Embedding engine**: `SiliconFlowEmbedder` calls the SiliconFlow `/v1/embeddings` API via `httpx.AsyncClient` — no local model, no thread pool. Batch size = 32 (SiliconFlow single-request limit). The `embedder.load()` coroutine runs a startup probe; `/health` returns 503 until the probe succeeds. Never block the FastAPI event loop.
 
 **SQLite WAL**: Must initialize with `PRAGMA journal_mode=WAL; synchronous=NORMAL; cache_size=-64000; busy_timeout=5000`. WAL ensures readers never block writers. The `notification_log` table tracks push state: `pending→sent→failed→dead`.
 

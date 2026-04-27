@@ -1,11 +1,10 @@
 """APScheduler job for embedding articles from pending_articles.
 
 Implements D1 (30s IntervalTrigger), D2 (upsert-then-delete ordering),
-D12 (embed timeout), D17 (module constants), D20 (transient Qdrant error handling).
+D17 (module constants), D20 (transient Qdrant error handling).
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -38,15 +37,16 @@ from sembr.db.articles import (
 from sembr.db.sqlite import get_conn
 
 if TYPE_CHECKING:
-    from sembr.embedder.bge_m3 import BgeM3Embedder
+    from sembr.embedder.base import BaseEmbedder
     from sembr.vector_store.qdrant import QdrantHandle
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 16
+# SiliconFlow accepts up to 32 inputs per request. Verify worst-case token budget
+# (top-32 longest articles) on Mac Mini before shipping — see design Risk row 5.
+BATCH_SIZE = 32
 MAX_ATTEMPTS = 3  # total embed+upsert attempts before a row is demoted to dead_articles
 POLL_INTERVAL_SECONDS = 30
-_EMBED_TIMEOUT = 300.0  # D12: prevent hang if PyTorch C-level OOM doesn't raise Python exc
 
 ALIAS_NAME = "news_current"
 
@@ -72,7 +72,7 @@ def _to_point(row: PendingRow, vector: list[float], model_version: str) -> Point
 
 def add_embedder_worker_job(
     scheduler: AsyncIOScheduler,
-    embedder: "BgeM3Embedder",
+    embedder: "BaseEmbedder",
     qdrant: "QdrantHandle",
 ) -> None:
     scheduler.add_job(
@@ -87,7 +87,7 @@ def add_embedder_worker_job(
     )
 
 
-async def embedder_worker(embedder: "BgeM3Embedder", qdrant: "QdrantHandle") -> None:
+async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> None:
     if not embedder.is_loaded:
         return
 
@@ -103,9 +103,7 @@ async def embedder_worker(embedder: "BgeM3Embedder", qdrant: "QdrantHandle") -> 
     md5s_at_limit = [r.md5 for r in batch if r.retry_count + 1 >= MAX_ATTEMPTS]
 
     try:
-        vectors: list[list[float]] = await asyncio.wait_for(
-            embedder.aembed(texts), timeout=_EMBED_TIMEOUT
-        )
+        vectors: list[list[float]] = await embedder.aembed(texts)
     except Exception as exc:
         logger.warning("embed failed for batch of %d: %s", len(batch), exc)
         await increment_retry(conn, md5s)
