@@ -140,7 +140,7 @@ sembr/
 
 ### Key Architectural Decisions
 
-**Dual-collection Qdrant design**: `intents` collection stores pre-computed user intent vectors; `news` collection stores article vectors. The matcher uses `search_batch()` with all active intent vectors querying the news collection, filtered by `published_at > last_scan_time`. Use Qdrant's `lookup_from` to reference intent vectors by point ID without re-embedding.
+**Dual-collection Qdrant design**: `intents` collection stores pre-computed user intent vectors; `news` collection stores article vectors. The matcher uses `query_points(query=vector, score_threshold=..., query_filter=...)` (qdrant-client 1.10+ — `search()` was removed) per intent, filtered by `ingested_at_ts > lookback_cutoff`. Use Qdrant's `lookup_from` to reference intent vectors by point ID without re-embedding.
 
 **Reverse RAG**: Intent vectors are computed once at creation time. Scanning is O(intents × new_articles) via `search_batch`, not O(queries). Default similarity threshold is 0.75 (user-configurable 0.60–0.95 per intent).
 
