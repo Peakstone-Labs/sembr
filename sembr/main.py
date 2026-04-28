@@ -28,16 +28,22 @@ from sembr.collector.scheduler import add_feed_job, make_scheduler
 from sembr.config import get_settings
 from sembr.db.articles import init_article_tables
 from sembr.db.feeds import init_feed_tables, list_feeds, seed_initial_feeds
-from sembr.db.intents import init_intent_tables, list_intents
+from sembr.db.intents import get_intent, init_intent_tables, list_intents
 from sembr.db.match_seen import init_match_seen_tables
 from sembr.db.sqlite import close_sqlite, init_sqlite
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
-from sembr.matcher.callback import log_matches
 from sembr.matcher.jobs import register_all_enabled
+from sembr.summarizer.llm.factory import build_llm_backend
+from sembr.summarizer.pipeline import SummaryPipeline
 from sembr.vector_store.intents import ensure_intents_collection
 from sembr.vector_store.news import ensure_news_collection
 from sembr.vector_store.qdrant import QdrantHandle
+
+
+async def _get_custom_prompt(conn, intent_id: int) -> str | None:
+    intent = await get_intent(conn, intent_id)
+    return intent.custom_prompt if intent else None
 
 
 @asynccontextmanager
@@ -64,9 +70,13 @@ async def lifespan(app: FastAPI):
     enabled_intents = await list_intents(conn, enabled=True)
     await register_all_enabled(scheduler, enabled_intents, app, qdrant.client)
     # R5: assign on_match before scheduler.start() so first ticks always find a callback
-    # Assign state before scheduler.start() so /health and request handlers see
-    # consistent state from the first worker tick.
-    app.state.on_match = log_matches
+    llm_backend = build_llm_backend(settings)
+    pipeline = SummaryPipeline(
+        llm=llm_backend,
+        grouping_threshold=settings.llm_grouping_threshold,
+        get_intent_custom_prompt=lambda iid: _get_custom_prompt(conn, iid),
+    )
+    app.state.on_match = pipeline.handle
     app.state.qdrant = qdrant
     app.state.scheduler = scheduler
     app.state.settings = settings
