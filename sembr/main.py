@@ -41,9 +41,11 @@ from sembr.vector_store.news import ensure_news_collection
 from sembr.vector_store.qdrant import QdrantHandle
 
 
-async def _get_custom_prompt(conn, intent_id: int) -> str | None:
+async def _get_intent_prompt_ctx(conn, intent_id: int) -> tuple[str | None, str]:
     intent = await get_intent(conn, intent_id)
-    return intent.custom_prompt if intent else None
+    if intent is None:
+        return None, ""
+    return intent.custom_prompt, intent.text
 
 
 @asynccontextmanager
@@ -74,7 +76,7 @@ async def lifespan(app: FastAPI):
     pipeline = SummaryPipeline(
         llm=llm_backend,
         grouping_threshold=settings.llm_grouping_threshold,
-        get_intent_custom_prompt=lambda iid: _get_custom_prompt(conn, iid),
+        get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(conn, iid),
     )
     app.state.on_match = pipeline.handle
     app.state.qdrant = qdrant
@@ -99,6 +101,8 @@ async def lifespan(app: FastAPI):
             pass
         if hasattr(embedder, "aclose"):
             await embedder.aclose()
+        if hasattr(llm_backend, "aclose"):
+            await llm_backend.aclose()
         await qdrant.close()
         await close_sqlite()
 

@@ -31,7 +31,7 @@ class APIBackend(BaseLLMBackend):
             timeout=timeout,
         )
 
-    async def summarize(self, articles: list[dict], prompt: str) -> str:
+    async def summarize(self, prompt: str) -> str:
         payload = {
             "model": self._model,
             "messages": [{"role": "user", "content": prompt}],

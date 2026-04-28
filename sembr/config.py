@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     )
     llm_model: str = Field(
         default="deepseek-ai/DeepSeek-V3",
+        # Design D5 specified DeepSeek-V4-Flash; using V3 because V4-Flash is not yet
+        # available on SiliconFlow at time of implementation (2026-04-28).
         description="Model name passed to the LLM chat/completions endpoint.",
     )
     llm_timeout_seconds: float = Field(

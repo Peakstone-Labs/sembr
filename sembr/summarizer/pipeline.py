@@ -69,18 +69,13 @@ class SummaryPipeline:
         grouping_threshold: float = 0.85,
         on_summary: OnSummaryCallback | None = None,
         pre_push_hook: PrePushHook | None = None,
-        get_intent_custom_prompt=None,  # async (intent_id) -> str | None
+        get_intent_prompt_ctx=None,  # async (intent_id) -> (custom_prompt | None, intent_text)
     ) -> None:
         self._llm = llm
         self._grouper = GroupingStep(threshold=grouping_threshold)
         self._on_summary: OnSummaryCallback = on_summary or log_summaries
         self._pre_push_hook = pre_push_hook
-        self._get_custom_prompt = get_intent_custom_prompt
-
-        if not llm:
-            logger.warning(
-                "SummaryPipeline: llm backend is None — all summaries will be silently dropped"
-            )
+        self._get_intent_prompt_ctx = get_intent_prompt_ctx
 
     async def handle(self, matches: list[Match]) -> None:
         """on_match callback entry point — must never raise."""
@@ -96,22 +91,22 @@ class SummaryPipeline:
         groups = self._grouper.group(matches)
 
         custom_prompt: str | None = None
-        if self._get_custom_prompt is not None:
+        intent_text: str = ""
+        if self._get_intent_prompt_ctx is not None:
             try:
-                custom_prompt = await self._get_custom_prompt(intent_id)
+                custom_prompt, intent_text = await self._get_intent_prompt_ctx(intent_id)
             except Exception:
-                logger.warning("SummaryPipeline: could not fetch custom_prompt for intent_id=%d", intent_id)
+                logger.warning("SummaryPipeline: could not fetch prompt ctx for intent_id=%d", intent_id)
 
         for group in groups:
             primary = _pick_primary(group)
             other = [m for m in group if m is not primary]
-            intent_text = primary.payload.get("intent_text", "")
             articles_text = _build_articles_text(group)
 
             prompt = _resolve_prompt(custom_prompt, intent_text, articles_text)
 
             try:
-                summary = await self._llm.summarize(list(group), prompt)
+                summary = await self._llm.summarize(prompt)
             except Exception as exc:
                 logger.error(
                     "SummaryPipeline: LLM error for intent_id=%d group_size=%d: %s",
@@ -144,9 +139,9 @@ def _resolve_prompt(custom_prompt: str | None, intent_text: str, articles_text: 
     template = custom_prompt if custom_prompt else _DEFAULT_PROMPT
     try:
         return template.format_map({"intent_text": intent_text, "articles": articles_text})
-    except KeyError as exc:
+    except (KeyError, IndexError, ValueError) as exc:
         logger.warning(
-            "SummaryPipeline: custom_prompt has unknown placeholder %s; falling back to default",
+            "SummaryPipeline: custom_prompt render failed (%s); falling back to default",
             exc,
         )
         return _DEFAULT_PROMPT.format_map({"intent_text": intent_text, "articles": articles_text})
