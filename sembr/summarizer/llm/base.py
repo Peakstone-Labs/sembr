@@ -10,8 +10,13 @@ class LLMError(Exception):
 
 class BaseLLMBackend(ABC):
     @abstractmethod
-    async def summarize(self, prompt: str) -> str:
-        """Return a summary string or raise LLMError."""
+    async def summarize(self, prompt: str, *, system: str | None = None) -> str:
+        """Return a summary string or raise LLMError.
+
+        `system` carries role/format rules sent as the system message; `prompt`
+        carries the per-call content (intent + articles). Backends that don't
+        support a system role should prepend `system` to `prompt` themselves.
+        """
 
     @abstractmethod
     async def health(self) -> bool:

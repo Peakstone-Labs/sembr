@@ -31,10 +31,14 @@ class APIBackend(BaseLLMBackend):
             timeout=timeout,
         )
 
-    async def summarize(self, prompt: str) -> str:
+    async def summarize(self, prompt: str, *, system: str | None = None) -> str:
+        messages: list[dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
         payload = {
             "model": self._model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "stream": False,
         }
         try:

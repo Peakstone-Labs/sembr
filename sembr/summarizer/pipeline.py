@@ -20,26 +20,39 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Hardcoded fallback ensures import never fails on a partial/broken install.
+# Hardcoded fallbacks ensure import never fails on a partial/broken install.
+_FALLBACK_SYSTEM_PROMPT = (
+    "You are a news monitoring assistant. Output Markdown only "
+    "(## / ### for sub-topic headings, - or * for bullets, **bold** for emphasis). "
+    "Start directly with the content — no preamble. "
+    "Do not restate the topic or add a top-level title. "
+    "Respond in the same language as the user's topic. "
+    "Structure by event or sub-topic; length reflects news density. "
+    "Merge duplicate facts; note source conflicts briefly. "
+    "Do not reproduce URLs or bracketed index numbers."
+)
+
 _FALLBACK_PROMPT = (
-    "You are a news monitoring assistant. The user is tracking:\n\n"
+    "The user is tracking:\n\n"
     "> {intent_text}\n\n"
     "The following articles were semantically matched to this topic. "
     "Each entry contains: the article title, full body text, and the source URL.\n\n"
     "{articles}\n\n"
     "---\n\n"
-    "Write a digest of the key developments. Structure by event or sub-topic; "
-    "length should reflect news density (no padding, no over-truncation). "
-    "Respond in the same language as the user's topic (not the articles — articles may be mixed-language). "
-    "Merge duplicate facts across sources; note conflicts briefly. "
-    "Do not reproduce URLs or the bracketed index numbers."
+    "Write a digest of the key developments above."
 )
 
-try:
-    _DEFAULT_PROMPT = (Path(__file__).parent / "prompts" / "default.md").read_text(encoding="utf-8")
-except (FileNotFoundError, OSError) as _exc:
-    logger.warning("default.txt prompt template not found (%s); using built-in fallback", _exc)
-    _DEFAULT_PROMPT = _FALLBACK_PROMPT
+
+def _load_prompt(name: str, fallback: str) -> str:
+    try:
+        return (Path(__file__).parent / "prompts" / name).read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError) as exc:
+        logger.warning("%s prompt template not found (%s); using built-in fallback", name, exc)
+        return fallback
+
+
+_DEFAULT_SYSTEM_PROMPT = _load_prompt("default_system.md", _FALLBACK_SYSTEM_PROMPT)
+_DEFAULT_PROMPT = _load_prompt("default.md", _FALLBACK_PROMPT)
 
 _BODY_TRUNCATE = 1_000_000  # DeepSeek Flash V4 has 1M context; effectively no truncation
 
@@ -179,7 +192,7 @@ class SummaryPipeline:
             prompt = _resolve_prompt(custom_prompt, intent_text, articles_text)
 
             try:
-                summary = await self._llm.summarize(prompt)
+                summary = await self._llm.summarize(prompt, system=_DEFAULT_SYSTEM_PROMPT)
             except Exception as exc:
                 logger.error(
                     "SummaryPipeline: LLM error for intent_id=%d group_size=%d: %s",

@@ -159,7 +159,7 @@ async def test_custom_prompt_passed_to_llm() -> None:
     """custom_prompt returned by get_intent_prompt_ctx must reach the LLM."""
     llm = _make_llm()
     captured_prompts: list[str] = []
-    llm.summarize = AsyncMock(side_effect=lambda p: captured_prompts.append(p) or "ok")
+    llm.summarize = AsyncMock(side_effect=lambda p, **_: captured_prompts.append(p) or "ok")
 
     async def ctx(iid):
         return "用英文总结：{articles}", "fed rate"
@@ -177,7 +177,7 @@ async def test_default_prompt_includes_intent_text() -> None:
     """When custom_prompt=None, default prompt must contain the intent_text."""
     llm = _make_llm()
     captured_prompts: list[str] = []
-    llm.summarize = AsyncMock(side_effect=lambda p: captured_prompts.append(p) or "ok")
+    llm.summarize = AsyncMock(side_effect=lambda p, **_: captured_prompts.append(p) or "ok")
 
     async def ctx(iid):
         return None, "Federal Reserve rate decisions"
