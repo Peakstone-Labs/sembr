@@ -21,6 +21,8 @@ logging.basicConfig(
 )
 logging.getLogger("sembr").setLevel(logging.INFO)
 
+import aiosqlite
+
 from sembr.api.feeds import router as feeds_router
 from sembr.api.health import router as health_router
 from sembr.api.intents import router as intents_router
@@ -34,11 +36,37 @@ from sembr.db.sqlite import close_sqlite, init_sqlite
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
 from sembr.matcher.jobs import register_all_enabled
+from sembr.notifier.email import EmailChannel
 from sembr.summarizer.llm.factory import build_llm_backend
+from sembr.summarizer.models import SummaryResult
 from sembr.summarizer.pipeline import SummaryPipeline
 from sembr.vector_store.intents import ensure_intents_collection
 from sembr.vector_store.news import ensure_news_collection
 from sembr.vector_store.qdrant import QdrantHandle
+
+logger = logging.getLogger(__name__)
+
+
+async def _dispatch_notification(
+    conn: aiosqlite.Connection,
+    email_ch: EmailChannel,
+    result: SummaryResult,
+) -> None:
+    # Mirrors the never-raise contract of EmailChannel.send — DB errors here must not
+    # abort the remaining groups in the same SummaryPipeline tick.
+    try:
+        intent = await get_intent(conn, result.intent_id)
+        if intent is None:
+            return
+        for ch in intent.channels:
+            if ch.type == "email":
+                to = ch.config.get("to", "")
+                if to:
+                    await email_ch.send(result, to=to, intent_name=intent.name)
+    except Exception:
+        logger.error(
+            "dispatch_notification failed for intent_id=%d", result.intent_id, exc_info=True
+        )
 
 
 async def _get_intent_prompt_ctx(conn, intent_id: int) -> tuple[str | None, str]:
@@ -73,10 +101,12 @@ async def lifespan(app: FastAPI):
     await register_all_enabled(scheduler, enabled_intents, app, qdrant.client)
     # R5: assign on_match before scheduler.start() so first ticks always find a callback
     llm_backend = build_llm_backend(settings)
+    email_ch = EmailChannel(settings)
     pipeline = SummaryPipeline(
         llm=llm_backend,
         grouping_threshold=settings.llm_grouping_threshold,
         get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(conn, iid),
+        on_summary=lambda r: _dispatch_notification(conn, email_ch, r),
     )
     app.state.on_match = pipeline.handle
     app.state.qdrant = qdrant

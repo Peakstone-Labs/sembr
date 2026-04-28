@@ -95,6 +95,14 @@ class Settings(BaseSettings):
         description="difflib title similarity threshold for grouping articles into one event.",
     )
 
+    smtp_host: str = Field(default="", description="SMTP server hostname. Empty = email disabled.")
+    smtp_port: int = Field(default=587, description="SMTP server port.")
+    smtp_username: str = Field(default="", description="SMTP login username.")
+    smtp_password: SecretStr = Field(default="", description="SMTP login password.")
+    smtp_from: str = Field(default="", description="From address. Falls back to smtp_username if empty.")
+    smtp_use_starttls: bool = Field(default=True, description="Enable STARTTLS (port 587 style).")
+    smtp_use_ssl: bool = Field(default=False, description="Use SMTP_SSL instead of SMTP+STARTTLS (port 465 style).")
+
     @classmethod
     def settings_customise_sources(
         cls,
