@@ -9,6 +9,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+import html2text as _h2t
+
 from sembr.summarizer.grouping import GroupingStep
 from sembr.summarizer.models import Citation, OnSummaryCallback, PrePushHook, SummaryResult
 
@@ -20,18 +22,34 @@ logger = logging.getLogger(__name__)
 
 # Hardcoded fallback ensures import never fails on a partial/broken install.
 _FALLBACK_PROMPT = (
-    "You are a news monitoring assistant. The user is tracking the topic: {intent_text}\n\n"
-    "Summarize the following articles concisely (3-5 sentences) in the same language as the articles.\n\n"
-    "Articles:\n{articles}\n"
+    "You are a news monitoring assistant. The user is tracking:\n\n"
+    "> {intent_text}\n\n"
+    "{articles}\n\n"
+    "---\n\n"
+    "Write a concise summary (3–5 sentences) of the key developments. "
+    "Respond in the same language as the user's topic above (not the articles — articles may be mixed-language). "
+    "Do not reproduce URLs or index numbers."
 )
 
 try:
-    _DEFAULT_PROMPT = (Path(__file__).parent / "prompts" / "default.txt").read_text(encoding="utf-8")
+    _DEFAULT_PROMPT = (Path(__file__).parent / "prompts" / "default.md").read_text(encoding="utf-8")
 except (FileNotFoundError, OSError) as _exc:
     logger.warning("default.txt prompt template not found (%s); using built-in fallback", _exc)
     _DEFAULT_PROMPT = _FALLBACK_PROMPT
 
-_BODY_TRUNCATE = 500  # chars per article in LLM prompt (D10)
+_BODY_TRUNCATE = 1_000_000  # DeepSeek Flash V4 has 1M context; effectively no truncation
+
+_h2t_converter = _h2t.HTML2Text()
+_h2t_converter.ignore_links = True
+_h2t_converter.ignore_images = True
+_h2t_converter.ignore_emphasis = False
+_h2t_converter.body_width = 0  # no line wrapping
+
+
+def _to_plain_text(raw: str) -> str:
+    if "<" in raw and ">" in raw:
+        return _h2t_converter.handle(raw).strip()
+    return raw.strip()
 
 
 async def log_summaries(result: SummaryResult) -> None:
@@ -48,9 +66,9 @@ def _build_articles_text(group: list[Match]) -> str:
     lines: list[str] = []
     for i, m in enumerate(group, 1):
         title = m.payload.get("title", "")
-        body = m.payload.get("body", "")[:_BODY_TRUNCATE]
+        body = _to_plain_text(m.payload.get("body", ""))[:_BODY_TRUNCATE]
         url = m.payload.get("url", "")
-        lines.append(f"[{i}] {title}\n{body}\n{url}")
+        lines.append(f"[{i}] {title}\n{body}\nSource: {url}")
     return "\n\n".join(lines)
 
 
