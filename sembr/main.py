@@ -28,10 +28,13 @@ from sembr.collector.scheduler import add_feed_job, make_scheduler
 from sembr.config import get_settings
 from sembr.db.articles import init_article_tables
 from sembr.db.feeds import init_feed_tables, list_feeds, seed_initial_feeds
-from sembr.db.intents import init_intent_tables
+from sembr.db.intents import init_intent_tables, list_intents
+from sembr.db.match_seen import init_match_seen_tables
 from sembr.db.sqlite import close_sqlite, init_sqlite
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
+from sembr.matcher.callback import log_matches
+from sembr.matcher.jobs import register_all_enabled
 from sembr.vector_store.intents import ensure_intents_collection
 from sembr.vector_store.news import ensure_news_collection
 from sembr.vector_store.qdrant import QdrantHandle
@@ -46,6 +49,7 @@ async def lifespan(app: FastAPI):
     await init_feed_tables(conn)
     await init_article_tables(conn)
     await init_intent_tables(conn)
+    await init_match_seen_tables(conn)  # D17: after intents (FK dependency)
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client)
@@ -56,8 +60,13 @@ async def lifespan(app: FastAPI):
     for i, feed in enumerate(feeds):
         await add_feed_job(scheduler, feed, jitter_seconds=i * 2)
     add_embedder_worker_job(scheduler, embedder, qdrant)
+    # D18: register per-intent jobs for all currently-enabled intents (restart recovery)
+    enabled_intents = await list_intents(conn, enabled=True)
+    await register_all_enabled(scheduler, enabled_intents, app, qdrant.client)
+    # R5: assign on_match before scheduler.start() so first ticks always find a callback
     # Assign state before scheduler.start() so /health and request handlers see
     # consistent state from the first worker tick.
+    app.state.on_match = log_matches
     app.state.qdrant = qdrant
     app.state.scheduler = scheduler
     app.state.settings = settings

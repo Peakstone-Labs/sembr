@@ -1,6 +1,7 @@
 """Domain models."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -39,6 +40,9 @@ class IntentCreate(BaseModel):
     enabled: bool = True
     channels: list[IntentChannel] = Field(min_length=1, max_length=10)
     tags: list[str] = Field(default_factory=list, max_length=10)
+    scan_interval_seconds: int = Field(default=3600, ge=60, le=604800)
+    lookback_window_seconds: int = Field(default=86400, ge=300, le=2592000)
+    first_scan_at: datetime | None = None
 
     @field_validator("tags")
     @classmethod
@@ -58,6 +62,9 @@ class IntentUpdate(BaseModel):
     enabled: bool | None = None
     channels: list[IntentChannel] | None = Field(default=None, min_length=1, max_length=10)
     tags: list[str] | None = Field(default=None, max_length=10)
+    scan_interval_seconds: int | None = Field(default=None, ge=60, le=604800)
+    lookback_window_seconds: int | None = Field(default=None, ge=300, le=2592000)
+    first_scan_at: datetime | None = None
 
     @field_validator("tags")
     @classmethod
@@ -84,5 +91,8 @@ class Intent(BaseModel):
     enabled: bool
     channels: list[IntentChannel]
     tags: list[str]
+    scan_interval_seconds: int
+    lookback_window_seconds: int
+    first_scan_at: datetime | None
     created_at: str
     updated_at: str

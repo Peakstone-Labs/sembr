@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from sembr.api.intents import router
 from sembr.db.intents import init_intent_tables
+from sembr.db.match_seen import init_match_seen_tables
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -61,6 +62,7 @@ def _client(embedder: MagicMock | None = None, vs: dict | None = None):
     The DB is created inside the TestClient's event loop via a FastAPI lifespan
     so there is no cross-loop aiosqlite issue.  vector_store functions are
     patched at the sembr.api.intents boundary so qdrant_client is never imported.
+    matcher.jobs functions are patched so no real APScheduler is needed.
     """
     if embedder is None:
         embedder = _make_embedder()
@@ -76,6 +78,7 @@ def _client(embedder: MagicMock | None = None, vs: dict | None = None):
         conn = await aiosqlite.connect(":memory:")
         await conn.execute("PRAGMA foreign_keys=ON")
         await init_intent_tables(conn)
+        await init_match_seen_tables(conn)
         conn_holder["conn"] = conn
         yield
         await conn.close()
@@ -84,12 +87,17 @@ def _client(embedder: MagicMock | None = None, vs: dict | None = None):
     app.include_router(router)
     app.state.embedder = embedder
     app.state.qdrant = MagicMock()  # .client attribute accessed but never called directly
+    app.state.scheduler = MagicMock()
 
     with (
         patch("sembr.api.intents.get_conn", side_effect=lambda: conn_holder["conn"]),
         patch("sembr.api.intents.upsert_intent_point", vs["upsert"]),
         patch("sembr.api.intents.update_intent_payload", vs["update_payload"]),
         patch("sembr.api.intents.delete_intent_point", vs["delete"]),
+        patch("sembr.api.intents.register_intent_job", MagicMock()),
+        patch("sembr.api.intents.reregister_intent_job", MagicMock()),
+        patch("sembr.api.intents.unregister_intent_job", MagicMock()),
+        patch("sembr.api.intents.clear_intent", AsyncMock()),
     ):
         with TestClient(app) as http:
             yield http, vs
@@ -451,3 +459,196 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
 
     mock_client.create_collection.assert_not_called()
     mock_client.update_collection_aliases.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# SC#13 — new fields: range validation on scan_interval_seconds / lookback_window_seconds
+# ---------------------------------------------------------------------------
+
+_NEW_FIELD_INVALID_BODIES = [
+    # scan_interval_seconds out of range
+    {**VALID_BODY, "scan_interval_seconds": 59},       # below minimum (60)
+    {**VALID_BODY, "scan_interval_seconds": 604801},    # above maximum (604800)
+    {**VALID_BODY, "scan_interval_seconds": 0},
+    # lookback_window_seconds out of range
+    {**VALID_BODY, "lookback_window_seconds": 299},     # below minimum (300)
+    {**VALID_BODY, "lookback_window_seconds": 2592001},  # above maximum (2592000)
+]
+
+
+def test_post_intent_new_fields_validation() -> None:
+    with _client() as (http, _):
+        for bad_body in _NEW_FIELD_INVALID_BODIES:
+            resp = http.post("/intents", json=bad_body)
+            assert resp.status_code == 422, f"expected 422 for body: {bad_body}"
+
+
+def test_post_intent_new_fields_defaults() -> None:
+    """New scheduling fields have sensible defaults and appear in response."""
+    with _client() as (http, _):
+        resp = http.post("/intents", json=VALID_BODY)
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["scan_interval_seconds"] == 3600
+    assert data["lookback_window_seconds"] == 86400
+    assert data["first_scan_at"] is None
+
+
+def test_put_intent_schedule_fields() -> None:
+    """PUT scan_interval_seconds updates the stored value."""
+    with _client() as (http, _):
+        intent_id = http.post("/intents", json=VALID_BODY).json()["id"]
+        resp = http.put(f"/intents/{intent_id}", json={"scan_interval_seconds": 120})
+
+    assert resp.status_code == 200
+    assert resp.json()["scan_interval_seconds"] == 120
+
+
+def test_put_intent_schedule_invalid() -> None:
+    """PUT with out-of-range scan_interval_seconds → 422."""
+    with _client() as (http, _):
+        intent_id = http.post("/intents", json=VALID_BODY).json()["id"]
+        resp = http.put(f"/intents/{intent_id}", json={"scan_interval_seconds": 30})
+
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# 🔴-fix: PUT enabled+text combination must clear match_seen (D4 + D3 overlap)
+# ---------------------------------------------------------------------------
+
+
+def test_put_reenable_with_text_change_clears_match_seen() -> None:
+    """Re-enabling a disabled intent with new text must clear match_seen (D4 fix).
+
+    Regression test for the loop-1 review 🔴 issue: when enabled_changed=True AND
+    text_changed=True, clear_intent was skipped because the enabled_changed branch
+    short-circuited the elif block containing clear_intent.
+    """
+    # Now test via the API: PUT {enabled: true, text: "new text"} on a disabled intent
+    # must clear match_seen via the D4 path even though enabled_changed is True.
+    conn_holder: dict = {}
+
+    @asynccontextmanager
+    async def lifespan(app):
+        import aiosqlite
+        from sembr.db.intents import init_intent_tables, create_intent
+        from sembr.db.match_seen import init_match_seen_tables, insert_unseen_returning_new
+        from sembr.models import IntentCreate
+
+        conn = await aiosqlite.connect(":memory:")
+        await conn.execute("PRAGMA foreign_keys=ON")
+        await init_intent_tables(conn)
+        await init_match_seen_tables(conn)
+        intent = await create_intent(
+            conn,
+            IntentCreate(
+                name="reenable-test",
+                text="original text",
+                enabled=False,
+                channels=[{"type": "telegram", "config": {}}],
+            ),
+        )
+        await insert_unseen_returning_new(conn, intent.id, ["stale-1", "stale-2"])
+        conn_holder["conn"] = conn
+        conn_holder["intent_id"] = intent.id
+        yield
+        await conn.close()
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sembr.api.intents import router
+
+    app = FastAPI(lifespan=lifespan)
+    app.include_router(router)
+    embedder = MagicMock()
+    embedder.is_loaded = True
+    embedder.model_version = "bge-m3_v1"
+    embedder.aembed = AsyncMock(return_value=[[0.1] * 1024])
+    app.state.embedder = embedder
+    app.state.qdrant = MagicMock()
+    app.state.scheduler = MagicMock()
+
+    with (
+        patch("sembr.api.intents.get_conn", side_effect=lambda: conn_holder["conn"]),
+        patch("sembr.api.intents.upsert_intent_point", AsyncMock()),
+        patch("sembr.api.intents.update_intent_payload", AsyncMock()),
+        patch("sembr.api.intents.delete_intent_point", AsyncMock()),
+        patch("sembr.api.intents.register_intent_job", MagicMock()),
+        patch("sembr.api.intents.reregister_intent_job", MagicMock()),
+        patch("sembr.api.intents.unregister_intent_job", MagicMock()),
+        patch("sembr.api.intents.clear_intent", AsyncMock()) as mock_clear,
+    ):
+        with TestClient(app) as http:
+            iid = conn_holder["intent_id"]
+            resp = http.put(f"/intents/{iid}", json={"enabled": True, "text": "new text"})
+            assert resp.status_code == 200
+
+    # clear_intent must have been called because text changed (D4), even though
+    # enabled_changed was also True (the old bug caused clear to be skipped here).
+    mock_clear.assert_awaited_once()
+
+
+def test_put_text_change_clear_intent_failure_not_silent() -> None:
+    """clear_intent failure on text change must return 500, not silently succeed."""
+    conn_holder: dict = {}
+
+    @asynccontextmanager
+    async def lifespan(app):
+        import aiosqlite
+        from sembr.db.intents import init_intent_tables, create_intent
+        from sembr.db.match_seen import init_match_seen_tables
+        from sembr.models import IntentCreate
+
+        conn = await aiosqlite.connect(":memory:")
+        await conn.execute("PRAGMA foreign_keys=ON")
+        await init_intent_tables(conn)
+        await init_match_seen_tables(conn)
+        intent = await create_intent(
+            conn,
+            IntentCreate(
+                name="clear-fail-test",
+                text="original text",
+                enabled=True,
+                channels=[{"type": "telegram", "config": {}}],
+            ),
+        )
+        conn_holder["conn"] = conn
+        conn_holder["intent_id"] = intent.id
+        yield
+        await conn.close()
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sembr.api.intents import router
+
+    app = FastAPI(lifespan=lifespan)
+    app.include_router(router)
+    embedder = MagicMock()
+    embedder.is_loaded = True
+    embedder.model_version = "bge-m3_v1"
+    embedder.aembed = AsyncMock(return_value=[[0.1] * 1024])
+    app.state.embedder = embedder
+    app.state.qdrant = MagicMock()
+    app.state.scheduler = MagicMock()
+
+    with (
+        patch("sembr.api.intents.get_conn", side_effect=lambda: conn_holder["conn"]),
+        patch("sembr.api.intents.upsert_intent_point", AsyncMock()),
+        patch("sembr.api.intents.update_intent_payload", AsyncMock()),
+        patch("sembr.api.intents.delete_intent_point", AsyncMock()),
+        patch("sembr.api.intents.register_intent_job", MagicMock()),
+        patch("sembr.api.intents.reregister_intent_job", MagicMock()),
+        patch("sembr.api.intents.unregister_intent_job", MagicMock()),
+        patch(
+            "sembr.api.intents.clear_intent",
+            AsyncMock(side_effect=RuntimeError("db locked")),
+        ),
+    ):
+        with TestClient(app) as http:
+            iid = conn_holder["intent_id"]
+            resp = http.put(f"/intents/{iid}", json={"text": "new text"})
+
+    assert resp.status_code == 500
+    assert "deduplication" in resp.json()["detail"]

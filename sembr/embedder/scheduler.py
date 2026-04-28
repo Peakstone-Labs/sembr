@@ -72,6 +72,8 @@ def _to_point(row: PendingRow, vector: list[float], model_version: str) -> Point
             "published_at": row.published_at,
             "feed_id": row.feed_id,
             "embedding_model_version": model_version,
+            # C1/D14: integer epoch seconds for Qdrant Range filter in matcher scan
+            "ingested_at_ts": int(datetime.now(timezone.utc).timestamp()),
         },
     )
 

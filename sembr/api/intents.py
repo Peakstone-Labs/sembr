@@ -14,7 +14,13 @@ from sembr.db.intents import (
     update_intent,
     update_intent_raw,
 )
+from sembr.db.match_seen import clear_intent
 from sembr.db.sqlite import get_conn
+from sembr.matcher.jobs import (
+    register_intent_job,
+    reregister_intent_job,
+    unregister_intent_job,
+)
 from sembr.models import Intent, IntentCreate, IntentUpdate
 from sembr.vector_store.intents import (
     delete_intent_point,
@@ -49,21 +55,35 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
     conn = get_conn()
     intent = await create_intent(conn, body)  # D1: SQLite first
 
+    qdrant_client = request.app.state.qdrant.client
+    qdrant_written = False
     try:
         [vector] = await embedder.aembed([body.text])  # D1: embed second
         await upsert_intent_point(  # D1: Qdrant third
-            request.app.state.qdrant.client,
+            qdrant_client,
             intent.id,
             vector,
             payload=_build_payload(intent, embedder.model_version),
         )
+        qdrant_written = True
+        # D8: register_job last; failure rolls back Qdrant + SQLite
+        if body.enabled:
+            register_intent_job(request.app.state.scheduler, intent, request.app)
     except Exception as exc:
+        # Rollback in reverse order: job (already failed/not-registered), Qdrant, SQLite
+        if qdrant_written:
+            try:
+                await delete_intent_point(qdrant_client, intent.id)
+            except Exception as del_exc:
+                logger.error(
+                    "POST Qdrant rollback failed for intent_id=%d: %s", intent.id, del_exc
+                )
         try:
             deleted = await delete_intent(conn, intent.id)
             if not deleted:  # M4: log if the row was already gone before rollback
                 logger.warning("POST rollback no-op for intent_id=%d: row already absent", intent.id)
         except Exception as rollback_exc:
-            logger.error("POST rollback failed for intent_id=%d: %s", intent.id, rollback_exc)
+            logger.error("POST SQLite rollback failed for intent_id=%d: %s", intent.id, rollback_exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="failed to persist intent vector",
@@ -93,6 +113,20 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
 
     text_changed = body.text is not None and body.text.strip() != current.text.strip()  # D6
+    enabled_changed = body.enabled is not None and body.enabled != current.enabled
+    schedule_changed = (
+        (
+            body.scan_interval_seconds is not None
+            and body.scan_interval_seconds != current.scan_interval_seconds
+        ) or (
+            body.lookback_window_seconds is not None
+            and body.lookback_window_seconds != current.lookback_window_seconds
+        ) or (
+            body.first_scan_at is not None
+            and body.first_scan_at != current.first_scan_at
+        )
+    )
+
     embedder = request.app.state.embedder
     if text_changed and not embedder.is_loaded:  # D5: only gate when re-embed needed
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="embedder not ready")
@@ -147,6 +181,38 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
             detail="failed to sync intent vector",
         ) from exc
 
+    # D4: clear match_seen when text changes and intent is/becomes enabled.
+    # Outside the scheduler try/except because this is a DB write, not a best-effort job sync.
+    # Failure → 500 so the caller can retry; silently returning 200 with stale dedup rows
+    # would suppress legitimate new matches against the re-embedded vector.
+    if text_changed and updated.enabled:
+        try:
+            await clear_intent(conn, intent_id)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="failed to clear match deduplication state",
+            ) from exc
+
+    # Matcher job lifecycle (D3/D4/D5). Best-effort: job sync failure is logged but
+    # does not fail the request — register_all_enabled at restart recovers the state.
+    scheduler = request.app.state.scheduler
+    try:
+        if enabled_changed:
+            # D3: enable/disable takes precedence over job lifecycle
+            if updated.enabled:
+                register_intent_job(scheduler, updated, request.app)
+            else:
+                unregister_intent_job(scheduler, intent_id)
+        elif updated.enabled:
+            if text_changed or schedule_changed:
+                # D4/D5: text or schedule change → reregister with updated trigger
+                reregister_intent_job(scheduler, updated, request.app)
+    except Exception as exc:
+        logger.warning(
+            "matcher job sync failed for intent_id=%d: %s (recovers on restart)", intent_id, exc
+        )
+
     return updated
 
 
@@ -157,9 +223,11 @@ async def delete_intent_handler(intent_id: int, request: Request) -> Response:
     if current is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
 
+    # D9: unregister job first so no new ticks fire during the delete window
+    unregister_intent_job(request.app.state.scheduler, intent_id)
+
     qdrant_client = request.app.state.qdrant.client
     try:
-        # D8: Qdrant deleted first so matcher stops immediately (safer than GET-visible orphan)
         await delete_intent_point(qdrant_client, intent_id)
     except Exception as exc:
         raise HTTPException(
@@ -168,6 +236,7 @@ async def delete_intent_handler(intent_id: int, request: Request) -> Response:
         ) from exc
 
     try:
+        # match_seen rows cascade automatically via ON DELETE CASCADE (D10)
         await delete_intent(conn, intent_id)
     except Exception as exc:
         # I3: Qdrant is already deleted; log orphan SQLite row so operators can reconcile
