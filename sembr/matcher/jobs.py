@@ -25,7 +25,13 @@ def _job_id(intent_id: int) -> str:
     return f"matcher-intent-{intent_id}"
 
 
-def register_intent_job(scheduler: AsyncIOScheduler, intent: "Intent", app) -> None:
+def register_intent_job(
+    scheduler: AsyncIOScheduler,
+    intent: "Intent",
+    app,
+    *,
+    fire_immediately: bool = False,
+) -> None:
     # Lazy import prevents circular dependency: jobs ← scan ← match_seen/intents/callback
     from sembr.matcher.scan import run_intent_scan  # noqa: PLC0415
 
@@ -42,6 +48,11 @@ def register_intent_job(scheduler: AsyncIOScheduler, intent: "Intent", app) -> N
             )
             start_date = None
 
+    # APScheduler IntervalTrigger computes ceil(elapsed/interval) for the first fire time,
+    # so even start_date=now yields next_fire = now + interval for large intervals (e.g. 86400s).
+    # next_run_time overrides the trigger for the first tick only; subsequent ticks use the trigger.
+    next_run_time = datetime.now(timezone.utc) if fire_immediately else None
+
     scheduler.add_job(
         run_intent_scan,
         trigger=IntervalTrigger(seconds=intent.scan_interval_seconds, start_date=start_date),
@@ -50,6 +61,7 @@ def register_intent_job(scheduler: AsyncIOScheduler, intent: "Intent", app) -> N
         coalesce=True,
         max_instances=1,
         replace_existing=True,
+        next_run_time=next_run_time,
     )
     logger.debug(
         "registered matcher job intent_id=%d interval=%ds",

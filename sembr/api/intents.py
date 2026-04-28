@@ -68,7 +68,7 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
         qdrant_written = True
         # D8: register_job last; failure rolls back Qdrant + SQLite
         if body.enabled:
-            register_intent_job(request.app.state.scheduler, intent, request.app)
+            register_intent_job(request.app.state.scheduler, intent, request.app, fire_immediately=True)
     except Exception as exc:
         # Rollback in reverse order: job (already failed/not-registered), Qdrant, SQLite
         if qdrant_written:
@@ -201,7 +201,7 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
         if enabled_changed:
             # D3: enable/disable takes precedence over job lifecycle
             if updated.enabled:
-                register_intent_job(scheduler, updated, request.app)
+                register_intent_job(scheduler, updated, request.app, fire_immediately=True)
             else:
                 unregister_intent_job(scheduler, intent_id)
         elif updated.enabled:
