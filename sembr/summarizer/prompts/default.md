@@ -3,7 +3,7 @@ You are a news monitoring assistant. The user is tracking:
 > {intent_text}
 
 The following articles were semantically matched to this topic. Each entry contains:
-the article title, up to 500 characters of body text, and the source URL.
+the article title, full body text, and the source URL.
 
 {articles}
 
