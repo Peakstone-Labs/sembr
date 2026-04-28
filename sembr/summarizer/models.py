@@ -14,10 +14,9 @@ class Citation:
     article_id: str
     title: str
     url: str
-    # MVP: feed_id integer. A future field `source_name: str | None` will carry
-    # the human-readable label rather than overloading this field's type.
-    source: int
+    source: int  # feed_id; raw integer for downstream lookups
     published_at: str | None
+    source_name: str | None = None  # resolved feed.name; None when feed deleted
 
 
 @dataclass

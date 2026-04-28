@@ -13,9 +13,10 @@
   .section { padding: 0 24px 16px; }
   .date-heading { font-size: 12px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #eee; padding-bottom: 6px; margin: 16px 0 8px; }
   .article-list { list-style: none; margin: 0; padding: 0; }
-  .article-list li { padding: 4px 0; font-size: 14px; }
+  .article-list li { padding: 6px 0; font-size: 14px; }
   .article-list a { color: #4a6cf7; text-decoration: none; }
   .article-list a:hover { text-decoration: underline; }
+  .article-meta { display: block; font-size: 12px; color: #888; margin-top: 2px; }
   .footer { border-top: 1px solid #eee; padding: 16px 24px; font-size: 11px; color: #999; text-align: center; }
 </style>
 </head>
@@ -35,8 +36,14 @@
     </div>
     <ul class="article-list" style="list-style:none;margin:0;padding:0;">
       {% for c in citations %}
-      <li style="padding:4px 0;font-size:14px;">
+      <li style="padding:6px 0;font-size:14px;">
         <a href="{{ c.url }}" style="color:#4a6cf7;text-decoration:none;">{{ c.title }}</a>
+        {% set time_part = c.published_at[11:16] if c.published_at and c.published_at|length >= 16 else "" %}
+        {% if c.source_name or time_part %}
+        <span class="article-meta" style="display:block;font-size:12px;color:#888;margin-top:2px;">
+          {{ c.source_name or "Unknown source" }}{% if time_part %} · {{ time_part }} UTC{% endif %}
+        </span>
+        {% endif %}
       </li>
       {% endfor %}
     </ul>

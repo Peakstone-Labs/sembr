@@ -29,7 +29,7 @@ from sembr.api.intents import router as intents_router
 from sembr.collector.scheduler import add_feed_job, make_scheduler
 from sembr.config import get_settings
 from sembr.db.articles import init_article_tables
-from sembr.db.feeds import init_feed_tables, list_feeds, seed_initial_feeds
+from sembr.db.feeds import get_feed_names, init_feed_tables, list_feeds, seed_initial_feeds
 from sembr.db.intents import get_intent, init_intent_tables, list_intents
 from sembr.db.match_seen import init_match_seen_tables
 from sembr.db.sqlite import close_sqlite, init_sqlite
@@ -106,6 +106,7 @@ async def lifespan(app: FastAPI):
         llm=llm_backend,
         grouping_threshold=settings.llm_grouping_threshold,
         get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(conn, iid),
+        get_feed_names=lambda ids: get_feed_names(conn, ids),
         on_summary=lambda r: _dispatch_notification(conn, email_ch, r),
     )
     app.state.on_match = pipeline.handle

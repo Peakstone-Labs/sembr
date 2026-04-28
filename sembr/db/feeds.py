@@ -119,6 +119,21 @@ async def list_feeds(conn: aiosqlite.Connection) -> list[Feed]:
     return [_row_to_feed(r) for r in rows]
 
 
+async def get_feed_names(
+    conn: aiosqlite.Connection, feed_ids: list[int]
+) -> dict[int, str]:
+    """Resolve feed_ids → feed.name. Missing ids are simply absent from the result."""
+    if not feed_ids:
+        return {}
+    placeholders = ",".join("?" for _ in feed_ids)
+    async with conn.execute(
+        f"SELECT id,name FROM feeds WHERE id IN ({placeholders})",
+        list(feed_ids),
+    ) as cur:
+        rows = await cur.fetchall()
+    return {int(r[0]): str(r[1]) for r in rows}
+
+
 async def get_feed(conn: aiosqlite.Connection, feed_id: int) -> Feed | None:
     async with conn.execute(
         _SELECT_FEEDS + " WHERE id=?",

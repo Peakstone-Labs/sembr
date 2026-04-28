@@ -28,9 +28,11 @@ _FALLBACK_PROMPT = (
     "Each entry contains: the article title, full body text, and the source URL.\n\n"
     "{articles}\n\n"
     "---\n\n"
-    "Write a concise summary (3–5 sentences) of the key developments. "
-    "Respond in the same language as the user's topic above (not the articles — articles may be mixed-language). "
-    "Do not reproduce URLs or index numbers."
+    "Write a digest of the key developments. Structure by event or sub-topic; "
+    "length should reflect news density (no padding, no over-truncation). "
+    "Respond in the same language as the user's topic (not the articles — articles may be mixed-language). "
+    "Merge duplicate facts across sources; note conflicts briefly. "
+    "Do not reproduce URLs or the bracketed index numbers."
 )
 
 try:
@@ -83,18 +85,24 @@ def _pick_primary(group: list[Match]) -> Match:
     )[0]
 
 
-def _to_citation(m: Match) -> Citation:
+def _to_citation(m: Match, feed_name_map: dict[int, str] | None = None) -> Citation:
+    feed_id = m.payload.get("feed_id", 0)
     return Citation(
         article_id=m.article_id,
         title=m.payload.get("title", ""),
         url=m.payload.get("url", ""),
-        source=m.payload.get("feed_id", 0),
+        source=feed_id,
         published_at=m.payload.get("published_at"),
+        source_name=(feed_name_map or {}).get(feed_id),
     )
 
 
 class IntentPromptCtxFetcher(Protocol):
     async def __call__(self, intent_id: int) -> tuple[str | None, str]: ...
+
+
+class FeedNameFetcher(Protocol):
+    async def __call__(self, feed_ids: list[int]) -> dict[int, str]: ...
 
 
 class SummaryPipeline:
@@ -105,12 +113,14 @@ class SummaryPipeline:
         on_summary: OnSummaryCallback | None = None,
         pre_push_hook: PrePushHook | None = None,
         get_intent_prompt_ctx: IntentPromptCtxFetcher | None = None,
+        get_feed_names: FeedNameFetcher | None = None,
     ) -> None:
         self._llm = llm
         self._grouper = GroupingStep(threshold=grouping_threshold)
         self._on_summary: OnSummaryCallback = on_summary or log_summaries
         self._pre_push_hook = pre_push_hook
         self._get_intent_prompt_ctx = get_intent_prompt_ctx
+        self._get_feed_names = get_feed_names
 
     async def handle(self, matches: list[Match]) -> None:
         """on_match callback entry point — must never raise."""
@@ -123,7 +133,10 @@ class SummaryPipeline:
 
     async def _handle(self, matches: list[Match]) -> None:
         intent_id = matches[0].intent_id
-        groups = self._grouper.group(matches)
+        # One scan = one digest email per intent. The LLM (1M ctx) deduplicates
+        # near-identical reports across sources itself, so the title-similarity
+        # GroupingStep is bypassed; kept on disk for future per-event mode.
+        groups = [matches]
 
         custom_prompt: str | None = None
         intent_text: str = ""
@@ -144,6 +157,19 @@ class SummaryPipeline:
                     intent_id,
                 )
                 return
+
+        feed_name_map: dict[int, str] = {}
+        if self._get_feed_names is not None:
+            try:
+                feed_ids = sorted({m.payload.get("feed_id", 0) for m in matches})
+                feed_name_map = await self._get_feed_names(feed_ids)
+            except Exception as exc:
+                # Citations fall back to source_name=None; not a hard failure.
+                logger.warning(
+                    "SummaryPipeline: feed name lookup failed for intent_id=%d: %s",
+                    intent_id,
+                    exc,
+                )
 
         for group in groups:
             primary = _pick_primary(group)
@@ -166,8 +192,8 @@ class SummaryPipeline:
             result = SummaryResult(
                 intent_id=intent_id,
                 summary=summary,
-                primary=_to_citation(primary),
-                other_sources=[_to_citation(m) for m in other],
+                primary=_to_citation(primary, feed_name_map),
+                other_sources=[_to_citation(m, feed_name_map) for m in other],
             )
 
             if self._pre_push_hook is not None:
