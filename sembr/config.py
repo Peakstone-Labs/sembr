@@ -72,6 +72,29 @@ class Settings(BaseSettings):
         description="Per-request HTTP timeout in seconds for embedding calls.",
     )
 
+    llm_api_base_url: str = Field(
+        default="https://api.siliconflow.cn/v1",
+        description="Base URL for the OpenAI-compatible /v1/chat/completions endpoint.",
+    )
+    llm_api_key: SecretStr = Field(
+        default="",
+        description="API key for the LLM endpoint. Shares the SiliconFlow key by default.",
+    )
+    llm_model: str = Field(
+        default="deepseek-ai/DeepSeek-V3",
+        description="Model name passed to the LLM chat/completions endpoint.",
+    )
+    llm_timeout_seconds: float = Field(
+        default=60.0,
+        description="Per-request HTTP timeout in seconds for LLM summarization calls.",
+    )
+    llm_grouping_threshold: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="difflib title similarity threshold for grouping articles into one event.",
+    )
+
     @classmethod
     def settings_customise_sources(
         cls,
