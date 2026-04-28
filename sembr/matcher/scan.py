@@ -88,6 +88,69 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
             ),
         )
         results = response.points
+        logger.debug(
+            "intent_id=%d scan: qdrant returned %d results (threshold=%.2f, lookback_cutoff_ts=%d)",
+            intent_id,
+            len(results),
+            intent.threshold,
+            lookback_cutoff_ts,
+        )
+
+        # Diagnostic probe: when normal query returns nothing, run two fallback queries
+        # to distinguish "time filter too narrow" from "threshold too high".
+        if not results:
+            _probe_no_time = await qdrant_client.query_points(
+                collection_name=_NEWS_ALIAS,
+                query=intent_vector,
+                score_threshold=intent.threshold,
+                limit=3,
+            )
+            _probe_no_thresh = await qdrant_client.query_points(
+                collection_name=_NEWS_ALIAS,
+                query=intent_vector,
+                score_threshold=0.0,
+                limit=3,
+                query_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="ingested_at_ts",
+                            range=Range(gte=lookback_cutoff_ts),
+                        )
+                    ]
+                ),
+            )
+            logger.info(
+                "intent_id=%d DIAG: no-time-filter hits=%d, no-threshold hits=%d (best_score=%.4f)",
+                intent_id,
+                len(_probe_no_time.points),
+                len(_probe_no_thresh.points),
+                _probe_no_thresh.points[0].score if _probe_no_thresh.points else 0.0,
+            )
+            if _probe_no_thresh.points:
+                logger.info(
+                    "intent_id=%d DIAG best in-window article: score=%.4f title=%r",
+                    intent_id,
+                    _probe_no_thresh.points[0].score,
+                    (_probe_no_thresh.points[0].payload or {}).get("title", "")[:100],
+                )
+            if _probe_no_time.points:
+                logger.info(
+                    "intent_id=%d DIAG best any-time article: score=%.4f title=%r ingested_at_ts=%s",
+                    intent_id,
+                    _probe_no_time.points[0].score,
+                    (_probe_no_time.points[0].payload or {}).get("title", "")[:100],
+                    (_probe_no_time.points[0].payload or {}).get("ingested_at_ts"),
+                )
+
+        if results:
+            top = results[0]
+            logger.debug(
+                "intent_id=%d top hit: score=%.4f id=%s title=%r",
+                intent_id,
+                top.score,
+                top.id,
+                (top.payload or {}).get("title", "")[:80],
+            )
     except Exception as exc:
         logger.warning("intent_id=%d scan Qdrant error, skipping tick: %s", intent_id, exc)
         return
@@ -95,6 +158,12 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
     # D20: exclude articles with enabled=False (retention hook; currently always True
     # because news points don't carry an 'enabled' payload field at MVP)
     hits = [r for r in results if r.payload.get("enabled", True)]
+    logger.info(
+        "intent_id=%d scan: %d Qdrant hits → %d after enabled-filter",
+        intent_id,
+        len(results),
+        len(hits),
+    )
     if not hits:
         return
 
