@@ -9,7 +9,15 @@
   .header { background: #1a1a2e; color: #fff; padding: 20px 24px; }
   .header .brand { font-size: 13px; color: #aaa; margin: 0 0 4px; }
   .header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  .summary-block { background: #f0f4ff; border-left: 4px solid #4a6cf7; padding: 16px 20px; margin: 20px 24px; border-radius: 4px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+  .summary-block { background: #f0f4ff; border-left: 4px solid #4a6cf7; padding: 16px 20px; margin: 20px 24px; border-radius: 4px; font-size: 14px; line-height: 1.6; }
+  .summary-block h1, .summary-block h2, .summary-block h3, .summary-block h4 { margin: 14px 0 6px; font-size: 15px; font-weight: 700; color: #1a1a2e; }
+  .summary-block h1:first-child, .summary-block h2:first-child, .summary-block h3:first-child { margin-top: 0; }
+  .summary-block p { margin: 0 0 10px; }
+  .summary-block p:last-child { margin-bottom: 0; }
+  .summary-block ul, .summary-block ol { margin: 6px 0 10px; padding-left: 22px; }
+  .summary-block li { margin: 3px 0; }
+  .summary-block strong { color: #1a1a2e; }
+  .summary-block code { background: #e6ebff; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
   .section { padding: 0 24px 16px; }
   .date-heading { font-size: 12px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #eee; padding-bottom: 6px; margin: 16px 0 8px; }
   .article-list { list-style: none; margin: 0; padding: 0; }
@@ -26,8 +34,8 @@
     <p class="brand" style="font-size:13px;color:#aaa;margin:0 0 4px;">sembr</p>
     <h1 style="font-size:18px;margin:0;font-weight:600;">{{ intent_name }}</h1>
   </div>
-  <div class="summary-block" style="background:#f0f4ff;border-left:4px solid #4a6cf7;padding:16px 20px;margin:20px 24px;border-radius:4px;font-size:14px;line-height:1.6;white-space:pre-wrap;">
-    {{ summary }}
+  <div class="summary-block" style="background:#f0f4ff;border-left:4px solid #4a6cf7;padding:16px 20px;margin:20px 24px;border-radius:4px;font-size:14px;line-height:1.6;">
+    {{ summary_html }}
   </div>
   <div class="section" style="padding:0 24px 16px;">
     {% for date_key, citations in grouped %}

@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import smtplib
 from datetime import date
 from email.mime.text import MIMEText
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import markdown as _md
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from markupsafe import Markup
 
 from sembr.notifier.base import BaseChannel
 
@@ -20,6 +23,29 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+# LLM output sometimes inlines ATX headings or list bullets without a leading
+# blank line, which prevents python-markdown from recognising them as block
+# elements. These regexes force such markers onto a fresh line so the same
+# adapter works regardless of how loose the model's output is.
+_HEADING_RE = re.compile(r"(?<!\n)\s*(#{1,6})[ \t]+")
+_BULLET_RE = re.compile(r"(?<!\n)[ \t]+(?=\*\s+\*\*)")
+
+
+def _normalize_markdown(text: str) -> str:
+    text = _HEADING_RE.sub(r"\n\n\1 ", text)
+    text = _BULLET_RE.sub("\n\n", text)
+    return text.strip()
+
+
+def _summary_to_html(summary: str) -> Markup:
+    """Render the LLM's Markdown summary to safe-marked HTML for the template."""
+    normalized = _normalize_markdown(summary)
+    # python-markdown 3.x default extensions are conservative; raw HTML is
+    # passed through. We trust the LLM output — same trust boundary as the
+    # plain-text rendering it replaces.
+    html = _md.markdown(normalized, extensions=["extra", "nl2br"], output_format="html")
+    return Markup(html)
 
 
 class EmailChannel(BaseChannel):
@@ -95,7 +121,7 @@ class EmailChannel(BaseChannel):
         tmpl = self._env.get_template("email_digest.html.jinja2")
         return tmpl.render(
             intent_name=intent_name,
-            summary=result.summary,
+            summary_html=_summary_to_html(result.summary),
             grouped=grouped,
         )
 
