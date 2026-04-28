@@ -103,6 +103,11 @@ class Settings(BaseSettings):
     smtp_use_starttls: bool = Field(default=True, description="Enable STARTTLS (port 587 style).")
     smtp_use_ssl: bool = Field(default=False, description="Use SMTP_SSL instead of SMTP+STARTTLS (port 465 style).")
 
+    display_timezone: str = Field(
+        default="Asia/Shanghai",
+        description="IANA timezone used to render published_at in notifications (e.g. Asia/Shanghai, UTC, America/New_York).",
+    )
+
     @classmethod
     def settings_customise_sources(
         cls,

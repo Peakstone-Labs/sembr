@@ -1,8 +1,7 @@
-"""Unit tests for EmailChannel (UT-1 through UT-8, design SC1–SC6)."""
+"""Unit tests for EmailChannel rendering, TZ conversion, citation anchors, SMTP."""
 from __future__ import annotations
 
 import smtplib
-from datetime import date
 from email.mime.text import MIMEText
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,6 +15,7 @@ def _citation(
     title: str = "Test Article",
     url: str = "https://example.com/1",
     published_at: str | None = None,
+    source_name: str | None = "Example Feed",
 ) -> Citation:
     return Citation(
         article_id=article_id,
@@ -23,24 +23,28 @@ def _citation(
         url=url,
         source=1,
         published_at=published_at,
+        source_name=source_name,
     )
 
 
 def _result(
-    primary: Citation,
-    other_sources: list[Citation] | None = None,
+    citations: list[Citation],
     intent_id: int = 1,
     summary: str = "Test summary.",
 ) -> SummaryResult:
     return SummaryResult(
         intent_id=intent_id,
         summary=summary,
-        primary=primary,
-        other_sources=other_sources or [],
+        citations=list(citations),
+        primary=citations[0] if citations else None,
+        other_sources=citations[1:],
     )
 
 
-def _make_settings(smtp_host: str = "smtp.example.com") -> MagicMock:
+def _make_settings(
+    smtp_host: str = "smtp.example.com",
+    display_timezone: str = "UTC",
+) -> MagicMock:
     s = MagicMock()
     s.smtp_host = smtp_host
     s.smtp_port = 587
@@ -49,72 +53,117 @@ def _make_settings(smtp_host: str = "smtp.example.com") -> MagicMock:
     s.smtp_from = ""
     s.smtp_use_starttls = True
     s.smtp_use_ssl = False
+    s.display_timezone = display_timezone
     return s
 
 
-def _make_channel(smtp_host: str = "smtp.example.com"):
+def _make_channel(
+    smtp_host: str = "smtp.example.com",
+    display_timezone: str = "UTC",
+):
     from sembr.notifier.email import EmailChannel
-    return EmailChannel(_make_settings(smtp_host=smtp_host))
+    return EmailChannel(_make_settings(smtp_host=smtp_host, display_timezone=display_timezone))
 
 
 # ---------------------------------------------------------------------------
-# UT-1: date grouping — citations across 3 days + 1 None
+# UT-1: published_at rendered in configured timezone
 # ---------------------------------------------------------------------------
 
 
-def test_group_by_date_three_days_plus_none() -> None:
-    ch = _make_channel()
+def test_published_at_rendered_in_shanghai_tz() -> None:
+    """A UTC timestamp should display in Asia/Shanghai when configured."""
+    from sembr.notifier.email import _render_published_at
+    from zoneinfo import ZoneInfo
+
+    out = _render_published_at("2026-01-01T10:00:00Z", ZoneInfo("Asia/Shanghai"))
+    # 10:00 UTC == 18:00 CST. Format includes TZ name; allow either CST or +0800.
+    assert "2026-01-01" in out
+    assert "18:00" in out
+
+
+def test_published_at_naive_treated_as_utc() -> None:
+    from sembr.notifier.email import _render_published_at
+    from zoneinfo import ZoneInfo
+
+    out = _render_published_at("2026-01-01T10:00:00", ZoneInfo("UTC"))
+    assert "2026-01-01" in out
+    assert "10:00" in out
+
+
+def test_published_at_empty_returns_empty() -> None:
+    from sembr.notifier.email import _render_published_at
+    from zoneinfo import ZoneInfo
+
+    assert _render_published_at(None, ZoneInfo("UTC")) == ""
+    assert _render_published_at("", ZoneInfo("UTC")) == ""
+
+
+def test_unknown_timezone_falls_back_to_utc() -> None:
+    """display_timezone=garbage must not crash channel construction."""
+    ch = _make_channel(display_timezone="Not/A/Real_Zone")
+    # Construction succeeds and tz attr is UTC.
+    assert ch._tz.key == "UTC"
+
+
+# ---------------------------------------------------------------------------
+# UT-2: citation anchors — valid [N] become <sup><a>; out-of-range dropped
+# ---------------------------------------------------------------------------
+
+
+def test_summary_inline_refs_render_as_anchors() -> None:
+    from sembr.notifier.email import _summary_to_html
+
+    html = str(_summary_to_html("Iran proposes reopening [1]. Multiple sources [2][3].", num_citations=3))
+    assert 'href="#cite-1"' in html
+    assert 'href="#cite-2"' in html
+    assert 'href="#cite-3"' in html
+    # Each ref wrapped in sup.cite-ref
+    assert html.count("cite-ref") == 3
+
+
+def test_summary_out_of_range_refs_are_dropped() -> None:
+    """LLM hallucinating [99] when only 5 articles exist must not produce a dead link."""
+    from sembr.notifier.email import _summary_to_html
+
+    html = str(_summary_to_html("This is wrong [99].", num_citations=5))
+    assert "[99]" not in html
+    assert "cite-99" not in html
+
+
+# ---------------------------------------------------------------------------
+# UT-3: end-to-end render — citation list with index, source, time
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_render_includes_indexed_sources() -> None:
+    ch = _make_channel(display_timezone="UTC")
     citations = [
-        _citation("a", published_at="2026-01-03T10:00:00Z"),
-        _citation("b", published_at="2026-01-01T09:00:00Z"),
-        _citation("c", published_at="2026-01-02T12:00:00Z"),
-        _citation("d", published_at=None),
+        _citation("a", title="Article One", url="https://ex.com/1",
+                  published_at="2026-01-01T00:00:00Z", source_name="Reuters"),
+        _citation("b", title="Article Two", url="https://ex.com/2",
+                  published_at="2026-01-02T00:00:00Z", source_name="BBC"),
     ]
-    grouped = ch._group_by_date(citations)
+    result = _result(citations, summary="First fact [1]. Second fact [2].")
 
-    date_keys = [k for k, _ in grouped]
-    assert date_keys == [
-        date(2026, 1, 1),
-        date(2026, 1, 2),
-        date(2026, 1, 3),
-        None,
-    ]
-    assert len(grouped) == 4
+    captured: list[MIMEText] = []
 
+    def fake_send_sync(msg: MIMEText) -> None:
+        captured.append(msg)
 
-# ---------------------------------------------------------------------------
-# UT-2: date grouping — all None
-# ---------------------------------------------------------------------------
+    with patch.object(ch, "_send_sync", side_effect=fake_send_sync):
+        await ch.send(result, to="x@example.com", intent_name="My Intent")
 
-
-def test_group_by_date_all_none() -> None:
-    ch = _make_channel()
-    citations = [_citation("a"), _citation("b")]
-    grouped = ch._group_by_date(citations)
-    assert len(grouped) == 1
-    assert grouped[0][0] is None
-    assert len(grouped[0][1]) == 2
-
-
-# ---------------------------------------------------------------------------
-# UT-3: HTML rendering — href count and date headings
-# ---------------------------------------------------------------------------
-
-
-def test_render_html_href_and_heading_counts() -> None:
-    ch = _make_channel()
-    citations = [
-        _citation("a", title="Article One", url="https://ex.com/1", published_at="2026-01-01T00:00:00Z"),
-        _citation("b", title="Article Two", url="https://ex.com/2", published_at="2026-01-01T00:00:00Z"),
-        _citation("c", title="Article Three", url="https://ex.com/3", published_at="2026-01-02T00:00:00Z"),
-    ]
-    result = _result(citations[0], citations[1:])
-    grouped = ch._group_by_date(citations)
-    html = ch._render_html(result, grouped, "Test Intent")
-
-    assert html.count('<a href=') == 3
-    assert "2026-01-01" in html
-    assert "2026-01-02" in html
+    assert len(captured) == 1
+    body = captured[0].get_payload(decode=True).decode("utf-8")
+    assert 'id="cite-1"' in body
+    assert 'id="cite-2"' in body
+    assert 'href="#cite-1"' in body
+    assert 'href="#cite-2"' in body
+    assert "Reuters" in body
+    assert "BBC" in body
+    # Date heading section "Sources" replaces the old per-day grouping
+    assert ">Sources<" in body or "Sources" in body
 
 
 # ---------------------------------------------------------------------------
@@ -122,19 +171,23 @@ def test_render_html_href_and_heading_counts() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_render_html_xss_escape() -> None:
+@pytest.mark.asyncio
+async def test_render_xss_escape_in_title() -> None:
     ch = _make_channel()
     evil = _citation("x", title='<script>alert("xss")</script>', url="https://ex.com/x")
-    result = _result(evil)
-    grouped = ch._group_by_date([evil])
-    html = ch._render_html(result, grouped, "Intent")
+    result = _result([evil])
 
-    assert "<script>" not in html
-    assert "&lt;script&gt;" in html
+    captured: list[MIMEText] = []
+    with patch.object(ch, "_send_sync", side_effect=lambda m: captured.append(m)):
+        await ch.send(result, to="x@example.com", intent_name="Intent")
+
+    body = captured[0].get_payload(decode=True).decode("utf-8")
+    assert "<script>" not in body
+    assert "&lt;script&gt;" in body
 
 
 # ---------------------------------------------------------------------------
-# UT-5: SMTP failure must not re-raise; logger.error called; quit() still called
+# UT-5: SMTP failure must not re-raise; quit() still called
 # ---------------------------------------------------------------------------
 
 
@@ -151,12 +204,10 @@ async def test_smtp_failure_does_not_reraise() -> None:
         instance.quit = MagicMock()
         mock_smtp_cls.return_value = instance
 
-        result = _result(_citation("a", published_at="2026-01-01T00:00:00Z"))
-        # Must not raise
+        result = _result([_citation("a", published_at="2026-01-01T00:00:00Z")])
         await ch.send(result, to="dest@example.com", intent_name="Test")
 
     mock_logger.error.assert_called_once()
-    # Connection must be cleaned up even when login raises.
     instance.quit.assert_called_once()
 
 
@@ -171,7 +222,7 @@ async def test_empty_smtp_host_skips_send() -> None:
 
     with patch("smtplib.SMTP") as mock_smtp_cls, \
          patch("smtplib.SMTP_SSL") as mock_ssl_cls:
-        result = _result(_citation("a"))
+        result = _result([_citation("a")])
         await ch.send(result, to="x@example.com", intent_name="Intent")
 
     mock_smtp_cls.assert_not_called()
@@ -197,7 +248,7 @@ async def test_subject_format(n: int, expected_word: str) -> None:
         citations = [
             _citation(str(i), published_at="2026-01-01T00:00:00Z") for i in range(n)
         ]
-        result = _result(citations[0], citations[1:])
+        result = _result(citations)
         await ch.send(result, to="x@example.com", intent_name="My Intent")
 
     assert len(captured_msgs) == 1
@@ -226,9 +277,16 @@ async def test_smtp_ssl_branch_uses_smtp_ssl() -> None:
         instance.quit = MagicMock()
         mock_ssl.return_value = instance
 
-        result = _result(_citation("a", published_at="2026-01-01T00:00:00Z"))
+        result = _result([_citation("a", published_at="2026-01-01T00:00:00Z")])
         await ch.send(result, to="x@example.com", intent_name="I")
 
     mock_ssl.assert_called_once_with("smtp.example.com", 465)
     mock_plain.assert_not_called()
+    instance.login.assert_called_once()
+    instance.send_message.assert_called_once()
+    instance.quit.assert_called_once()
     instance.starttls.assert_not_called()
+
+
+# Silence unused-import warning when AsyncMock is referenced by some tests but not all.
+_ = AsyncMock

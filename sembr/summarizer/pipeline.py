@@ -89,15 +89,6 @@ def _build_articles_text(group: list[Match]) -> str:
     return "\n\n".join(lines)
 
 
-def _pick_primary(group: list[Match]) -> Match:
-    # D11: earliest published_at = primary; None values sort last via the
-    # (is_none, value) tuple — explicit, immune to lexicographic-sentinel pitfalls.
-    return sorted(
-        group,
-        key=lambda m: (m.payload.get("published_at") is None, m.payload.get("published_at") or ""),
-    )[0]
-
-
 def _to_citation(m: Match, feed_name_map: dict[int, str] | None = None) -> Citation:
     feed_id = m.payload.get("feed_id", 0)
     return Citation(
@@ -146,10 +137,21 @@ class SummaryPipeline:
 
     async def _handle(self, matches: list[Match]) -> None:
         intent_id = matches[0].intent_id
+        # Lock a deterministic order ONCE: this is what the LLM sees as [1]..[N]
+        # in the user prompt, AND what the citation list renders below the
+        # summary. Newest first; stable tiebreak by article_id keeps unit tests
+        # reproducible.
+        # ISO-8601 published_at strings sort correctly lexicographically.
+        # reverse=True puts newest first; None/missing → "" → sorts last.
+        ordered = sorted(
+            matches,
+            key=lambda m: (m.payload.get("published_at") or "", m.article_id),
+            reverse=True,
+        )
         # One scan = one digest email per intent. The LLM (1M ctx) deduplicates
         # near-identical reports across sources itself, so the title-similarity
         # GroupingStep is bypassed; kept on disk for future per-event mode.
-        groups = [matches]
+        groups = [ordered]
 
         custom_prompt: str | None = None
         intent_text: str = ""
@@ -185,8 +187,6 @@ class SummaryPipeline:
                 )
 
         for group in groups:
-            primary = _pick_primary(group)
-            other = [m for m in group if m is not primary]
             articles_text = _build_articles_text(group)
 
             prompt = _resolve_prompt(custom_prompt, intent_text, articles_text)
@@ -202,11 +202,13 @@ class SummaryPipeline:
                 )
                 continue
 
+            citations = [_to_citation(m, feed_name_map) for m in group]
             result = SummaryResult(
                 intent_id=intent_id,
                 summary=summary,
-                primary=_to_citation(primary, feed_name_map),
-                other_sources=[_to_citation(m, feed_name_map) for m in other],
+                citations=citations,
+                primary=citations[0] if citations else None,
+                other_sources=citations[1:] if len(citations) > 1 else [],
             )
 
             if self._pre_push_hook is not None:

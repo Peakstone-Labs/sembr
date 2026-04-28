@@ -94,16 +94,16 @@ def test_grouping_transitive() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SC2 — Citation fields: primary = earliest published_at
+# SC2 — Citation ordering: newest first (canonical [N] reference order)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_primary_is_earliest_published() -> None:
-    """Primary = article with the earliest published_at (same-event group)."""
+async def test_citations_ordered_newest_first() -> None:
+    """citations[0] (== primary) must be the article with the latest published_at."""
     matches = [
-        _match("b", "Fed raises interest rates by 25 basis points in March", published_at="2026-01-01T11:00:00Z"),
         _match("a", "Fed raises interest rates by 25 basis points", published_at="2026-01-01T10:00:00Z"),
+        _match("b", "Fed raises interest rates by 25 basis points in March", published_at="2026-01-01T11:00:00Z"),
     ]
     captured = []
 
@@ -121,9 +121,9 @@ async def test_primary_is_earliest_published() -> None:
 
     assert len(captured) == 1
     result = captured[0]
-    assert result.primary.article_id == "a"
-    assert len(result.other_sources) == 1
-    assert result.other_sources[0].article_id == "b"
+    assert [c.article_id for c in result.citations] == ["b", "a"]
+    assert result.primary.article_id == "b"
+    assert [c.article_id for c in result.other_sources] == ["a"]
 
 
 @pytest.mark.asyncio

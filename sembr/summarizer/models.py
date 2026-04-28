@@ -23,7 +23,12 @@ class Citation:
 class SummaryResult:
     intent_id: int
     summary: str
-    primary: Citation
+    # Canonical ordered list of cited articles. Position N (1-indexed) matches
+    # the [N] reference the LLM may emit in `summary`. `primary` and
+    # `other_sources` retained for legacy log_summaries / older callers; for
+    # new consumers prefer `citations`.
+    citations: list[Citation] = field(default_factory=list)
+    primary: Citation | None = None
     other_sources: list[Citation] = field(default_factory=list)
 
 
