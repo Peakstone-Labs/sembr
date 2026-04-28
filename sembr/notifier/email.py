@@ -11,18 +11,32 @@ from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import markdown as _md
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
+from pydantic import BaseModel, EmailStr, Field
 
 from sembr.notifier.base import BaseChannel
 
 if TYPE_CHECKING:
     from sembr.config import Settings
     from sembr.summarizer.models import Citation, SummaryResult
+
+
+class EmailChannelConfig(BaseModel):
+    """Per-intent email channel config — typed and validated at the API boundary.
+
+    `to` is required (>=1 address). `cc`/`bcc` are optional. RFC-validated by
+    pydantic.EmailStr; list bounds prevent fan-out abuse via a single intent.
+    """
+
+    type: Literal["email"] = "email"
+    to: list[EmailStr] = Field(min_length=1, max_length=50)
+    cc: list[EmailStr] = Field(default_factory=list, max_length=20)
+    bcc: list[EmailStr] = Field(default_factory=list, max_length=20)
 
 logger = logging.getLogger(__name__)
 
@@ -141,25 +155,37 @@ class EmailChannel(BaseChannel):
             autoescape=select_autoescape(["html", "jinja2"]),
         )
 
-    async def send(self, result: SummaryResult, *, to: str, intent_name: str) -> None:
+    async def send(
+        self,
+        result: SummaryResult,
+        *,
+        config: EmailChannelConfig,
+        intent_name: str,
+    ) -> None:
         try:
-            await self._send(result, to=to, intent_name=intent_name)
+            await self._send(result, config=config, intent_name=intent_name)
         except Exception:
             logger.error(
-                "EmailChannel.send failed for intent_id=%d to=%s",
+                "EmailChannel.send failed for intent_id=%d to=%r",
                 result.intent_id,
-                to,
+                list(config.to),
                 exc_info=True,
             )
 
-    async def _send(self, result: SummaryResult, *, to: str, intent_name: str) -> None:
+    async def _send(
+        self,
+        result: SummaryResult,
+        *,
+        config: EmailChannelConfig,
+        intent_name: str,
+    ) -> None:
         s = self._settings
         if not s.smtp_host:
-            logger.warning("EmailChannel: smtp_host not configured, skipping send to %s", to)
+            logger.warning(
+                "EmailChannel: smtp_host not configured, skipping send to %r", list(config.to)
+            )
             return
 
-        # Prefer the canonical citations list; fall back to primary+other_sources for
-        # callers built before that field existed.
         if result.citations:
             citations: list[Citation] = list(result.citations)
         elif result.primary is not None:
@@ -192,11 +218,20 @@ class EmailChannel(BaseChannel):
 
         msg["Subject"] = subject
         msg["From"] = s.smtp_from or s.smtp_username
-        msg["To"] = to
+        # EmailStr is a subclass of str; explicit cast keeps the smtplib API contract clean.
+        to_addrs = [str(a) for a in config.to]
+        cc_addrs = [str(a) for a in config.cc]
+        bcc_addrs = [str(a) for a in config.bcc]
+        msg["To"] = ", ".join(to_addrs)
+        if cc_addrs:
+            msg["Cc"] = ", ".join(cc_addrs)
+        # Bcc is intentionally NOT placed in headers — it only goes into the
+        # SMTP envelope (RCPT TO) so recipients can't see who's copied.
+        all_rcpts = [*to_addrs, *cc_addrs, *bcc_addrs]
 
         # asyncio.to_thread is the 3.9+ idiomatic way to offload sync-blocking I/O;
         # get_event_loop() is deprecated in 3.12 when called from a running coroutine.
-        await asyncio.to_thread(self._send_sync, msg)
+        await asyncio.to_thread(self._send_sync, msg, all_rcpts)
 
     def _render_html(
         self,
@@ -211,7 +246,7 @@ class EmailChannel(BaseChannel):
             citations=citations,
         )
 
-    def _send_sync(self, msg) -> None:  # MIMEText | MIMEMultipart, runtime-typed
+    def _send_sync(self, msg, rcpts: list[str]) -> None:  # MIMEText | MIMEMultipart
         s = self._settings
         if s.smtp_use_ssl:
             server: smtplib.SMTP = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port)
@@ -222,7 +257,10 @@ class EmailChannel(BaseChannel):
         try:
             if s.smtp_username:
                 server.login(s.smtp_username, s.smtp_password.get_secret_value())
-            server.send_message(msg)
+            # Pass `to_addrs=rcpts` explicitly so Bcc receivers get the message
+            # without appearing in headers; without this, send_message would
+            # only RCPT-TO the addresses present in To/Cc headers.
+            server.send_message(msg, to_addrs=rcpts)
         finally:
             # Suppress quit() errors so they don't shadow the original send/login exception.
             try:

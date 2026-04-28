@@ -21,6 +21,7 @@ dependencies = [
     "apscheduler==3.11.2",
     "jinja2>=3.1,<4",
     "markdown>=3.6,<4",
+    "email-validator>=2.0,<3",
 ]
 
 [project.optional-dependencies]

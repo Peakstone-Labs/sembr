@@ -8,7 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from sembr.notifier.email import EmailChannelConfig
 from sembr.summarizer.models import Citation, SummaryResult
+
+
+def _cfg(*to: str, cc: list[str] | None = None, bcc: list[str] | None = None) -> EmailChannelConfig:
+    return EmailChannelConfig(to=list(to) or ["x@example.com"], cc=cc or [], bcc=bcc or [])
 
 
 def _extract_html(msg: Message) -> str:
@@ -159,11 +164,11 @@ async def test_render_includes_indexed_sources() -> None:
 
     captured: list[MIMEText] = []
 
-    def fake_send_sync(msg: MIMEText) -> None:
+    def fake_send_sync(msg: MIMEText, _rcpts: list[str]) -> None:
         captured.append(msg)
 
     with patch.object(ch, "_send_sync", side_effect=fake_send_sync):
-        await ch.send(result, to="x@example.com", intent_name="My Intent")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="My Intent")
 
     assert len(captured) == 1
     body = _extract_html(captured[0])
@@ -189,8 +194,8 @@ async def test_logo_embedded_as_inline_image() -> None:
     result = _result(citations)
 
     captured: list = []
-    with patch.object(ch, "_send_sync", side_effect=lambda m: captured.append(m)):
-        await ch.send(result, to="x@example.com", intent_name="Intent")
+    with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent")
 
     msg = captured[0]
     assert msg.is_multipart(), "expected multipart/related when logo present"
@@ -215,12 +220,66 @@ async def test_render_xss_escape_in_title() -> None:
     result = _result([evil])
 
     captured: list[MIMEText] = []
-    with patch.object(ch, "_send_sync", side_effect=lambda m: captured.append(m)):
-        await ch.send(result, to="x@example.com", intent_name="Intent")
+    with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent")
 
     body = _extract_html(captured[0])
     assert "<script>" not in body
     assert "&lt;script&gt;" in body
+
+
+# ---------------------------------------------------------------------------
+# UT-4b: multi-recipient delivery — to / cc / bcc
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_multi_recipient_to_cc_bcc() -> None:
+    """All to+cc+bcc must reach SMTP RCPT-TO; bcc must NOT appear in headers."""
+    ch = _make_channel()
+    captured_rcpts: list[list[str]] = []
+    captured_msgs: list = []
+
+    def fake(msg, rcpts):
+        captured_msgs.append(msg)
+        captured_rcpts.append(rcpts)
+
+    with patch.object(ch, "_send_sync", side_effect=fake):
+        result = _result([_citation("a", published_at="2026-01-01T00:00:00Z")])
+        cfg = _cfg(
+            "primary@example.com",
+            "second@example.com",
+            cc=["watcher@example.com"],
+            bcc=["secret@example.com"],
+        )
+        await ch.send(result, config=cfg, intent_name="Multi")
+
+    assert captured_rcpts == [[
+        "primary@example.com",
+        "second@example.com",
+        "watcher@example.com",
+        "secret@example.com",
+    ]]
+    msg = captured_msgs[0]
+    assert "primary@example.com" in msg["To"] and "second@example.com" in msg["To"]
+    assert "watcher@example.com" in msg["Cc"]
+    # Bcc must not leak into headers
+    assert msg.get("Bcc") is None
+    body = _extract_html(msg)
+    assert "secret@example.com" not in body
+
+
+def test_email_channel_config_rejects_invalid_email() -> None:
+    """RFC validation at the model boundary, not at SMTP send time."""
+    import pydantic
+    with pytest.raises(pydantic.ValidationError):
+        EmailChannelConfig(to=["not-an-email"])
+
+
+def test_email_channel_config_requires_at_least_one_to() -> None:
+    import pydantic
+    with pytest.raises(pydantic.ValidationError):
+        EmailChannelConfig(to=[])
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +301,7 @@ async def test_smtp_failure_does_not_reraise() -> None:
         mock_smtp_cls.return_value = instance
 
         result = _result([_citation("a", published_at="2026-01-01T00:00:00Z")])
-        await ch.send(result, to="dest@example.com", intent_name="Test")
+        await ch.send(result, config=_cfg("dest@example.com"), intent_name="Test")
 
     mock_logger.error.assert_called_once()
     instance.quit.assert_called_once()
@@ -260,7 +319,7 @@ async def test_empty_smtp_host_skips_send() -> None:
     with patch("smtplib.SMTP") as mock_smtp_cls, \
          patch("smtplib.SMTP_SSL") as mock_ssl_cls:
         result = _result([_citation("a")])
-        await ch.send(result, to="x@example.com", intent_name="Intent")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent")
 
     mock_smtp_cls.assert_not_called()
     mock_ssl_cls.assert_not_called()
@@ -278,7 +337,7 @@ async def test_subject_format(n: int, expected_word: str) -> None:
 
     captured_msgs: list[MIMEText] = []
 
-    def fake_send_sync(msg: MIMEText) -> None:
+    def fake_send_sync(msg: MIMEText, _rcpts: list[str]) -> None:
         captured_msgs.append(msg)
 
     with patch.object(ch, "_send_sync", side_effect=fake_send_sync):
@@ -286,7 +345,7 @@ async def test_subject_format(n: int, expected_word: str) -> None:
             _citation(str(i), published_at="2026-01-01T00:00:00Z") for i in range(n)
         ]
         result = _result(citations)
-        await ch.send(result, to="x@example.com", intent_name="My Intent")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="My Intent")
 
     assert len(captured_msgs) == 1
     assert expected_word in captured_msgs[0]["Subject"]
@@ -315,7 +374,7 @@ async def test_smtp_ssl_branch_uses_smtp_ssl() -> None:
         mock_ssl.return_value = instance
 
         result = _result([_citation("a", published_at="2026-01-01T00:00:00Z")])
-        await ch.send(result, to="x@example.com", intent_name="I")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="I")
 
     mock_ssl.assert_called_once_with("smtp.example.com", 465)
     mock_plain.assert_not_called()

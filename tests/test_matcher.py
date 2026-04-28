@@ -44,7 +44,7 @@ async def mem_conn():
 _INTENT_BODY = IntentCreate(
     name="test-intent",
     text="market movements",
-    channels=[{"type": "telegram", "config": {"chat_id": "1"}}],
+    channels=[{"type": "email", "to": ["a@example.com"]}],
 )
 
 
@@ -303,7 +303,7 @@ async def test_register_all_enabled_wires_jobs(mem_conn) -> None:
         IntentCreate(
             name="disabled-intent",
             text="other topic",
-            channels=[{"type": "telegram", "config": {}}],
+            channels=[{"type": "email", "to": ["a@example.com"]}],
             enabled=False,
         ),
     )
@@ -382,7 +382,7 @@ def test_post_intent_rollback_on_register_job_failure() -> None:
     body = {
         "name": "rollback-test",
         "text": "rollback intent",
-        "channels": [{"type": "telegram", "config": {}}],
+        "channels": [{"type": "email", "to": ["a@example.com"]}],
     }
 
     with (

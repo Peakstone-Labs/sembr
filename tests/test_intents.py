@@ -30,7 +30,7 @@ FAKE_VECTOR = [0.1] * 1024
 VALID_BODY = {
     "name": "fed",
     "text": "Fed rate decisions impact on emerging markets",
-    "channels": [{"type": "telegram", "config": {"chat_id": "1"}}],
+    "channels": [{"type": "email", "to": ["a@example.com"]}],
 }
 
 # ---------------------------------------------------------------------------
@@ -152,8 +152,8 @@ def test_post_intent_503_when_embedder_loading() -> None:
 
 _INVALID_BODIES = [
     # missing required fields
-    {"text": "ok", "channels": [{"type": "telegram", "config": {}}]},
-    {"name": "n", "channels": [{"type": "telegram", "config": {}}]},
+    {"text": "ok", "channels": [{"type": "email", "to": ["a@example.com"]}]},
+    {"name": "n", "channels": [{"type": "email", "to": ["a@example.com"]}]},
     {"name": "n", "text": "ok"},
     # channels constraints
     {"name": "n", "text": "ok", "channels": []},
@@ -163,25 +163,29 @@ _INVALID_BODIES = [
     {"name": "n", "text": "ok", "channels": [{"type": "email", "config": {}}], "threshold": 0.59},
     {"name": "n", "text": "ok", "channels": [{"type": "email", "config": {}}], "threshold": 1.0},
     # name / text empty or too long
-    {"name": "", "text": "ok", "channels": [{"type": "telegram", "config": {}}]},
-    {"name": "x" * 101, "text": "ok", "channels": [{"type": "telegram", "config": {}}]},
-    {"name": "n", "text": "", "channels": [{"type": "telegram", "config": {}}]},
-    {"name": "n", "text": "x" * 2001, "channels": [{"type": "telegram", "config": {}}]},
+    {"name": "", "text": "ok", "channels": [{"type": "email", "to": ["a@example.com"]}]},
+    {"name": "x" * 101, "text": "ok", "channels": [{"type": "email", "to": ["a@example.com"]}]},
+    {"name": "n", "text": "", "channels": [{"type": "email", "to": ["a@example.com"]}]},
+    {"name": "n", "text": "x" * 2001, "channels": [{"type": "email", "to": ["a@example.com"]}]},
     # tags constraints
     {
         "name": "n",
         "text": "ok",
-        "channels": [{"type": "telegram", "config": {}}],
+        "channels": [{"type": "email", "to": ["a@example.com"]}],
         "tags": ["x" * 51],
     },
     {
         "name": "n",
         "text": "ok",
-        "channels": [{"type": "telegram", "config": {}}],
+        "channels": [{"type": "email", "to": ["a@example.com"]}],
         "tags": [f"t{i}" for i in range(11)],
     },
-    # channels.config must be a dict, not a scalar (M5)
-    {"name": "n", "text": "ok", "channels": [{"type": "telegram", "config": "not-a-dict"}]},
+    # email channel requires `to` as a non-empty list
+    {"name": "n", "text": "ok", "channels": [{"type": "email"}]},
+    # invalid email address is rejected at the API boundary (EmailStr)
+    {"name": "n", "text": "ok", "channels": [{"type": "email", "to": ["not-an-email"]}]},
+    # to must be a list, not a string
+    {"name": "n", "text": "ok", "channels": [{"type": "email", "to": "a@example.com"}]},
 ]
 
 
@@ -547,7 +551,7 @@ def test_put_reenable_with_text_change_clears_match_seen() -> None:
                 name="reenable-test",
                 text="original text",
                 enabled=False,
-                channels=[{"type": "telegram", "config": {}}],
+                channels=[{"type": "email", "to": ["a@example.com"]}],
             ),
         )
         await insert_unseen_returning_new(conn, intent.id, ["stale-1", "stale-2"])
@@ -611,7 +615,7 @@ def test_put_text_change_clear_intent_failure_not_silent() -> None:
                 name="clear-fail-test",
                 text="original text",
                 enabled=True,
-                channels=[{"type": "telegram", "config": {}}],
+                channels=[{"type": "email", "to": ["a@example.com"]}],
             ),
         )
         conn_holder["conn"] = conn

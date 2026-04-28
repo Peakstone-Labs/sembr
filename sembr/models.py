@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+from sembr.notifier.email import EmailChannelConfig
+
+# Discriminated union of all known channel configs, keyed by `type`.
+# Single-element today; when a second channel ships, wrap with
+# `Annotated[Union[EmailChannelConfig, TelegramChannelConfig], Field(discriminator="type")]`.
+ChannelConfig = EmailChannelConfig
 
 
 class FeedCreate(BaseModel):
@@ -28,17 +34,12 @@ class Feed(FeedCreate):
     created_at: str
 
 
-class IntentChannel(BaseModel):
-    type: Literal["telegram", "email"]
-    config: dict = Field(default_factory=dict)
-
-
 class IntentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     text: str = Field(min_length=1, max_length=2000)
     threshold: float = Field(default=0.75, ge=0.60, le=0.95)
     enabled: bool = True
-    channels: list[IntentChannel] = Field(min_length=1, max_length=10)
+    channels: list[ChannelConfig] = Field(min_length=1, max_length=10)
     tags: list[str] = Field(default_factory=list, max_length=10)
     scan_interval_seconds: int = Field(default=3600, ge=60, le=604800)
     lookback_window_seconds: int = Field(default=86400, ge=300, le=2592000)
@@ -61,7 +62,7 @@ class IntentUpdate(BaseModel):
     text: str | None = Field(default=None, min_length=1, max_length=2000)
     threshold: float | None = Field(default=None, ge=0.60, le=0.95)
     enabled: bool | None = None
-    channels: list[IntentChannel] | None = Field(default=None, min_length=1, max_length=10)
+    channels: list[ChannelConfig] | None = Field(default=None, min_length=1, max_length=10)
     tags: list[str] | None = Field(default=None, max_length=10)
     scan_interval_seconds: int | None = Field(default=None, ge=60, le=604800)
     lookback_window_seconds: int | None = Field(default=None, ge=300, le=2592000)
@@ -91,7 +92,7 @@ class Intent(BaseModel):
     text: str
     threshold: float
     enabled: bool
-    channels: list[IntentChannel]
+    channels: list[ChannelConfig]
     tags: list[str]
     scan_interval_seconds: int
     lookback_window_seconds: int

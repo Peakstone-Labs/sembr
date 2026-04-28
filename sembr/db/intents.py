@@ -9,8 +9,12 @@ import json
 from datetime import datetime, timezone
 
 import aiosqlite
+from pydantic import TypeAdapter
 
-from sembr.models import Intent, IntentChannel, IntentCreate, IntentUpdate
+from sembr.models import ChannelConfig, Intent, IntentCreate, IntentUpdate
+
+# Reused per-call: cheaper than re-building the validator each time a row is parsed.
+_CHANNEL_ADAPTER: TypeAdapter[ChannelConfig] = TypeAdapter(ChannelConfig)
 
 _CREATE_INTENTS = """
 CREATE TABLE IF NOT EXISTS intents (
@@ -68,7 +72,7 @@ def _row_to_intent(row: tuple) -> Intent:
         text=row[2],
         threshold=row[3],
         enabled=bool(row[4]),
-        channels=[IntentChannel(**c) for c in json.loads(row[5])],
+        channels=[_CHANNEL_ADAPTER.validate_python(c) for c in json.loads(row[5])],
         tags=json.loads(row[6]),
         scan_interval_seconds=row[7],
         lookback_window_seconds=row[8],

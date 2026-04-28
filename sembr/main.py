@@ -36,7 +36,7 @@ from sembr.db.sqlite import close_sqlite, init_sqlite
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
 from sembr.matcher.jobs import register_all_enabled
-from sembr.notifier.email import EmailChannel
+from sembr.notifier.email import EmailChannel, EmailChannelConfig
 from sembr.summarizer.llm.factory import build_llm_backend
 from sembr.summarizer.models import SummaryResult
 from sembr.summarizer.pipeline import SummaryPipeline
@@ -59,10 +59,8 @@ async def _dispatch_notification(
         if intent is None:
             return
         for ch in intent.channels:
-            if ch.type == "email":
-                to = ch.config.get("to", "")
-                if to:
-                    await email_ch.send(result, to=to, intent_name=intent.name)
+            if isinstance(ch, EmailChannelConfig):
+                await email_ch.send(result, config=ch, intent_name=intent.name)
     except Exception:
         logger.error(
             "dispatch_notification failed for intent_id=%d", result.intent_id, exc_info=True
