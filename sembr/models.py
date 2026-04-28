@@ -43,6 +43,7 @@ class IntentCreate(BaseModel):
     scan_interval_seconds: int = Field(default=3600, ge=60, le=604800)
     lookback_window_seconds: int = Field(default=86400, ge=300, le=2592000)
     first_scan_at: datetime | None = None
+    custom_prompt: str | None = None
 
     @field_validator("tags")
     @classmethod
@@ -65,6 +66,7 @@ class IntentUpdate(BaseModel):
     scan_interval_seconds: int | None = Field(default=None, ge=60, le=604800)
     lookback_window_seconds: int | None = Field(default=None, ge=300, le=2592000)
     first_scan_at: datetime | None = None
+    custom_prompt: str | None = None
 
     @field_validator("tags")
     @classmethod
@@ -94,5 +96,6 @@ class Intent(BaseModel):
     scan_interval_seconds: int
     lookback_window_seconds: int
     first_scan_at: datetime | None
+    custom_prompt: str | None
     created_at: str
     updated_at: str

@@ -35,12 +35,13 @@ _MIGRATIONS = [
     "ALTER TABLE intents ADD COLUMN scan_interval_seconds INTEGER NOT NULL DEFAULT 3600",
     "ALTER TABLE intents ADD COLUMN lookback_window_seconds INTEGER NOT NULL DEFAULT 86400",
     "ALTER TABLE intents ADD COLUMN first_scan_at TEXT",
+    "ALTER TABLE intents ADD COLUMN custom_prompt TEXT",
 ]
 
 _SELECT_INTENTS = (
     "SELECT id,name,text,threshold,enabled,channels,tags,"
     "scan_interval_seconds,lookback_window_seconds,first_scan_at,"
-    "created_at,updated_at FROM intents"
+    "custom_prompt,created_at,updated_at FROM intents"
 )
 
 
@@ -72,8 +73,9 @@ def _row_to_intent(row: tuple) -> Intent:
         scan_interval_seconds=row[7],
         lookback_window_seconds=row[8],
         first_scan_at=_parse_dt(row[9]),
-        created_at=row[10],
-        updated_at=row[11],
+        custom_prompt=row[10],
+        created_at=row[11],
+        updated_at=row[12],
     )
 
 
@@ -90,8 +92,8 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
         """INSERT INTO intents
                (name,text,threshold,enabled,channels,tags,
                 scan_interval_seconds,lookback_window_seconds,first_scan_at,
-                created_at,updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                custom_prompt,created_at,updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             body.name,
             body.text,
@@ -102,6 +104,7 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
             body.scan_interval_seconds,
             body.lookback_window_seconds,
             first_scan_at_str,
+            body.custom_prompt,
             now,
             now,
         ),
@@ -153,6 +156,8 @@ async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: Intent
     # None in IntentUpdate means "no change"; first_scan_at can only be set, not cleared via PUT
     new_first_scan_at = body.first_scan_at if body.first_scan_at is not None else current.first_scan_at
     first_scan_at_str = new_first_scan_at.isoformat() if new_first_scan_at else None
+    # custom_prompt=None in IntentUpdate means "no change"; explicit empty string clears it
+    new_custom_prompt = body.custom_prompt if body.custom_prompt is not None else current.custom_prompt
 
     channels_json = json.dumps([c.model_dump() for c in new_channels], ensure_ascii=False)
     tags_json = json.dumps(new_tags, ensure_ascii=False)
@@ -161,7 +166,7 @@ async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: Intent
         """UPDATE intents
            SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
                scan_interval_seconds=?,lookback_window_seconds=?,first_scan_at=?,
-               updated_at=?
+               custom_prompt=?,updated_at=?
            WHERE id=?""",
         (
             new_name,
@@ -173,6 +178,7 @@ async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: Intent
             new_scan_interval,
             new_lookback,
             first_scan_at_str,
+            new_custom_prompt,
             now,
             intent_id,
         ),
@@ -191,7 +197,7 @@ async def update_intent_raw(conn: aiosqlite.Connection, intent_id: int, snapshot
         """UPDATE intents
            SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
                scan_interval_seconds=?,lookback_window_seconds=?,first_scan_at=?,
-               updated_at=?
+               custom_prompt=?,updated_at=?
            WHERE id=?""",
         (
             snapshot.name,
@@ -203,6 +209,7 @@ async def update_intent_raw(conn: aiosqlite.Connection, intent_id: int, snapshot
             snapshot.scan_interval_seconds,
             snapshot.lookback_window_seconds,
             first_scan_at_str,
+            snapshot.custom_prompt,
             snapshot.updated_at,
             intent_id,
         ),
