@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from sembr.summarizer.grouping import GroupingStep
 from sembr.summarizer.models import Citation, OnSummaryCallback, PrePushHook, SummaryResult
@@ -18,8 +18,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_PROMPT_PATH = Path(__file__).parent / "prompts" / "default.txt"
-_DEFAULT_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
+# Hardcoded fallback ensures import never fails on a partial/broken install.
+_FALLBACK_PROMPT = (
+    "You are a news monitoring assistant. The user is tracking the topic: {intent_text}\n\n"
+    "Summarize the following articles concisely (3-5 sentences) in the same language as the articles.\n\n"
+    "Articles:\n{articles}\n"
+)
+
+try:
+    _DEFAULT_PROMPT = (Path(__file__).parent / "prompts" / "default.txt").read_text(encoding="utf-8")
+except (FileNotFoundError, OSError) as _exc:
+    logger.warning("default.txt prompt template not found (%s); using built-in fallback", _exc)
+    _DEFAULT_PROMPT = _FALLBACK_PROMPT
 
 _BODY_TRUNCATE = 500  # chars per article in LLM prompt (D10)
 
@@ -45,10 +55,11 @@ def _build_articles_text(group: list[Match]) -> str:
 
 
 def _pick_primary(group: list[Match]) -> Match:
-    # None published_at sorts to end (D11); earliest = primary source
+    # D11: earliest published_at = primary; None values sort last via the
+    # (is_none, value) tuple — explicit, immune to lexicographic-sentinel pitfalls.
     return sorted(
         group,
-        key=lambda m: m.payload.get("published_at") or "9999",
+        key=lambda m: (m.payload.get("published_at") is None, m.payload.get("published_at") or ""),
     )[0]
 
 
@@ -62,6 +73,10 @@ def _to_citation(m: Match) -> Citation:
     )
 
 
+class IntentPromptCtxFetcher(Protocol):
+    async def __call__(self, intent_id: int) -> tuple[str | None, str]: ...
+
+
 class SummaryPipeline:
     def __init__(
         self,
@@ -69,7 +84,7 @@ class SummaryPipeline:
         grouping_threshold: float = 0.85,
         on_summary: OnSummaryCallback | None = None,
         pre_push_hook: PrePushHook | None = None,
-        get_intent_prompt_ctx=None,  # async (intent_id) -> (custom_prompt | None, intent_text)
+        get_intent_prompt_ctx: IntentPromptCtxFetcher | None = None,
     ) -> None:
         self._llm = llm
         self._grouper = GroupingStep(threshold=grouping_threshold)
@@ -96,7 +111,19 @@ class SummaryPipeline:
             try:
                 custom_prompt, intent_text = await self._get_intent_prompt_ctx(intent_id)
             except Exception:
-                logger.warning("SummaryPipeline: could not fetch prompt ctx for intent_id=%d", intent_id)
+                logger.warning(
+                    "SummaryPipeline: could not fetch prompt ctx for intent_id=%d, skipping tick",
+                    intent_id,
+                )
+                return
+            # An empty topic line + no custom prompt produces a useless LLM input.
+            # Treat as "intent gone" (deleted between match and summarize) and skip.
+            if not custom_prompt and not intent_text:
+                logger.warning(
+                    "SummaryPipeline: empty intent_text and no custom_prompt for intent_id=%d, skipping",
+                    intent_id,
+                )
+                return
 
         for group in groups:
             primary = _pick_primary(group)

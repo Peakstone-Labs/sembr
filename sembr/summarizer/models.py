@@ -14,7 +14,9 @@ class Citation:
     article_id: str
     title: str
     url: str
-    source: int | str  # feed_id (int) in MVP; human-readable name deferred
+    # MVP: feed_id integer. A future field `source_name: str | None` will carry
+    # the human-readable label rather than overloading this field's type.
+    source: int
     published_at: str | None
 
 

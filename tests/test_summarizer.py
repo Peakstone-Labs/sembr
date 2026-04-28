@@ -289,3 +289,59 @@ def test_resolve_prompt_none_uses_default() -> None:
     result = _resolve_prompt(None, "my topic", "some articles")
     assert "my topic" in result
     assert "some articles" in result
+
+
+# ---------------------------------------------------------------------------
+# 🟡 14 regression — empty intent_text on ctx error path must skip the tick
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ctx_fetch_failure_skips_tick() -> None:
+    """When get_intent_prompt_ctx raises, pipeline skips entirely; LLM not called."""
+    llm = _make_llm()
+    on_summary = AsyncMock()
+
+    async def failing_ctx(iid):
+        raise RuntimeError("db locked")
+
+    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=failing_ctx)
+    m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
+    await pipeline.handle([m])
+
+    llm.summarize.assert_not_called()
+    on_summary.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_empty_intent_text_and_no_custom_prompt_skips_tick() -> None:
+    """ctx returning (None, '') means intent gone — pipeline skips the tick."""
+    llm = _make_llm()
+    on_summary = AsyncMock()
+
+    async def empty_ctx(iid):
+        return None, ""
+
+    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=empty_ctx)
+    m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
+    await pipeline.handle([m])
+
+    llm.summarize.assert_not_called()
+    on_summary.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_empty_intent_text_with_custom_prompt_proceeds() -> None:
+    """If custom_prompt is set, empty intent_text alone should NOT block the tick."""
+    llm = _make_llm()
+    on_summary = AsyncMock()
+
+    async def custom_only_ctx(iid):
+        return "summarize: {articles}", ""
+
+    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=custom_only_ctx)
+    m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
+    await pipeline.handle([m])
+
+    llm.summarize.assert_awaited_once()
+    on_summary.assert_awaited_once()

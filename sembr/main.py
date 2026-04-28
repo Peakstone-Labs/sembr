@@ -101,9 +101,12 @@ async def lifespan(app: FastAPI):
             pass
         if hasattr(embedder, "aclose"):
             await embedder.aclose()
+        # Close qdrant first so any in-flight matcher coroutines that survived
+        # scheduler.shutdown(wait=False) hit a ClientClosed before the LLM client
+        # disappears under them — symmetric with the embedder ordering above.
+        await qdrant.close()
         if hasattr(llm_backend, "aclose"):
             await llm_backend.aclose()
-        await qdrant.close()
         await close_sqlite()
 
 
