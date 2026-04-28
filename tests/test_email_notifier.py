@@ -2,12 +2,23 @@
 from __future__ import annotations
 
 import smtplib
+from email.message import Message
 from email.mime.text import MIMEText
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from sembr.summarizer.models import Citation, SummaryResult
+
+
+def _extract_html(msg: Message) -> str:
+    """Pull the text/html body out of a single-part MIMEText or multipart/related."""
+    if msg.is_multipart():
+        for part in msg.walk():
+            if part.get_content_type() == "text/html":
+                return part.get_payload(decode=True).decode("utf-8")
+        raise AssertionError("no text/html part found in multipart message")
+    return msg.get_payload(decode=True).decode("utf-8")
 
 
 def _citation(
@@ -155,7 +166,7 @@ async def test_render_includes_indexed_sources() -> None:
         await ch.send(result, to="x@example.com", intent_name="My Intent")
 
     assert len(captured) == 1
-    body = captured[0].get_payload(decode=True).decode("utf-8")
+    body = _extract_html(captured[0])
     assert 'id="cite-1"' in body
     assert 'id="cite-2"' in body
     assert 'href="#cite-1"' in body
@@ -164,6 +175,32 @@ async def test_render_includes_indexed_sources() -> None:
     assert "BBC" in body
     # Date heading section "Sources" replaces the old per-day grouping
     assert ">Sources<" in body or "Sources" in body
+
+
+# ---------------------------------------------------------------------------
+# UT-3b: logo embedded as multipart/related with cid:sembr-logo
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_logo_embedded_as_inline_image() -> None:
+    ch = _make_channel()
+    citations = [_citation("a", published_at="2026-01-01T00:00:00Z")]
+    result = _result(citations)
+
+    captured: list = []
+    with patch.object(ch, "_send_sync", side_effect=lambda m: captured.append(m)):
+        await ch.send(result, to="x@example.com", intent_name="Intent")
+
+    msg = captured[0]
+    assert msg.is_multipart(), "expected multipart/related when logo present"
+    image_parts = [p for p in msg.walk() if p.get_content_type() == "image/png"]
+    assert len(image_parts) == 1
+    cid = image_parts[0].get("Content-ID", "")
+    assert cid == "<sembr-logo>", f"Content-ID is {cid!r}"
+    body = _extract_html(msg)
+    assert 'src="cid:sembr-logo"' in body
+    assert "Peakstone Labs" in body
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +218,7 @@ async def test_render_xss_escape_in_title() -> None:
     with patch.object(ch, "_send_sync", side_effect=lambda m: captured.append(m)):
         await ch.send(result, to="x@example.com", intent_name="Intent")
 
-    body = captured[0].get_payload(decode=True).decode("utf-8")
+    body = _extract_html(captured[0])
     assert "<script>" not in body
     assert "&lt;script&gt;" in body
 

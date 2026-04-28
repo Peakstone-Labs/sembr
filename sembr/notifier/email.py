@@ -7,6 +7,8 @@ import re
 import smtplib
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,6 +27,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
+_LOGO_PATH = _TEMPLATES_DIR / "assets" / "logo.png"
+_LOGO_CID = "sembr-logo"
+
+# Read the logo once at import time. If the file is missing we still send the
+# email; the template's <img> tag just degrades to an empty alt-text image,
+# which is preferable to a hard failure in the notifier path.
+try:
+    _LOGO_BYTES: bytes | None = _LOGO_PATH.read_bytes()
+except (FileNotFoundError, OSError) as _logo_exc:
+    logger.warning("logo not found at %s (%s); emails will render without a logo", _LOGO_PATH, _logo_exc)
+    _LOGO_BYTES = None
 
 # LLM output sometimes inlines ATX headings or list bullets without a leading
 # blank line, which prevents python-markdown from recognising them as block
@@ -162,9 +175,21 @@ class EmailChannel(BaseChannel):
         article_word = "article" if n == 1 else "articles"
         subject = f"[sembr] {intent_name} — {n} matched {article_word}"
 
-        # Single-part HTML message; multipart/alternative with only one part
-        # misleads anti-spam filters (SpamAssassin MIME_HTML_ONLY penalty).
-        msg = MIMEText(html_body, "html", "utf-8")
+        # multipart/related so the inline logo (cid:sembr-logo) is part of the
+        # same MIME tree as the HTML. SpamAssassin's MIME_HTML_ONLY penalty
+        # targets multipart/alternative with a missing text/plain — `related`
+        # is unaffected. When the logo bytes are unavailable we still ship a
+        # single-part HTML message (same as before).
+        if _LOGO_BYTES is not None:
+            msg: MIMEText | MIMEMultipart = MIMEMultipart("related")
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
+            img = MIMEImage(_LOGO_BYTES, "png")
+            img.add_header("Content-ID", f"<{_LOGO_CID}>")
+            img.add_header("Content-Disposition", "inline", filename="logo.png")
+            msg.attach(img)
+        else:
+            msg = MIMEText(html_body, "html", "utf-8")
+
         msg["Subject"] = subject
         msg["From"] = s.smtp_from or s.smtp_username
         msg["To"] = to
@@ -186,7 +211,7 @@ class EmailChannel(BaseChannel):
             citations=citations,
         )
 
-    def _send_sync(self, msg: MIMEText) -> None:
+    def _send_sync(self, msg) -> None:  # MIMEText | MIMEMultipart, runtime-typed
         s = self._settings
         if s.smtp_use_ssl:
             server: smtplib.SMTP = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port)
