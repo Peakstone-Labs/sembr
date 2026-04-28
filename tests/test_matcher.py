@@ -220,9 +220,11 @@ async def test_scan_happy_path_triggers_callback(mem_conn) -> None:
     mock_retrieve_result = [MagicMock()]
     mock_retrieve_result[0].vector = [0.1] * 1024
 
+    mock_response = MagicMock()
+    mock_response.points = [hit]
     mock_client = AsyncMock()
     mock_client.retrieve = AsyncMock(return_value=mock_retrieve_result)
-    mock_client.search = AsyncMock(return_value=[hit])
+    mock_client.query_points = AsyncMock(return_value=mock_response)
 
     on_match = AsyncMock()
     app = _make_app(qdrant_client=mock_client, on_match=on_match)
@@ -264,11 +266,13 @@ async def test_scan_dedup_no_repeated_callback(mem_conn) -> None:
     hit.score = 0.85
     hit.payload = {"enabled": True}
 
+    mock_response = MagicMock()
+    mock_response.points = [hit]
     mock_retrieve_result = [MagicMock()]
     mock_retrieve_result[0].vector = [0.1] * 1024
     mock_client = AsyncMock()
     mock_client.retrieve = AsyncMock(return_value=mock_retrieve_result)
-    mock_client.search = AsyncMock(return_value=[hit])
+    mock_client.query_points = AsyncMock(return_value=mock_response)
 
     on_match = AsyncMock()
     app = _make_app(qdrant_client=mock_client, on_match=on_match)

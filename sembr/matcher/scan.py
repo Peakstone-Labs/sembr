@@ -72,9 +72,10 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
         lookback_cutoff_ts = (
             int(datetime.now(timezone.utc).timestamp()) - intent.lookback_window_seconds
         )
-        results = await qdrant_client.search(
+        # qdrant-client 1.10+ removed search() in favour of query_points()
+        response = await qdrant_client.query_points(
             collection_name=_NEWS_ALIAS,
-            query_vector=intent_vector,
+            query=intent_vector,
             score_threshold=intent.threshold,
             limit=_SEARCH_LIMIT,
             query_filter=Filter(
@@ -86,6 +87,7 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
                 ]
             ),
         )
+        results = response.points
     except Exception as exc:
         logger.warning("intent_id=%d scan Qdrant error, skipping tick: %s", intent_id, exc)
         return
