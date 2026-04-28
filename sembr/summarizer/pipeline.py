@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 _FALLBACK_PROMPT = (
     "You are a news monitoring assistant. The user is tracking:\n\n"
     "> {intent_text}\n\n"
+    "The following articles were semantically matched to this topic. "
+    "Each entry contains: the article title, full body text, and the source URL.\n\n"
     "{articles}\n\n"
     "---\n\n"
     "Write a concise summary (3–5 sentences) of the key developments. "
