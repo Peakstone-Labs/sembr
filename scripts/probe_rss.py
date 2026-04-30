@@ -64,7 +64,7 @@ FINANCE_INTL = [
     ("Forbes",              "https://www.forbes.com/real-time/feed/",              False),
 ]
 
-# -- Chinese finance (RSSHub routes) -----------------------------------------
+# -- Chinese finance (RSSHub routes + a few native attempts) -----------------
 FINANCE_CN = [
     ("华尔街见闻",           "/wallstreetcn/news/global",                            True),
     ("财联社电报",           "/cls/telegraph",                                       True),
@@ -73,6 +73,12 @@ FINANCE_CN = [
     ("36氪",                "/36kr/news/latest",                                    True),
     ("虎嗅",                "/huxiu/article",                                       True),
     ("钛媒体",              "/tmtpost/article",                                     True),  # was latest -> 503, try article
+    # -- 新浪财经：7x24 页面是 JS 渲染无原生 RSS；老 rss.sina.com.cn 域多已弃用，留一条做存活探测
+    ("新浪财经(原生old)",    "https://rss.sina.com.cn/news/marketalert/roll.xml",   False),
+    ("新浪财经7x24",         "/sina/finance/7x24",                                   True),
+    ("新浪财经滚动",         "/sina/finance",                                        True),
+    # -- 同花顺：从未有公开原生 RSS，只能走 RSSHub
+    ("同花顺财经",           "/10jqka/realtimenews",                                 True),
 ]
 
 # -- Chinese general news (native RSS + RSSHub) ------------------------------
