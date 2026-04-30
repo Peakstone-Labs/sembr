@@ -260,8 +260,8 @@ def check_sqlite(db_path: str, stale_hours: float) -> None:
         else:
             for m in matches:
                 row(
-                    f"intent={m['intent_id'][:8]}…",
-                    f"article={m['article_id'][:8]}…  at {m['first_matched_at'][:19]}",
+                    f"intent={m['intent_id']}",
+                    f"article={str(m['article_id'])[:8]}…  at {m['first_matched_at'][:19]}",
                     "ok",
                 )
     except sqlite3.OperationalError as exc:
