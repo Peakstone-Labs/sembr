@@ -45,15 +45,14 @@ class SiliconFlowEmbedder(BaseEmbedder):
         api_key: str,
         base_url: str = "https://api.siliconflow.cn/v1",
         model: str = "BAAI/bge-m3",
-        timeout: float = 60.0,
+        timeout: float = 30.0,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._model = model
-        # Split connect vs read so a slow upstream (SiliconFlow under load)
-        # doesn't masquerade as a hard connect failure. Read=60s allows a
-        # 14-text batch (worst case ~112k chars) to complete; connect=10s
-        # still fails fast on a dead network.
+        # Baseline used by load() probe and as fallback when callers don't pass
+        # a per-request timeout. Batch calls compute a dynamic timeout from
+        # total char count and override this via aembed(timeout=...).
         self._timeout = httpx.Timeout(connect=10.0, read=float(timeout), write=10.0, pool=5.0)
         self._status: Literal["loading", "ok", "error"] = "loading"
         self._client: httpx.AsyncClient | None = None
@@ -94,9 +93,16 @@ class SiliconFlowEmbedder(BaseEmbedder):
             self._status = "error"
             logger.error("siliconflow probe failed: %s", exc, exc_info=True)
 
-    async def _call(self, texts: list[str]) -> list[list[float]]:
+    async def _call(
+        self, texts: list[str], *, timeout: float | None = None
+    ) -> list[list[float]]:
         if self._client is None:
             raise RuntimeError("call load() before _call()")
+        request_timeout: httpx.Timeout | None = (
+            httpx.Timeout(connect=10.0, read=float(timeout), write=10.0, pool=5.0)
+            if timeout is not None
+            else None  # fall back to client default (self._timeout)
+        )
         try:
             response = await self._client.post(
                 f"{self._base_url}/embeddings",
@@ -106,6 +112,7 @@ class SiliconFlowEmbedder(BaseEmbedder):
                     "input": texts,
                     "encoding_format": "float",
                 },
+                timeout=request_timeout,
             )
         except httpx.HTTPError as exc:
             raise EmbedderTransportError(
@@ -148,12 +155,14 @@ class SiliconFlowEmbedder(BaseEmbedder):
     def embed(self, texts: list[str]) -> list[list[float]]:
         raise NotImplementedError("SiliconFlowEmbedder is async-only; use aembed()")
 
-    async def aembed(self, texts: list[str]) -> list[list[float]]:
+    async def aembed(
+        self, texts: list[str], *, timeout: float | None = None
+    ) -> list[list[float]]:
         if self._status != "ok":
             raise RuntimeError("embedder not loaded")
         if not texts:
             return []
-        return await self._call(texts)
+        return await self._call(texts, timeout=timeout)
 
     async def aclose(self) -> None:
         if self._client is not None:

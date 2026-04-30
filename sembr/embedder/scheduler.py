@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 
 # SiliconFlow accepts up to 32 inputs per request. Verify worst-case token budget
 # (top-32 longest articles) on Mac Mini before shipping — see design Risk row 5.
+# Read timeout is computed dynamically per-batch from total char count
+# (see embedder_worker), so batch size doesn't need to be conservative.
 BATCH_SIZE = 32
 
 # BGE-M3 context window is 8192 tokens.
@@ -110,8 +112,16 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> N
     # Compute which rows are one retry away from exhaustion BEFORE incrementing
     md5s_at_limit = [r.md5 for r in batch if r.retry_count + 1 >= MAX_ATTEMPTS]
 
+    # Dynamic read-timeout: SiliconFlow processing time scales with total chars.
+    # Calibration (2026-04-30): batches of ~80k chars timed out at 30s, while
+    # smaller batches succeeded comfortably. ~1500 chars/sec is a conservative
+    # throughput estimate covering server queueing + BGE-M3 forward + RTT.
+    # 30s floor avoids underseeding tiny batches; full 32×8000 batch = ~171s.
+    total_chars = sum(len(t) for t in texts)
+    embed_timeout = max(30.0, total_chars / 1500)
+
     try:
-        vectors: list[list[float]] = await embedder.aembed(texts)
+        vectors: list[list[float]] = await embedder.aembed(texts, timeout=embed_timeout)
     except Exception as exc:
         logger.warning(
             "embed failed for batch of %d: %s", len(batch), exc, exc_info=True

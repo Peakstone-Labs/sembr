@@ -25,10 +25,15 @@ class BaseEmbedder(ABC):
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Synchronous inference. Consumers must call `await aembed(...)` instead."""
 
-    async def aembed(self, texts: list[str]) -> list[list[float]]:
+    async def aembed(
+        self, texts: list[str], *, timeout: float | None = None
+    ) -> list[list[float]]:
         """Async wrapper that offloads sync `embed` to a thread pool.
 
         Remote/async backends can override this directly without changing the
         sync signature — the only requirement for subclasses is implementing `embed`.
+
+        `timeout` is honoured by remote backends (e.g. OpenAI-compatible HTTP)
+        and ignored by local backends where it has no meaning.
         """
         return await asyncio.to_thread(self.embed, texts)
