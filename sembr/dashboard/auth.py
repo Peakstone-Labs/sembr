@@ -21,7 +21,11 @@ _HEADER_NAME = "X-Dashboard-Token"
 _COOKIE_NAME = "sembr_dashboard_token"
 _LOGIN_PATH = "/dashboard/login.html"
 _VENDOR_PREFIX = "/dashboard/vendor/"
-_PROTECTED_PREFIXES = ("/dashboard", "/api/dashboard")
+# Trailing-slash prefixes prevent accidental capture of a future
+# `/dashboard-status` or `/api/dashboard-stats` business route under the gate.
+# Bare paths still need exact-match coverage for `/dashboard` and `/api/dashboard`.
+_PROTECTED_PREFIXES = ("/dashboard/", "/api/dashboard/")
+_PROTECTED_EXACT = frozenset({"/dashboard", "/api/dashboard"})
 # Endpoints that must remain reachable without a token to bootstrap the UI:
 #   /api/dashboard/config — frontend calls it on first load to know whether
 #   auth is required and what poll interval to use.
@@ -38,7 +42,9 @@ class DashboardTokenMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
-        if not any(path.startswith(p) for p in _PROTECTED_PREFIXES):
+        if path not in _PROTECTED_EXACT and not any(
+            path.startswith(p) for p in _PROTECTED_PREFIXES
+        ):
             return await call_next(request)
 
         token = get_settings().dashboard_token.get_secret_value()

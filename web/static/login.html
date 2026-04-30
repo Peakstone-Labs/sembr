@@ -38,7 +38,11 @@
   const errorMsg = document.getElementById('error-msg');
   const submitBtn = document.getElementById('submit-btn');
 
-  let authRequired = true;
+  // Default to false matches app.js and the middleware's "empty token = no auth"
+  // semantics. If /config is unreachable, the worst case is the user lands on
+  // index.html and gets bounced back here — strictly better than the previous
+  // default which trapped no-auth deployments at a useless token prompt.
+  let authRequired = false;
   try {
     const res = await fetch('/api/dashboard/config');
     if (res.ok) {
@@ -72,8 +76,11 @@
     });
     if (res.ok) {
       // Cookie scoped to /dashboard so static asset GETs carry the token.
+      // Add `Secure` over HTTPS (LAN reverse proxy / Tailscale); over plain
+      // HTTP the flag would prevent the cookie from being set at all.
+      const secure = location.protocol === 'https:' ? '; Secure' : '';
       document.cookie =
-        `sembr_dashboard_token=${encodeURIComponent(token)}; path=/dashboard; SameSite=Strict`;
+        `sembr_dashboard_token=${encodeURIComponent(token)}; path=/dashboard; SameSite=Strict${secure}`;
       // The bundled JS reads X-Dashboard-Token from localStorage for /api/* fetches.
       try { localStorage.setItem('sembr_dashboard_token', token); } catch (e) {}
       window.location.href = '/dashboard/index.html';

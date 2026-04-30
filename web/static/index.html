@@ -190,7 +190,8 @@
           <tr>
             <td>
               <div x-text="a.title"></div>
-              <a :href="a.url" target="_blank" class="muted"
+              <a :href="/^https?:\/\//i.test(a.url) ? a.url : '#'"
+                 target="_blank" rel="noopener noreferrer" class="muted"
                  x-text="a.url" style="font-size:11px;"></a>
             </td>
             <td x-text="a.feed_id ?? '—'"></td>

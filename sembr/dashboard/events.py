@@ -7,6 +7,13 @@ Two append-only tables:
 Writes use independent transactions so they never share a BEGIN with the business
 path that triggered them. Callers must wrap log_*_event in best-effort try/except
 and only logger.warning on failure — never let observability faults kill business work.
+
+Canonical `started_at` form: `datetime.isoformat()` on a tz-aware UTC datetime,
+which produces `"YYYY-MM-DDTHH:MM:SS+00:00"`. Do NOT mix in `Z`-suffixed values
+in the same column — `+00:00` and `Z` lex-sort differently and any range
+comparison (retention cutoff, sparkline window) would silently break across
+formats. The snapshot response field `generated_at` may use the `Z` shorthand
+because it's response-only, never a query input.
 """
 from __future__ import annotations
 

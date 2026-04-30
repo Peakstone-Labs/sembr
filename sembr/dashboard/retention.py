@@ -34,14 +34,19 @@ async def _prune_logs(settings: Settings) -> None:
             await conn.execute(
                 "DELETE FROM embed_call_log WHERE started_at < ?", (cutoff,)
             )
-            # Per-feed FIFO cap. Correlated subquery counts how many newer rows exist
-            # per feed_id; rows with >= max_per_feed newer siblings are dropped.
-            # id is monotonic (AUTOINCREMENT) so f2.id > f1.id ⇔ f2 is newer.
+            # Per-feed FIFO cap via window function (SQLite ≥ 3.25, shipped with
+            # Python 3.12). ROW_NUMBER ordered by id DESC: rn=1 is newest, so
+            # any row with rn > max_per_feed is older than the kept window.
+            # Single index scan vs the prior O(N²) correlated subquery, which
+            # could stall the global write lock for seconds at the upper-bound
+            # configuration cap.
             await conn.execute(
                 "DELETE FROM feed_fetch_log WHERE id IN ("
-                "  SELECT f1.id FROM feed_fetch_log f1 "
-                "  WHERE (SELECT COUNT(*) FROM feed_fetch_log f2 "
-                "         WHERE f2.feed_id = f1.feed_id AND f2.id > f1.id) >= ?"
+                "  SELECT id FROM ("
+                "    SELECT id, ROW_NUMBER() OVER ("
+                "      PARTITION BY feed_id ORDER BY id DESC"
+                "    ) AS rn FROM feed_fetch_log"
+                "  ) WHERE rn > ?"
                 ")",
                 (max_per_feed,),
             )

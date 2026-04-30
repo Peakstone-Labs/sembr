@@ -41,6 +41,16 @@ If `web/static/index.html` is missing at startup, `sembr/main.py` skips the
 `StaticFiles` mount and logs an INFO line. The JSON API at `/api/dashboard/*`
 remains available — useful for CLI tooling or a custom UI built on top.
 
+## Token storage trade-off
+
+The bundled JS persists the dashboard token in **`localStorage`** (and a path-scoped cookie). This is a deliberate choice for a self-hosted operator dashboard:
+
+- ✅ No CSRF concerns — bearer-token UX, no implicit credential transmission.
+- ✅ Survives reloads without forcing the operator to re-paste the token every time.
+- ⚠️ Any same-origin JavaScript can read the token. The dashboard itself only renders feed-controlled fields via Alpine `x-text` (textContent) or sanitised `:href` allow-listing — but if you add a new HTML binding that interpolates feed data into HTML, you reintroduce the exfiltration vector. Keep new feed-data renders to `x-text` / `x-html`-with-sanitiser only.
+
+If you operate the dashboard on a hostile LAN where a token leak is unacceptable, run it behind an authenticating reverse proxy (mTLS / OAuth) and leave `DASHBOARD_TOKEN` empty.
+
 ## Authentication
 
 The dashboard checks `/api/dashboard/config` (auth-free) on load to decide

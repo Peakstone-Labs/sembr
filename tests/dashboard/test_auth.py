@@ -127,6 +127,26 @@ def test_config_endpoint_is_auth_free(monkeypatch):
     assert r.status_code == 200
 
 
+def test_path_prefix_does_not_capture_dashboard_lookalike(monkeypatch):
+    """Routes like /dashboard-status or /api/dashboard-stats must NOT fall under
+    the gate just because they share the /dashboard prefix as a substring."""
+    _set_token(monkeypatch, "secret123")
+    app = FastAPI()
+    app.add_middleware(DashboardTokenMiddleware)
+
+    @app.get("/dashboard-status")
+    async def dash_status():
+        return {"unrelated": True}
+
+    @app.get("/api/dashboard-stats")
+    async def dash_stats():
+        return {"unrelated": True}
+
+    client = TestClient(app)
+    assert client.get("/dashboard-status").status_code == 200
+    assert client.get("/api/dashboard-stats").status_code == 200
+
+
 def test_token_not_subject_to_timing_attack_via_length(monkeypatch):
     """compare_digest accepts any-length string and returns False; a length-mismatch
     must NOT be ValueError'd by the middleware (would 500 instead of 401)."""

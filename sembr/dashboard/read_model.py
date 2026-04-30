@@ -52,57 +52,102 @@ def _hour_buckets_back(now: datetime, hours: int = _SPARKLINE_BUCKETS) -> list[s
     ]
 
 
-async def _fetch_24h_for_feed(
-    conn: aiosqlite.Connection, feed_id: int, now: datetime
-) -> Fetch24hBlock:
+# Max rows per feed scanned for last_outcome / consecutive_failures. Large enough
+# to surface plausible failure streaks (a feed polling every 5 min for 24 h fits
+# in 288 rows; a 50-row window captures any practically relevant streak).
+_RECENT_ROWS_PER_FEED = 50
+
+
+async def _fetch_24h_all_feeds(
+    conn: aiosqlite.Connection, feed_ids: list[int], now: datetime
+) -> dict[int, Fetch24hBlock]:
+    """Build Fetch24hBlock for every feed_id in two queries (no N+1).
+
+    Q1 — per-(feed, hour) aggregate for sparkline + ok/fail/total counts.
+    Q2 — recent rows per feed (window-bounded) for last_outcome, last_error,
+    consecutive_failures.
+
+    feed_ids that have zero rows in the window still get a "never"/empty block
+    in the result so callers can iterate `feeds_list` directly.
+    """
+    if not feed_ids:
+        return {}
     cutoff = (now - timedelta(hours=_SPARKLINE_BUCKETS)).isoformat()
+    bucket_keys = _hour_buckets_back(now)
+
+    # Q1: aggregate buckets — one round-trip across all feeds.
     async with conn.execute(
-        "SELECT ok, error_message FROM feed_fetch_log "
-        "WHERE feed_id=? AND started_at >= ? ORDER BY id DESC",
-        (feed_id, cutoff),
-    ) as cur:
-        rows: list[tuple[int, str | None]] = list(await cur.fetchall())
-
-    total = len(rows)
-    ok_count = sum(1 for r in rows if r[0] == 1)
-    fail_count = total - ok_count
-
-    last_outcome: str = "never"
-    last_error_message: str | None = None
-    consecutive_failures = 0
-    if rows:
-        last_ok = rows[0][0]
-        last_outcome = "ok" if last_ok == 1 else "fail"
-        if last_ok == 0:
-            last_error_message = rows[0][1]
-        for r in rows:
-            if r[0] == 0:
-                consecutive_failures += 1
-            else:
-                break
-
-    # Sparkline: hourly count of ok==1 fetches.
-    async with conn.execute(
-        "SELECT strftime('%Y-%m-%d %H', started_at) AS h, "
-        "       SUM(CASE WHEN ok=1 THEN 1 ELSE 0 END) AS oks "
+        "SELECT feed_id, "
+        "       strftime('%Y-%m-%d %H', started_at) AS h, "
+        "       SUM(CASE WHEN ok=1 THEN 1 ELSE 0 END) AS oks, "
+        "       COUNT(*) AS total "
         "FROM feed_fetch_log "
-        "WHERE feed_id=? AND started_at >= ? "
-        "GROUP BY h",
-        (feed_id, cutoff),
+        "WHERE started_at >= ? "
+        "GROUP BY feed_id, h",
+        (cutoff,),
     ) as cur:
-        agg = {row[0]: int(row[1] or 0) for row in await cur.fetchall()}
+        agg_rows = await cur.fetchall()
 
-    sparkline = [agg.get(h, 0) for h in _hour_buckets_back(now)]
+    by_feed_buckets: dict[int, dict[str, int]] = {fid: {} for fid in feed_ids}
+    by_feed_total: dict[int, int] = dict.fromkeys(feed_ids, 0)
+    by_feed_ok: dict[int, int] = dict.fromkeys(feed_ids, 0)
+    for fid, h, oks, total in agg_rows:
+        if fid in by_feed_buckets:
+            by_feed_buckets[fid][h] = int(oks or 0)
+            by_feed_total[fid] += int(total or 0)
+            by_feed_ok[fid] += int(oks or 0)
 
-    return Fetch24hBlock(
-        total=total,
-        ok=ok_count,
-        fail=fail_count,
-        last_outcome=last_outcome,  # type: ignore[arg-type]
-        last_error_message=last_error_message,
-        consecutive_failures=consecutive_failures,
-        sparkline_buckets=sparkline,
-    )
+    # Q2: recent rows per feed via ROW_NUMBER window function (SQLite ≥ 3.25).
+    async with conn.execute(
+        "SELECT feed_id, ok, error_message FROM ("
+        "  SELECT feed_id, ok, error_message, id, "
+        "         ROW_NUMBER() OVER (PARTITION BY feed_id ORDER BY id DESC) AS rn "
+        "  FROM feed_fetch_log WHERE started_at >= ?"
+        ") WHERE rn <= ? ORDER BY feed_id, rn",
+        (cutoff, _RECENT_ROWS_PER_FEED),
+    ) as cur:
+        recent_rows = await cur.fetchall()
+
+    recent_by_feed: dict[int, list[tuple[int, str | None]]] = {
+        fid: [] for fid in feed_ids
+    }
+    for fid, ok, err in recent_rows:
+        if fid in recent_by_feed:
+            recent_by_feed[fid].append((int(ok), err))
+
+    out: dict[int, Fetch24hBlock] = {}
+    for fid in feed_ids:
+        rows = recent_by_feed[fid]  # already newest-first (rn ASC = id DESC)
+        total = by_feed_total[fid]
+        ok_count = by_feed_ok[fid]
+        fail_count = total - ok_count
+
+        last_outcome: str = "never"
+        last_error_message: str | None = None
+        consecutive_failures = 0
+        if rows:
+            last_ok = rows[0][0]
+            last_outcome = "ok" if last_ok == 1 else "fail"
+            if last_ok == 0:
+                last_error_message = rows[0][1]
+            for r in rows:
+                if r[0] == 0:
+                    consecutive_failures += 1
+                else:
+                    break
+
+        sparkline = [by_feed_buckets[fid].get(h, 0) for h in bucket_keys]
+
+        out[fid] = Fetch24hBlock(
+            total=total,
+            ok=ok_count,
+            fail=fail_count,
+            last_outcome=last_outcome,  # type: ignore[arg-type]
+            last_error_message=last_error_message,
+            consecutive_failures=consecutive_failures,
+            sparkline_buckets=sparkline,
+        )
+    return out
 
 
 async def _embedder_calls_24h(
@@ -194,19 +239,20 @@ async def build_snapshot(
     components = await _component_status(qdrant_handle, embedder)
 
     feeds_list = await list_feeds(conn)
-    feed_rows: list[FeedRow] = []
-    for f in feeds_list:
-        fetch_block = await _fetch_24h_for_feed(conn, f.id, now)
-        feed_rows.append(
-            FeedRow(
-                id=f.id,
-                name=f.name,
-                url=str(f.url),
-                poll_interval_minutes=f.poll_interval_minutes,
-                last_collected_at=f.last_collected_at,
-                fetch_24h=fetch_block,
-            )
+    fetch_blocks = await _fetch_24h_all_feeds(
+        conn, [f.id for f in feeds_list], now
+    )
+    feed_rows: list[FeedRow] = [
+        FeedRow(
+            id=f.id,
+            name=f.name,
+            url=str(f.url),
+            poll_interval_minutes=f.poll_interval_minutes,
+            last_collected_at=f.last_collected_at,
+            fetch_24h=fetch_blocks[f.id],
         )
+        for f in feeds_list
+    ]
 
     calls = await _embedder_calls_24h(conn, now)
     embedder_block = EmbedderBlock(

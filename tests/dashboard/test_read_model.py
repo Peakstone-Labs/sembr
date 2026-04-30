@@ -199,6 +199,69 @@ def test_build_snapshot_components_when_qdrant_down(tmp_path):
     assert snap.components.embedder == "error"
 
 
+def test_fetch_24h_all_feeds_uses_two_queries_regardless_of_feed_count(tmp_path):
+    """🟡-2 regression: build_snapshot must not issue per-feed SELECTs.
+
+    Drives 5 feeds × 3 events each through the aggregator and asserts
+    aiosqlite.Connection.execute() is called exactly twice (one for the
+    per-(feed, hour) aggregate, one for the recent-rows window function).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sembr.dashboard.read_model import _fetch_24h_all_feeds
+
+    async def run():
+        conn = await _setup(tmp_path)
+        for fid in range(1, 6):
+            await conn.execute(
+                "INSERT INTO feeds (id, name, url) VALUES (?, ?, ?)",
+                (fid, f"f{fid}", f"http://example.com/{fid}"),
+            )
+            for j in range(3):
+                ts = (
+                    datetime.now(timezone.utc)
+                    - timedelta(minutes=10 * (3 - j))
+                ).isoformat()
+                await conn.execute(
+                    "INSERT INTO feed_fetch_log "
+                    "(feed_id, started_at, elapsed_ms, ok, items_seen, items_new, "
+                    " error_class, error_message) "
+                    "VALUES (?, ?, 1, 1, 0, 0, NULL, NULL)",
+                    (fid, ts),
+                )
+        await conn.commit()
+
+        # Wrap conn.execute to count SELECT calls.
+        select_calls = []
+        original_execute = conn.execute
+
+        def counting_execute(sql, *args, **kwargs):
+            if sql.lstrip().upper().startswith("SELECT"):
+                select_calls.append(sql)
+            return original_execute(sql, *args, **kwargs)
+
+        conn.execute = counting_execute  # type: ignore[assignment]
+        try:
+            now = datetime.now(timezone.utc)
+            result = await _fetch_24h_all_feeds(conn, [1, 2, 3, 4, 5], now)
+        finally:
+            conn.execute = original_execute  # type: ignore[assignment]
+        await close_sqlite()
+        return select_calls, result
+
+    select_calls, result = asyncio.run(run())
+    assert len(select_calls) == 2, (
+        f"expected exactly 2 SELECTs (aggregate + recent-rows), got "
+        f"{len(select_calls)}: {select_calls}"
+    )
+    # Sanity: every feed got a block, totals correct.
+    for fid in range(1, 6):
+        assert result[fid].total == 3
+        assert result[fid].ok == 3
+        assert result[fid].last_outcome == "ok"
+        assert result[fid].consecutive_failures == 0
+
+
 def test_build_snapshot_when_qdrant_handle_none(tmp_path):
     """Lifespan probe arrives before app.state.qdrant is assigned — must degrade,
     not crash, returning components.qdrant == 'down' and qdrant_count == 0."""

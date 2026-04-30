@@ -30,6 +30,7 @@ async def ensure_news_collection(client: "AsyncQdrantClient") -> None:
         CreateAlias,
         CreateAliasOperation,
         Distance,
+        PayloadSchemaType,
         ScalarQuantization,
         ScalarQuantizationConfig,
         ScalarType,
@@ -55,6 +56,16 @@ async def ensure_news_collection(client: "AsyncQdrantClient") -> None:
             ),
         )
         logger.info("created Qdrant collection %r", COLLECTION_NAME)
+
+    # Payload index on ingested_at_ts: required for the dashboard's
+    # scroll(order_by="ingested_at_ts") "latest articles" listing. Qdrant rejects
+    # order_by on un-indexed fields; create_payload_index is idempotent so
+    # repeated startup is safe.
+    await client.create_payload_index(
+        collection_name=COLLECTION_NAME,
+        field_name="ingested_at_ts",
+        field_schema=PayloadSchemaType.INTEGER,
+    )
 
     # Check alias globally to detect if news_current points elsewhere (D9)
     all_aliases = await client.get_aliases()
