@@ -13,6 +13,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from sembr.collector.base import BaseSource
 from sembr.collector.rss import FetchError, RSSSource
+from sembr.dashboard.events import log_fetch_event
 from sembr.db.articles import insert_article_pending
 from sembr.db.feeds import fingerprint_exists, insert_fingerprint, update_last_collected
 from sembr.db.sqlite import get_conn
@@ -33,9 +34,39 @@ def make_scheduler() -> AsyncIOScheduler:
     return AsyncIOScheduler(timezone="UTC")
 
 
+async def _emit_fetch_event(
+    *,
+    feed_id: int,
+    started_at: datetime,
+    ok: bool,
+    items_seen: int,
+    items_new: int,
+    error_class: str | None,
+    error_message: str | None,
+) -> None:
+    """Best-effort wrapper: observability faults must never poison collect_feed."""
+    try:
+        elapsed_ms = int(
+            (datetime.now(timezone.utc) - started_at).total_seconds() * 1000
+        )
+        await log_fetch_event(
+            feed_id=feed_id,
+            started_at=started_at,
+            elapsed_ms=elapsed_ms,
+            ok=ok,
+            items_seen=items_seen,
+            items_new=items_new,
+            error_class=error_class,
+            error_message=error_message,
+        )
+    except Exception as exc:
+        logger.warning("log_fetch_event failed for feed_id=%d: %s", feed_id, exc)
+
+
 async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type: str, config: dict) -> None:
     source_cls = SOURCE_REGISTRY.get(source_type)
     if source_cls is None:
+        # Configuration error, not a fetch attempt — per D4, don't write an event row.
         logger.error("unknown source_type=%r for feed_id=%d", source_type, feed_id)
         return
 
@@ -53,15 +84,26 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
     timeout = float(config.get("timeout", 30.0))
     source = source_cls(feed_url, timeout=timeout)
 
+    started_at = datetime.now(timezone.utc)
     try:
         articles = await source.fetch(since=since)
     except FetchError as exc:
         # Don't advance last_collected_at on failure — next run will retry the
         # same since window so articles published during the outage aren't lost.
         logger.error("fetch failed for feed %r (id=%d): %s", feed_name, feed_id, exc)
+        await _emit_fetch_event(
+            feed_id=feed_id, started_at=started_at, ok=False,
+            items_seen=0, items_new=0,
+            error_class="FetchError", error_message=str(exc),
+        )
         return
     except Exception as exc:
         logger.error("unexpected error in collect_feed for %r (id=%d): %s", feed_name, feed_id, exc, exc_info=True)
+        await _emit_fetch_event(
+            feed_id=feed_id, started_at=started_at, ok=False,
+            items_seen=0, items_new=0,
+            error_class=exc.__class__.__name__, error_message=str(exc),
+        )
         return
 
     # Fetch succeeded (articles may be empty if the source has no new content).
@@ -84,6 +126,11 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
     await update_last_collected(conn, feed_id)
 
     logger.info("fetched %d new items from %r (feed_id=%d, total_seen=%d)", new_count, feed_name, feed_id, len(articles))
+    await _emit_fetch_event(
+        feed_id=feed_id, started_at=started_at, ok=True,
+        items_seen=len(articles), items_new=new_count,
+        error_class=None, error_message=None,
+    )
 
 
 async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed, jitter_seconds: int = 0) -> None:

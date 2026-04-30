@@ -27,6 +27,7 @@ except ImportError:
         vector: list
         payload: dict
 
+from sembr.dashboard.events import log_embed_event
 from sembr.db.articles import (
     PendingRow,
     delete_pending,
@@ -97,12 +98,43 @@ def add_embedder_worker_job(
     )
 
 
+async def _emit_embed_event(
+    *,
+    started_at: datetime,
+    ok: bool,
+    batch_size: int,
+    total_chars: int,
+    timeout_seconds: float,
+    error_class: str | None,
+    error_message: str | None,
+) -> None:
+    """Best-effort wrapper: observability faults must never poison embedder_worker."""
+    try:
+        elapsed_ms = int(
+            (datetime.now(timezone.utc) - started_at).total_seconds() * 1000
+        )
+        await log_embed_event(
+            started_at=started_at,
+            elapsed_ms=elapsed_ms,
+            ok=ok,
+            batch_size=batch_size,
+            total_chars=total_chars,
+            timeout_seconds=timeout_seconds,
+            error_class=error_class,
+            error_message=error_message,
+        )
+    except Exception as exc:
+        logger.warning("log_embed_event failed: %s", exc)
+
+
 async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> None:
+    # Embedder not yet loaded → not a call attempt; per D4 don't write an event.
     if not embedder.is_loaded:
         return
 
     conn = get_conn()
     batch = await pull_pending_batch(conn, BATCH_SIZE, MAX_ATTEMPTS)
+    # Empty queue → no work, no event row (per D4).
     if not batch:
         return
 
@@ -124,6 +156,7 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> N
         len(batch), total_chars, embed_timeout,
     )
 
+    started_at = datetime.now(timezone.utc)
     import time as _t
     _t0 = _t.perf_counter()
     try:
@@ -138,6 +171,12 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> N
         # Demote ONLY the rows from this batch whose error actually exhausted retries (🔴-2)
         if md5s_at_limit:
             await demote_md5s_to_dead(conn, md5s_at_limit, error_message=str(exc))
+        await _emit_embed_event(
+            started_at=started_at, ok=False,
+            batch_size=len(batch), total_chars=total_chars,
+            timeout_seconds=embed_timeout,
+            error_class=exc.__class__.__name__, error_message=str(exc),
+        )
         return
 
     # D2: upsert Qdrant first; delete pending only after confirmed success.
@@ -151,17 +190,35 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> N
         )
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
         logger.warning("qdrant transient, retrying next tick: %s", exc)
+        await _emit_embed_event(
+            started_at=started_at, ok=False,
+            batch_size=len(batch), total_chars=total_chars,
+            timeout_seconds=embed_timeout,
+            error_class="qdrant_transient", error_message=str(exc),
+        )
         return
     except Exception as exc:
         logger.warning("qdrant error for batch of %d: %s", len(batch), exc)
         await increment_retry(conn, md5s)
         if md5s_at_limit:
             await demote_md5s_to_dead(conn, md5s_at_limit, error_message=str(exc))
+        await _emit_embed_event(
+            started_at=started_at, ok=False,
+            batch_size=len(batch), total_chars=total_chars,
+            timeout_seconds=embed_timeout,
+            error_class="qdrant_error", error_message=str(exc),
+        )
         return
 
     # Log before delete: upsert success == forward progress; delete is a cleanup step.
     # Logging here ensures throughput metrics are correct even when delete blips (🟡-10).
     logger.info("embedded %d articles, dim=%d", len(batch), len(vectors[0]) if vectors else 0)
+    await _emit_embed_event(
+        started_at=started_at, ok=True,
+        batch_size=len(batch), total_chars=total_chars,
+        timeout_seconds=embed_timeout,
+        error_class=None, error_message=None,
+    )
     # If delete fails, rows re-embed next tick — idempotent via deterministic UUID (D4).
     try:
         await delete_pending(conn, md5s)
