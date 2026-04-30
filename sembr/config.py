@@ -108,6 +108,23 @@ class Settings(BaseSettings):
         description="IANA timezone used to render published_at in notifications (e.g. Asia/Shanghai, UTC, America/New_York).",
     )
 
+    dashboard_token: SecretStr = Field(
+        default="",
+        description="Optional shared token gating /dashboard and /api/dashboard. Empty = no auth.",
+    )
+    dashboard_log_retention_days: int = Field(
+        default=7, ge=1, le=90,
+        description="Maximum age (days) of rows kept in feed_fetch_log / embed_call_log.",
+    )
+    dashboard_log_max_per_feed: int = Field(
+        default=1000, ge=10, le=100000,
+        description="Per-feed cap on retained feed_fetch_log rows; older rows pruned in FIFO order.",
+    )
+    dashboard_poll_interval_seconds: int = Field(
+        default=10, ge=2, le=120,
+        description="Frontend polling cadence; surfaced via /api/dashboard/config to the bundled JS.",
+    )
+
     @classmethod
     def settings_customise_sources(
         cls,
