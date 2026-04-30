@@ -16,9 +16,9 @@ Usage (run inside api container — uses /app paths and SiliconFlow key from env
     docker compose exec -T api python scripts/benchmark_siliconflow.py --source pending
     docker compose exec -T api python scripts/benchmark_siliconflow.py --runs 2
 
-Environment: reads SEMBR_EMBEDDER__API_KEY and SEMBR_EMBEDDER__BASE_URL from
-the same env vars the running embedder uses. Run inside the api container
-so these are already set.
+Environment: reads EMBEDDER_API_KEY and EMBEDDER_API_BASE_URL from the same
+env vars the running embedder uses (see .env.example). Run inside the api
+container so these are already set.
 """
 from __future__ import annotations
 
@@ -155,13 +155,13 @@ def main() -> None:
     p.add_argument("--runs", type=int, default=1, help="Repeats per batch size")
     p.add_argument(
         "--api-key-env",
-        default="SEMBR_EMBEDDER__API_KEY",
-        help="Env var holding the SiliconFlow API key",
+        default="EMBEDDER_API_KEY",
+        help="Env var holding the SiliconFlow API key (matches .env.example)",
     )
     p.add_argument(
         "--base-url",
         default=os.environ.get(
-            "SEMBR_EMBEDDER__BASE_URL", "https://api.siliconflow.cn/v1"
+            "EMBEDDER_API_BASE_URL", "https://api.siliconflow.cn/v1"
         ),
     )
     p.add_argument("--model", default="BAAI/bge-m3")
