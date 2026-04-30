@@ -104,7 +104,9 @@ class SiliconFlowEmbedder(BaseEmbedder):
                 },
             )
         except httpx.HTTPError as exc:
-            raise EmbedderTransportError(f"SiliconFlow request failed: {exc}") from exc
+            raise EmbedderTransportError(
+                f"SiliconFlow request failed: {type(exc).__name__}: {exc!s} | {exc!r}"
+            ) from exc
         if response.status_code != 200:
             safe_body = response.text[:200].replace(self._api_key, "***")
             raise EmbedderTransportError(

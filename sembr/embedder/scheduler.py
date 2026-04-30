@@ -113,7 +113,9 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> N
     try:
         vectors: list[list[float]] = await embedder.aembed(texts)
     except Exception as exc:
-        logger.warning("embed failed for batch of %d: %s", len(batch), exc)
+        logger.warning(
+            "embed failed for batch of %d: %s", len(batch), exc, exc_info=True
+        )
         await increment_retry(conn, md5s)
         # Demote ONLY the rows from this batch whose error actually exhausted retries (🔴-2)
         if md5s_at_limit:
