@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <title>sembr dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/dashboard/style.css">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
@@ -11,21 +14,21 @@
 <body x-data="dashboard()" x-init="init()">
 
 <header>
-  <h1>sembr dashboard</h1>
-  <div>
-    <span class="muted" x-show="lastUpdated"
-          x-text="'updated ' + lastUpdated"></span>
-    <button @click="logout()" style="margin-left:12px;">log out</button>
+  <h1>sembr</h1>
+  <div class="header-right">
+    <span x-show="lastUpdated" x-text="'updated ' + lastUpdated"></span>
+    <button @click="logout()">log out</button>
   </div>
 </header>
 
 <div class="banner-warn" x-show="!authRequired" style="display:none;">
-  Dashboard is publicly accessible. Set <code>DASHBOARD_TOKEN</code> to require auth.
+  Dashboard is publicly accessible — set <code>DASHBOARD_TOKEN</code> to require auth.
 </div>
 
 <main>
-  <!-- Components / Embedder summary -->
-  <section class="panel">
+
+  <!-- System -->
+  <section class="panel panel-hero">
     <h2>system</h2>
     <dl class="kv">
       <dt>qdrant</dt>
@@ -42,45 +45,53 @@
     </dl>
   </section>
 
-  <!-- Articles counts -->
+  <!-- Articles -->
   <section class="panel">
     <h2>articles</h2>
-    <dl class="kv">
-      <dt>pending</dt>
-      <dd>
-        <button @click="openArticles('pending')" x-text="snapshot.articles?.pending_count ?? '—'"></button>
-      </dd>
-      <dt>dead</dt>
-      <dd>
-        <button @click="openArticles('dead')" x-text="snapshot.articles?.dead_count ?? '—'"></button>
-      </dd>
-      <dt>qdrant</dt>
-      <dd>
-        <button @click="openArticles('qdrant')">
-          <span x-text="snapshot.articles?.qdrant_count >= 0 ? '~' + snapshot.articles.qdrant_count : 'unavailable'"></span>
-        </button>
-      </dd>
-    </dl>
+    <div class="articles-grid">
+      <div class="articles-stat">
+        <span class="stat-num" x-text="snapshot.articles?.pending_count ?? '—'"></span>
+        <span class="stat-label">pending</span>
+        <button @click="openArticles('pending')" style="margin-top:4px;">view</button>
+      </div>
+      <div class="articles-stat">
+        <span class="stat-num"
+              :class="(snapshot.articles?.dead_count > 0) ? 'bad' : ''"
+              x-text="snapshot.articles?.dead_count ?? '—'"></span>
+        <span class="stat-label">dead</span>
+        <button @click="openArticles('dead')" style="margin-top:4px;">view</button>
+      </div>
+      <div class="articles-stat">
+        <span class="stat-num"
+              x-text="snapshot.articles?.qdrant_count >= 0 ? snapshot.articles.qdrant_count : '—'"></span>
+        <span class="stat-label">in qdrant</span>
+        <button @click="openArticles('qdrant')" style="margin-top:4px;">view</button>
+      </div>
+    </div>
   </section>
 
-  <!-- Embedder calls (24h) -->
+  <!-- Embedder · 24h -->
   <section class="panel">
     <h2>embedder · last 24h</h2>
     <dl class="kv">
-      <dt>total</dt><dd x-text="snapshot.embedder?.calls_24h?.total ?? 0"></dd>
-      <dt>fail</dt><dd x-text="snapshot.embedder?.calls_24h?.fail ?? 0"></dd>
-      <dt>avg ms</dt><dd x-text="snapshot.embedder?.calls_24h?.avg_total_elapsed_ms ?? 0"></dd>
-      <dt>p95 ms</dt><dd x-text="snapshot.embedder?.calls_24h?.p95_total_elapsed_ms ?? 0"></dd>
+      <dt>total calls</dt><dd x-text="snapshot.embedder?.calls_24h?.total ?? 0"></dd>
+      <dt>failures</dt>
+      <dd :class="(snapshot.embedder?.calls_24h?.fail > 0) ? 'bad-text' : ''"
+          x-text="snapshot.embedder?.calls_24h?.fail ?? 0"></dd>
+      <dt>avg latency</dt>
+      <dd x-text="(snapshot.embedder?.calls_24h?.avg_total_elapsed_ms ?? 0) + ' ms'"></dd>
+      <dt>p95 latency</dt>
+      <dd x-text="(snapshot.embedder?.calls_24h?.p95_total_elapsed_ms ?? 0) + ' ms'"></dd>
     </dl>
-    <div style="margin-top:8px;">
-      <canvas id="embed-chart" height="80"></canvas>
+    <div class="chart-wrap">
+      <canvas id="embed-chart" height="72"></canvas>
     </div>
-    <p style="margin-top:8px;">
+    <div class="chart-actions">
       <button @click="openEmbedderEvents()">recent calls</button>
-    </p>
+    </div>
   </section>
 
-  <!-- Feeds list -->
+  <!-- Feeds -->
   <section class="panel" style="grid-column: 1 / -1;">
     <h2>feeds</h2>
     <table>
@@ -100,25 +111,25 @@
           <tr :class="f.fetch_24h.consecutive_failures > 0 ? 'row-fail' : ''">
             <td>
               <div x-text="f.name"></div>
-              <div class="muted" x-text="f.url" style="font-size:11px;"></div>
+              <div class="muted mono" x-text="f.url" style="font-size:11px; margin-top:2px;"></div>
             </td>
-            <td x-text="f.poll_interval_minutes + 'm'"></td>
-            <td x-text="f.last_collected_at || 'never'"></td>
-            <td>
-              <span x-text="f.fetch_24h.ok"></span>
-              <span class="muted">/</span>
-              <span :class="f.fetch_24h.fail ? 'error-text' : ''"
+            <td class="mono" x-text="f.poll_interval_minutes + 'm'"></td>
+            <td class="mono" x-text="f.last_collected_at || 'never'"></td>
+            <td class="mono">
+              <span class="good-text" x-text="f.fetch_24h.ok"></span>
+              <span class="muted"> / </span>
+              <span :class="f.fetch_24h.fail ? 'bad-text' : 'good-text'"
                     x-text="f.fetch_24h.fail"></span>
             </td>
-            <td>
-              <span :class="f.fetch_24h.consecutive_failures > 0 ? 'error-text' : ''"
+            <td class="mono">
+              <span :class="f.fetch_24h.consecutive_failures > 0 ? 'bad-text' : 'muted'"
                     x-text="f.fetch_24h.consecutive_failures"></span>
             </td>
             <td>
               <span class="sparkline">
                 <template x-for="b in f.fetch_24h.sparkline_buckets" :key="$index">
                   <span :class="b === 0 ? 'empty' : ''"
-                        :style="`height: ${Math.min(18, b*3 + 2)}px;`"></span>
+                        :style="`height: ${Math.min(20, b*4 + 3)}px;`"></span>
                 </template>
               </span>
             </td>
@@ -131,10 +142,11 @@
     </table>
   </section>
 
-  <!-- Drawer: feed events / embedder events / articles -->
+  <!-- Drawer -->
   <section class="panel" x-show="drawer.kind" style="grid-column: 1 / -1;">
     <h2 x-text="drawer.title"></h2>
     <p x-show="drawer.loading" class="muted">loading…</p>
+
     <table x-show="drawer.kind === 'feed-events' && !drawer.loading">
       <thead>
         <tr>
@@ -145,18 +157,22 @@
       <tbody>
         <template x-for="e in drawer.rows" :key="e.id">
           <tr :class="e.ok ? '' : 'row-fail'">
-            <td x-text="e.started_at"></td>
-            <td x-text="e.elapsed_ms + 'ms'"></td>
-            <td x-text="e.ok ? '✓' : '✗'"></td>
-            <td x-text="e.items_seen + ' / ' + e.items_new"></td>
+            <td class="mono" x-text="e.started_at"></td>
+            <td class="mono" x-text="e.elapsed_ms + ' ms'"></td>
             <td>
-              <span x-text="e.error_class || ''"></span>
+              <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
+                    x-text="e.ok ? 'ok' : 'fail'"></span>
+            </td>
+            <td class="mono" x-text="e.items_seen + ' / ' + e.items_new"></td>
+            <td>
+              <span class="muted" x-text="e.error_class || ''"></span>
               <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
             </td>
           </tr>
         </template>
       </tbody>
     </table>
+
     <table x-show="drawer.kind === 'embedder-events' && !drawer.loading">
       <thead>
         <tr>
@@ -167,20 +183,24 @@
       <tbody>
         <template x-for="e in drawer.rows" :key="e.id">
           <tr :class="e.ok ? '' : 'row-fail'">
-            <td x-text="e.started_at"></td>
-            <td x-text="e.elapsed_ms + 'ms'"></td>
-            <td x-text="e.ok ? '✓' : '✗'"></td>
-            <td x-text="e.batch_size"></td>
-            <td x-text="e.total_chars"></td>
-            <td x-text="e.timeout_seconds + 's'"></td>
+            <td class="mono" x-text="e.started_at"></td>
+            <td class="mono" x-text="e.elapsed_ms + ' ms'"></td>
             <td>
-              <span x-text="e.error_class || ''"></span>
+              <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
+                    x-text="e.ok ? 'ok' : 'fail'"></span>
+            </td>
+            <td class="mono" x-text="e.batch_size"></td>
+            <td class="mono" x-text="e.total_chars"></td>
+            <td class="mono" x-text="e.timeout_seconds + ' s'"></td>
+            <td>
+              <span class="muted" x-text="e.error_class || ''"></span>
               <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
             </td>
           </tr>
         </template>
       </tbody>
     </table>
+
     <table x-show="drawer.kind === 'articles' && !drawer.loading">
       <thead>
         <tr><th>title</th><th>feed</th><th>published</th><th>info</th><th></th></tr>
@@ -191,15 +211,18 @@
             <td>
               <div x-text="a.title"></div>
               <a :href="/^https?:\/\//i.test(a.url) ? a.url : '#'"
-                 target="_blank" rel="noopener noreferrer" class="muted"
+                 target="_blank" rel="noopener noreferrer" class="muted mono"
                  x-text="a.url" style="font-size:11px;"></a>
             </td>
-            <td x-text="a.feed_id ?? '—'"></td>
-            <td x-text="a.published_at || '—'"></td>
+            <td class="mono" x-text="a.feed_id ?? '—'"></td>
+            <td class="mono" x-text="a.published_at || '—'"></td>
             <td>
-              <span x-show="a.bucket==='pending'" x-text="'retries=' + (a.retry_count ?? 0)"></span>
-              <span x-show="a.bucket==='dead'" class="error-text" x-text="a.error_message || ''"></span>
-              <span x-show="a.bucket==='qdrant'" x-text="a.ingested_at_ts ? new Date(a.ingested_at_ts*1000).toISOString() : ''"></span>
+              <span x-show="a.bucket==='pending'" class="mono muted"
+                    x-text="'retries=' + (a.retry_count ?? 0)"></span>
+              <span x-show="a.bucket==='dead'" class="error-text"
+                    x-text="a.error_message || ''"></span>
+              <span x-show="a.bucket==='qdrant'" class="mono muted"
+                    x-text="a.ingested_at_ts ? new Date(a.ingested_at_ts*1000).toISOString() : ''"></span>
             </td>
             <td>
               <button @click="openArticleDetail(a.md5, a.bucket)">view</button>
@@ -208,15 +231,19 @@
         </template>
       </tbody>
     </table>
-    <div x-show="drawer.detail" style="margin-top:12px;">
-      <strong x-text="drawer.detail?.title"></strong>
-      <div class="muted" x-text="drawer.detail?.url"></div>
+
+    <div x-show="drawer.detail" style="margin-top:16px;">
+      <div style="font-weight:600; margin-bottom:4px;" x-text="drawer.detail?.title"></div>
+      <div class="muted mono" style="font-size:12px; margin-bottom:8px;"
+           x-text="drawer.detail?.url"></div>
       <div class="detail" x-text="drawer.detail?.body"></div>
     </div>
-    <p style="margin-top:8px;">
+
+    <div class="drawer-footer">
       <button @click="closeDrawer()">close</button>
-    </p>
+    </div>
   </section>
+
 </main>
 
 <script src="/dashboard/app.js"></script>

@@ -4,31 +4,34 @@
 <meta charset="utf-8">
 <title>sembr dashboard — login</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/dashboard/style.css">
 </head>
 <body>
+
 <header>
-  <h1>sembr dashboard</h1>
+  <h1>sembr</h1>
 </header>
 
-<main style="grid-template-columns: 1fr; max-width: 420px; margin: 40px auto;">
-  <div class="panel" id="login-panel">
+<div class="login-wrap">
+  <div class="login-card" id="login-panel">
     <h2>access token</h2>
-    <p class="muted" id="hint" style="display:none;">
-      Enter the value of <code>DASHBOARD_TOKEN</code> from the server's
-      environment to continue.
+    <p class="muted" id="hint" style="display:none; margin-bottom:16px; font-size:0.85rem; line-height:1.6;">
+      Enter the value of <code style="font-family:var(--font-mono); background:var(--bg-secondary); padding:1px 6px; border-radius:3px;">DASHBOARD_TOKEN</code>
+      from the server environment to continue.
     </p>
-    <p class="muted" id="hint-public" style="display:none;">
+    <p class="muted" id="hint-public" style="display:none; margin-bottom:16px; font-size:0.85rem;">
       Auth is not required by the server. Click continue.
     </p>
-    <div style="margin: 12px 0;">
-      <input type="password" id="token-input" placeholder="dashboard token"
-             autocomplete="off">
+    <div style="margin-bottom:16px;">
+      <input type="password" id="token-input" placeholder="dashboard token" autocomplete="off">
     </div>
-    <p class="error-text" id="error-msg" style="display:none;"></p>
-    <button class="primary" id="submit-btn">continue</button>
+    <p class="error-text" id="error-msg" style="display:none; margin-bottom:12px;"></p>
+    <button class="primary" id="submit-btn" style="width:100%; padding:10px 24px;">continue</button>
   </div>
-</main>
+</div>
 
 <script>
 (async function () {
@@ -38,10 +41,6 @@
   const errorMsg = document.getElementById('error-msg');
   const submitBtn = document.getElementById('submit-btn');
 
-  // Default to false matches app.js and the middleware's "empty token = no auth"
-  // semantics. If /config is unreachable, the worst case is the user lands on
-  // index.html and gets bounced back here — strictly better than the previous
-  // default which trapped no-auth deployments at a useless token prompt.
   let authRequired = false;
   try {
     const res = await fetch('/api/dashboard/config');
@@ -75,13 +74,9 @@
       headers: { 'X-Dashboard-Token': token },
     });
     if (res.ok) {
-      // Cookie scoped to /dashboard so static asset GETs carry the token.
-      // Add `Secure` over HTTPS (LAN reverse proxy / Tailscale); over plain
-      // HTTP the flag would prevent the cookie from being set at all.
       const secure = location.protocol === 'https:' ? '; Secure' : '';
       document.cookie =
         `sembr_dashboard_token=${encodeURIComponent(token)}; path=/dashboard; SameSite=Strict${secure}`;
-      // The bundled JS reads X-Dashboard-Token from localStorage for /api/* fetches.
       try { localStorage.setItem('sembr_dashboard_token', token); } catch (e) {}
       window.location.href = '/dashboard/index.html';
     } else {

@@ -71,7 +71,10 @@ function dashboard() {
           datasets: [{
             label: 'avg ms',
             data,
-            backgroundColor: '#4c7da6',
+            backgroundColor: 'rgba(59,138,138,0.65)',
+            borderColor: 'rgba(59,138,138,0.9)',
+            borderWidth: 1,
+            borderRadius: 2,
           }],
         },
         options: {
@@ -79,7 +82,15 @@ function dashboard() {
           plugins: { legend: { display: false } },
           scales: {
             x: { display: false },
-            y: { beginAtZero: true, ticks: { precision: 0 } },
+            y: {
+              beginAtZero: true,
+              ticks: {
+                precision: 0,
+                color: '#5a6678',
+                font: { family: "'JetBrains Mono', monospace", size: 10 },
+              },
+              grid: { color: 'rgba(30,45,69,0.8)' },
+            },
           },
         },
       });
