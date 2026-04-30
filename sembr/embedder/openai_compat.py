@@ -45,12 +45,16 @@ class SiliconFlowEmbedder(BaseEmbedder):
         api_key: str,
         base_url: str = "https://api.siliconflow.cn/v1",
         model: str = "BAAI/bge-m3",
-        timeout: float = 30.0,
+        timeout: float = 60.0,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._model = model
-        self._timeout = timeout
+        # Split connect vs read so a slow upstream (SiliconFlow under load)
+        # doesn't masquerade as a hard connect failure. Read=60s allows a
+        # 14-text batch (worst case ~112k chars) to complete; connect=10s
+        # still fails fast on a dead network.
+        self._timeout = httpx.Timeout(connect=10.0, read=float(timeout), write=10.0, pool=5.0)
         self._status: Literal["loading", "ok", "error"] = "loading"
         self._client: httpx.AsyncClient | None = None
         if not self._base_url.startswith(("https://", "http://localhost", "http://127.")):
