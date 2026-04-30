@@ -101,6 +101,16 @@ sembr ships with **BGE-M3** as its default embedding model — and on [SiliconFl
 
 The backend speaks the OpenAI-compatible `/v1/embeddings` protocol via [SiliconFlow](https://siliconflow.cn) (free tier covers BGE-M3) — point `EMBEDDER_API_BASE_URL` at any OpenAI-compatible endpoint to swap providers. The [`BaseEmbedder`](sembr/embedder/base.py) abstract class defines the contract (`model_version`, `is_loaded`, `aembed(texts) -> list[list[float]]`) — community contributors can drop in a local backend (e.g. mlx-lm, Ollama) by subclassing it and registering in [`sembr/embedder/factory.py`](sembr/embedder/factory.py).
 
+## Dashboard
+
+Once `docker compose up --build` is healthy, browse to **http://localhost:8000/dashboard** for a read-only monitoring view: per-feed fetch outcomes (with 24h sparkline), embedder latency / failure counts, and pending / dead / Qdrant article counts with drill-down detail.
+
+Set `DASHBOARD_TOKEN` in `.env` whenever the host is reachable beyond `localhost` — feed URLs and dead-article error messages are otherwise public. With a token set, the UI prompts for it once and then persists in the browser's `localStorage` + a path-scoped cookie. The JSON API at `/api/dashboard/*` accepts the same token via the `X-Dashboard-Token` header for scripting.
+
+The bundled UI is plain HTML + Alpine.js + Chart.js with no Node toolchain. Disable it by removing `web/static/index.html`; the JSON API still serves at `/api/dashboard/*`. See [`web/README.md`](web/README.md) for details.
+
+⚠️ **LAN exposure warning**: when no token is configured the dashboard shows a yellow banner — anyone on the LAN can read your feed configuration and recent fetch errors.
+
 ## Status
 
 🚧 Pre-release — under active development. The 0.1.0 MVP targets:

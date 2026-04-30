@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sembr dashboard — login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/dashboard/style.css">
+</head>
+<body>
+<header>
+  <h1>sembr dashboard</h1>
+</header>
+
+<main style="grid-template-columns: 1fr; max-width: 420px; margin: 40px auto;">
+  <div class="panel" id="login-panel">
+    <h2>access token</h2>
+    <p class="muted" id="hint" style="display:none;">
+      Enter the value of <code>DASHBOARD_TOKEN</code> from the server's
+      environment to continue.
+    </p>
+    <p class="muted" id="hint-public" style="display:none;">
+      Auth is not required by the server. Click continue.
+    </p>
+    <div style="margin: 12px 0;">
+      <input type="password" id="token-input" placeholder="dashboard token"
+             autocomplete="off">
+    </div>
+    <p class="error-text" id="error-msg" style="display:none;"></p>
+    <button class="primary" id="submit-btn">continue</button>
+  </div>
+</main>
+
+<script>
+(async function () {
+  const hint = document.getElementById('hint');
+  const hintPublic = document.getElementById('hint-public');
+  const tokenInput = document.getElementById('token-input');
+  const errorMsg = document.getElementById('error-msg');
+  const submitBtn = document.getElementById('submit-btn');
+
+  let authRequired = true;
+  try {
+    const res = await fetch('/api/dashboard/config');
+    if (res.ok) {
+      const cfg = await res.json();
+      authRequired = cfg.auth_required;
+    }
+  } catch (e) {}
+
+  if (authRequired) {
+    hint.style.display = '';
+    tokenInput.focus();
+  } else {
+    hintPublic.style.display = '';
+    tokenInput.style.display = 'none';
+  }
+
+  async function tryLogin() {
+    errorMsg.style.display = 'none';
+    if (!authRequired) {
+      window.location.href = '/dashboard/index.html';
+      return;
+    }
+    const token = tokenInput.value.trim();
+    if (!token) {
+      errorMsg.textContent = 'please enter a token';
+      errorMsg.style.display = '';
+      return;
+    }
+    const res = await fetch('/api/dashboard/snapshot', {
+      headers: { 'X-Dashboard-Token': token },
+    });
+    if (res.ok) {
+      // Cookie scoped to /dashboard so static asset GETs carry the token.
+      document.cookie =
+        `sembr_dashboard_token=${encodeURIComponent(token)}; path=/dashboard; SameSite=Strict`;
+      // The bundled JS reads X-Dashboard-Token from localStorage for /api/* fetches.
+      try { localStorage.setItem('sembr_dashboard_token', token); } catch (e) {}
+      window.location.href = '/dashboard/index.html';
+    } else {
+      errorMsg.textContent =
+        res.status === 401 ? 'invalid token' : `server returned ${res.status}`;
+      errorMsg.style.display = '';
+    }
+  }
+
+  submitBtn.addEventListener('click', tryLogin);
+  tokenInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') tryLogin();
+  });
+})();
+</script>
+</body>
+</html>

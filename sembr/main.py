@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 # Attach a stream handler so INFO-level app logs actually reach stderr.
 # Setting only the level is not enough: without a handler, the lastResort
@@ -28,6 +30,10 @@ from sembr.api.health import router as health_router
 from sembr.api.intents import router as intents_router
 from sembr.collector.scheduler import add_feed_job, make_scheduler
 from sembr.config import get_settings
+from sembr.dashboard.auth import DashboardTokenMiddleware
+from sembr.dashboard.events import init_event_log_tables
+from sembr.dashboard.retention import add_log_retention_job
+from sembr.dashboard.routes import router as dashboard_router
 from sembr.db.articles import init_article_tables
 from sembr.db.feeds import get_feed_names, init_feed_tables, list_feeds, seed_initial_feeds
 from sembr.db.intents import get_intent, init_intent_tables, list_intents
@@ -82,6 +88,7 @@ async def lifespan(app: FastAPI):
     conn = await init_sqlite(settings.sqlite_path)
     await init_feed_tables(conn)
     await init_article_tables(conn)
+    await init_event_log_tables(conn)  # dashboard D1/D2; FK references feeds.id
     await init_intent_tables(conn)
     await init_match_seen_tables(conn)  # D17: after intents (FK dependency)
     await seed_initial_feeds(conn)
@@ -94,6 +101,7 @@ async def lifespan(app: FastAPI):
     for i, feed in enumerate(feeds):
         await add_feed_job(scheduler, feed, jitter_seconds=i * 2)
     add_embedder_worker_job(scheduler, embedder, qdrant)
+    add_log_retention_job(scheduler, settings)  # dashboard D9: hourly log prune
     # D18: register per-intent jobs for all currently-enabled intents (restart recovery)
     enabled_intents = await list_intents(conn, enabled=True)
     await register_all_enabled(scheduler, enabled_intents, app, qdrant.client)
@@ -140,6 +148,27 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="sembr", version="0.1.0.dev0", lifespan=lifespan)
+# Auth gate sits in front of every /dashboard and /api/dashboard request.
+# When DASHBOARD_TOKEN is empty (default), the middleware is a pass-through.
+app.add_middleware(DashboardTokenMiddleware)
 app.include_router(health_router)
 app.include_router(feeds_router)
 app.include_router(intents_router)
+app.include_router(dashboard_router)
+
+# Mount /dashboard only when the bundled UI exists. Missing bundle = JSON API still
+# works (per AC#10) and startup logs an INFO line.
+_dashboard_dir = Path(__file__).resolve().parent.parent / "web" / "static"
+if (_dashboard_dir / "index.html").is_file():
+    app.mount(
+        "/dashboard",
+        StaticFiles(directory=str(_dashboard_dir), html=True),
+        name="dashboard",
+    )
+    logger.info("dashboard static mounted at /dashboard from %s", _dashboard_dir)
+else:
+    logger.info(
+        "web/static/index.html not found at %s; dashboard UI disabled "
+        "(JSON API at /api/dashboard/* remains available)",
+        _dashboard_dir,
+    )

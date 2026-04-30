@@ -1,0 +1,15 @@
+# Local clutter that should never enter the image.
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+data/
+docs/
+tests/
+
+# Notably NOT excluded:
+#   web/static/  — the dashboard bundle is intentionally COPYed by Dockerfile.
+#   web/static/vendor/  — vendored Alpine.js + Chart.js, required for the UI.

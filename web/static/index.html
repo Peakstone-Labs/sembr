@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sembr dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/dashboard/style.css">
+<script defer src="/dashboard/vendor/alpine.min.js"></script>
+<script src="/dashboard/vendor/chart.umd.min.js"></script>
+</head>
+<body x-data="dashboard()" x-init="init()">
+
+<header>
+  <h1>sembr dashboard</h1>
+  <div>
+    <span class="muted" x-show="lastUpdated"
+          x-text="'updated ' + lastUpdated"></span>
+    <button @click="logout()" style="margin-left:12px;">log out</button>
+  </div>
+</header>
+
+<div class="banner-warn" x-show="!authRequired" style="display:none;">
+  Dashboard is publicly accessible. Set <code>DASHBOARD_TOKEN</code> to require auth.
+</div>
+
+<main>
+  <!-- Components / Embedder summary -->
+  <section class="panel">
+    <h2>system</h2>
+    <dl class="kv">
+      <dt>qdrant</dt>
+      <dd><span class="status-pill" :class="'status-' + (snapshot.components?.qdrant || 'down')"
+                x-text="snapshot.components?.qdrant || '—'"></span></dd>
+      <dt>sqlite</dt>
+      <dd><span class="status-pill" :class="'status-' + (snapshot.components?.sqlite || 'down')"
+                x-text="snapshot.components?.sqlite || '—'"></span></dd>
+      <dt>embedder</dt>
+      <dd><span class="status-pill" :class="'status-' + (snapshot.components?.embedder || 'error')"
+                x-text="snapshot.components?.embedder || '—'"></span></dd>
+      <dt>model</dt>
+      <dd x-text="snapshot.embedder?.model_version || '—'"></dd>
+    </dl>
+  </section>
+
+  <!-- Articles counts -->
+  <section class="panel">
+    <h2>articles</h2>
+    <dl class="kv">
+      <dt>pending</dt>
+      <dd>
+        <button @click="openArticles('pending')" x-text="snapshot.articles?.pending_count ?? '—'"></button>
+      </dd>
+      <dt>dead</dt>
+      <dd>
+        <button @click="openArticles('dead')" x-text="snapshot.articles?.dead_count ?? '—'"></button>
+      </dd>
+      <dt>qdrant</dt>
+      <dd>
+        <button @click="openArticles('qdrant')">
+          <span x-text="snapshot.articles?.qdrant_count >= 0 ? '~' + snapshot.articles.qdrant_count : 'unavailable'"></span>
+        </button>
+      </dd>
+    </dl>
+  </section>
+
+  <!-- Embedder calls (24h) -->
+  <section class="panel">
+    <h2>embedder · last 24h</h2>
+    <dl class="kv">
+      <dt>total</dt><dd x-text="snapshot.embedder?.calls_24h?.total ?? 0"></dd>
+      <dt>fail</dt><dd x-text="snapshot.embedder?.calls_24h?.fail ?? 0"></dd>
+      <dt>avg ms</dt><dd x-text="snapshot.embedder?.calls_24h?.avg_total_elapsed_ms ?? 0"></dd>
+      <dt>p95 ms</dt><dd x-text="snapshot.embedder?.calls_24h?.p95_total_elapsed_ms ?? 0"></dd>
+    </dl>
+    <div style="margin-top:8px;">
+      <canvas id="embed-chart" height="80"></canvas>
+    </div>
+    <p style="margin-top:8px;">
+      <button @click="openEmbedderEvents()">recent calls</button>
+    </p>
+  </section>
+
+  <!-- Feeds list -->
+  <section class="panel" style="grid-column: 1 / -1;">
+    <h2>feeds</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>name</th>
+          <th>poll</th>
+          <th>last collected</th>
+          <th>24h ok / fail</th>
+          <th>streak</th>
+          <th>sparkline</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="f in (snapshot.feeds || [])" :key="f.id">
+          <tr :class="f.fetch_24h.consecutive_failures > 0 ? 'row-fail' : ''">
+            <td>
+              <div x-text="f.name"></div>
+              <div class="muted" x-text="f.url" style="font-size:11px;"></div>
+            </td>
+            <td x-text="f.poll_interval_minutes + 'm'"></td>
+            <td x-text="f.last_collected_at || 'never'"></td>
+            <td>
+              <span x-text="f.fetch_24h.ok"></span>
+              <span class="muted">/</span>
+              <span :class="f.fetch_24h.fail ? 'error-text' : ''"
+                    x-text="f.fetch_24h.fail"></span>
+            </td>
+            <td>
+              <span :class="f.fetch_24h.consecutive_failures > 0 ? 'error-text' : ''"
+                    x-text="f.fetch_24h.consecutive_failures"></span>
+            </td>
+            <td>
+              <span class="sparkline">
+                <template x-for="b in f.fetch_24h.sparkline_buckets" :key="$index">
+                  <span :class="b === 0 ? 'empty' : ''"
+                        :style="`height: ${Math.min(18, b*3 + 2)}px;`"></span>
+                </template>
+              </span>
+            </td>
+            <td>
+              <button @click="openFeedEvents(f.id, f.name)">events</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Drawer: feed events / embedder events / articles -->
+  <section class="panel" x-show="drawer.kind" style="grid-column: 1 / -1;">
+    <h2 x-text="drawer.title"></h2>
+    <p x-show="drawer.loading" class="muted">loading…</p>
+    <table x-show="drawer.kind === 'feed-events' && !drawer.loading">
+      <thead>
+        <tr>
+          <th>started</th><th>elapsed</th><th>ok</th>
+          <th>seen / new</th><th>error</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="e in drawer.rows" :key="e.id">
+          <tr :class="e.ok ? '' : 'row-fail'">
+            <td x-text="e.started_at"></td>
+            <td x-text="e.elapsed_ms + 'ms'"></td>
+            <td x-text="e.ok ? '✓' : '✗'"></td>
+            <td x-text="e.items_seen + ' / ' + e.items_new"></td>
+            <td>
+              <span x-text="e.error_class || ''"></span>
+              <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <table x-show="drawer.kind === 'embedder-events' && !drawer.loading">
+      <thead>
+        <tr>
+          <th>started</th><th>elapsed</th><th>ok</th>
+          <th>batch</th><th>chars</th><th>timeout</th><th>error</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="e in drawer.rows" :key="e.id">
+          <tr :class="e.ok ? '' : 'row-fail'">
+            <td x-text="e.started_at"></td>
+            <td x-text="e.elapsed_ms + 'ms'"></td>
+            <td x-text="e.ok ? '✓' : '✗'"></td>
+            <td x-text="e.batch_size"></td>
+            <td x-text="e.total_chars"></td>
+            <td x-text="e.timeout_seconds + 's'"></td>
+            <td>
+              <span x-text="e.error_class || ''"></span>
+              <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <table x-show="drawer.kind === 'articles' && !drawer.loading">
+      <thead>
+        <tr><th>title</th><th>feed</th><th>published</th><th>info</th><th></th></tr>
+      </thead>
+      <tbody>
+        <template x-for="a in drawer.rows" :key="a.md5">
+          <tr>
+            <td>
+              <div x-text="a.title"></div>
+              <a :href="a.url" target="_blank" class="muted"
+                 x-text="a.url" style="font-size:11px;"></a>
+            </td>
+            <td x-text="a.feed_id ?? '—'"></td>
+            <td x-text="a.published_at || '—'"></td>
+            <td>
+              <span x-show="a.bucket==='pending'" x-text="'retries=' + (a.retry_count ?? 0)"></span>
+              <span x-show="a.bucket==='dead'" class="error-text" x-text="a.error_message || ''"></span>
+              <span x-show="a.bucket==='qdrant'" x-text="a.ingested_at_ts ? new Date(a.ingested_at_ts*1000).toISOString() : ''"></span>
+            </td>
+            <td>
+              <button @click="openArticleDetail(a.md5, a.bucket)">view</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div x-show="drawer.detail" style="margin-top:12px;">
+      <strong x-text="drawer.detail?.title"></strong>
+      <div class="muted" x-text="drawer.detail?.url"></div>
+      <div class="detail" x-text="drawer.detail?.body"></div>
+    </div>
+    <p style="margin-top:8px;">
+      <button @click="closeDrawer()">close</button>
+    </p>
+  </section>
+</main>
+
+<script src="/dashboard/app.js"></script>
+</body>
+</html>

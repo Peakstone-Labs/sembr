@@ -1,0 +1,4 @@
+# Vendored frontend libraries — exclude from language stats and from diff
+# splash unless the user explicitly asks for it.
+web/static/vendor/*.min.js linguist-vendored=true
+web/static/vendor/*.min.js -diff
