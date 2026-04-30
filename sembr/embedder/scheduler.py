@@ -119,12 +119,20 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> N
     # 30s floor avoids underseeding tiny batches; full 32×8000 batch = ~171s.
     total_chars = sum(len(t) for t in texts)
     embed_timeout = max(30.0, total_chars / 1500)
+    logger.info(
+        "embed start: batch=%d total_chars=%d timeout=%.1fs",
+        len(batch), total_chars, embed_timeout,
+    )
 
+    import time as _t
+    _t0 = _t.perf_counter()
     try:
         vectors: list[list[float]] = await embedder.aembed(texts, timeout=embed_timeout)
     except Exception as exc:
+        elapsed = _t.perf_counter() - _t0
         logger.warning(
-            "embed failed for batch of %d: %s", len(batch), exc, exc_info=True
+            "embed failed for batch of %d after %.1fs (timeout=%.1fs): %s",
+            len(batch), elapsed, embed_timeout, exc, exc_info=True,
         )
         await increment_retry(conn, md5s)
         # Demote ONLY the rows from this batch whose error actually exhausted retries (🔴-2)
