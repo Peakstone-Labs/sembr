@@ -26,7 +26,7 @@ _FALLBACK_SYSTEM_PROMPT = (
     "(## / ### for sub-topic headings, - or * for bullets, **bold** for emphasis). "
     "Start directly with the content — no preamble. "
     "Do not restate the topic or add a top-level title. "
-    "Respond in the same language as the user's topic. "
+    "Respond in language: {language}. If the requested language is unrecognized, default to English. "
     "Structure by event or sub-topic; length reflects news density. "
     "Merge duplicate facts; note source conflicts briefly. "
     "Do not reproduce URLs or bracketed index numbers."
@@ -102,7 +102,7 @@ def _to_citation(m: Match, feed_name_map: dict[int, str] | None = None) -> Citat
 
 
 class IntentPromptCtxFetcher(Protocol):
-    async def __call__(self, intent_id: int) -> tuple[str | None, str]: ...
+    async def __call__(self, intent_id: int) -> tuple[str | None, str, str]: ...
 
 
 class FeedNameFetcher(Protocol):
@@ -155,9 +155,10 @@ class SummaryPipeline:
 
         custom_prompt: str | None = None
         intent_text: str = ""
+        language: str = "zh"
         if self._get_intent_prompt_ctx is not None:
             try:
-                custom_prompt, intent_text = await self._get_intent_prompt_ctx(intent_id)
+                custom_prompt, intent_text, language = await self._get_intent_prompt_ctx(intent_id)
             except Exception:
                 logger.warning(
                     "SummaryPipeline: could not fetch prompt ctx for intent_id=%d, skipping tick",
@@ -191,8 +192,9 @@ class SummaryPipeline:
 
             prompt = _resolve_prompt(custom_prompt, intent_text, articles_text)
 
+            system_prompt = _DEFAULT_SYSTEM_PROMPT.format(language=language)
             try:
-                summary = await self._llm.summarize(prompt, system=_DEFAULT_SYSTEM_PROMPT)
+                summary = await self._llm.summarize(prompt, system=system_prompt)
             except Exception as exc:
                 logger.error(
                     "SummaryPipeline: LLM error for intent_id=%d group_size=%d: %s",

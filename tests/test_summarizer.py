@@ -39,7 +39,7 @@ def _make_llm(summary: str = "test summary") -> AsyncMock:
 
 
 async def _ctx(iid):
-    return None, "fed rate"
+    return None, "fed rate", "zh"
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +162,7 @@ async def test_custom_prompt_passed_to_llm() -> None:
     llm.summarize = AsyncMock(side_effect=lambda p, **_: captured_prompts.append(p) or "ok")
 
     async def ctx(iid):
-        return "用英文总结：{articles}", "fed rate"
+        return "用英文总结：{articles}", "fed rate", "zh"
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
@@ -180,7 +180,7 @@ async def test_default_prompt_includes_intent_text() -> None:
     llm.summarize = AsyncMock(side_effect=lambda p, **_: captured_prompts.append(p) or "ok")
 
     async def ctx(iid):
-        return None, "Federal Reserve rate decisions"
+        return None, "Federal Reserve rate decisions", "zh"
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
@@ -320,7 +320,7 @@ async def test_empty_intent_text_and_no_custom_prompt_skips_tick() -> None:
     on_summary = AsyncMock()
 
     async def empty_ctx(iid):
-        return None, ""
+        return None, "", "zh"
 
     pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=empty_ctx)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
@@ -337,7 +337,7 @@ async def test_empty_intent_text_with_custom_prompt_proceeds() -> None:
     on_summary = AsyncMock()
 
     async def custom_only_ctx(iid):
-        return "summarize: {articles}", ""
+        return "summarize: {articles}", "", "zh"
 
     pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=custom_only_ctx)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")

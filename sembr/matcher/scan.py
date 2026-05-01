@@ -13,8 +13,11 @@ Flow per tick (from design):
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+
+import aiosqlite
 
 from sembr.db.intents import get_intent
 from sembr.db.match_seen import insert_unseen_returning_new
@@ -23,6 +26,7 @@ from sembr.matcher.callback import Match
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+    from sembr.models import Intent
 
 logger = logging.getLogger(__name__)
 
@@ -32,68 +36,88 @@ _INTENTS_ALIAS = "intents_current"
 _SEARCH_LIMIT = 100
 
 
-async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
-    # D6: skip tick if embedder not loaded (startup race / reload window)
-    if not app.state.embedder.is_loaded:
-        logger.warning("intent_id=%d scan skipped: embedder not ready", intent_id)
-        return
+@dataclass
+class ScanOptions:
+    """Options passed to scan_once; controls which articles to match and how to record them."""
 
-    conn = get_conn()
-    intent = await get_intent(conn, intent_id)
-    if intent is None or not intent.enabled:
-        # Race cover: intent deleted or disabled between job registration and tick
-        logger.debug("intent_id=%d scan skipped: intent missing or disabled", intent_id)
-        return
+    lookback_seconds: int
+    threshold: float
+    skip_seen: bool  # True → filter out already-seen articles before returning
+    feed_ids: list[int] | None  # None=all feeds; []=no feeds (short-circuits to [])
+    write_match_seen: bool  # True → insert hits into match_seen; False → fire path
 
-    qdrant_client = app.state.qdrant.client
 
-    # D7: any Qdrant error skips this tick cleanly; coalesce=True prevents accumulation
+async def scan_once(
+    intent: "Intent",
+    options: ScanOptions,
+    conn: aiosqlite.Connection,
+    qdrant_client,
+) -> list[Match]:
+    """Core scan shared by scheduled ticks and fire requests.
+
+    Returns the list of matches to notify. When write_match_seen=True and
+    skip_seen=True, only truly new (not-yet-seen) matches are returned.
+    When write_match_seen=False (fire path), all hits are returned regardless
+    of match_seen state.
+    """
+    # R10: empty feed_ids set matches nothing — short-circuit before any Qdrant call
+    if options.feed_ids is not None and len(options.feed_ids) == 0:
+        logger.debug("intent_id=%d scan_once short-circuit: feed_ids=[]", intent.id)
+        return []
+
     try:
-        from qdrant_client.models import FieldCondition, Filter, Range  # noqa: PLC0415
+        from qdrant_client.models import FieldCondition, Filter, MatchAny, Range  # noqa: PLC0415
 
-        # B1: retrieve intent vector fresh per tick; avoids stale-cache inconsistency
+        # B1: retrieve intent vector fresh per call; avoids stale-cache inconsistency
         points = await qdrant_client.retrieve(
             collection_name=_INTENTS_ALIAS,
-            ids=[intent_id],
+            ids=[intent.id],
             with_vectors=True,
         )
         if not points:
-            # Possible if DELETE /intents partially failed (Qdrant deleted, SQLite delete
-            # failed). The intent row still exists, but its vector is gone. Disable or
-            # re-create the intent to stop this warning.
             logger.warning(
                 "intent_id=%d has no vector in Qdrant (possible inconsistency); "
                 "disable or re-create this intent to stop repeated warnings",
-                intent_id,
+                intent.id,
             )
-            return
+            return []
         intent_vector = points[0].vector
 
         lookback_cutoff_ts = (
-            int(datetime.now(timezone.utc).timestamp()) - intent.lookback_window_seconds
+            int(datetime.now(timezone.utc).timestamp()) - options.lookback_seconds
         )
+
+        must_conditions: list = [
+            FieldCondition(
+                key="ingested_at_ts",
+                range=Range(gte=lookback_cutoff_ts),
+            )
+        ]
+        if options.feed_ids is not None:
+            must_conditions.append(
+                FieldCondition(
+                    key="feed_id",
+                    match=MatchAny(any=options.feed_ids),
+                )
+            )
+
         # qdrant-client 1.10+ removed search() in favour of query_points()
         response = await qdrant_client.query_points(
             collection_name=_NEWS_ALIAS,
             query=intent_vector,
-            score_threshold=intent.threshold,
+            score_threshold=options.threshold,
             limit=_SEARCH_LIMIT,
-            query_filter=Filter(
-                must=[
-                    FieldCondition(
-                        key="ingested_at_ts",
-                        range=Range(gte=lookback_cutoff_ts),
-                    )
-                ]
-            ),
+            query_filter=Filter(must=must_conditions),
         )
         results = response.points
         logger.debug(
-            "intent_id=%d scan: qdrant returned %d results (threshold=%.2f, lookback_cutoff_ts=%d)",
-            intent_id,
+            "intent_id=%d scan_once: qdrant returned %d results "
+            "(threshold=%.2f, lookback_cutoff_ts=%d, feed_ids=%s)",
+            intent.id,
             len(results),
-            intent.threshold,
+            options.threshold,
             lookback_cutoff_ts,
+            options.feed_ids,
         )
 
         # Diagnostic probe: when normal query returns nothing, run two fallback queries
@@ -102,7 +126,7 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
             _probe_no_time = await qdrant_client.query_points(
                 collection_name=_NEWS_ALIAS,
                 query=intent_vector,
-                score_threshold=intent.threshold,
+                score_threshold=options.threshold,
                 limit=3,
             )
             _probe_no_thresh = await qdrant_client.query_points(
@@ -121,7 +145,7 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
             )
             logger.info(
                 "intent_id=%d DIAG: no-time-filter hits=%d, no-threshold hits=%d (best_score=%.4f)",
-                intent_id,
+                intent.id,
                 len(_probe_no_time.points),
                 len(_probe_no_thresh.points),
                 _probe_no_thresh.points[0].score if _probe_no_thresh.points else 0.0,
@@ -129,14 +153,14 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
             if _probe_no_thresh.points:
                 logger.info(
                     "intent_id=%d DIAG best in-window article: score=%.4f title=%r",
-                    intent_id,
+                    intent.id,
                     _probe_no_thresh.points[0].score,
                     (_probe_no_thresh.points[0].payload or {}).get("title", "")[:100],
                 )
             if _probe_no_time.points:
                 logger.info(
                     "intent_id=%d DIAG best any-time article: score=%.4f title=%r ingested_at_ts=%s",
-                    intent_id,
+                    intent.id,
                     _probe_no_time.points[0].score,
                     (_probe_no_time.points[0].payload or {}).get("title", "")[:100],
                     (_probe_no_time.points[0].payload or {}).get("ingested_at_ts"),
@@ -146,48 +170,58 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
             top = results[0]
             logger.debug(
                 "intent_id=%d top hit: score=%.4f id=%s title=%r",
-                intent_id,
+                intent.id,
                 top.score,
                 top.id,
                 (top.payload or {}).get("title", "")[:80],
             )
     except Exception as exc:
-        logger.warning("intent_id=%d scan Qdrant error, skipping tick: %s", intent_id, exc)
-        return
+        logger.warning("intent_id=%d scan_once Qdrant error: %s", intent.id, exc)
+        return []
 
     # D20: exclude articles with enabled=False (retention hook; currently always True
     # because news points don't carry an 'enabled' payload field at MVP)
-    hits = [r for r in results if r.payload.get("enabled", True)]
+    hits = [r for r in results if (r.payload or {}).get("enabled", True)]
     logger.info(
-        "intent_id=%d scan: %d Qdrant hits → %d after enabled-filter",
-        intent_id,
+        "intent_id=%d scan_once: %d Qdrant hits → %d after enabled-filter",
+        intent.id,
         len(results),
         len(hits),
     )
     if not hits:
-        return
+        return []
 
     article_ids = [str(r.id) for r in hits]
-    try:
-        new_article_ids = await insert_unseen_returning_new(conn, intent_id, article_ids)
-    except Exception as exc:
-        # FK violation if intent was deleted mid-scan (between load and insert).
-        # Abort this tick cleanly; next tick either won't fire (job unregistered) or
-        # will hit the get_intent guard above.
-        logger.warning(
-            "intent_id=%d match_seen insert failed (%s, intent may have been deleted): %s",
-            intent_id,
-            type(exc).__name__,
-            exc,
-        )
-        return
-    if not new_article_ids:
-        return
-
     id_to_hit = {str(r.id): r for r in hits}
-    matches = [
+
+    if options.write_match_seen:
+        try:
+            if options.skip_seen:
+                # Read + write: filter out already-seen, return only new
+                new_article_ids = await insert_unseen_returning_new(conn, intent.id, article_ids)
+            else:
+                # Write-only: record all hits but return all of them (notify every time)
+                await insert_unseen_returning_new(conn, intent.id, article_ids)
+                new_article_ids = article_ids
+        except Exception as exc:
+            # FK violation if intent was deleted mid-scan.
+            logger.warning(
+                "intent_id=%d match_seen insert failed (%s, intent may have been deleted): %s",
+                intent.id,
+                type(exc).__name__,
+                exc,
+            )
+            return []
+    else:
+        # Fire path: never touch match_seen, return all hits
+        new_article_ids = article_ids
+
+    if not new_article_ids:
+        return []
+
+    return [
         Match(
-            intent_id=intent_id,
+            intent_id=intent.id,
             article_id=aid,
             score=id_to_hit[aid].score,
             payload=id_to_hit[aid].payload,
@@ -195,8 +229,35 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
         for aid in new_article_ids
     ]
 
-    # R5: guard against on_match being None during startup race (scheduler.start() fires
-    # before app.state is fully visible in some edge cases; belt-and-suspenders check)
+
+async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
+    # D6: skip tick if embedder not loaded (startup race / reload window)
+    if not app.state.embedder.is_loaded:
+        logger.warning("intent_id=%d scan skipped: embedder not ready", intent_id)
+        return
+
+    conn = get_conn()
+    intent = await get_intent(conn, intent_id)
+    if intent is None or not intent.enabled:
+        # Race cover: intent deleted or disabled between job registration and tick
+        logger.debug("intent_id=%d scan skipped: intent missing or disabled", intent_id)
+        return
+
+    qdrant_client = app.state.qdrant.client
+
+    options = ScanOptions(
+        lookback_seconds=intent.lookback_window_seconds,
+        threshold=intent.threshold,
+        skip_seen=intent.skip_seen,
+        feed_ids=intent.feed_filter.ids if intent.feed_filter else None,
+        write_match_seen=True,
+    )
+
+    matches = await scan_once(intent, options, conn, qdrant_client)
+    if not matches:
+        return
+
+    # R5: guard against on_match being None during startup race
     callback = app.state.on_match
     if callback is None:
         logger.error("intent_id=%d on_match is None, skipping notification", intent_id)
@@ -206,5 +267,4 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
         await callback(matches)
     except Exception as exc:
         # E1: match_seen already committed; on_match failure = silent loss for this tick.
-        # The callback implementation is responsible for its own error handling.
         logger.error("intent_id=%d on_match raised: %s", intent_id, exc)

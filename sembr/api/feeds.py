@@ -8,7 +8,9 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from sembr.collector.scheduler import add_feed_job, remove_feed_job
 from sembr.db.feeds import create_feed, delete_feed, list_feeds
+from sembr.db.intents import get_intent, intents_remove_feed_id
 from sembr.db.sqlite import get_conn
+from sembr.matcher.jobs import reregister_intent_job
 from sembr.models import Feed, FeedCreate
 
 logger = logging.getLogger(__name__)
@@ -55,8 +57,31 @@ async def get_feeds() -> list[Feed]:
 @router.delete("/{feed_id}")
 async def remove_feed(feed_id: int, request: Request) -> Response:
     conn = get_conn()
-    existed = await delete_feed(conn, feed_id)
-    if not existed:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
+
+    # Existence check before any write (avoids committing a cascade for a non-existent feed)
+    async with conn.execute("SELECT id FROM feeds WHERE id=?", (feed_id,)) as cur:
+        if not await cur.fetchone():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
+
+    # DD3: cascade — remove feed_id from all intent feed_filter.ids (no commit yet)
+    cascaded_intents = await intents_remove_feed_id(conn, feed_id)
+    # delete_feed issues conn.commit(), committing both the cascade UPDATE and the DELETE atomically
+    await delete_feed(conn, feed_id)
+
     remove_feed_job(request.app.state.scheduler, feed_id)
+
+    # Reregister affected intent jobs so updated scan filter takes effect immediately
+    scheduler = request.app.state.scheduler
+    for iid in cascaded_intents:
+        intent = await get_intent(conn, iid)
+        if intent is not None and intent.enabled:
+            try:
+                reregister_intent_job(scheduler, intent, request.app)
+            except Exception as exc:
+                logger.warning(
+                    "feed delete: reregister intent_id=%d failed: %s (recovers on restart)",
+                    iid,
+                    exc,
+                )
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)

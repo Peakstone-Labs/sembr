@@ -116,8 +116,11 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     enabled_changed = body.enabled is not None and body.enabled != current.enabled
     schedule_changed = (
         (
-            body.scan_interval_seconds is not None
-            and body.scan_interval_seconds != current.scan_interval_seconds
+            body.schedule is not None
+            and body.schedule != current.schedule
+        ) or (
+            body.timezone is not None
+            and body.timezone != current.timezone
         ) or (
             body.lookback_window_seconds is not None
             and body.lookback_window_seconds != current.lookback_window_seconds

@@ -1,9 +1,12 @@
 """Domain models."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
+from typing import Annotated, Literal, Union
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from sembr.notifier.email import EmailChannelConfig
 
@@ -11,6 +14,36 @@ from sembr.notifier.email import EmailChannelConfig
 # Single-element today; when a second channel ships, wrap with
 # `Annotated[Union[EmailChannelConfig, TelegramChannelConfig], Field(discriminator="type")]`.
 ChannelConfig = EmailChannelConfig
+
+
+class IntervalSchedule(BaseModel):
+    mode: Literal["interval"] = "interval"
+    seconds: int = Field(default=3600, ge=60, le=604800)
+
+
+class CronSchedule(BaseModel):
+    mode: Literal["cron"] = "cron"
+    preset: Literal["daily", "weekly", "hourly"]
+    hour: int = Field(ge=0, le=23, default=0)
+    minute: int = Field(ge=0, le=59, default=0)
+    weekday: Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"] | None = None
+
+    @model_validator(mode="after")
+    def _weekday_constraint(self) -> "CronSchedule":
+        if self.preset == "weekly" and self.weekday is None:
+            raise ValueError("weekday is required when preset='weekly'")
+        if self.preset != "weekly" and self.weekday is not None:
+            raise ValueError("weekday must be None when preset is not 'weekly'")
+        if self.preset == "hourly" and self.hour != 0:
+            raise ValueError("hour is ignored for preset='hourly'; set preset='daily' to schedule a specific hour")
+        return self
+
+
+Schedule = Annotated[Union[IntervalSchedule, CronSchedule], Field(discriminator="mode")]
+
+
+class FeedFilter(BaseModel):
+    ids: list[int] | None = None  # None=全扫，[]=空集，[1,3]=子集
 
 
 class FeedCreate(BaseModel):
@@ -41,10 +74,14 @@ class IntentCreate(BaseModel):
     enabled: bool = True
     channels: list[ChannelConfig] = Field(min_length=1, max_length=10)
     tags: list[str] = Field(default_factory=list, max_length=10)
-    scan_interval_seconds: int = Field(default=3600, ge=60, le=604800)
+    schedule: Schedule = Field(default_factory=IntervalSchedule)
     lookback_window_seconds: int = Field(default=86400, ge=300, le=2592000)
     first_scan_at: datetime | None = None
     custom_prompt: str | None = None
+    skip_seen: bool = True
+    feed_filter: FeedFilter | None = None
+    timezone: str = "UTC"
+    language: str = "zh"
 
     @field_validator("tags")
     @classmethod
@@ -52,6 +89,26 @@ class IntentCreate(BaseModel):
         for t in v:
             if not (1 <= len(t) <= 50):
                 raise ValueError("tag length must be 1..50")
+        return v
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, KeyError):
+            raise ValueError(f"unknown timezone: {v!r}")
+        return v
+
+    @field_validator("language")
+    @classmethod
+    def _language_safe(cls, v: str) -> str:
+        if not v:
+            raise ValueError("language must not be empty")
+        if len(v) > 32:
+            raise ValueError("language must be ≤ 32 chars")
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_\- ]*", v):
+            raise ValueError("language must start with a letter and contain only letters, digits, hyphens, underscores, or spaces")
         return v
 
 
@@ -64,10 +121,14 @@ class IntentUpdate(BaseModel):
     enabled: bool | None = None
     channels: list[ChannelConfig] | None = Field(default=None, min_length=1, max_length=10)
     tags: list[str] | None = Field(default=None, max_length=10)
-    scan_interval_seconds: int | None = Field(default=None, ge=60, le=604800)
+    schedule: Schedule | None = None
     lookback_window_seconds: int | None = Field(default=None, ge=300, le=2592000)
     first_scan_at: datetime | None = None
     custom_prompt: str | None = None
+    skip_seen: bool | None = None
+    feed_filter: FeedFilter | None = None
+    timezone: str | None = None
+    language: str | None = None
 
     @field_validator("tags")
     @classmethod
@@ -77,6 +138,30 @@ class IntentUpdate(BaseModel):
         for t in v:
             if not (1 <= len(t) <= 50):
                 raise ValueError("tag length must be 1..50")
+        return v
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, KeyError):
+            raise ValueError(f"unknown timezone: {v!r}")
+        return v
+
+    @field_validator("language")
+    @classmethod
+    def _language_safe(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not v:
+            raise ValueError("language must not be empty")
+        if len(v) > 32:
+            raise ValueError("language must be ≤ 32 chars")
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_\- ]*", v):
+            raise ValueError("language must start with a letter and contain only letters, digits, hyphens, underscores, or spaces")
         return v
 
 
@@ -94,9 +179,13 @@ class Intent(BaseModel):
     enabled: bool
     channels: list[ChannelConfig]
     tags: list[str]
-    scan_interval_seconds: int
+    schedule: Schedule
     lookback_window_seconds: int
     first_scan_at: datetime | None
     custom_prompt: str | None
+    skip_seen: bool
+    feed_filter: FeedFilter | None
+    timezone: str
+    language: str
     created_at: str
     updated_at: str

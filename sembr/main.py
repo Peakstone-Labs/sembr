@@ -26,6 +26,7 @@ logging.getLogger("sembr").setLevel(logging.INFO)
 import aiosqlite
 
 from sembr.api.feeds import router as feeds_router
+from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
 from sembr.api.intents import router as intents_router
 from sembr.collector.scheduler import add_feed_job, make_scheduler
@@ -41,6 +42,7 @@ from sembr.db.match_seen import init_match_seen_tables
 from sembr.db.sqlite import close_sqlite, init_sqlite
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
+from sembr.matcher.fire_tasks import sweep_expired
 from sembr.matcher.jobs import register_all_enabled
 from sembr.notifier.email import EmailChannel, EmailChannelConfig
 from sembr.summarizer.llm.factory import build_llm_backend
@@ -73,11 +75,11 @@ async def _dispatch_notification(
         )
 
 
-async def _get_intent_prompt_ctx(conn, intent_id: int) -> tuple[str | None, str]:
+async def _get_intent_prompt_ctx(conn, intent_id: int) -> tuple[str | None, str, str]:
     intent = await get_intent(conn, intent_id)
     if intent is None:
-        return None, ""
-    return intent.custom_prompt, intent.text
+        return None, "", "zh"
+    return intent.custom_prompt, intent.text, intent.language
 
 
 @asynccontextmanager
@@ -102,6 +104,15 @@ async def lifespan(app: FastAPI):
         await add_feed_job(scheduler, feed, jitter_seconds=i * 2)
     add_embedder_worker_job(scheduler, embedder, qdrant)
     add_log_retention_job(scheduler, settings)  # dashboard D9: hourly log prune
+    # DD4: sweep expired fire tasks every 5 minutes
+    from apscheduler.triggers.interval import IntervalTrigger as _IT  # noqa: PLC0415
+    scheduler.add_job(
+        sweep_expired,
+        trigger=_IT(minutes=5),
+        id="fire-tasks-sweep",
+        coalesce=True,
+        replace_existing=True,
+    )
     # D18: register per-intent jobs for all currently-enabled intents (restart recovery)
     enabled_intents = await list_intents(conn, enabled=True)
     await register_all_enabled(scheduler, enabled_intents, app, qdrant.client)
@@ -154,6 +165,7 @@ app.add_middleware(DashboardTokenMiddleware)
 app.include_router(health_router)
 app.include_router(feeds_router)
 app.include_router(intents_router)
+app.include_router(fire_router)
 app.include_router(dashboard_router)
 
 # Mount /dashboard only when the bundled UI exists. Missing bundle = JSON API still

@@ -466,14 +466,15 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SC#13 — new fields: range validation on scan_interval_seconds / lookback_window_seconds
+# SC#13 — new fields: range validation on schedule / lookback_window_seconds
 # ---------------------------------------------------------------------------
 
 _NEW_FIELD_INVALID_BODIES = [
-    # scan_interval_seconds out of range
-    {**VALID_BODY, "scan_interval_seconds": 59},       # below minimum (60)
-    {**VALID_BODY, "scan_interval_seconds": 604801},    # above maximum (604800)
-    {**VALID_BODY, "scan_interval_seconds": 0},
+    # schedule.seconds out of range (IntervalSchedule)
+    {**VALID_BODY, "schedule": {"mode": "interval", "seconds": 59}},     # below minimum
+    {**VALID_BODY, "schedule": {"mode": "interval", "seconds": 604801}},  # above maximum
+    # CronSchedule weekly without weekday
+    {**VALID_BODY, "schedule": {"mode": "cron", "preset": "weekly", "hour": 9}},
     # lookback_window_seconds out of range
     {**VALID_BODY, "lookback_window_seconds": 299},     # below minimum (300)
     {**VALID_BODY, "lookback_window_seconds": 2592001},  # above maximum (2592000)
@@ -494,26 +495,30 @@ def test_post_intent_new_fields_defaults() -> None:
 
     assert resp.status_code == 201
     data = resp.json()
-    assert data["scan_interval_seconds"] == 3600
+    assert data["schedule"] == {"mode": "interval", "seconds": 3600}
     assert data["lookback_window_seconds"] == 86400
     assert data["first_scan_at"] is None
+    assert data["skip_seen"] is True
+    assert data["feed_filter"] is None
+    assert data["timezone"] == "UTC"
+    assert data["language"] == "zh"
 
 
 def test_put_intent_schedule_fields() -> None:
-    """PUT scan_interval_seconds updates the stored value."""
+    """PUT schedule updates the stored value."""
     with _client() as (http, _):
         intent_id = http.post("/intents", json=VALID_BODY).json()["id"]
-        resp = http.put(f"/intents/{intent_id}", json={"scan_interval_seconds": 120})
+        resp = http.put(f"/intents/{intent_id}", json={"schedule": {"mode": "interval", "seconds": 120}})
 
     assert resp.status_code == 200
-    assert resp.json()["scan_interval_seconds"] == 120
+    assert resp.json()["schedule"] == {"mode": "interval", "seconds": 120}
 
 
 def test_put_intent_schedule_invalid() -> None:
-    """PUT with out-of-range scan_interval_seconds → 422."""
+    """PUT with out-of-range schedule seconds → 422."""
     with _client() as (http, _):
         intent_id = http.post("/intents", json=VALID_BODY).json()["id"]
-        resp = http.put(f"/intents/{intent_id}", json={"scan_interval_seconds": 30})
+        resp = http.put(f"/intents/{intent_id}", json={"schedule": {"mode": "interval", "seconds": 30}})
 
     assert resp.status_code == 422
 
