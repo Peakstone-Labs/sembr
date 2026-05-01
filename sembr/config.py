@@ -103,6 +103,11 @@ class Settings(BaseSettings):
     smtp_use_starttls: bool = Field(default=True, description="Enable STARTTLS (port 587 style).")
     smtp_use_ssl: bool = Field(default=False, description="Use SMTP_SSL instead of SMTP+STARTTLS (port 465 style).")
 
+    prompts_dir: Path = Field(
+        default=Path("/app/prompts"),
+        description="Root directory for prompt templates. Subdirs: system/ and instruction/. Override via SEMBR_PROMPTS_DIR.",
+    )
+
     display_timezone: str = Field(
         default="Asia/Shanghai",
         description="IANA timezone used to render published_at in notifications (e.g. Asia/Shanghai, UTC, America/New_York).",
