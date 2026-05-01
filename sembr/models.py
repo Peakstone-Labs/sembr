@@ -67,6 +67,18 @@ class Feed(FeedCreate):
     created_at: str
 
 
+_TEMPLATE_IDENT_RE = re.compile(r"^[^/\\\.][^/\\]{0,99}$")
+
+
+def _validate_template_name(v: str) -> str:
+    if not _TEMPLATE_IDENT_RE.match(v):
+        raise ValueError(
+            f"Invalid template name {v!r}: must not start with '.', "
+            "must not contain '/', '\\', or '..', length 1–100."
+        )
+    return v
+
+
 class IntentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     text: str = Field(min_length=1, max_length=2000)
@@ -77,7 +89,8 @@ class IntentCreate(BaseModel):
     schedule: Schedule = Field(default_factory=IntervalSchedule)
     lookback_window_seconds: int = Field(default=86400, ge=300, le=2592000)
     first_scan_at: datetime | None = None
-    custom_prompt: str | None = None
+    system_template: str = "default"
+    instruction_template: str = "default"
     skip_seen: bool = True
     feed_filter: FeedFilter | None = None
     timezone: str = "UTC"
@@ -111,6 +124,11 @@ class IntentCreate(BaseModel):
             raise ValueError("language must start with a letter and contain only letters, digits, hyphens, underscores, or spaces")
         return v
 
+    @field_validator("system_template", "instruction_template")
+    @classmethod
+    def _template_name_syntax(cls, v: str) -> str:
+        return _validate_template_name(v)
+
 
 class IntentUpdate(BaseModel):
     """All fields optional — partial update; all defaults = no-op (200 + current state)."""
@@ -124,7 +142,8 @@ class IntentUpdate(BaseModel):
     schedule: Schedule | None = None
     lookback_window_seconds: int | None = Field(default=None, ge=300, le=2592000)
     first_scan_at: datetime | None = None
-    custom_prompt: str | None = None
+    system_template: str | None = None
+    instruction_template: str | None = None
     skip_seen: bool | None = None
     feed_filter: FeedFilter | None = None
     timezone: str | None = None
@@ -164,6 +183,13 @@ class IntentUpdate(BaseModel):
             raise ValueError("language must start with a letter and contain only letters, digits, hyphens, underscores, or spaces")
         return v
 
+    @field_validator("system_template", "instruction_template")
+    @classmethod
+    def _template_name_syntax(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _validate_template_name(v)
+
 
 class Intent(BaseModel):
     """Response model — server-generated fields first, then user fields, timestamps last.
@@ -182,7 +208,8 @@ class Intent(BaseModel):
     schedule: Schedule
     lookback_window_seconds: int
     first_scan_at: datetime | None
-    custom_prompt: str | None
+    system_template: str
+    instruction_template: str
     skip_seen: bool
     feed_filter: FeedFilter | None
     timezone: str
