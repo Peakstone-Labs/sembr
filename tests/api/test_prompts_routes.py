@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sembr.api.prompts import router
+from sembr.dashboard.auth import DashboardTokenMiddleware
 
 
 def _make_settings(prompts_dir: Path) -> MagicMock:
@@ -102,3 +103,51 @@ def test_get_template_path_traversal_returns_400(prompts_dir: Path) -> None:
     with _client(prompts_dir) as http:
         resp = http.get("/api/prompts/templates/system/..%2Fetc%2Fpasswd")
     assert resp.status_code in (400, 404)  # either validation or path rejection
+
+
+# ---------------------------------------------------------------------------
+# Auth gate — /api/prompts/* must be protected by DashboardTokenMiddleware
+# ---------------------------------------------------------------------------
+
+
+def test_prompts_routes_require_token_when_dashboard_token_set(prompts_dir: Path) -> None:
+    """When DASHBOARD_TOKEN is configured, unauthenticated requests to /api/prompts/* return 401."""
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        yield
+
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(DashboardTokenMiddleware)
+    app.include_router(router)
+    app.state.settings = _make_settings(prompts_dir)
+
+    mock_settings = MagicMock()
+    mock_settings.dashboard_token.get_secret_value.return_value = "secret-token"
+
+    with patch("sembr.dashboard.auth.get_settings", return_value=mock_settings):
+        with TestClient(app, raise_server_exceptions=False) as http:
+            resp = http.get("/api/prompts/templates")
+    assert resp.status_code == 401
+
+
+def test_prompts_routes_allow_request_with_valid_token(prompts_dir: Path) -> None:
+    """Requests with a valid X-Dashboard-Token header pass through."""
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        yield
+
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(DashboardTokenMiddleware)
+    app.include_router(router)
+    app.state.settings = _make_settings(prompts_dir)
+
+    mock_settings = MagicMock()
+    mock_settings.dashboard_token.get_secret_value.return_value = "secret-token"
+
+    with patch("sembr.dashboard.auth.get_settings", return_value=mock_settings):
+        with TestClient(app, raise_server_exceptions=False) as http:
+            resp = http.get(
+                "/api/prompts/templates",
+                headers={"X-Dashboard-Token": "secret-token"},
+            )
+    assert resp.status_code == 200

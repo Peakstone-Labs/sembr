@@ -44,6 +44,14 @@ def test_template_exists_invalid_name_returns_false(prompts_dir: Path) -> None:
     assert template_exists(prompts_dir, "system", "a/b") is False
 
 
+def test_validate_name_rejects_embedded_double_dot(prompts_dir: Path) -> None:
+    assert template_exists(prompts_dir, "system", "a..b") is False
+    assert template_exists(prompts_dir, "system", "foo..") is False
+    with pytest.raises(ValueError):
+        from sembr.summarizer.templates import _validate_name
+        _validate_name("a..b")
+
+
 # --- list_templates ---
 
 def test_list_templates_returns_sorted(prompts_dir: Path) -> None:
@@ -56,6 +64,13 @@ def test_list_templates_returns_sorted(prompts_dir: Path) -> None:
 def test_list_templates_missing_kind_dir(tmp_path: Path) -> None:
     result = list_templates(tmp_path, "system")
     assert result == []
+
+
+def test_list_templates_excludes_hidden_files(prompts_dir: Path) -> None:
+    (prompts_dir / "system" / ".hidden.md").write_text("x", encoding="utf-8")
+    result = list_templates(prompts_dir, "system")
+    assert ".hidden" not in result
+    assert "default" in result
 
 
 # --- load_template ---

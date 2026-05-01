@@ -67,7 +67,7 @@ class Feed(FeedCreate):
     created_at: str
 
 
-_TEMPLATE_IDENT_RE = re.compile(r"^[^/\\\.][^/\\]{0,99}$")
+_TEMPLATE_IDENT_RE = re.compile(r"^(?!\.)(?!.*\.\.)[^/\\]{1,100}$")
 
 
 def _validate_template_name(v: str) -> str:

@@ -17,8 +17,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-# Identifier validation: no leading dot, no / \ or .., length 1..100, Unicode ok.
-_IDENT_RE = re.compile(r"^[^/\\\.][^/\\]{0,99}$")
+# Identifier validation: no leading dot, no / \ .., length 1..100, Unicode ok.
+_IDENT_RE = re.compile(r"^(?!\.)(?!.*\.\.)[^/\\]{1,100}$")
 
 _SYSTEM_PLACEHOLDERS: frozenset[str] = frozenset({"language"})
 _INSTRUCTION_PLACEHOLDERS: frozenset[str] = frozenset({"intent_text", "articles"})
@@ -63,7 +63,7 @@ def list_templates(prompts_dir: Path, kind: str) -> list[str]:
     kind_dir = prompts_dir / kind
     if not kind_dir.is_dir():
         return []
-    return sorted(p.stem for p in kind_dir.glob("*.md") if p.is_file())
+    return sorted(p.stem for p in kind_dir.glob("*.md") if p.is_file() and not p.name.startswith("."))
 
 
 def load_template(prompts_dir: Path, kind: str, name: str) -> str:

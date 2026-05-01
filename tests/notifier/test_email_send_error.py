@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import smtplib
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +20,7 @@ def _make_settings(smtp_host: str = "smtp.example.com") -> MagicMock:
     s.smtp_use_ssl = False
     s.smtp_use_starttls = True
     s.display_timezone = "UTC"
+    s.prompts_dir = Path("/app/prompts")
     return s
 
 
@@ -52,6 +54,8 @@ async def test_send_error_constructs_subject_with_intent_and_template_name() -> 
     subject = captured_msgs[0]["Subject"]
     assert "crypto-alerts" in subject
     assert "crypto_zh" in subject
+    # D11: subject must include the short reason
+    assert "not found" in subject
 
 
 @pytest.mark.asyncio
@@ -132,5 +136,5 @@ async def test_send_error_html_contains_fix_hint() -> None:
     else:
         payload = str(raw_payload)
 
-    assert "prompts/instruction/custom_tpl.md" in payload
+    assert "/app/prompts/instruction/custom_tpl.md" in payload
     assert "intent_text" in payload

@@ -1,7 +1,6 @@
 """GET /api/prompts/templates — list and read prompt templates."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, status

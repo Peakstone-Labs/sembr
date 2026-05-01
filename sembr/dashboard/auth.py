@@ -24,8 +24,8 @@ _VENDOR_PREFIX = "/dashboard/vendor/"
 # Trailing-slash prefixes prevent accidental capture of a future
 # `/dashboard-status` or `/api/dashboard-stats` business route under the gate.
 # Bare paths still need exact-match coverage for `/dashboard` and `/api/dashboard`.
-_PROTECTED_PREFIXES = ("/dashboard/", "/api/dashboard/")
-_PROTECTED_EXACT = frozenset({"/dashboard", "/api/dashboard"})
+_PROTECTED_PREFIXES = ("/dashboard/", "/api/dashboard/", "/api/prompts/")
+_PROTECTED_EXACT = frozenset({"/dashboard", "/api/dashboard", "/api/prompts"})
 # Endpoints that must remain reachable without a token to bootstrap the UI:
 #   /api/dashboard/config — frontend calls it on first load to know whether
 #   auth is required and what poll interval to use.
