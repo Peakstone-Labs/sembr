@@ -246,6 +246,79 @@ class EmailChannel(BaseChannel):
             citations=citations,
         )
 
+    async def send_error(
+        self,
+        intent_name: str,
+        kind: str,
+        name: str,
+        reason: str,
+        *,
+        config: EmailChannelConfig,
+    ) -> None:
+        """Send a template-error notification email. Never raises."""
+        try:
+            await self._send_error(intent_name, kind, name, reason, config=config)
+        except Exception:
+            logger.error(
+                "EmailChannel.send_error failed for intent=%r template=%s/%s",
+                intent_name,
+                kind,
+                name,
+                exc_info=True,
+            )
+
+    async def _send_error(
+        self,
+        intent_name: str,
+        kind: str,
+        name: str,
+        reason: str,
+        *,
+        config: EmailChannelConfig,
+    ) -> None:
+        s = self._settings
+        if not s.smtp_host:
+            logger.warning(
+                "EmailChannel.send_error: smtp_host not configured, skipping for intent=%r",
+                intent_name,
+            )
+            return
+
+        short_reason = reason.split("\n")[0][:120]
+        subject = (
+            f"[sembr][error] {intent_name} — "
+            f"{kind} template '{name}' "
+            f"{'missing' if 'not found' in reason.lower() else 'render error'}"
+        )
+        html_body = self._render_error_html(intent_name, kind, name, reason)
+        msg = MIMEText(html_body, "html", "utf-8")
+        msg["Subject"] = subject
+        msg["From"] = s.smtp_from or s.smtp_username
+        to_addrs = [str(a) for a in config.to]
+        cc_addrs = [str(a) for a in config.cc]
+        bcc_addrs = [str(a) for a in config.bcc]
+        msg["To"] = ", ".join(to_addrs)
+        if cc_addrs:
+            msg["Cc"] = ", ".join(cc_addrs)
+        all_rcpts = [*to_addrs, *cc_addrs, *bcc_addrs]
+        _ = short_reason  # used in subject already
+        await asyncio.to_thread(self._send_sync, msg, all_rcpts)
+
+    def _render_error_html(
+        self,
+        intent_name: str,
+        kind: str,
+        name: str,
+        reason: str,
+    ) -> str:
+        tmpl = self._env.get_template("email_template_error.html.jinja2")
+        return tmpl.render(
+            intent_name=intent_name,
+            kind=kind,
+            name=name,
+            reason=reason,
+        )
+
     def _send_sync(self, msg, rcpts: list[str]) -> None:  # MIMEText | MIMEMultipart
         s = self._settings
         if s.smtp_use_ssl:

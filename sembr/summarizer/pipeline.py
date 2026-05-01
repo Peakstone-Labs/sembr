@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Awaitable, Callable, Protocol
 
 import html2text as _h2t
 
+from sembr.summarizer import templates as _templates
 from sembr.summarizer.grouping import GroupingStep
 from sembr.summarizer.models import Citation, OnSummaryCallback, PrePushHook, SummaryResult
+from sembr.summarizer.templates import TemplateNotFoundError, TemplateRenderError
 
 if TYPE_CHECKING:
     from sembr.matcher.callback import Match
@@ -20,7 +22,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Hardcoded fallbacks ensure import never fails on a partial/broken install.
+# Hardcoded fallback strings — kept as documentation / last-resort reference.
+# Not used at runtime: template errors are routed to on_template_error, not
+# silently replaced. These mirror the content of prompts/system/default.md
+# and prompts/instruction/default.md respectively.
 _FALLBACK_SYSTEM_PROMPT = (
     "You are a news monitoring assistant. Output Markdown only "
     "(## / ### for sub-topic headings, - or * for bullets, **bold** for emphasis). "
@@ -41,18 +46,6 @@ _FALLBACK_PROMPT = (
     "---\n\n"
     "Write a digest of the key developments above."
 )
-
-
-def _load_prompt(name: str, fallback: str) -> str:
-    try:
-        return (Path(__file__).parent / "prompts" / name).read_text(encoding="utf-8")
-    except (FileNotFoundError, OSError) as exc:
-        logger.warning("%s prompt template not found (%s); using built-in fallback", name, exc)
-        return fallback
-
-
-_DEFAULT_SYSTEM_PROMPT = _load_prompt("default_system.md", _FALLBACK_SYSTEM_PROMPT)
-_DEFAULT_PROMPT = _load_prompt("default.md", _FALLBACK_PROMPT)
 
 _BODY_TRUNCATE = 1_000_000  # DeepSeek Flash V4 has 1M context; effectively no truncation
 
@@ -102,11 +95,17 @@ def _to_citation(m: Match, feed_name_map: dict[int, str] | None = None) -> Citat
 
 
 class IntentPromptCtxFetcher(Protocol):
-    async def __call__(self, intent_id: int) -> tuple[str | None, str, str]: ...
+    async def __call__(
+        self, intent_id: int
+    ) -> tuple[str, str, str, str]: ...
+    # Returns: (system_template_name, instruction_template_name, intent_text, language)
 
 
 class FeedNameFetcher(Protocol):
     async def __call__(self, feed_ids: list[int]) -> dict[int, str]: ...
+
+
+OnTemplateError = Callable[[int, str, str, str], Awaitable[None]]
 
 
 class SummaryPipeline:
@@ -118,6 +117,8 @@ class SummaryPipeline:
         pre_push_hook: PrePushHook | None = None,
         get_intent_prompt_ctx: IntentPromptCtxFetcher | None = None,
         get_feed_names: FeedNameFetcher | None = None,
+        on_template_error: OnTemplateError | None = None,
+        prompts_dir: Path = Path("/app/prompts"),
     ) -> None:
         self._llm = llm
         self._grouper = GroupingStep(threshold=grouping_threshold)
@@ -125,6 +126,8 @@ class SummaryPipeline:
         self._pre_push_hook = pre_push_hook
         self._get_intent_prompt_ctx = get_intent_prompt_ctx
         self._get_feed_names = get_feed_names
+        self._on_template_error = on_template_error
+        self._prompts_dir = prompts_dir
 
     async def handle(self, matches: list[Match]) -> None:
         """on_match callback entry point — must never raise."""
@@ -137,42 +140,49 @@ class SummaryPipeline:
 
     async def _handle(self, matches: list[Match]) -> None:
         intent_id = matches[0].intent_id
-        # Lock a deterministic order ONCE: this is what the LLM sees as [1]..[N]
-        # in the user prompt, AND what the citation list renders below the
-        # summary. Newest first; stable tiebreak by article_id keeps unit tests
-        # reproducible.
-        # ISO-8601 published_at strings sort correctly lexicographically.
-        # reverse=True puts newest first; None/missing → "" → sorts last.
         ordered = sorted(
             matches,
             key=lambda m: (m.payload.get("published_at") or "", m.article_id),
             reverse=True,
         )
-        # One scan = one digest email per intent. The LLM (1M ctx) deduplicates
-        # near-identical reports across sources itself, so the title-similarity
-        # GroupingStep is bypassed; kept on disk for future per-event mode.
         groups = [ordered]
 
-        custom_prompt: str | None = None
+        system_tpl_name: str = "default"
+        instruction_tpl_name: str = "default"
         intent_text: str = ""
         language: str = "zh"
         if self._get_intent_prompt_ctx is not None:
             try:
-                custom_prompt, intent_text, language = await self._get_intent_prompt_ctx(intent_id)
+                system_tpl_name, instruction_tpl_name, intent_text, language = (
+                    await self._get_intent_prompt_ctx(intent_id)
+                )
             except Exception:
                 logger.warning(
                     "SummaryPipeline: could not fetch prompt ctx for intent_id=%d, skipping tick",
                     intent_id,
                 )
                 return
-            # An empty topic line + no custom prompt produces a useless LLM input.
-            # Treat as "intent gone" (deleted between match and summarize) and skip.
-            if not custom_prompt and not intent_text:
+            if not intent_text:
                 logger.warning(
-                    "SummaryPipeline: empty intent_text and no custom_prompt for intent_id=%d, skipping",
+                    "SummaryPipeline: empty intent_text for intent_id=%d, skipping",
                     intent_id,
                 )
                 return
+
+        # Render system prompt once per tick (shared across all groups).
+        try:
+            system_prompt = _templates.render_system(
+                self._prompts_dir, system_tpl_name, language=language
+            )
+        except (TemplateNotFoundError, TemplateRenderError) as exc:
+            logger.error(
+                "SummaryPipeline: system template error for intent_id=%d: %s",
+                intent_id,
+                exc,
+            )
+            if self._on_template_error is not None:
+                await self._on_template_error(intent_id, "system", system_tpl_name, str(exc))
+            return
 
         feed_name_map: dict[int, str] = {}
         if self._get_feed_names is not None:
@@ -180,7 +190,6 @@ class SummaryPipeline:
                 feed_ids = sorted({m.payload.get("feed_id", 0) for m in matches})
                 feed_name_map = await self._get_feed_names(feed_ids)
             except Exception as exc:
-                # Citations fall back to source_name=None; not a hard failure.
                 logger.warning(
                     "SummaryPipeline: feed name lookup failed for intent_id=%d: %s",
                     intent_id,
@@ -190,9 +199,25 @@ class SummaryPipeline:
         for group in groups:
             articles_text = _build_articles_text(group)
 
-            prompt = _resolve_prompt(custom_prompt, intent_text, articles_text)
+            try:
+                prompt = _templates.render_instruction(
+                    self._prompts_dir,
+                    instruction_tpl_name,
+                    intent_text=intent_text,
+                    articles=articles_text,
+                )
+            except (TemplateNotFoundError, TemplateRenderError) as exc:
+                logger.error(
+                    "SummaryPipeline: instruction template error for intent_id=%d: %s",
+                    intent_id,
+                    exc,
+                )
+                if self._on_template_error is not None:
+                    await self._on_template_error(
+                        intent_id, "instruction", instruction_tpl_name, str(exc)
+                    )
+                return
 
-            system_prompt = _DEFAULT_SYSTEM_PROMPT.format(language=language)
             try:
                 summary = await self._llm.summarize(prompt, system=system_prompt)
             except Exception as exc:
@@ -223,15 +248,3 @@ class SummaryPipeline:
                     continue
 
             await self._on_summary(result)
-
-
-def _resolve_prompt(custom_prompt: str | None, intent_text: str, articles_text: str) -> str:
-    template = custom_prompt if custom_prompt else _DEFAULT_PROMPT
-    try:
-        return template.format_map({"intent_text": intent_text, "articles": articles_text})
-    except (KeyError, IndexError, ValueError) as exc:
-        logger.warning(
-            "SummaryPipeline: custom_prompt render failed (%s); falling back to default",
-            exc,
-        )
-        return _DEFAULT_PROMPT.format_map({"intent_text": intent_text, "articles": articles_text})

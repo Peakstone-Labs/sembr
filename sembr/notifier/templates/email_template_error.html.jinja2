@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 14px; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #c0392b; color: #fff; padding: 12px 16px; border-radius: 4px 4px 0 0; }
+    .header h2 { margin: 0; font-size: 16px; }
+    .body { border: 1px solid #e0e0e0; border-top: none; padding: 16px; border-radius: 0 0 4px 4px; }
+    .field { margin-bottom: 10px; }
+    .label { font-weight: bold; color: #555; min-width: 120px; display: inline-block; }
+    .hint { background: #f5f5f5; border-left: 3px solid #999; padding: 8px 12px; margin-top: 14px; font-size: 13px; color: #666; }
+    .hint code { background: #e8e8e8; padding: 1px 4px; border-radius: 3px; }
+    .footer { margin-top: 16px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>⚠ sembr — template error</h2>
+  </div>
+  <div class="body">
+    <div class="field"><span class="label">Intent:</span> {{ intent_name }}</div>
+    <div class="field"><span class="label">Template kind:</span> {{ kind }}</div>
+    <div class="field"><span class="label">Template name:</span> {{ name }}</div>
+    <div class="field"><span class="label">Error:</span> {{ reason }}</div>
+
+    <div class="hint">
+      <strong>How to fix:</strong><br>
+      Place the template file at
+      <code>prompts/{{ kind }}/{{ name }}.md</code>
+      on the host machine.<br>
+      The file will be picked up on the next scan tick — no restart required.<br><br>
+      Available placeholders:
+      {% if kind == "system" %}
+        <code>{language}</code>
+      {% else %}
+        <code>{intent_text}</code>, <code>{articles}</code>
+      {% endif %}
+    </div>
+
+    <div class="footer">
+      This message was sent by <a href="https://github.com/Peakstone-Labs/sembr">sembr</a>.
+      No action needed if the template has already been restored.
+    </div>
+  </div>
+</body>
+</html>

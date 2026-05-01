@@ -4,13 +4,15 @@ Covers design.md SC1–SC6.
 """
 from __future__ import annotations
 
-import pytest
 from dataclasses import dataclass
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from sembr.matcher.callback import Match
 from sembr.summarizer.grouping import GroupingStep
-from sembr.summarizer.pipeline import SummaryPipeline, _resolve_prompt
+from sembr.summarizer.pipeline import SummaryPipeline
 
 
 # ---------------------------------------------------------------------------
@@ -38,8 +40,21 @@ def _make_llm(summary: str = "test summary") -> AsyncMock:
     return llm
 
 
+@pytest.fixture()
+def prompts_dir(tmp_path: Path) -> Path:
+    (tmp_path / "system").mkdir()
+    (tmp_path / "instruction").mkdir()
+    (tmp_path / "system" / "default.md").write_text(
+        "You are an assistant. Language: {language}", encoding="utf-8"
+    )
+    (tmp_path / "instruction" / "default.md").write_text(
+        "Topic: {intent_text}\n\n{articles}", encoding="utf-8"
+    )
+    return tmp_path
+
+
 async def _ctx(iid):
-    return None, "fed rate", "zh"
+    return "default", "default", "fed rate", "zh"
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +114,7 @@ def test_grouping_transitive() -> None:
 
 
 @pytest.mark.asyncio
-async def test_citations_ordered_newest_first() -> None:
+async def test_citations_ordered_newest_first(prompts_dir: Path) -> None:
     """citations[0] (== primary) must be the article with the latest published_at."""
     matches = [
         _match("a", "Fed raises interest rates by 25 basis points", published_at="2026-01-01T10:00:00Z"),
@@ -116,6 +131,7 @@ async def test_citations_ordered_newest_first() -> None:
         grouping_threshold=0.85,
         on_summary=capture,
         get_intent_prompt_ctx=_ctx,
+        prompts_dir=prompts_dir,
     )
     await pipeline.handle(matches)
 
@@ -127,7 +143,7 @@ async def test_citations_ordered_newest_first() -> None:
 
 
 @pytest.mark.asyncio
-async def test_primary_none_published_at_sorts_last() -> None:
+async def test_primary_none_published_at_sorts_last(prompts_dir: Path) -> None:
     """Articles with published_at=None should sort after articles with a value."""
     matches = [
         _match("none_a", "Fed raises interest rates by 25 basis points", published_at=None),
@@ -144,27 +160,31 @@ async def test_primary_none_published_at_sorts_last() -> None:
         grouping_threshold=0.85,
         on_summary=capture,
         get_intent_prompt_ctx=_ctx,
+        prompts_dir=prompts_dir,
     )
     await pipeline.handle(matches)
     assert captured[0].primary.article_id == "early"
 
 
 # ---------------------------------------------------------------------------
-# SC3 — custom_prompt override
+# SC3 — named instruction template reaches the LLM
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_custom_prompt_passed_to_llm() -> None:
-    """custom_prompt returned by get_intent_prompt_ctx must reach the LLM."""
+async def test_named_instruction_template_passed_to_llm(prompts_dir: Path) -> None:
+    """Named instruction template content must reach the LLM prompt."""
+    (prompts_dir / "instruction" / "custom.md").write_text(
+        "用英文总结：{articles}", encoding="utf-8"
+    )
     llm = _make_llm()
     captured_prompts: list[str] = []
     llm.summarize = AsyncMock(side_effect=lambda p, **_: captured_prompts.append(p) or "ok")
 
     async def ctx(iid):
-        return "用英文总结：{articles}", "fed rate", "zh"
+        return "default", "custom", "fed rate", "zh"
 
-    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx)
+    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
     await pipeline.handle([m])
 
@@ -173,16 +193,16 @@ async def test_custom_prompt_passed_to_llm() -> None:
 
 
 @pytest.mark.asyncio
-async def test_default_prompt_includes_intent_text() -> None:
-    """When custom_prompt=None, default prompt must contain the intent_text."""
+async def test_default_instruction_template_includes_intent_text(prompts_dir: Path) -> None:
+    """Default instruction template must inject intent_text into the LLM prompt."""
     llm = _make_llm()
     captured_prompts: list[str] = []
     llm.summarize = AsyncMock(side_effect=lambda p, **_: captured_prompts.append(p) or "ok")
 
     async def ctx(iid):
-        return None, "Federal Reserve rate decisions", "zh"
+        return "default", "default", "Federal Reserve rate decisions", "zh"
 
-    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx)
+    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
     await pipeline.handle([m])
 
@@ -196,7 +216,7 @@ async def test_default_prompt_includes_intent_text() -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_timeout_no_exception_no_on_summary() -> None:
+async def test_llm_timeout_no_exception_no_on_summary(prompts_dir: Path) -> None:
     """LLM timeout must not propagate; on_summary must not be called."""
     import httpx
 
@@ -204,7 +224,7 @@ async def test_llm_timeout_no_exception_no_on_summary() -> None:
     llm.summarize = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
     on_summary = AsyncMock()
 
-    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=_ctx)
+    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
 
     # Must not raise
@@ -213,12 +233,12 @@ async def test_llm_timeout_no_exception_no_on_summary() -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_generic_error_no_exception_no_on_summary() -> None:
+async def test_llm_generic_error_no_exception_no_on_summary(prompts_dir: Path) -> None:
     llm = _make_llm()
     llm.summarize = AsyncMock(side_effect=RuntimeError("boom"))
     on_summary = AsyncMock()
 
-    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=_ctx)
+    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
     await pipeline.handle([m])
     on_summary.assert_not_called()
@@ -230,7 +250,7 @@ async def test_llm_generic_error_no_exception_no_on_summary() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pre_push_hook_false_blocks_on_summary() -> None:
+async def test_pre_push_hook_false_blocks_on_summary(prompts_dir: Path) -> None:
     """pre_push_hook returning False must prevent on_summary being called."""
     llm = _make_llm()
     on_summary = AsyncMock()
@@ -238,7 +258,7 @@ async def test_pre_push_hook_false_blocks_on_summary() -> None:
     async def hook(result):
         return result.intent_id != 99
 
-    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, pre_push_hook=hook, get_intent_prompt_ctx=_ctx)
+    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, pre_push_hook=hook, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir)
 
     m_blocked = _match("x", "headline", published_at="2026-01-01T10:00:00Z", intent_id=99)
     await pipeline.handle([m_blocked])
@@ -246,14 +266,14 @@ async def test_pre_push_hook_false_blocks_on_summary() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pre_push_hook_true_allows_on_summary() -> None:
+async def test_pre_push_hook_true_allows_on_summary(prompts_dir: Path) -> None:
     llm = _make_llm()
     on_summary = AsyncMock()
 
     async def hook(result):
         return result.intent_id != 99
 
-    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, pre_push_hook=hook, get_intent_prompt_ctx=_ctx)
+    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, pre_push_hook=hook, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir)
 
     m_allowed = _match("y", "headline", published_at="2026-01-01T10:00:00Z", intent_id=1)
     await pipeline.handle([m_allowed])
@@ -261,38 +281,7 @@ async def test_pre_push_hook_true_allows_on_summary() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SC6 — custom_prompt invalid placeholder falls back to default
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_prompt_unknown_key_falls_back() -> None:
-    """Unknown {key} in custom_prompt falls back to default; no exception."""
-    result = _resolve_prompt("你好 {unknown_key}", "fed rate", "article text")
-    assert "fed rate" in result  # default prompt contains intent_text
-    assert "你好" not in result  # custom was rejected
-
-
-def test_resolve_prompt_positional_ref_falls_back() -> None:
-    """{0} (positional) raises IndexError; must fall back to default."""
-    result = _resolve_prompt("summarize: {0}", "topic", "body")
-    assert "topic" in result
-
-
-def test_resolve_prompt_bad_spec_falls_back() -> None:
-    """Unbalanced brace raises ValueError; must fall back to default."""
-    result = _resolve_prompt("text { no close", "topic", "body")
-    assert "topic" in result
-
-
-def test_resolve_prompt_none_uses_default() -> None:
-    """custom_prompt=None must use the default template."""
-    result = _resolve_prompt(None, "my topic", "some articles")
-    assert "my topic" in result
-    assert "some articles" in result
-
-
-# ---------------------------------------------------------------------------
-# 🟡 14 regression — empty intent_text on ctx error path must skip the tick
+# ctx error path — empty intent_text always skips
 # ---------------------------------------------------------------------------
 
 
@@ -314,13 +303,13 @@ async def test_ctx_fetch_failure_skips_tick() -> None:
 
 
 @pytest.mark.asyncio
-async def test_empty_intent_text_and_no_custom_prompt_skips_tick() -> None:
-    """ctx returning (None, '') means intent gone — pipeline skips the tick."""
+async def test_empty_intent_text_skips_tick() -> None:
+    """ctx returning empty intent_text means intent gone — pipeline skips the tick."""
     llm = _make_llm()
     on_summary = AsyncMock()
 
     async def empty_ctx(iid):
-        return None, "", "zh"
+        return "default", "default", "", "zh"
 
     pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=empty_ctx)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
@@ -328,20 +317,3 @@ async def test_empty_intent_text_and_no_custom_prompt_skips_tick() -> None:
 
     llm.summarize.assert_not_called()
     on_summary.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_empty_intent_text_with_custom_prompt_proceeds() -> None:
-    """If custom_prompt is set, empty intent_text alone should NOT block the tick."""
-    llm = _make_llm()
-    on_summary = AsyncMock()
-
-    async def custom_only_ctx(iid):
-        return "summarize: {articles}", "", "zh"
-
-    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=custom_only_ctx)
-    m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
-    await pipeline.handle([m])
-
-    llm.summarize.assert_awaited_once()
-    on_summary.assert_awaited_once()
