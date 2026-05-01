@@ -22,6 +22,7 @@ from sembr.matcher.jobs import (
     unregister_intent_job,
 )
 from sembr.models import Intent, IntentCreate, IntentUpdate
+from sembr.summarizer.templates import template_exists
 from sembr.vector_store.intents import (
     delete_intent_point,
     update_intent_payload,
@@ -30,6 +31,17 @@ from sembr.vector_store.intents import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/intents", tags=["intents"])
+
+
+def _validate_templates(request: Request, system_tpl: str, instruction_tpl: str) -> None:
+    """Raise 422 if either named template file does not exist on disk."""
+    prompts_dir = request.app.state.settings.prompts_dir
+    for kind, name in (("system", system_tpl), ("instruction", instruction_tpl)):
+        if not template_exists(prompts_dir, kind, name):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"field": f"{kind}_template", "value": name, "reason": "template not found"},
+            )
 
 
 def _build_payload(intent: Intent, model_version: str) -> dict[str, Any]:
@@ -51,6 +63,7 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
     embedder = request.app.state.embedder
     if not embedder.is_loaded:  # D5: fast-fail before any DB write
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="embedder not ready")
+    _validate_templates(request, body.system_template, body.instruction_template)
 
     conn = get_conn()
     intent = await create_intent(conn, body)  # D1: SQLite first
@@ -133,6 +146,11 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     embedder = request.app.state.embedder
     if text_changed and not embedder.is_loaded:  # D5: only gate when re-embed needed
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="embedder not ready")
+    # Validate template existence only when the field is actually being changed.
+    effective_system = body.system_template if body.system_template is not None else current.system_template
+    effective_instruction = body.instruction_template if body.instruction_template is not None else current.instruction_template
+    if body.system_template is not None or body.instruction_template is not None:
+        _validate_templates(request, effective_system, effective_instruction)
 
     updated = await update_intent(conn, intent_id, body)  # D1: SQLite first
 

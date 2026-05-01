@@ -20,6 +20,7 @@ services:
       # NOTE: keep ./data on a local POSIX-ish FS (ext4 / APFS / NTFS local).
       # SQLite WAL fsync and Qdrant mmap (./data/qdrant) are both unsafe on network shares.
       - ./data:/app/data
+      - ./prompts:/app/prompts:ro
     mem_limit: 3g
     mem_reservation: 1g
     restart: unless-stopped

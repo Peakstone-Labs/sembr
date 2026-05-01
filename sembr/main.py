@@ -29,6 +29,7 @@ from sembr.api.feeds import router as feeds_router
 from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
 from sembr.api.intents import router as intents_router
+from sembr.api.prompts import router as prompts_router
 from sembr.collector.scheduler import add_feed_job, make_scheduler
 from sembr.config import get_settings
 from sembr.dashboard.auth import DashboardTokenMiddleware
@@ -75,11 +76,33 @@ async def _dispatch_notification(
         )
 
 
-async def _get_intent_prompt_ctx(conn, intent_id: int) -> tuple[str | None, str, str]:
+async def _get_intent_prompt_ctx(conn, intent_id: int) -> tuple[str, str, str, str]:
     intent = await get_intent(conn, intent_id)
     if intent is None:
-        return None, "", "zh"
-    return intent.custom_prompt, intent.text, intent.language
+        return "default", "default", "", "zh"
+    return intent.system_template, intent.instruction_template, intent.text, intent.language
+
+
+async def _dispatch_template_error(
+    conn: aiosqlite.Connection,
+    email_ch: EmailChannel,
+    intent_id: int,
+    kind: str,
+    name: str,
+    reason: str,
+) -> None:
+    try:
+        intent = await get_intent(conn, intent_id)
+        if intent is None:
+            return
+        for ch in intent.channels:
+            if isinstance(ch, EmailChannelConfig):
+                await email_ch.send_error(intent.name, kind, name, reason, config=ch)
+    except Exception:
+        logger.error(
+            "dispatch_template_error failed for intent_id=%d template=%s/%s",
+            intent_id, kind, name, exc_info=True,
+        )
 
 
 @asynccontextmanager
@@ -125,6 +148,8 @@ async def lifespan(app: FastAPI):
         get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(conn, iid),
         get_feed_names=lambda ids: get_feed_names(conn, ids),
         on_summary=lambda r: _dispatch_notification(conn, email_ch, r),
+        on_template_error=lambda iid, k, n, r: _dispatch_template_error(conn, email_ch, iid, k, n, r),
+        prompts_dir=settings.prompts_dir,
     )
     app.state.on_match = pipeline.handle
     app.state.qdrant = qdrant
@@ -166,6 +191,7 @@ app.include_router(health_router)
 app.include_router(feeds_router)
 app.include_router(intents_router)
 app.include_router(fire_router)
+app.include_router(prompts_router)
 app.include_router(dashboard_router)
 
 # Mount /dashboard only when the bundled UI exists. Missing bundle = JSON API still

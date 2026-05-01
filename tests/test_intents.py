@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
@@ -88,6 +89,9 @@ def _client(embedder: MagicMock | None = None, vs: dict | None = None):
     app.state.embedder = embedder
     app.state.qdrant = MagicMock()  # .client attribute accessed but never called directly
     app.state.scheduler = MagicMock()
+    _settings = MagicMock()
+    _settings.prompts_dir = Path(__file__).parent.parent / "prompts"
+    app.state.settings = _settings
 
     with (
         patch("sembr.api.intents.get_conn", side_effect=lambda: conn_holder["conn"]),

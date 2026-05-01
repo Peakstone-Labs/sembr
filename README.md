@@ -88,6 +88,44 @@ Deleted feeds do not come back on restart. To restore a pre-loaded source, re-ad
 
 Feed list and collected article fingerprints are stored in `./data/sembr.db` (SQLite, bind-mounted from the host). They survive `docker compose up --build`, container restarts, and image rebuilds. Only `rm -rf ./data/` permanently deletes them.
 
+## Custom prompt templates
+
+sembr ships with two built-in templates (`prompts/system/default.md` and `prompts/instruction/default.md`). To customise the LLM prompt for a specific intent, place your own `.md` files under `prompts/system/` or `prompts/instruction/` on the host and reference them when creating or updating an intent.
+
+```bash
+# Write a custom instruction template (100-word crypto summary in Chinese)
+cat > prompts/instruction/crypto_zh.md << 'EOF'
+用户关注：{intent_text}
+
+以下文章与该主题语义匹配，每条包含标题、正文和来源 URL。
+
+{articles}
+
+---
+
+请用 100 字以内中文总结以上加密货币相关要点。
+EOF
+
+# Use the template when creating an intent
+curl -X POST http://localhost:8000/intents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "crypto-zh-brief",
+    "text": "cryptocurrency Bitcoin Ethereum price movements",
+    "instruction_template": "crypto_zh",
+    "channels": [{"type":"email","to":["you@example.com"]}]
+  }'
+```
+
+**Template rules:**
+
+- File name (without `.md`) is the identifier — no path separators, no leading dot, length 1–100 chars, Unicode ok
+- `instruction` templates: placeholders `{intent_text}` and `{articles}` (both required)
+- `system` templates: placeholder `{language}`
+- Edits to files on the host take effect on the **next tick** — no restart needed
+- Listing available templates: `GET /api/prompts/templates`
+- Preview a template: `GET /api/prompts/templates/instruction/crypto_zh`
+
 ## Embedder
 
 sembr ships with **BGE-M3** as its default embedding model — and on [SiliconFlow](https://siliconflow.cn) it's **free to use**. Unlimited semantic monitoring with a top-tier multilingual model at zero inference cost.

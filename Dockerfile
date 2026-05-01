@@ -16,6 +16,7 @@ COPY scripts/ ./scripts/
 # Dashboard bundle (optional). main.py mounts /dashboard only when web/static/
 # exists, so the build succeeds even if a downstream consumer drops the dir.
 COPY web/ ./web/
+COPY prompts/ ./prompts/
 
 RUN mkdir -p /app/data
 

@@ -378,6 +378,11 @@ def test_post_intent_rollback_on_register_job_failure() -> None:
     app.state.embedder = embedder
     app.state.qdrant = MagicMock()
     app.state.scheduler = MagicMock()
+    from pathlib import Path as _Path  # noqa: PLC0415
+    from unittest.mock import MagicMock as _MM  # noqa: PLC0415
+    _settings = _MM()
+    _settings.prompts_dir = _Path(__file__).parent.parent / "prompts"
+    app.state.settings = _settings
 
     body = {
         "name": "rollback-test",
