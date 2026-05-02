@@ -34,8 +34,10 @@ from sembr.collector.scheduler import add_feed_job, make_scheduler
 from sembr.config import get_settings
 from sembr.dashboard.auth import DashboardTokenMiddleware
 from sembr.dashboard.events import init_event_log_tables
+from sembr.dashboard.logs_routes import router as logs_router
 from sembr.dashboard.retention import add_log_retention_job
 from sembr.dashboard.routes import router as dashboard_router
+from sembr.logbus.install import install_logbus
 from sembr.db.articles import init_article_tables
 from sembr.db.feeds import get_feed_names, init_feed_tables, list_feeds, seed_initial_feeds
 from sembr.db.event_buffer import init_event_buffer_tables
@@ -111,6 +113,11 @@ async def _dispatch_template_error(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    install_logbus(
+        asyncio.get_running_loop(),
+        buffer_per_tag=settings.dashboard_log_buffer_per_tag,
+        default_level=getattr(logging, settings.dashboard_log_level.upper(), logging.INFO),
+    )
     # Validate embedder config before any I/O — raises ValueError if EMBEDDER_API_KEY unset.
     embedder = build_embedder(settings)
     conn = await init_sqlite(settings.sqlite_path)
@@ -212,6 +219,7 @@ app.include_router(intents_router)
 app.include_router(fire_router)
 app.include_router(prompts_router)
 app.include_router(dashboard_router)
+app.include_router(logs_router)
 
 # Mount /dashboard only when the bundled UI exists. Missing bundle = JSON API still
 # works (per AC#10) and startup logs an INFO line.
