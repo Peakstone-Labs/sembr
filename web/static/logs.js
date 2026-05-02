@@ -6,7 +6,8 @@
 
 const _LOG_TAGS = ['collector', 'embedder', 'matcher', 'notifier', 'api', 'scheduler', 'http'];
 const _LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR'];
-const _MAX_ROWS = 1000;
+const _MAX_ROWS = 1000;    // ring buffer per tag (internal)
+const _MAX_DISPLAY = 500;  // max rows rendered in the DOM (newest-first)
 
 function logsTab() {
   return {
@@ -32,8 +33,14 @@ function logsTab() {
       if (this.subTab === tag) return;
       this.subTab = tag;
       window.location.hash = `logs/${tag}`;
-      this.rows = this._rowsMap[tag] || [];
+      this.rows = this._display(tag);
       this._reconnect(tag);
+    },
+
+    // Return the last _MAX_DISPLAY entries for *tag* in newest-first order.
+    _display(tag) {
+      const arr = this._rowsMap[tag] || [];
+      return arr.slice(-_MAX_DISPLAY).reverse();
     },
 
     // ── SSE connection ──────────────────────────────────────────────────────
@@ -65,7 +72,7 @@ function logsTab() {
             arr.push(entry);
             if (arr.length > _MAX_ROWS) arr.splice(0, arr.length - _MAX_ROWS);
             if (entry.tag === this.subTab) {
-              this.rows = arr.slice();
+              this.rows = this._display(entry.tag);
             }
           } catch (err) {
             console.warn('[logs] parse error', err);
@@ -74,7 +81,7 @@ function logsTab() {
 
         es.addEventListener('history-end', () => {
           this.loading = false;
-          this.rows = (this._rowsMap[this.subTab] || []).slice();
+          this.rows = this._display(this.subTab);
         });
 
         es.onerror = () => {
