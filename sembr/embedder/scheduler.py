@@ -85,12 +85,13 @@ def add_embedder_worker_job(
     scheduler: AsyncIOScheduler,
     embedder: "BaseEmbedder",
     qdrant: "QdrantHandle",
+    app=None,
 ) -> None:
     scheduler.add_job(
         embedder_worker,
         trigger=IntervalTrigger(seconds=POLL_INTERVAL_SECONDS),
         id="embedder_worker",
-        args=[embedder, qdrant],
+        args=[embedder, qdrant, app],
         coalesce=True,
         max_instances=1,
         next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
@@ -127,7 +128,7 @@ async def _emit_embed_event(
         logger.warning("log_embed_event failed: %s", exc)
 
 
-async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> None:
+async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=None) -> None:
     # Embedder not yet loaded → not a call attempt; per D4 don't write an event.
     if not embedder.is_loaded:
         return
@@ -219,6 +220,13 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle") -> N
         timeout_seconds=embed_timeout,
         error_class=None, error_message=None,
     )
+
+    # D12: event-driven matching — after upsert success, before delete_pending.
+    # Synchronous await so failed event_match does not skip delete (Risk 7 catch is inside).
+    if app is not None:
+        from sembr.matcher.event_match import event_match_batch  # noqa: PLC0415
+        await event_match_batch(app, points, conn)
+
     # If delete fails, rows re-embed next tick — idempotent via deterministic UUID (D4).
     try:
         await delete_pending(conn, md5s)

@@ -38,9 +38,12 @@ from sembr.dashboard.retention import add_log_retention_job
 from sembr.dashboard.routes import router as dashboard_router
 from sembr.db.articles import init_article_tables
 from sembr.db.feeds import get_feed_names, init_feed_tables, list_feeds, seed_initial_feeds
+from sembr.db.event_buffer import init_event_buffer_tables
 from sembr.db.intents import get_intent, init_intent_tables, list_intents
 from sembr.db.match_seen import init_match_seen_tables
 from sembr.db.sqlite import close_sqlite, init_sqlite
+from sembr.matcher.event_buffer import sweep_timed_out as _event_sweep_timed_out
+from sembr.matcher.event_cache import EventIntentCache, load_event_cache
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
 from sembr.matcher.fire_tasks import sweep_expired
@@ -116,6 +119,7 @@ async def lifespan(app: FastAPI):
     await init_event_log_tables(conn)  # dashboard D1/D2; FK references feeds.id
     await init_intent_tables(conn)
     await init_match_seen_tables(conn)  # D17: after intents (FK dependency)
+    await init_event_buffer_tables(conn)  # D6/D22: after intents (FK dependency)
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client)
@@ -125,7 +129,7 @@ async def lifespan(app: FastAPI):
     feeds = await list_feeds(conn)
     for i, feed in enumerate(feeds):
         await add_feed_job(scheduler, feed, jitter_seconds=i * 2)
-    add_embedder_worker_job(scheduler, embedder, qdrant)
+    add_embedder_worker_job(scheduler, embedder, qdrant, app)
     add_log_retention_job(scheduler, settings)  # dashboard D9: hourly log prune
     # DD4: sweep expired fire tasks every 5 minutes
     from apscheduler.triggers.interval import IntervalTrigger as _IT  # noqa: PLC0415
@@ -139,6 +143,20 @@ async def lifespan(app: FastAPI):
     # D18: register per-intent jobs for all currently-enabled intents (restart recovery)
     enabled_intents = await list_intents(conn, enabled=True)
     await register_all_enabled(scheduler, enabled_intents, app, qdrant.client)
+    # D9/D22: load event-mode intent vectors into in-process cache (after register_all_enabled)
+    event_intent_cache = EventIntentCache()
+    await load_event_cache(event_intent_cache, qdrant, conn)
+    # D15: sweeper flushes timed-out event buffers every 30s
+    async def _event_y_sweeper() -> None:
+        from sembr.db.sqlite import get_conn as _get_conn  # noqa: PLC0415
+        await _event_sweep_timed_out(_get_conn(), app, app.state.event_intent_cache)
+    scheduler.add_job(
+        _event_y_sweeper,
+        trigger=_IT(seconds=30),
+        id="event-y-sweeper",
+        coalesce=True,
+        replace_existing=True,
+    )
     # R5: assign on_match before scheduler.start() so first ticks always find a callback
     llm_backend = build_llm_backend(settings)
     email_ch = EmailChannel(settings)
@@ -156,6 +174,7 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = scheduler
     app.state.settings = settings
     app.state.embedder = embedder
+    app.state.event_intent_cache = event_intent_cache
     scheduler.start()
     try:
         yield
