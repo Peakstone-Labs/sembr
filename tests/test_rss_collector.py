@@ -14,7 +14,7 @@ import respx
 import httpx
 from pydantic import ValidationError
 
-from sembr.collector.rss import FetchError, RSSSource, _compute_md5
+from sembr.collector.rss import FetchError, RSSSource, _compute_md5, _strip_html
 from sembr.db.feeds import (
     fingerprint_exists,
     init_feed_tables,
@@ -65,6 +65,61 @@ _MIXED_FEED = dedent("""
 """).strip().encode()
 
 _HTML_PAGE = b"<html><body>Not RSS</body></html>"
+
+
+# ---------------------------------------------------------------------------
+# Tests: _strip_html
+# ---------------------------------------------------------------------------
+
+def test_strip_html_removes_tags():
+    assert _strip_html("<p>Hello <strong>world</strong></p>") == "Hello world"
+
+def test_strip_html_removes_img_tags():
+    html = '<p>Text<img src="https://example.com/img.jpg" style="height:auto"/></p>'
+    assert _strip_html(html) == "Text"
+
+def test_strip_html_collapses_whitespace():
+    assert _strip_html("<p>foo</p>\n\n<p>bar</p>") == "foo bar"
+
+def test_strip_html_plain_text_unchanged():
+    assert _strip_html("No tags here") == "No tags here"
+
+def test_strip_html_empty_string():
+    assert _strip_html("") == ""
+
+def test_strip_html_entities_decoded():
+    assert _strip_html("AT&amp;T &lt;rocks&gt;") == "AT&T <rocks>"
+
+
+# ---------------------------------------------------------------------------
+# Test: HTML in feed body is stripped on fetch
+# ---------------------------------------------------------------------------
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_rss_fetch_strips_html_from_description():
+    """HTML tags in <description> must be stripped before storing body."""
+    feed_xml = dedent("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test</title>
+            <item>
+              <title>Article</title>
+              <link>https://example.com/a</link>
+              <pubDate>Mon, 27 Apr 2026 10:00:00 +0000</pubDate>
+              <description>&lt;p&gt;Clean text.&lt;img src="noise"/&gt;&lt;/p&gt;</description>
+            </item>
+          </channel>
+        </rss>
+    """).strip().encode()
+
+    respx.get("https://example-html.com/rss").mock(
+        return_value=httpx.Response(200, content=feed_xml)
+    )
+    src = RSSSource("https://example-html.com/rss")
+    articles = await src.fetch()
+    assert articles[0].body == "Clean text."
 
 
 # ---------------------------------------------------------------------------

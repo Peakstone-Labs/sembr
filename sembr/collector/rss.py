@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from calendar import timegm
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 
 import feedparser
 import httpx
@@ -25,6 +27,24 @@ class FetchError(Exception):
     """
 
 
+class _HTMLStripper(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self._parts.append(data)
+
+    def get_text(self) -> str:
+        return re.sub(r"\s+", " ", "".join(self._parts)).strip()
+
+
+def _strip_html(text: str) -> str:
+    s = _HTMLStripper()
+    s.feed(text)
+    return s.get_text()
+
+
 def _compute_md5(url: str, title: str) -> str:
     return hashlib.md5((url + title).encode()).hexdigest()
 
@@ -42,11 +62,11 @@ def _best_body(entry: feedparser.FeedParserDict) -> tuple[str, str]:
     """Return (body_text, content_quality)."""
     content_list = getattr(entry, "content", None)
     if content_list:
-        body = content_list[0].get("value", "").strip()
+        body = _strip_html(content_list[0].get("value", ""))
         if body:
             return body, "full"
 
-    summary = getattr(entry, "summary", "").strip()
+    summary = _strip_html(getattr(entry, "summary", ""))
     if len(summary) > 100:
         return summary, "summary"
     if summary:
