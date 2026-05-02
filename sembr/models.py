@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from typing import Annotated, Literal, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -16,17 +15,14 @@ from sembr.notifier.email import EmailChannelConfig
 ChannelConfig = EmailChannelConfig
 
 
-class IntervalSchedule(BaseModel):
-    mode: Literal["interval"] = "interval"
-    seconds: int = Field(default=3600, ge=60, le=604800)
-
-
 class CronSchedule(BaseModel):
     mode: Literal["cron"] = "cron"
     preset: Literal["daily", "weekly", "hourly"]
     hour: int = Field(ge=0, le=23, default=0)
     minute: int = Field(ge=0, le=59, default=0)
     weekday: Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"] | None = None
+    lookback_seconds: int = Field(default=86400, ge=300, le=2592000)
+    skip_seen: bool = True
 
     @model_validator(mode="after")
     def _weekday_constraint(self) -> "CronSchedule":
@@ -39,7 +35,13 @@ class CronSchedule(BaseModel):
         return self
 
 
-Schedule = Annotated[Union[IntervalSchedule, CronSchedule], Field(discriminator="mode")]
+class EventSchedule(BaseModel):
+    mode: Literal["event"] = "event"
+    trigger_count: int = Field(default=3, ge=1, le=10)
+    max_wait_seconds: int = Field(default=1800, ge=60, le=86400)
+
+
+Schedule = Annotated[Union[CronSchedule, EventSchedule], Field(discriminator="mode")]
 
 
 class FeedFilter(BaseModel):
@@ -86,12 +88,9 @@ class IntentCreate(BaseModel):
     enabled: bool = True
     channels: list[ChannelConfig] = Field(min_length=1, max_length=10)
     tags: list[str] = Field(default_factory=list, max_length=10)
-    schedule: Schedule = Field(default_factory=IntervalSchedule)
-    lookback_window_seconds: int = Field(default=86400, ge=300, le=2592000)
-    first_scan_at: datetime | None = None
+    schedule: Schedule = Field(default_factory=lambda: CronSchedule(preset="daily"))
     system_template: str = "default"
     instruction_template: str = "default"
-    skip_seen: bool = True
     feed_filter: FeedFilter | None = None
     timezone: str = "UTC"
     language: str = "zh"
@@ -140,11 +139,8 @@ class IntentUpdate(BaseModel):
     channels: list[ChannelConfig] | None = Field(default=None, min_length=1, max_length=10)
     tags: list[str] | None = Field(default=None, max_length=10)
     schedule: Schedule | None = None
-    lookback_window_seconds: int | None = Field(default=None, ge=300, le=2592000)
-    first_scan_at: datetime | None = None
     system_template: str | None = None
     instruction_template: str | None = None
-    skip_seen: bool | None = None
     feed_filter: FeedFilter | None = None
     timezone: str | None = None
     language: str | None = None
@@ -206,11 +202,8 @@ class Intent(BaseModel):
     channels: list[ChannelConfig]
     tags: list[str]
     schedule: Schedule
-    lookback_window_seconds: int
-    first_scan_at: datetime | None
     system_template: str
     instruction_template: str
-    skip_seen: bool
     feed_filter: FeedFilter | None
     timezone: str
     language: str

@@ -11,14 +11,13 @@ from unittest.mock import MagicMock
 
 import pytest
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 
 from sembr.matcher.jobs import _build_cron_trigger, register_intent_job
 from sembr.models import (
     CronSchedule,
+    EventSchedule,
     FeedFilter,
     Intent,
-    IntervalSchedule,
 )
 
 # ---------------------------------------------------------------------------
@@ -37,12 +36,9 @@ def _make_intent(**kwargs) -> Intent:
         enabled=True,
         channels=VALID_CHANNELS,
         tags=[],
-        schedule=IntervalSchedule(seconds=3600),
-        lookback_window_seconds=86400,
-        first_scan_at=None,
+        schedule=CronSchedule(preset="daily"),
         system_template="default",
         instruction_template="default",
-        skip_seen=True,
         feed_filter=None,
         timezone="UTC",
         language="zh",
@@ -117,15 +113,14 @@ def test_build_cron_trigger_weekly_mon_utc() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_register_interval_schedule_uses_interval_trigger() -> None:
-    intent = _make_intent(schedule=IntervalSchedule(seconds=300))
+def test_register_event_schedule_returns_without_adding_job() -> None:
+    """D8: EventSchedule intents must not be registered with APScheduler."""
+    intent = _make_intent(schedule=EventSchedule(trigger_count=3, max_wait_seconds=1800))
     scheduler = MagicMock()
 
     register_intent_job(scheduler, intent, app=MagicMock())
 
-    scheduler.add_job.assert_called_once()
-    trigger = scheduler.add_job.call_args.kwargs["trigger"]
-    assert isinstance(trigger, IntervalTrigger)
+    scheduler.add_job.assert_not_called()
 
 
 def test_register_cron_schedule_uses_cron_trigger() -> None:

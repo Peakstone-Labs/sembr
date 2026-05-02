@@ -246,9 +246,9 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
     qdrant_client = app.state.qdrant.client
 
     options = ScanOptions(
-        lookback_seconds=intent.lookback_window_seconds,
+        lookback_seconds=intent.schedule.lookback_seconds,  # type: ignore[union-attr]
         threshold=intent.threshold,
-        skip_seen=intent.skip_seen,
+        skip_seen=intent.schedule.skip_seen,  # type: ignore[union-attr]
         feed_ids=intent.feed_filter.ids if intent.feed_filter else None,
         write_match_seen=True,
     )

@@ -26,7 +26,7 @@ def reset_tasks():
 
 
 def _fake_intent(intent_id: int = 1):
-    from sembr.models import Intent, IntervalSchedule
+    from sembr.models import CronSchedule, Intent
 
     return Intent(
         id=intent_id,
@@ -36,15 +36,12 @@ def _fake_intent(intent_id: int = 1):
         enabled=True,
         channels=[],
         tags=[],
-        lookback_window_seconds=3600,
-        schedule=IntervalSchedule(seconds=3600),
-        skip_seen=True,
+        schedule=CronSchedule(preset="daily", lookback_seconds=3600, skip_seen=True),
         feed_filter=None,
         timezone="UTC",
         language="en",
         system_template="default",
         instruction_template="default",
-        first_scan_at=None,
         created_at=datetime.now(timezone.utc).isoformat(),
         updated_at=datetime.now(timezone.utc).isoformat(),
     )

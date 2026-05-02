@@ -59,18 +59,57 @@ _DATA_BACKFILL = [
        WHERE schedule = '{}' OR schedule IS NULL""",
 ]
 
-# Drop legacy column after backfill. try/except in init_intent_tables suppresses
+# Convert interval-mode rows to cron and sink lookback/skip_seen into schedule JSON.
+# All statements are idempotent via WHERE conditions.
+_DATA_MIGRATIONS = [
+    # Translate interval schedule → cron preset; absorb top-level lookback/skip_seen
+    """UPDATE intents SET schedule = json_object(
+           'mode', 'cron',
+           'preset', CASE
+               WHEN json_extract(schedule,'$.seconds') <= 3600 THEN 'hourly'
+               WHEN json_extract(schedule,'$.seconds') <= 86400 THEN 'daily'
+               ELSE 'weekly'
+           END,
+           'hour', CASE
+               WHEN json_extract(schedule,'$.seconds') <= 3600 THEN 0
+               ELSE 9
+           END,
+           'minute', 0,
+           'weekday', CASE
+               WHEN json_extract(schedule,'$.seconds') > 86400 THEN 'mon'
+               ELSE NULL
+           END,
+           'lookback_seconds', COALESCE(lookback_window_seconds, 86400),
+           'skip_seen', COALESCE(skip_seen, 1)
+       )
+       WHERE json_extract(schedule,'$.mode') = 'interval'""",
+    # Sink lookback_seconds / skip_seen into existing cron rows that lack them
+    """UPDATE intents SET schedule = json_set(
+           schedule,
+           '$.lookback_seconds', COALESCE(
+               json_extract(schedule,'$.lookback_seconds'), lookback_window_seconds, 86400),
+           '$.skip_seen', COALESCE(
+               json_extract(schedule,'$.skip_seen'), skip_seen, 1)
+       )
+       WHERE json_extract(schedule,'$.mode') = 'cron'
+         AND (json_extract(schedule,'$.lookback_seconds') IS NULL
+              OR json_extract(schedule,'$.skip_seen') IS NULL)""",
+]
+
+# Drop legacy columns after data migrations. try/except in init_intent_tables suppresses
 # "no such column" when the column was never added (fresh DBs or already dropped).
 _DROP_COLUMNS = [
     "ALTER TABLE intents DROP COLUMN scan_interval_seconds",
     "ALTER TABLE intents DROP COLUMN custom_prompt",
+    "ALTER TABLE intents DROP COLUMN lookback_window_seconds",
+    "ALTER TABLE intents DROP COLUMN first_scan_at",
+    "ALTER TABLE intents DROP COLUMN skip_seen",
 ]
 
 _SELECT_INTENTS = (
     "SELECT id,name,text,threshold,enabled,channels,tags,"
-    "lookback_window_seconds,first_scan_at,"
     "system_template,instruction_template,"
-    "skip_seen,feed_filter,schedule,timezone,language,"
+    "feed_filter,schedule,timezone,language,"
     "created_at,updated_at FROM intents"
 )
 
@@ -95,6 +134,15 @@ async def init_intent_tables(conn: aiosqlite.Connection) -> None:
                 pass  # scan_interval_seconds column absent on fresh DBs — no rows to backfill
             else:
                 raise
+    for migration in _DATA_MIGRATIONS:
+        try:
+            await conn.execute(migration)
+        except sqlite3.OperationalError as exc:
+            msg = str(exc).lower()
+            if "no such column" in msg:
+                pass  # legacy columns absent on fresh DBs — no rows to migrate
+            else:
+                raise
     for drop in _DROP_COLUMNS:
         try:
             await conn.execute(drop)
@@ -105,12 +153,6 @@ async def init_intent_tables(conn: aiosqlite.Connection) -> None:
             else:
                 raise
     await conn.commit()
-
-
-def _parse_dt(s: str | None) -> datetime | None:
-    if s is None:
-        return None
-    return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
 def _parse_feed_filter(raw: str | None) -> FeedFilter | None:
@@ -124,11 +166,10 @@ def _parse_feed_filter(raw: str | None) -> FeedFilter | None:
 
 def _row_to_intent(row: tuple) -> Intent:
     # row indices: 0=id 1=name 2=text 3=threshold 4=enabled 5=channels 6=tags
-    #              7=lookback_window_seconds 8=first_scan_at
-    #              9=system_template 10=instruction_template
-    #              11=skip_seen 12=feed_filter 13=schedule 14=timezone 15=language
-    #              16=created_at 17=updated_at
-    schedule = _SCHEDULE_ADAPTER.validate_python(json.loads(row[13]))
+    #              7=system_template 8=instruction_template
+    #              9=feed_filter 10=schedule 11=timezone 12=language
+    #              13=created_at 14=updated_at
+    schedule = _SCHEDULE_ADAPTER.validate_python(json.loads(row[10]))
     return Intent(
         id=row[0],
         name=row[1],
@@ -137,17 +178,14 @@ def _row_to_intent(row: tuple) -> Intent:
         enabled=bool(row[4]),
         channels=[_CHANNEL_ADAPTER.validate_python(c) for c in json.loads(row[5])],
         tags=json.loads(row[6]),
-        lookback_window_seconds=row[7],
-        first_scan_at=_parse_dt(row[8]),
-        system_template=row[9],
-        instruction_template=row[10],
-        skip_seen=bool(row[11]),
-        feed_filter=_parse_feed_filter(row[12]),
+        system_template=row[7],
+        instruction_template=row[8],
+        feed_filter=_parse_feed_filter(row[9]),
         schedule=schedule,
-        timezone=row[14],
-        language=row[15],
-        created_at=row[16],
-        updated_at=row[17],
+        timezone=row[11],
+        language=row[12],
+        created_at=row[13],
+        updated_at=row[14],
     )
 
 
@@ -162,18 +200,16 @@ def _feed_filter_json(ff: FeedFilter | None) -> str:
 async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Intent:
     channels_json = json.dumps([c.model_dump() for c in body.channels], ensure_ascii=False)
     tags_json = json.dumps(body.tags, ensure_ascii=False)
-    first_scan_at_str = body.first_scan_at.isoformat() if body.first_scan_at else None
     schedule_json = body.schedule.model_dump_json()
     feed_filter_json = _feed_filter_json(body.feed_filter)
     now = _now_utc()
     cursor = await conn.execute(
         """INSERT INTO intents
                (name,text,threshold,enabled,channels,tags,
-                lookback_window_seconds,first_scan_at,
                 system_template,instruction_template,
-                skip_seen,feed_filter,schedule,timezone,language,
+                feed_filter,schedule,timezone,language,
                 created_at,updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             body.name,
             body.text,
@@ -181,11 +217,8 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
             int(body.enabled),
             channels_json,
             tags_json,
-            body.lookback_window_seconds,
-            first_scan_at_str,
             body.system_template,
             body.instruction_template,
-            int(body.skip_seen),
             feed_filter_json,
             schedule_json,
             body.timezone,
@@ -231,16 +264,8 @@ async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: Intent
     new_channels = body.channels if body.channels is not None else current.channels
     new_tags = body.tags if body.tags is not None else current.tags
     new_schedule = body.schedule if body.schedule is not None else current.schedule
-    new_lookback = (
-        body.lookback_window_seconds if body.lookback_window_seconds is not None
-        else current.lookback_window_seconds
-    )
-    # None in IntentUpdate means "no change"; first_scan_at can only be set, not cleared via PUT
-    new_first_scan_at = body.first_scan_at if body.first_scan_at is not None else current.first_scan_at
-    first_scan_at_str = new_first_scan_at.isoformat() if new_first_scan_at else None
     new_system_template = body.system_template if body.system_template is not None else current.system_template
     new_instruction_template = body.instruction_template if body.instruction_template is not None else current.instruction_template
-    new_skip_seen = body.skip_seen if body.skip_seen is not None else current.skip_seen
     # Use model_fields_set to distinguish explicit null (clear to full-scan) from omitted (no-op)
     new_feed_filter = body.feed_filter if "feed_filter" in body.model_fields_set else current.feed_filter
     new_timezone = body.timezone if body.timezone is not None else current.timezone
@@ -254,9 +279,8 @@ async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: Intent
     await conn.execute(
         """UPDATE intents
            SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
-               lookback_window_seconds=?,first_scan_at=?,
                system_template=?,instruction_template=?,
-               skip_seen=?,feed_filter=?,schedule=?,timezone=?,language=?,
+               feed_filter=?,schedule=?,timezone=?,language=?,
                updated_at=?
            WHERE id=?""",
         (
@@ -266,11 +290,8 @@ async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: Intent
             int(new_enabled),
             channels_json,
             tags_json,
-            new_lookback,
-            first_scan_at_str,
             new_system_template,
             new_instruction_template,
-            int(new_skip_seen),
             feed_filter_json,
             schedule_json,
             new_timezone,
@@ -288,15 +309,13 @@ async def update_intent_raw(conn: aiosqlite.Connection, intent_id: int, snapshot
     """Restore a snapshot to roll back a failed PUT (R7: write original updated_at, not now)."""
     channels_json = json.dumps([c.model_dump() for c in snapshot.channels], ensure_ascii=False)
     tags_json = json.dumps(snapshot.tags, ensure_ascii=False)
-    first_scan_at_str = snapshot.first_scan_at.isoformat() if snapshot.first_scan_at else None
     schedule_json = snapshot.schedule.model_dump_json()
     feed_filter_json = _feed_filter_json(snapshot.feed_filter)
     await conn.execute(
         """UPDATE intents
            SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
-               lookback_window_seconds=?,first_scan_at=?,
                system_template=?,instruction_template=?,
-               skip_seen=?,feed_filter=?,schedule=?,timezone=?,language=?,
+               feed_filter=?,schedule=?,timezone=?,language=?,
                updated_at=?
            WHERE id=?""",
         (
@@ -306,11 +325,8 @@ async def update_intent_raw(conn: aiosqlite.Connection, intent_id: int, snapshot
             int(snapshot.enabled),
             channels_json,
             tags_json,
-            snapshot.lookback_window_seconds,
-            first_scan_at_str,
             snapshot.system_template,
             snapshot.instruction_template,
-            int(snapshot.skip_seen),
             feed_filter_json,
             schedule_json,
             snapshot.timezone,

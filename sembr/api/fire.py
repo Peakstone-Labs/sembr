@@ -99,9 +99,9 @@ async def post_fire(
         )
 
     options = ScanOptions(
-        lookback_seconds=lookback if lookback is not None else intent.lookback_window_seconds,
+        lookback_seconds=lookback if lookback is not None else getattr(intent.schedule, "lookback_seconds", 86400),
         threshold=threshold if threshold is not None else intent.threshold,
-        skip_seen=skip_seen if skip_seen is not None else intent.skip_seen,
+        skip_seen=skip_seen if skip_seen is not None else getattr(intent.schedule, "skip_seen", True),
         feed_ids=intent.feed_filter.ids if intent.feed_filter else None,
         write_match_seen=False,  # fire never writes match_seen
     )

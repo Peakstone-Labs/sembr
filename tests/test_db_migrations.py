@@ -1,7 +1,8 @@
-"""Unit tests for DD7: DB migration strategy (M1).
+"""Unit tests for DB migration strategy (M1).
 
 Verifies that init_intent_tables is idempotent and correctly migrates
-old scan_interval_seconds rows into the new schedule JSON column.
+old interval-mode rows into cron-mode schedule JSON, and sinks
+lookback_seconds / skip_seen from top-level columns into schedule JSON.
 """
 from __future__ import annotations
 
@@ -29,19 +30,17 @@ async def test_fresh_db_migration_idempotent() -> None:
     try:
         await init_intent_tables(conn)
         await init_intent_tables(conn)  # second call must not raise
-        # Basic smoke: create and retrieve an intent
         intent = await create_intent(conn, VALID_INTENT)
         fetched = await get_intent(conn, intent.id)
         assert fetched is not None
-        assert fetched.schedule.mode == "interval"
-        assert fetched.schedule.seconds == 3600  # type: ignore[union-attr]
+        assert fetched.schedule.mode == "cron"
     finally:
         await conn.close()
 
 
 @pytest.mark.asyncio
 async def test_old_db_backfill_scan_interval_seconds() -> None:
-    """Old rows with scan_interval_seconds get schedule JSON backfilled on migration."""
+    """Old interval rows get converted to cron mode with embedded lookback/skip_seen."""
     conn = await aiosqlite.connect(":memory:")
     try:
         # Simulate an old-schema DB: create table without new columns,
@@ -64,30 +63,33 @@ async def test_old_db_backfill_scan_interval_seconds() -> None:
             )
         """)
         await conn.execute(
-            """INSERT INTO intents (name, text, channels, scan_interval_seconds, created_at, updated_at)
-               VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))""",
-            ("old-intent", "old text", "[]", 86400),
+            """INSERT INTO intents (name, text, channels, scan_interval_seconds, lookback_window_seconds, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))""",
+            ("old-intent", "old text", "[]", 86400, 43200),
         )
         await conn.commit()
 
-        # Run migration
         await init_intent_tables(conn)
 
-        # Verify backfill: schedule must reflect old scan_interval_seconds
+        # Verify conversion: interval → cron with embedded lookback_seconds
         async with conn.execute("SELECT schedule FROM intents WHERE name='old-intent'") as cur:
             row = await cur.fetchone()
         assert row is not None
         sched = json.loads(row[0])
-        assert sched["mode"] == "interval"
-        assert sched["seconds"] == 86400
+        assert sched["mode"] == "cron"
+        assert sched["lookback_seconds"] == 43200
+        assert sched["skip_seen"] in (0, 1, True, False)  # stored as int or bool
 
         # Verify scan_interval_seconds column was dropped
         async with conn.execute("PRAGMA table_info(intents)") as cur:
             cols = {r[1] for r in await cur.fetchall()}
         assert "scan_interval_seconds" not in cols
+        assert "lookback_window_seconds" not in cols
+        assert "first_scan_at" not in cols
+        assert "skip_seen" not in cols
 
-        # Verify all new columns exist
-        for col in ("skip_seen", "feed_filter", "schedule", "timezone", "language"):
+        # Verify new columns exist
+        for col in ("feed_filter", "schedule", "timezone", "language"):
             assert col in cols, f"expected column {col!r} to exist after migration"
 
     finally:
@@ -96,7 +98,7 @@ async def test_old_db_backfill_scan_interval_seconds() -> None:
 
 @pytest.mark.asyncio
 async def test_migration_multiple_old_rows() -> None:
-    """Multiple old rows all get their scan_interval_seconds migrated."""
+    """Multiple old interval rows all get converted to cron mode."""
     conn = await aiosqlite.connect(":memory:")
     try:
         await conn.execute("""
@@ -133,12 +135,8 @@ async def test_migration_multiple_old_rows() -> None:
         assert len(result) == 3
         for name, raw_schedule in result:
             sched = json.loads(raw_schedule)
-            assert sched["mode"] == "interval", f"intent {name} has wrong mode"
-
-        name_to_interval = {name: json.loads(raw)["seconds"] for name, raw in result}
-        assert name_to_interval["i1"] == 3600
-        assert name_to_interval["i2"] == 7200
-        assert name_to_interval["i3"] == 600
+            assert sched["mode"] == "cron", f"intent {name} should have been converted to cron"
+            assert "lookback_seconds" in sched, f"intent {name} missing lookback_seconds"
 
         # Verify no NULL schedule values remain
         async with conn.execute("SELECT count(*) FROM intents WHERE json_extract(schedule,'$.mode') IS NULL") as cur:
@@ -156,9 +154,10 @@ async def test_new_intent_schedule_defaults() -> None:
     try:
         await init_intent_tables(conn)
         intent = await create_intent(conn, VALID_INTENT)
-        assert intent.schedule.mode == "interval"
-        assert intent.schedule.seconds == 3600  # type: ignore[union-attr]
-        assert intent.skip_seen is True
+        assert intent.schedule.mode == "cron"
+        assert intent.schedule.preset == "daily"  # type: ignore[union-attr]
+        assert intent.schedule.lookback_seconds == 86400  # type: ignore[union-attr]
+        assert intent.schedule.skip_seen is True  # type: ignore[union-attr]
         assert intent.feed_filter is None
         assert intent.timezone == "UTC"
         assert intent.language == "zh"

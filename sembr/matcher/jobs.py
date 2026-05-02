@@ -1,23 +1,20 @@
 """APScheduler job lifecycle management for per-intent scan jobs.
 
-D1:  each intent gets its own trigger (IntervalTrigger or CronTrigger) job.
-D2:  start_date = first_scan_at or now (None → immediate first fire) for interval mode.
 D15: coalesce=True, max_instances=1, replace_existing=True — project-wide APScheduler convention.
 D16: job ID = f"matcher-intent-{intent_id}" — stable, enables replace_existing-based reregister.
+D8:  EventSchedule intents skip APScheduler registration (event-driven path).
 """
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 
 if TYPE_CHECKING:
-    from sembr.models import CronSchedule, Intent, IntervalSchedule
+    from sembr.models import CronSchedule, EventSchedule, Intent
 
 logger = logging.getLogger(__name__)
 
@@ -52,35 +49,16 @@ def register_intent_job(
 ) -> None:
     # Lazy import prevents circular dependency: jobs ← scan ← match_seen/intents/callback
     from sembr.matcher.scan import run_intent_scan  # noqa: PLC0415
-    from sembr.models import CronSchedule, IntervalSchedule  # noqa: PLC0415
+    from sembr.models import CronSchedule, EventSchedule  # noqa: PLC0415
 
     schedule = intent.schedule
 
-    if isinstance(schedule, IntervalSchedule):
-        start_date: datetime | None = intent.first_scan_at
-        if start_date is not None:
-            if start_date.tzinfo is None:
-                start_date = start_date.replace(tzinfo=timezone.utc)
-            if start_date < datetime.now(timezone.utc):
-                # D2: past first_scan_at → schedule immediate first tick rather than
-                # waiting for the next computed slot (start_date + n*interval ≥ now)
-                logger.info(
-                    "intent_id=%d first_scan_at is in the past; scheduling immediate first tick",
-                    intent.id,
-                )
-                start_date = None
+    # D8: event-mode intents are triggered by ingestion events, not APScheduler ticks
+    if isinstance(schedule, EventSchedule):
+        logger.debug("skipping APScheduler registration for event-mode intent_id=%d", intent.id)
+        return
 
-        # APScheduler IntervalTrigger computes ceil(elapsed/interval) for the first fire time,
-        # so even start_date=now yields next_fire = now + interval for large intervals (e.g. 86400s).
-        # next_run_time overrides the trigger for the first tick only; subsequent ticks use the trigger.
-        next_run_time = datetime.now(timezone.utc) if fire_immediately else None
-        trigger = IntervalTrigger(seconds=schedule.seconds, start_date=start_date)
-        logger.debug(
-            "registered matcher job intent_id=%d interval=%ds",
-            intent.id,
-            schedule.seconds,
-        )
-    elif isinstance(schedule, CronSchedule):
+    if isinstance(schedule, CronSchedule):
         trigger = _build_cron_trigger(schedule, intent.timezone)
         next_run_time = None  # CronTrigger computes its own first fire time
         logger.debug(

@@ -128,19 +128,8 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     text_changed = body.text is not None and body.text.strip() != current.text.strip()  # D6
     enabled_changed = body.enabled is not None and body.enabled != current.enabled
     schedule_changed = (
-        (
-            body.schedule is not None
-            and body.schedule != current.schedule
-        ) or (
-            body.timezone is not None
-            and body.timezone != current.timezone
-        ) or (
-            body.lookback_window_seconds is not None
-            and body.lookback_window_seconds != current.lookback_window_seconds
-        ) or (
-            body.first_scan_at is not None
-            and body.first_scan_at != current.first_scan_at
-        )
+        (body.schedule is not None and body.schedule != current.schedule)
+        or (body.timezone is not None and body.timezone != current.timezone)
     )
 
     embedder = request.app.state.embedder

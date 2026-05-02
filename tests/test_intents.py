@@ -474,14 +474,14 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
 # ---------------------------------------------------------------------------
 
 _NEW_FIELD_INVALID_BODIES = [
-    # schedule.seconds out of range (IntervalSchedule)
-    {**VALID_BODY, "schedule": {"mode": "interval", "seconds": 59}},     # below minimum
-    {**VALID_BODY, "schedule": {"mode": "interval", "seconds": 604801}},  # above maximum
+    # EventSchedule trigger_count out of range
+    {**VALID_BODY, "schedule": {"mode": "event", "trigger_count": 0}},     # below minimum
+    {**VALID_BODY, "schedule": {"mode": "event", "trigger_count": 11}},    # above maximum
     # CronSchedule weekly without weekday
     {**VALID_BODY, "schedule": {"mode": "cron", "preset": "weekly", "hour": 9}},
-    # lookback_window_seconds out of range
-    {**VALID_BODY, "lookback_window_seconds": 299},     # below minimum (300)
-    {**VALID_BODY, "lookback_window_seconds": 2592001},  # above maximum (2592000)
+    # EventSchedule max_wait_seconds out of range
+    {**VALID_BODY, "schedule": {"mode": "event", "max_wait_seconds": 59}},     # below minimum
+    {**VALID_BODY, "schedule": {"mode": "event", "max_wait_seconds": 86401}},  # above maximum
 ]
 
 
@@ -499,10 +499,10 @@ def test_post_intent_new_fields_defaults() -> None:
 
     assert resp.status_code == 201
     data = resp.json()
-    assert data["schedule"] == {"mode": "interval", "seconds": 3600}
-    assert data["lookback_window_seconds"] == 86400
-    assert data["first_scan_at"] is None
-    assert data["skip_seen"] is True
+    assert data["schedule"]["mode"] == "cron"
+    assert data["schedule"]["preset"] == "daily"
+    assert data["schedule"]["lookback_seconds"] == 86400
+    assert data["schedule"]["skip_seen"] is True
     assert data["feed_filter"] is None
     assert data["timezone"] == "UTC"
     assert data["language"] == "zh"
@@ -512,17 +512,18 @@ def test_put_intent_schedule_fields() -> None:
     """PUT schedule updates the stored value."""
     with _client() as (http, _):
         intent_id = http.post("/intents", json=VALID_BODY).json()["id"]
-        resp = http.put(f"/intents/{intent_id}", json={"schedule": {"mode": "interval", "seconds": 120}})
+        resp = http.put(f"/intents/{intent_id}", json={"schedule": {"mode": "cron", "preset": "hourly"}})
 
     assert resp.status_code == 200
-    assert resp.json()["schedule"] == {"mode": "interval", "seconds": 120}
+    assert resp.json()["schedule"]["mode"] == "cron"
+    assert resp.json()["schedule"]["preset"] == "hourly"
 
 
 def test_put_intent_schedule_invalid() -> None:
-    """PUT with out-of-range schedule seconds → 422."""
+    """PUT with invalid schedule → 422."""
     with _client() as (http, _):
         intent_id = http.post("/intents", json=VALID_BODY).json()["id"]
-        resp = http.put(f"/intents/{intent_id}", json={"schedule": {"mode": "interval", "seconds": 30}})
+        resp = http.put(f"/intents/{intent_id}", json={"schedule": {"mode": "cron", "preset": "weekly"}})
 
     assert resp.status_code == 422
 
