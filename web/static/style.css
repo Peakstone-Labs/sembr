@@ -455,7 +455,6 @@ input::placeholder { color: var(--text-dim); }
 /* ── Intents view wrapper ── */
 .intents-view {
   position: relative;
-  z-index: 1;
   padding: 24px;
   max-width: 1440px;
   margin: 0 auto;

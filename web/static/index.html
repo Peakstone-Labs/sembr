@@ -408,7 +408,7 @@
   <!-- ═══════════════════════════════════════════════════════
        Create / Edit Modal
        ══════════════════════════════════════════════════════ -->
-  <div class="modal-overlay" x-show="modal.open" x-cloak @click.self="closeModal()">
+  <div class="modal-overlay" x-show="modal.open" x-cloak>
     <div class="modal-panel">
       <div class="modal-header">
         <span class="modal-title"
@@ -762,7 +762,7 @@
   <!-- ═══════════════════════════════════════════════════════
        Delete Confirmation Modal
        ══════════════════════════════════════════════════════ -->
-  <div class="modal-overlay" x-show="del.open" x-cloak @click.self="closeDelete()">
+  <div class="modal-overlay" x-show="del.open" x-cloak>
     <div class="modal-panel" style="max-width:480px;">
       <div class="modal-header">
         <span class="modal-title">Confirm Delete</span>
@@ -784,7 +784,7 @@
   <!-- ═══════════════════════════════════════════════════════
        Fire Dialog
        ══════════════════════════════════════════════════════ -->
-  <div class="modal-overlay" x-show="fire.open" x-cloak @click.self="closeFire()">
+  <div class="modal-overlay" x-show="fire.open" x-cloak>
     <div class="modal-panel" style="max-width:620px;">
       <div class="modal-header">
         <span class="modal-title">Fire Intent · <span x-text="fire.intent?.name || ''"></span></span>
