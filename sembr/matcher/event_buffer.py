@@ -161,10 +161,11 @@ async def flush(conn: aiosqlite.Connection, app, intent_id: int) -> None:
     ) as cur:
         rows = await cur.fetchall()
 
+    # Always commit — a zero-row DELETE still opens an implicit transaction.
+    await conn.commit()
+
     if not rows:
         return
-
-    await conn.commit()
 
     matches: list[Match] = []
     for (members_raw,) in rows:
