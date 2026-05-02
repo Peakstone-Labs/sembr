@@ -205,8 +205,10 @@ async def test_flush_no_rows_is_noop():
 
 
 @pytest.mark.asyncio
-async def test_flush_on_match_exception_does_not_reraise():
-    """E1 contract: on_match failure is logged but NOT re-raised; buffer already cleared."""
+async def test_flush_on_match_exception_does_not_reraise(caplog):
+    """E1 contract: on_match failure is logged at WARNING but NOT re-raised; buffer already cleared."""
+    import logging
+
     conn, intent_id = await _setup_db()
     on_match = AsyncMock(side_effect=RuntimeError("push failed"))
     app = MagicMock()
@@ -214,14 +216,19 @@ async def test_flush_on_match_exception_does_not_reraise():
 
     try:
         await absorb(conn, intent_id, [_match("art-1", "Breaking news")], _EVENT_SCHEDULE)
-        # Must not raise
-        await flush(conn, app, intent_id)
+        with caplog.at_level(logging.WARNING, logger="sembr.matcher.event_buffer"):
+            # Must not raise
+            await flush(conn, app, intent_id)
         # Buffer still empty — DELETE committed before on_match was called
         async with conn.execute(
             "SELECT COUNT(*) FROM event_pending WHERE intent_id=?", (intent_id,)
         ) as cur:
             (count,) = await cur.fetchone()
         assert count == 0
+        assert any(
+            "on_match raised" in rec.message and rec.levelname == "WARNING"
+            for rec in caplog.records
+        ), "E1: on_match failure must be logged at WARNING"
     finally:
         await conn.close()
 
@@ -363,6 +370,76 @@ async def test_sweep_isolates_per_intent_failures():
 
     try:
         await sweep_timed_out(conn, app, cache)
-        assert i2.id in call_log, "second intent must still flush despite first failure"
+        # Both intents must be attempted regardless of SQLite row order (no ORDER BY in sweep)
+        assert sorted(call_log) == sorted([i1.id, i2.id]), (
+            f"both intents must be attempted despite i1 raising; got call_log={call_log}"
+        )
+        # i2 buffer must actually be drained (strongest order-independent check)
+        async with conn.execute(
+            "SELECT COUNT(*) FROM event_pending WHERE intent_id=?", (i2.id,)
+        ) as cur:
+            (remaining,) = await cur.fetchone()
+        assert remaining == 0, "i2 buffer must be drained even though i1 raised"
+    finally:
+        await conn.close()
+
+
+# ---------------------------------------------------------------------------
+# _dot and event_match_batch — Risk 7 regression guard
+# ---------------------------------------------------------------------------
+
+
+def test_dot_length_mismatch_raises():
+    """Loop 4 🟡4 guard: _dot must raise ValueError on mismatched vector lengths."""
+    from sembr.matcher.event_match import _dot
+
+    with pytest.raises(ValueError, match="vector length mismatch"):
+        _dot([1.0, 2.0], [1.0, 2.0, 3.0])
+
+
+@pytest.mark.asyncio
+async def test_event_match_batch_swallows_dot_mismatch(caplog):
+    """Risk 7: length-mismatched cache entry must not abort the batch; logs WARNING."""
+    import logging
+
+    from sembr.matcher.event_cache import EventIntentCache, EventIntentEntry
+    from sembr.matcher.event_match import event_match_batch
+
+    conn, intent_id = await _setup_db()
+    try:
+        # Cache entry with wrong vector length (512 instead of 1024)
+        cache = EventIntentCache()
+        cache.add(
+            intent_id,
+            EventIntentEntry(
+                vector=[0.1] * 512,  # mismatched — article points will be 1024-dim
+                threshold=0.75,
+                feed_filter_ids=None,
+                schedule=_EVENT_SCHEDULE,
+            ),
+        )
+
+        app = MagicMock()
+        app.state.event_intent_cache = cache
+        app.state.db_conn = conn
+
+        # Build a fake Qdrant point with 1024-dim vector
+        point = MagicMock()
+        point.id = "art-mismatch"
+        point.vector = [0.5] * 1024
+        point.payload = {
+            "title": "Test article",
+            "url": "https://example.com",
+            "body": "",
+            "feed_id": 1,
+            "published_at": None,
+        }
+
+        with caplog.at_level(logging.WARNING, logger="sembr.matcher.event_match"):
+            await event_match_batch(app, [point], conn)
+
+        assert any(
+            rec.levelname == "WARNING" for rec in caplog.records
+        ), "Risk 7: event_match_batch must log WARNING on internal failure"
     finally:
         await conn.close()
