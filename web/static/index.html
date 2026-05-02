@@ -469,9 +469,36 @@
 
             <div class="form-field">
               <label class="field-label">Timezone <span class="req">*</span></label>
-              <input type="text" x-model="modal.form.timezone"
-                     :class="modal.errors.timezone ? 'field-err' : ''"
-                     placeholder="Asia/Shanghai">
+              <select x-model="modal.form.timezone" :class="modal.errors.timezone ? 'field-err' : ''">
+                <optgroup label="Asia">
+                  <option value="Asia/Shanghai">Asia/Shanghai (UTC+8)</option>
+                  <option value="Asia/Hong_Kong">Asia/Hong_Kong (UTC+8)</option>
+                  <option value="Asia/Taipei">Asia/Taipei (UTC+8)</option>
+                  <option value="Asia/Singapore">Asia/Singapore (UTC+8)</option>
+                  <option value="Asia/Tokyo">Asia/Tokyo (UTC+9)</option>
+                  <option value="Asia/Seoul">Asia/Seoul (UTC+9)</option>
+                  <option value="Asia/Kolkata">Asia/Kolkata (UTC+5:30)</option>
+                  <option value="Asia/Dubai">Asia/Dubai (UTC+4)</option>
+                </optgroup>
+                <optgroup label="Europe">
+                  <option value="Europe/London">Europe/London (UTC+0/+1)</option>
+                  <option value="Europe/Paris">Europe/Paris (UTC+1/+2)</option>
+                  <option value="Europe/Berlin">Europe/Berlin (UTC+1/+2)</option>
+                  <option value="Europe/Moscow">Europe/Moscow (UTC+3)</option>
+                </optgroup>
+                <optgroup label="Americas">
+                  <option value="America/New_York">America/New_York (UTC-5/-4)</option>
+                  <option value="America/Chicago">America/Chicago (UTC-6/-5)</option>
+                  <option value="America/Denver">America/Denver (UTC-7/-6)</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles (UTC-8/-7)</option>
+                  <option value="America/Sao_Paulo">America/Sao_Paulo (UTC-3)</option>
+                </optgroup>
+                <optgroup label="Pacific / Other">
+                  <option value="Australia/Sydney">Australia/Sydney (UTC+10/+11)</option>
+                  <option value="Pacific/Auckland">Pacific/Auckland (UTC+12/+13)</option>
+                  <option value="UTC">UTC</option>
+                </optgroup>
+              </select>
               <span class="field-err-msg" x-show="modal.errors.timezone" x-text="modal.errors.timezone"></span>
             </div>
 

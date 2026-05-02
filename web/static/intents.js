@@ -148,7 +148,7 @@ function intentsTab() {
         threshold: 0.75,
         enabled: true,
         language: 'zh',
-        timezone: 'UTC',
+        timezone: 'Asia/Shanghai',
         tags: [], tagInput: '',
         // cron schedule
         preset: 'daily', hour: 0, minute: 0, weekday: 'mon',
@@ -188,7 +188,7 @@ function intentsTab() {
           threshold: intent.threshold,
           enabled: intent.enabled,
           language: intent.language || 'zh',
-          timezone: intent.timezone || 'UTC',
+          timezone: intent.timezone || 'Asia/Shanghai',
           tags: [...(intent.tags || [])],
           tagInput: '',
           // cron fields (used when intentMode==='cron')
@@ -291,7 +291,7 @@ function intentsTab() {
       if (isNaN(thr) || thr < 0.60 || thr > 0.95)
         errors.threshold = 'Must be between 0.60 and 0.95';
 
-      if (!f.timezone.trim()) errors.timezone = 'Required';
+
 
       if (!f.language.trim())
         errors.language = 'Required';
