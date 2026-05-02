@@ -86,7 +86,7 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
             request.app.state.event_intent_cache.add(
                 intent.id,
                 EventIntentEntry(
-                    vector=vector,
+                    vector=list(vector),  # defensive copy — vector ref must not alias caller's list
                     threshold=intent.threshold,
                     feed_filter_ids=intent.feed_filter.ids if intent.feed_filter else None,
                     schedule=intent.schedule,  # type: ignore[arg-type]
@@ -237,27 +237,40 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
         if updated.enabled:
             # Resolve vector: new embed if text changed, else reuse cached or retrieve from Qdrant
             if text_changed:
-                cache_vector = vector  # from upsert above
+                cache_vector: list[float] | None = list(vector)  # defensive copy
             else:
                 existing_entry = cache.get(intent_id)
                 if existing_entry is not None:
                     cache_vector = existing_entry.vector
                 else:
-                    # Intent was disabled (not in cache); retrieve once from Qdrant
+                    # Intent was disabled (not in cache); retrieve once from Qdrant.
+                    # Use _extract_vector for named-vector safety (🟡1 fix).
+                    from sembr.matcher.event_cache import _extract_vector  # noqa: PLC0415
                     pts = await qdrant_client.retrieve(
                         collection_name="intents_current", ids=[intent_id], with_vectors=True
                     )
-                    cache_vector = list(pts[0].vector) if pts and pts[0].vector else None
-            if cache_vector is not None:
-                cache.add(
+                    cache_vector = _extract_vector(pts[0]) if pts else None
+            if cache_vector is None:
+                # Vector absent — intent is enabled in SQLite but unresolvable in Qdrant.
+                # Surface as 500 so the operator knows to DELETE+POST (🟡2 fix).
+                logger.error(
+                    "PUT intent_id=%d: enabled=True but Qdrant vector absent; "
+                    "event cache not updated. Disable or DELETE+POST to resolve.",
                     intent_id,
-                    EventIntentEntry(
-                        vector=cache_vector,
-                        threshold=updated.threshold,
-                        feed_filter_ids=updated.feed_filter.ids if updated.feed_filter else None,
-                        schedule=updated.schedule,  # type: ignore[arg-type]
-                    ),
                 )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="intent vector missing from Qdrant; delete and recreate the intent",
+                )
+            cache.add(
+                intent_id,
+                EventIntentEntry(
+                    vector=cache_vector,
+                    threshold=updated.threshold,
+                    feed_filter_ids=updated.feed_filter.ids if updated.feed_filter else None,
+                    schedule=updated.schedule,  # type: ignore[arg-type]
+                ),
+            )
         else:
             cache.remove(intent_id)
 

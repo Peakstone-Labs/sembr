@@ -17,6 +17,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _extract_vector(point) -> list[float] | None:
+    """Extract a flat float list from a Qdrant point's vector field.
+
+    Mirrors the named-vector guard in event_match._event_match_batch_inner:64.
+    Returns None when the point has no vector or carries a named-vector dict
+    without a resolvable default — callers must treat None as "vector absent".
+    """
+    raw = getattr(point, "vector", None)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        # Named-vector layout: pick "default" or fall back to first available
+        raw = raw.get("default") or next(iter(raw.values()), None)
+    return list(raw) if raw is not None else None
+
+
 @dataclass
 class EventIntentEntry:
     vector: list[float]
@@ -77,7 +93,8 @@ async def load_event_cache(
             ids=[intent.id],
             with_vectors=True,
         )
-        if not points or points[0].vector is None:
+        vec = _extract_vector(points[0]) if points else None
+        if vec is None:
             logger.error(
                 "intent_id=%d (event-mode) has no Qdrant vector at startup; "
                 "skipping cache load. Disable or DELETE+POST to resolve.",
@@ -85,7 +102,7 @@ async def load_event_cache(
             )
             continue
         entry = EventIntentEntry(
-            vector=list(points[0].vector),
+            vector=vec,
             threshold=intent.threshold,
             feed_filter_ids=intent.feed_filter.ids if intent.feed_filter else None,
             schedule=intent.schedule,  # type: ignore[arg-type]
