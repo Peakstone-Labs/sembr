@@ -25,6 +25,8 @@ def _dot(a: list[float], b: list[float]) -> float:
     BGE-M3 outputs are L2-normalized so dot == cosine similarity.
     No numpy dependency (not in pyproject.toml).
     """
+    if len(a) != len(b):
+        raise ValueError(f"vector length mismatch: {len(a)} vs {len(b)}")
     return sum(x * y for x, y in zip(a, b))
 
 
