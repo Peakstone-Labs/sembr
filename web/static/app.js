@@ -13,7 +13,13 @@ function dashboard() {
     _embedChart: null,
     _timer: null,
 
+    // Tab routing
+    currentTab: 'dashboard',
+
     async init() {
+      this._syncFromHash();
+      window.addEventListener('hashchange', () => this._syncFromHash());
+
       try {
         const cfgRes = await fetch('/api/dashboard/config');
         if (cfgRes.ok) {
@@ -24,6 +30,20 @@ function dashboard() {
       } catch (e) {}
       await this.refresh();
       this._timer = setInterval(() => this.refresh(), this.pollInterval);
+    },
+
+    _syncFromHash() {
+      const hash = window.location.hash.slice(1) || 'dashboard';
+      this.currentTab = hash.startsWith('intents') ? 'intents' : 'dashboard';
+    },
+
+    setTab(tab) {
+      this.currentTab = tab;
+      if (tab === 'dashboard') {
+        window.location.hash = 'dashboard';
+      } else if (!window.location.hash.startsWith('#intents')) {
+        window.location.hash = 'intents/cron';
+      }
     },
 
     _token() {

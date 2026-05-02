@@ -25,7 +25,16 @@
   Dashboard is publicly accessible — set <code>DASHBOARD_TOKEN</code> to require auth.
 </div>
 
-<main>
+<!-- Top-level Tab nav -->
+<nav class="tab-nav">
+  <button class="tab-btn" :class="{active: currentTab==='dashboard'}" @click="setTab('dashboard')">Dashboard</button>
+  <button class="tab-btn" :class="{active: currentTab==='intents'}"   @click="setTab('intents')">Intents</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════
+     Dashboard view (existing)
+     ══════════════════════════════════════════════════════ -->
+<main x-show="currentTab==='dashboard'">
 
   <!-- System -->
   <section class="panel panel-hero">
@@ -246,6 +255,645 @@
 
 </main>
 
+<!-- ═══════════════════════════════════════════════════════
+     Intents view
+     ══════════════════════════════════════════════════════ -->
+<div x-show="currentTab==='intents'" x-data="intentsTab()" x-init="init()" class="intents-view">
+
+  <!-- Toolbar: sub-tabs + new button -->
+  <div class="intents-toolbar">
+    <nav class="sub-tab-nav">
+      <button class="sub-tab-btn" :class="{active: subTab==='cron'}"
+              @click="setSubTab('cron')">
+        Cron
+        <span class="count-badge" x-text="cronList.length"></span>
+      </button>
+      <button class="sub-tab-btn" :class="{active: subTab==='event'}"
+              @click="setSubTab('event')">
+        Event
+        <span class="count-badge" x-text="eventList.length"></span>
+      </button>
+    </nav>
+    <button class="primary" @click="openCreate(subTab)">
+      + New <span x-text="subTab === 'cron' ? 'Cron' : 'Event'"></span> Intent
+    </button>
+  </div>
+
+  <!-- Loading -->
+  <div x-show="loading" class="empty-state">
+    <span class="spinner spinner-lg"></span>
+    <span style="margin-left:10px;">Loading…</span>
+  </div>
+
+  <!-- ── Cron sub-tab ── -->
+  <div x-show="!loading && subTab==='cron'">
+    <div x-show="cronList.length === 0" class="empty-state">
+      No Cron intents yet — click <strong>+ New Cron Intent</strong> to create one.
+    </div>
+    <table x-show="cronList.length > 0">
+      <thead>
+        <tr>
+          <th>Name / Text</th>
+          <th>Schedule</th>
+          <th>Threshold</th>
+          <th>Language</th>
+          <th>Tags</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="intent in cronList" :key="intent.id">
+          <tr :class="intent.enabled ? '' : 'row-disabled'">
+            <td style="max-width:260px;">
+              <div style="font-weight:500;" x-text="intent.name"></div>
+              <div class="muted" style="font-size:11px; margin-top:2px; line-height:1.4;"
+                   x-text="intent.text.length > 90 ? intent.text.substring(0,90)+'…' : intent.text"></div>
+            </td>
+            <td class="mono" x-text="fmtSchedule(intent)"></td>
+            <td class="mono" x-text="intent.threshold"></td>
+            <td class="mono" x-text="intent.language || '—'"></td>
+            <td>
+              <div class="tags-wrap">
+                <template x-for="tag in (intent.tags || [])" :key="tag">
+                  <span class="intent-tag" x-text="tag"></span>
+                </template>
+                <span x-show="!intent.tags?.length" class="muted" style="font-size:11px;">—</span>
+              </div>
+            </td>
+            <td>
+              <label class="toggle-wrap">
+                <span class="toggle">
+                  <input type="checkbox" :checked="intent.enabled" @change="toggleEnabled(intent)">
+                  <span class="toggle-slider"></span>
+                </span>
+                <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;"
+                      x-text="intent.enabled ? 'on' : 'off'"></span>
+              </label>
+            </td>
+            <td>
+              <div class="action-cell">
+                <button @click="openEdit(intent)">Edit</button>
+                <button class="fire-btn" @click="openFire(intent)">Fire</button>
+                <button class="danger" @click="confirmDelete(intent)">Delete</button>
+              </div>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Event sub-tab ── -->
+  <div x-show="!loading && subTab==='event'">
+    <div x-show="eventList.length === 0" class="empty-state">
+      No Event intents yet — click <strong>+ New Event Intent</strong> to create one.
+    </div>
+    <table x-show="eventList.length > 0">
+      <thead>
+        <tr>
+          <th>Name / Text</th>
+          <th>Trigger Count</th>
+          <th>Max Wait (s)</th>
+          <th>Threshold</th>
+          <th>Language</th>
+          <th>Tags</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="intent in eventList" :key="intent.id">
+          <tr :class="intent.enabled ? '' : 'row-disabled'">
+            <td style="max-width:240px;">
+              <div style="font-weight:500;" x-text="intent.name"></div>
+              <div class="muted" style="font-size:11px; margin-top:2px; line-height:1.4;"
+                   x-text="intent.text.length > 90 ? intent.text.substring(0,90)+'…' : intent.text"></div>
+            </td>
+            <td class="mono" x-text="intent.schedule?.trigger_count ?? '—'"></td>
+            <td class="mono" x-text="intent.schedule?.max_wait_seconds ?? '—'"></td>
+            <td class="mono" x-text="intent.threshold"></td>
+            <td class="mono" x-text="intent.language || '—'"></td>
+            <td>
+              <div class="tags-wrap">
+                <template x-for="tag in (intent.tags || [])" :key="tag">
+                  <span class="intent-tag" x-text="tag"></span>
+                </template>
+                <span x-show="!intent.tags?.length" class="muted" style="font-size:11px;">—</span>
+              </div>
+            </td>
+            <td>
+              <label class="toggle-wrap">
+                <span class="toggle">
+                  <input type="checkbox" :checked="intent.enabled" @change="toggleEnabled(intent)">
+                  <span class="toggle-slider"></span>
+                </span>
+                <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;"
+                      x-text="intent.enabled ? 'on' : 'off'"></span>
+              </label>
+            </td>
+            <td>
+              <div class="action-cell">
+                <button @click="openEdit(intent)">Edit</button>
+                <!-- No Fire for event intents — see design D3 -->
+                <button class="danger" @click="confirmDelete(intent)">Delete</button>
+              </div>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       Create / Edit Modal
+       ══════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" x-show="modal.open" x-cloak @click.self="closeModal()">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <span class="modal-title"
+              x-text="modal.mode === 'create'
+                ? '+ New ' + (modal.intentMode === 'cron' ? 'Cron' : 'Event') + ' Intent'
+                : 'Edit Intent'"></span>
+        <button class="modal-close" @click="closeModal()">✕</button>
+      </div>
+
+      <div class="form-sections">
+
+        <!-- ── Basic ── -->
+        <div class="form-section">
+          <div class="form-section-title">Basic</div>
+          <div class="form-grid">
+
+            <div class="form-field form-grid-full">
+              <label class="field-label">Name <span class="req">*</span></label>
+              <input type="text" x-model="modal.form.name" maxlength="100"
+                     :class="modal.errors.name ? 'field-err' : ''"
+                     placeholder="e.g. AI weekly digest">
+              <span class="field-err-msg" x-show="modal.errors.name" x-text="modal.errors.name"></span>
+            </div>
+
+            <div class="form-field form-grid-full">
+              <label class="field-label">Intent Text <span class="req">*</span></label>
+              <textarea x-model="modal.form.text" maxlength="2000" rows="3"
+                        :class="modal.errors.text ? 'field-err' : ''"
+                        placeholder="Describe what this intent should match…"></textarea>
+              <span class="field-err-msg" x-show="modal.errors.text" x-text="modal.errors.text"></span>
+              <span class="field-hint" x-text="(modal.form.text?.length || 0) + ' / 2000'"></span>
+            </div>
+
+            <div class="form-field">
+              <label class="field-label">Threshold <span class="req">*</span></label>
+              <input type="number" x-model="modal.form.threshold"
+                     min="0.60" max="0.95" step="0.01"
+                     :class="modal.errors.threshold ? 'field-err' : ''">
+              <span class="field-err-msg" x-show="modal.errors.threshold" x-text="modal.errors.threshold"></span>
+              <span class="field-hint">Semantic similarity cutoff (0.60–0.95)</span>
+            </div>
+
+            <div class="form-field">
+              <label class="field-label">Mode</label>
+              <input type="text" :value="modal.intentMode" disabled>
+              <span class="field-immutable-note" x-show="modal.mode === 'edit'">
+                Mode is immutable — delete and recreate to change.
+              </span>
+            </div>
+
+            <div class="form-field">
+              <label class="field-label">Language <span class="req">*</span></label>
+              <input type="text" x-model="modal.form.language" maxlength="32"
+                     :class="modal.errors.language ? 'field-err' : ''"
+                     placeholder="zh">
+              <span class="field-err-msg" x-show="modal.errors.language" x-text="modal.errors.language"></span>
+            </div>
+
+            <div class="form-field">
+              <label class="field-label">Timezone <span class="req">*</span></label>
+              <input type="text" x-model="modal.form.timezone"
+                     :class="modal.errors.timezone ? 'field-err' : ''"
+                     placeholder="Asia/Shanghai">
+              <span class="field-err-msg" x-show="modal.errors.timezone" x-text="modal.errors.timezone"></span>
+            </div>
+
+            <div class="form-field form-grid-full">
+              <label class="field-label">Tags <span class="field-hint" style="text-transform:none; letter-spacing:0;">(max 10, 50 chars each)</span></label>
+              <div class="tags-wrap" style="margin-bottom:8px;">
+                <template x-for="(tag, idx) in modal.form.tags" :key="idx">
+                  <span class="intent-tag">
+                    <span x-text="tag"></span>
+                    <button class="tag-rm" @click="removeTag(idx)" type="button">✕</button>
+                  </span>
+                </template>
+              </div>
+              <div class="tag-input-row">
+                <input type="text" x-model="modal.form.tagInput" placeholder="Add tag…"
+                       @keydown="handleTagKeydown($event)" style="flex:1;">
+                <button type="button" @click="addTag()">Add</button>
+              </div>
+            </div>
+
+            <div class="form-field" style="align-self:center;">
+              <label class="toggle-wrap" style="cursor:pointer;">
+                <span class="toggle">
+                  <input type="checkbox" x-model="modal.form.enabled">
+                  <span class="toggle-slider"></span>
+                </span>
+                <span class="field-label" style="margin:0;">Enabled</span>
+              </label>
+            </div>
+
+          </div>
+        </div><!-- /Basic -->
+
+        <!-- ── Schedule ── -->
+        <div class="form-section">
+          <div class="form-section-title">Schedule</div>
+          <div class="form-grid">
+
+            <!-- Cron fields -->
+            <template x-if="modal.intentMode === 'cron'">
+              <div class="form-grid-full">
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label class="field-label">Preset <span class="req">*</span></label>
+                    <select x-model="modal.form.preset">
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="hourly">Hourly</option>
+                    </select>
+                  </div>
+
+                  <div class="form-field" x-show="modal.form.preset !== 'hourly'">
+                    <label class="field-label">Hour (0–23)</label>
+                    <input type="number" x-model="modal.form.hour" min="0" max="23">
+                  </div>
+
+                  <div class="form-field" x-show="modal.form.preset !== 'hourly'">
+                    <label class="field-label">Minute (0–59)</label>
+                    <input type="number" x-model="modal.form.minute" min="0" max="59">
+                  </div>
+
+                  <div class="form-field" x-show="modal.form.preset === 'weekly'">
+                    <label class="field-label">Weekday <span class="req">*</span></label>
+                    <select x-model="modal.form.weekday"
+                            :class="modal.errors.weekday ? 'field-err' : ''">
+                      <option value="mon">Monday</option>
+                      <option value="tue">Tuesday</option>
+                      <option value="wed">Wednesday</option>
+                      <option value="thu">Thursday</option>
+                      <option value="fri">Friday</option>
+                      <option value="sat">Saturday</option>
+                      <option value="sun">Sunday</option>
+                    </select>
+                    <span class="field-err-msg" x-show="modal.errors.weekday" x-text="modal.errors.weekday"></span>
+                  </div>
+
+                  <div class="form-field">
+                    <label class="field-label">Lookback (seconds) <span class="req">*</span></label>
+                    <input type="number" x-model="modal.form.lookback_seconds"
+                           min="300" max="2592000"
+                           :class="modal.errors.lookback_seconds ? 'field-err' : ''">
+                    <span class="field-err-msg" x-show="modal.errors.lookback_seconds"
+                          x-text="modal.errors.lookback_seconds"></span>
+                    <span class="field-hint">e.g. 86400 = 24 h, 604800 = 7 d</span>
+                  </div>
+
+                  <div class="form-field" style="align-self:center; padding-top:20px;">
+                    <label class="toggle-wrap" style="cursor:pointer;">
+                      <span class="toggle">
+                        <input type="checkbox" x-model="modal.form.skip_seen">
+                        <span class="toggle-slider"></span>
+                      </span>
+                      <span class="field-label" style="margin:0;">Skip seen</span>
+                    </label>
+                    <span class="field-hint">Skip articles already matched by this intent</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Event fields -->
+            <template x-if="modal.intentMode === 'event'">
+              <div class="form-grid-full">
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label class="field-label">Trigger Count (1–10) <span class="req">*</span></label>
+                    <input type="number" x-model="modal.form.trigger_count" min="1" max="10"
+                           :class="modal.errors.trigger_count ? 'field-err' : ''">
+                    <span class="field-err-msg" x-show="modal.errors.trigger_count"
+                          x-text="modal.errors.trigger_count"></span>
+                    <span class="field-hint">Minimum new matches to trigger notification</span>
+                  </div>
+                  <div class="form-field">
+                    <label class="field-label">Max Wait (60–86400 s) <span class="req">*</span></label>
+                    <input type="number" x-model="modal.form.max_wait_seconds" min="60" max="86400"
+                           :class="modal.errors.max_wait_seconds ? 'field-err' : ''">
+                    <span class="field-err-msg" x-show="modal.errors.max_wait_seconds"
+                          x-text="modal.errors.max_wait_seconds"></span>
+                    <span class="field-hint">e.g. 1800 = 30 min, 3600 = 1 h</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+          </div>
+        </div><!-- /Schedule -->
+
+        <!-- ── Templates ── -->
+        <div class="form-section">
+          <div class="form-section-title">Templates</div>
+          <div class="form-grid">
+
+            <div class="form-field">
+              <label class="field-label">System Template</label>
+              <template x-if="systemTemplates.length > 0">
+                <select x-model="modal.form.system_template">
+                  <template x-for="t in systemTemplates" :key="t">
+                    <option :value="t" x-text="t"></option>
+                  </template>
+                </select>
+              </template>
+              <template x-if="systemTemplates.length === 0">
+                <input type="text" x-model="modal.form.system_template"
+                       placeholder="default"
+                       list="system-templates-datalist">
+                <datalist id="system-templates-datalist">
+                  <option value="default"></option>
+                </datalist>
+              </template>
+            </div>
+
+            <div class="form-field">
+              <label class="field-label">Instruction Template</label>
+              <template x-if="instructionTemplates.length > 0">
+                <select x-model="modal.form.instruction_template">
+                  <template x-for="t in instructionTemplates" :key="t">
+                    <option :value="t" x-text="t"></option>
+                  </template>
+                </select>
+              </template>
+              <template x-if="instructionTemplates.length === 0">
+                <input type="text" x-model="modal.form.instruction_template"
+                       placeholder="default"
+                       list="instruction-templates-datalist">
+                <datalist id="instruction-templates-datalist">
+                  <option value="default"></option>
+                </datalist>
+              </template>
+            </div>
+
+          </div>
+        </div><!-- /Templates -->
+
+        <!-- ── Feed Filter ── -->
+        <div class="form-section">
+          <div class="form-section-title">Feed Filter</div>
+          <div class="radio-group">
+            <label class="radio-item">
+              <input type="radio" name="feedFilterMode" value="all"
+                     x-model="modal.form.feedFilterMode">
+              All feeds (no filter)
+            </label>
+            <label class="radio-item">
+              <input type="radio" name="feedFilterMode" value="specific"
+                     x-model="modal.form.feedFilterMode">
+              Specific feeds
+            </label>
+          </div>
+
+          <div x-show="modal.form.feedFilterMode === 'specific'" style="margin-top:12px;">
+            <div x-show="modal.form.feedIds.length === 0 && modal.form.feedFilterMode === 'specific'"
+                 style="margin-bottom:8px; font-size:0.75rem; color:var(--bad);">
+              ⚠ No feeds selected — this intent will never match any articles.
+            </div>
+            <div x-show="feeds.length === 0" class="field-hint">
+              No feeds available yet. Add feeds on the Dashboard tab.
+            </div>
+            <div class="feed-checkbox-list" x-show="feeds.length > 0">
+              <template x-for="feed in feeds" :key="feed.id">
+                <label class="feed-checkbox-item">
+                  <input type="checkbox"
+                         :checked="modal.form.feedIds.includes(feed.id)"
+                         @change="toggleFeedId(feed.id)">
+                  <span x-text="feed.name || feed.url"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+        </div><!-- /Feed Filter -->
+
+        <!-- ── Channels ── -->
+        <div class="form-section">
+          <div class="form-section-title">Channels · Email</div>
+          <div class="form-grid">
+
+            <div class="form-field form-grid-full">
+              <label class="field-label">To <span class="req">*</span></label>
+              <div class="tag-input-wrap" :class="modal.errors.to ? 'field-err' : ''">
+                <template x-for="(email, idx) in modal.form.toEmails" :key="email">
+                  <span class="email-tag">
+                    <span x-text="email"></span>
+                    <button class="tag-rm" type="button" @click="removeEmail('to', idx)">✕</button>
+                  </span>
+                </template>
+                <input class="tag-input-inner" type="email"
+                       x-model="modal.form.toInput"
+                       placeholder="recipient@example.com — press Enter or comma to add"
+                       @keydown="handleEmailKeydown($event, 'to')"
+                       @blur="addEmail('to')">
+              </div>
+              <span class="field-err-msg" x-show="modal.errors.to" x-text="modal.errors.to"></span>
+              <span class="field-err-msg" x-show="modal.errors.toInput" x-text="modal.errors.toInput"></span>
+            </div>
+
+            <div class="form-field form-grid-full">
+              <label class="field-label">Cc <span class="field-hint" style="text-transform:none; letter-spacing:0;">(optional)</span></label>
+              <div class="tag-input-wrap">
+                <template x-for="(email, idx) in modal.form.ccEmails" :key="email">
+                  <span class="email-tag">
+                    <span x-text="email"></span>
+                    <button class="tag-rm" type="button" @click="removeEmail('cc', idx)">✕</button>
+                  </span>
+                </template>
+                <input class="tag-input-inner" type="email"
+                       x-model="modal.form.ccInput"
+                       placeholder="cc@example.com"
+                       @keydown="handleEmailKeydown($event, 'cc')"
+                       @blur="addEmail('cc')">
+              </div>
+              <span class="field-err-msg" x-show="modal.errors.ccInput" x-text="modal.errors.ccInput"></span>
+            </div>
+
+            <div class="form-field form-grid-full">
+              <label class="field-label">Bcc <span class="field-hint" style="text-transform:none; letter-spacing:0;">(optional)</span></label>
+              <div class="tag-input-wrap">
+                <template x-for="(email, idx) in modal.form.bccEmails" :key="email">
+                  <span class="email-tag">
+                    <span x-text="email"></span>
+                    <button class="tag-rm" type="button" @click="removeEmail('bcc', idx)">✕</button>
+                  </span>
+                </template>
+                <input class="tag-input-inner" type="email"
+                       x-model="modal.form.bccInput"
+                       placeholder="bcc@example.com"
+                       @keydown="handleEmailKeydown($event, 'bcc')"
+                       @blur="addEmail('bcc')">
+              </div>
+              <span class="field-err-msg" x-show="modal.errors.bccInput" x-text="modal.errors.bccInput"></span>
+            </div>
+
+          </div>
+        </div><!-- /Channels -->
+
+      </div><!-- /form-sections -->
+
+      <div class="modal-footer">
+        <span x-show="modal.errors._global" class="field-err-msg"
+              style="flex:1; text-align:left;" x-text="modal.errors._global"></span>
+        <button @click="closeModal()">Cancel</button>
+        <button class="primary" @click="submitIntent()" :disabled="modal.submitting">
+          <span x-show="modal.submitting"><span class="spinner"></span>&nbsp;</span>
+          <span x-text="modal.mode === 'create' ? 'Create Intent' : 'Save Changes'"></span>
+        </button>
+      </div>
+    </div><!-- /modal-panel -->
+  </div><!-- /modal-overlay create/edit -->
+
+  <!-- ═══════════════════════════════════════════════════════
+       Delete Confirmation Modal
+       ══════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" x-show="del.open" x-cloak @click.self="closeDelete()">
+    <div class="modal-panel" style="max-width:480px;">
+      <div class="modal-header">
+        <span class="modal-title">Confirm Delete</span>
+        <button class="modal-close" @click="closeDelete()">✕</button>
+      </div>
+      <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px;">
+        Delete this intent? This will also remove its vector from Qdrant and stop its scheduler job.
+      </p>
+      <p style="font-size:0.85rem; color:var(--text-secondary);">
+        Intent: <span class="confirm-name" x-text="del.intentName"></span>
+      </p>
+      <div class="modal-footer">
+        <button @click="closeDelete()">Cancel</button>
+        <button class="danger" @click="deleteIntent()">Yes, Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       Fire Dialog
+       ══════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" x-show="fire.open" x-cloak @click.self="closeFire()">
+    <div class="modal-panel" style="max-width:620px;">
+      <div class="modal-header">
+        <span class="modal-title">Fire Intent · <span x-text="fire.intent?.name || ''"></span></span>
+        <button class="modal-close" @click="closeFire()">✕</button>
+      </div>
+
+      <!-- Phase: form -->
+      <div x-show="fire.phase === 'form'">
+        <div class="fire-warning">
+          ⚠ Running Fire will <strong>immediately scan and send real notifications</strong>
+          to all configured channels. This action cannot be undone.
+        </div>
+        <div class="form-grid" style="gap:16px; margin-top:12px;">
+          <div class="form-field">
+            <label class="field-label">Lookback (seconds)</label>
+            <input type="number" x-model="fire.form.lookback" min="300" max="2592000">
+            <span class="field-hint">86400 = 24 h</span>
+          </div>
+          <div class="form-field">
+            <label class="field-label">Threshold</label>
+            <input type="number" x-model="fire.form.threshold" min="0.60" max="0.95" step="0.01">
+          </div>
+          <div class="form-field" style="align-self:center; padding-top:20px;">
+            <label class="toggle-wrap" style="cursor:pointer;">
+              <span class="toggle">
+                <input type="checkbox" x-model="fire.form.skip_seen">
+                <span class="toggle-slider"></span>
+              </span>
+              <span class="field-label" style="margin:0;">Skip seen</span>
+            </label>
+          </div>
+        </div>
+        <div x-show="fire.error" class="fire-warning" style="margin-top:12px;" x-text="fire.error"></div>
+        <div class="modal-footer">
+          <button @click="closeFire()">Cancel</button>
+          <button class="fire-btn" @click="runFire()">Run Fire</button>
+        </div>
+      </div>
+
+      <!-- Phase: running -->
+      <div x-show="fire.phase === 'running'" style="text-align:center; padding:32px 0;">
+        <span class="spinner spinner-lg"></span>
+        <p style="margin-top:16px; color:var(--text-secondary); font-size:0.85rem;">
+          Scanning… polling every second (max 60 s)
+        </p>
+      </div>
+
+      <!-- Phase: result -->
+      <div x-show="fire.phase === 'result'">
+        <div x-show="fire.error" class="fire-warning" x-text="fire.error"></div>
+        <div x-show="fire.result && !fire.error">
+          <div style="display:flex; gap:20px; margin-bottom:16px; font-size:0.82rem;">
+            <div>
+              <span class="muted" style="text-transform:uppercase; letter-spacing:0.1em; font-size:0.65rem;">Matches</span>
+              <div class="mono" style="font-size:1.2rem; font-weight:700; color:var(--gold);"
+                   x-text="fire.result?.match_count ?? 0"></div>
+            </div>
+            <div>
+              <span class="muted" style="text-transform:uppercase; letter-spacing:0.1em; font-size:0.65rem;">Pushed</span>
+              <div class="mono" style="font-size:1.2rem; font-weight:700;"
+                   :class="fire.result?.pushed ? 'good-text' : 'muted'"
+                   x-text="fire.result?.pushed ? 'yes' : 'no'"></div>
+            </div>
+          </div>
+
+          <div x-show="fire.result?.matches?.length > 0" class="fire-matches">
+            <table>
+              <thead>
+                <tr><th>Title</th><th>Score</th><th>Published</th></tr>
+              </thead>
+              <tbody>
+                <template x-for="m in (fire.result?.matches || [])" :key="m.article_id">
+                  <tr>
+                    <td>
+                      <a :href="/^https?:\/\//i.test(m.url || '') ? m.url : '#'"
+                         target="_blank" rel="noopener noreferrer"
+                         x-text="m.title || '(no title)'"
+                         style="color:var(--text-primary); text-decoration:underline; text-decoration-color:var(--border);"></a>
+                    </td>
+                    <td class="mono" x-text="m.score ? m.score.toFixed(3) : '—'"></td>
+                    <td class="mono" x-text="m.published_at || '—'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <div x-show="fire.result?.match_count === 0"
+               class="empty-state" style="padding:20px;">
+            No matches found in this lookback window.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeFire()">Close</button>
+        </div>
+      </div>
+
+    </div><!-- /modal-panel fire -->
+  </div><!-- /modal-overlay fire -->
+
+  <!-- ── Toast container ── -->
+  <div class="toast-container">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="toast" :class="'toast-' + t.type" x-text="t.msg"></div>
+    </template>
+  </div>
+
+</div><!-- /intents-view -->
+
 <script src="/dashboard/app.js"></script>
+<script src="/dashboard/intents.js"></script>
 </body>
 </html>
