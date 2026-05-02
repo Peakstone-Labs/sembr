@@ -76,7 +76,7 @@
     if (res.ok) {
       const secure = location.protocol === 'https:' ? '; Secure' : '';
       document.cookie =
-        `sembr_dashboard_token=${encodeURIComponent(token)}; path=/dashboard; SameSite=Strict${secure}`;
+        `sembr_dashboard_token=${encodeURIComponent(token)}; path=/; SameSite=Strict${secure}`;
       try { localStorage.setItem('sembr_dashboard_token', token); } catch (e) {}
       window.location.href = '/dashboard/index.html';
     } else {

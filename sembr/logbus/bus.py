@@ -2,17 +2,36 @@
 
 Thread-safety: a single threading.Lock guards deques, subscribers, and
 tag_levels.  The emit() hot path holds the lock for ~µs (dict lookup +
-deque.append + N call_soon_threadsafe calls).
+deque.append + N call_soon_threadsafe calls including fan-out scheduling).
 """
 from __future__ import annotations
 
 import asyncio
 import threading
-import time
 from collections import deque
 from typing import Any
 
 from sembr.logbus.router import ALL_TAGS
+
+
+def _put_drop_oldest(q: asyncio.Queue, entry: dict[str, Any]) -> None:
+    """Enqueue *entry*; if the queue is full, evict the oldest item first (R1).
+
+    Must only be called from within the asyncio event loop (e.g. via
+    call_soon_threadsafe).  Never raises — swallows QueueFull silently so
+    the asyncio default exception handler is not triggered (🟡-1).
+    """
+    try:
+        q.put_nowait(entry)
+    except asyncio.QueueFull:
+        try:
+            q.get_nowait()  # drop oldest
+        except asyncio.QueueEmpty:
+            return
+        try:
+            q.put_nowait(entry)
+        except asyncio.QueueFull:
+            return  # two concurrent emits both hit full; drop newest as last resort
 
 
 class LogBus:
@@ -62,8 +81,9 @@ class LogBus:
         """Append *entry* to the ring buffer and fan-out to active subscribers.
 
         Drops silently when no event loop is available (pre-lifespan start).
-        Queue-full entries are dropped oldest-first (put_nowait on bounded queue
-        raises Full; we discard the new entry instead of blocking the caller).
+        Fan-out scheduling (call_soon_threadsafe) happens inside the lock so
+        delivery order to subscribers matches deque insertion order (🟡-3).
+        Overflow uses drop-oldest semantics (🟡-1 / design R1).
         """
         loop = self._loop
         if loop is None or loop.is_closed():
@@ -73,13 +93,11 @@ class LogBus:
             if entry["level_no"] < self._tag_levels[tag]:
                 return
             self._deques[tag].append(entry)
-            subs = list(self._subscribers)
-
-        for q in subs:
-            try:
-                loop.call_soon_threadsafe(q.put_nowait, entry)
-            except Exception:
-                pass
+            for q in self._subscribers:
+                try:
+                    loop.call_soon_threadsafe(_put_drop_oldest, q, entry)
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------
     # Subscribe / unsubscribe (called from asyncio context)

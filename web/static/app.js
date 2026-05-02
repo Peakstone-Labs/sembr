@@ -166,7 +166,7 @@ function dashboard() {
     logout() {
       try { localStorage.removeItem('sembr_dashboard_token'); } catch (e) {}
       document.cookie =
-        'sembr_dashboard_token=; path=/dashboard; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        'sembr_dashboard_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
       window.location.href = '/dashboard/login.html';
     },
   };

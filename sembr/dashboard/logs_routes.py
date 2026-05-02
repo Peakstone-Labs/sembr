@@ -131,7 +131,7 @@ async def _log_generator(tag: str, request: Request) -> AsyncGenerator[str, None
 
         # Stream live entries; check disconnect every _POLL_INTERVAL seconds
         # to avoid blocking until the 15-second ping window expires.
-        ping_deadline = asyncio.get_event_loop().time() + _PING_INTERVAL
+        ping_deadline = asyncio.get_running_loop().time() + _PING_INTERVAL
         while True:
             if await request.is_disconnected():
                 break
@@ -139,11 +139,11 @@ async def _log_generator(tag: str, request: Request) -> AsyncGenerator[str, None
                 entry = await asyncio.wait_for(q.get(), timeout=_POLL_INTERVAL)
                 if entry is not None and entry["tag"] == tag:
                     yield f"event: log\ndata: {json.dumps(entry)}\n\n"
-                    ping_deadline = asyncio.get_event_loop().time() + _PING_INTERVAL
+                    ping_deadline = asyncio.get_running_loop().time() + _PING_INTERVAL
             except asyncio.TimeoutError:
-                if asyncio.get_event_loop().time() >= ping_deadline:
+                if asyncio.get_running_loop().time() >= ping_deadline:
                     yield ": ping\n\n"
-                    ping_deadline = asyncio.get_event_loop().time() + _PING_INTERVAL
+                    ping_deadline = asyncio.get_running_loop().time() + _PING_INTERVAL
     except asyncio.CancelledError:
         pass
     finally:

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from sembr.dashboard.logs_routes import _log_generator, router
 from sembr.logbus.bus import _reset_for_test
+from sembr.logbus.install import install_logbus
 
 
 def _make_app() -> FastAPI:
@@ -93,6 +94,39 @@ def test_put_level_http_syncs_third_party_loggers(client) -> None:
     )
     assert resp2.status_code == 204
     assert logging.getLogger("httpx").level == logging.WARNING
+
+
+# ---------------------------------------------------------------------------
+# install_logbus — stderr StreamHandler stays at INFO after root lowered to DEBUG (🟡-2 regression)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_install_logbus_stderr_stays_info(fresh_bus) -> None:
+    """install_logbus must pin existing StreamHandlers at INFO before lowering root to DEBUG."""
+    root = logging.getLogger()
+    # Simulate basicConfig: add a stream handler with NOTSET level if not already present
+    stream_h = logging.StreamHandler()
+    stream_h.setLevel(logging.NOTSET)
+    root.addHandler(stream_h)
+    original_root_level = root.level
+
+    try:
+        loop = asyncio.get_event_loop()
+        fresh_bus.set_loop(loop)
+        install_logbus(loop, buffer_per_tag=100, default_level=logging.INFO)
+        # Root must be DEBUG (so handler can receive everything)
+        assert root.level == logging.DEBUG
+        # The stream handler must now be pinned at INFO (not NOTSET)
+        assert stream_h.level == logging.INFO
+    finally:
+        root.removeHandler(stream_h)
+        root.setLevel(original_root_level)
+        # Remove the RingBufferHandler installed by install_logbus to avoid side effects
+        from sembr.logbus.handler import RingBufferHandler
+        for h in root.handlers[:]:
+            if isinstance(h, RingBufferHandler):
+                root.removeHandler(h)
+        _reset_for_test()
 
 
 # ---------------------------------------------------------------------------

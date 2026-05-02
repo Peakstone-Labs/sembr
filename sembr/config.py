@@ -129,9 +129,9 @@ class Settings(BaseSettings):
         default=10, ge=2, le=120,
         description="Frontend polling cadence; surfaced via /api/dashboard/config to the bundled JS.",
     )
-    dashboard_log_level: str = Field(
+    dashboard_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
         default="INFO",
-        description="Default level applied to all LogBus tags on startup (DEBUG/INFO/WARNING/ERROR).",
+        description="Default level applied to all LogBus tags on startup.",
     )
     dashboard_log_buffer_per_tag: int = Field(
         default=1000, ge=100, le=10000,

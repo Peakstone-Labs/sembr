@@ -45,8 +45,17 @@ def install_logbus(
     for h in root.handlers:
         if isinstance(h, RingBufferHandler):
             return  # already installed
+
+    # Pin existing StreamHandlers (installed by basicConfig) at INFO before we
+    # lower root to DEBUG, so docker logs / stderr are not flooded with
+    # third-party DEBUG records (🟡-2 / R4).
+    for h in root.handlers:
+        if isinstance(h, logging.StreamHandler) and not isinstance(h, RingBufferHandler):
+            if h.level == logging.NOTSET:
+                h.setLevel(logging.INFO)
+
     handler = RingBufferHandler()
     root.addHandler(handler)
-    # Ensure root logger level is at most DEBUG so records can reach our handler.
-    if root.level > logging.DEBUG or root.level == logging.NOTSET:
-        root.setLevel(logging.DEBUG)
+    # Lower root so DEBUG records can reach our handler (per-tag level filtering
+    # happens inside LogBus.emit — the stream handler above is now pinned at INFO).
+    root.setLevel(logging.DEBUG)

@@ -157,6 +157,42 @@ def test_queue_full_no_block(fresh_bus) -> None:
 
 
 # ---------------------------------------------------------------------------
+# (d-2) queue overflow — oldest dropped, no QueueFull exception raised (🟡-1 regression)
+# ---------------------------------------------------------------------------
+
+def test_queue_overflow_drops_oldest_no_exception(fresh_bus) -> None:
+    """Fill a subscriber queue to maxsize, then emit more — oldest evicted, no error."""
+    bus = fresh_bus
+    loop = asyncio.new_event_loop()
+    bus.set_loop(loop)
+
+    q: asyncio.Queue = asyncio.Queue(maxsize=3)
+    bus.subscribe(q)
+
+    # Fill to capacity + 2 extra
+    for i in range(5):
+        bus.emit("api", _entry(ts=i))
+
+    # Allow call_soon_threadsafe callbacks to execute
+    loop.run_until_complete(asyncio.sleep(0))
+
+    # Drain q synchronously
+    items = []
+    while not q.empty():
+        items.append(loop.run_until_complete(q.get()))
+
+    bus.unsubscribe(q)
+    loop.close()
+
+    # Queue should contain the 3 most recent entries (ts=2,3,4)
+    assert len(items) == 3
+    tss = [e["ts"] for e in items]
+    assert tss == sorted(tss)          # arrived in order
+    assert max(tss) == 4               # newest entry present
+    assert min(tss) >= 2               # oldest entries evicted
+
+
+# ---------------------------------------------------------------------------
 # (e) tag_info returns 7 tags with current level
 # ---------------------------------------------------------------------------
 

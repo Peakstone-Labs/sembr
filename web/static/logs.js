@@ -21,6 +21,9 @@ function logsTab() {
 
     init() {
       for (const tag of _LOG_TAGS) this._rowsMap[tag] = [];
+      // Sync subTab from hash (#logs/<tag>) on initial mount — design L17.
+      const m = window.location.hash.match(/^#logs\/([a-z]+)/);
+      if (m && _LOG_TAGS.includes(m[1])) this.subTab = m[1];
       this._loadLevels();
       this._connect(this.subTab);
     },
@@ -28,6 +31,7 @@ function logsTab() {
     setSubTab(tag) {
       if (this.subTab === tag) return;
       this.subTab = tag;
+      window.location.hash = `logs/${tag}`;
       this.rows = this._rowsMap[tag] || [];
       this._reconnect(tag);
     },
