@@ -576,13 +576,13 @@
                   </div>
 
                   <div class="form-field">
-                    <label class="field-label">Lookback (seconds) <span class="req">*</span></label>
-                    <input type="number" x-model="modal.form.lookback_seconds"
-                           min="300" max="2592000"
-                           :class="modal.errors.lookback_seconds ? 'field-err' : ''">
-                    <span class="field-err-msg" x-show="modal.errors.lookback_seconds"
-                          x-text="modal.errors.lookback_seconds"></span>
-                    <span class="field-hint">e.g. 86400 = 24 h, 604800 = 7 d</span>
+                    <label class="field-label">Lookback (hours) <span class="req">*</span></label>
+                    <input type="number" x-model="modal.form.lookback_hours"
+                           min="0.5" max="720" step="0.5"
+                           :class="modal.errors.lookback_hours ? 'field-err' : ''">
+                    <span class="field-err-msg" x-show="modal.errors.lookback_hours"
+                          x-text="modal.errors.lookback_hours"></span>
+                    <span class="field-hint">e.g. 24 = 1 day, 168 = 1 week, 720 = 30 days</span>
                   </div>
 
                   <div class="form-field" style="align-self:center; padding-top:20px;">
@@ -826,9 +826,9 @@
         </div>
         <div class="form-grid" style="gap:16px; margin-top:12px;">
           <div class="form-field">
-            <label class="field-label">Lookback (seconds)</label>
-            <input type="number" x-model="fire.form.lookback" min="300" max="2592000">
-            <span class="field-hint">86400 = 24 h</span>
+            <label class="field-label">Lookback (hours)</label>
+            <input type="number" x-model="fire.form.lookback" min="0.5" max="720" step="0.5">
+            <span class="field-hint">e.g. 24 = 1 day, 168 = 1 week</span>
           </div>
           <div class="form-field">
             <label class="field-label">Threshold</label>

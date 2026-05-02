@@ -152,7 +152,7 @@ function intentsTab() {
         tags: [], tagInput: '',
         // cron schedule
         preset: 'daily', hour: 0, minute: 0, weekday: 'mon',
-        lookback_seconds: 86400, skip_seen: true,
+        lookback_hours: 24, skip_seen: true,
         // event schedule
         trigger_count: 3, max_wait_seconds: 1800,
         // templates
@@ -196,7 +196,7 @@ function intentsTab() {
           hour:             s.hour   ?? 0,
           minute:           s.minute ?? 0,
           weekday:          s.weekday || 'mon',
-          lookback_seconds: s.lookback_seconds ?? 86400,
+          lookback_hours:   (s.lookback_seconds ?? 86400) / 3600,
           skip_seen:        s.skip_seen ?? true,
           // event fields
           trigger_count:    s.trigger_count    ?? 3,
@@ -303,9 +303,9 @@ function intentsTab() {
       if (this.modal.intentMode === 'cron') {
         if (f.preset === 'weekly' && !f.weekday)
           errors.weekday = 'Required for weekly preset';
-        const lb = parseInt(f.lookback_seconds);
-        if (isNaN(lb) || lb < 300 || lb > 2592000)
-          errors.lookback_seconds = 'Must be 300–2592000 seconds';
+        const lb = parseFloat(f.lookback_hours);
+        if (isNaN(lb) || lb < 0.5 || lb > 720)
+          errors.lookback_hours = 'Must be between 0.5 and 720 hours';
       } else {
         const tc = parseInt(f.trigger_count);
         if (isNaN(tc) || tc < 1 || tc > 10)
@@ -339,7 +339,7 @@ function intentsTab() {
           hour:             f.preset === 'hourly' ? 0 : (parseInt(f.hour)   || 0),
           minute:           parseInt(f.minute) || 0,
           weekday:          f.preset === 'weekly' ? f.weekday : null,
-          lookback_seconds: parseInt(f.lookback_seconds) || 86400,
+          lookback_seconds: Math.round(parseFloat(f.lookback_hours) * 3600),
           skip_seen:        !!f.skip_seen,
         }
         : {
@@ -462,7 +462,7 @@ function intentsTab() {
       this.fire = {
         open: true, phase: 'form', intent,
         form: {
-          lookback:  s.lookback_seconds ?? 86400,
+          lookback:  (s.lookback_seconds ?? 86400) / 3600,
           skip_seen: s.skip_seen        ?? true,
           threshold: intent.threshold   ?? 0.75,
         },
@@ -479,10 +479,11 @@ function intentsTab() {
       const { intent, form } = this.fire;
       // Client-side bounds check (mirrors backend Query constraints)
       this.fire.error = null;
-      const lb = parseInt(form.lookback);
-      if (isNaN(lb) || lb < 300 || lb > 2592000) {
-        this.fire.error = 'Lookback must be between 300 and 2592000 seconds.'; return;
+      const lbHours = parseFloat(form.lookback);
+      if (isNaN(lbHours) || lbHours < 0.5 || lbHours > 720) {
+        this.fire.error = 'Lookback must be between 0.5 and 720 hours.'; return;
       }
+      const lb = Math.round(lbHours * 3600);
       const thr = parseFloat(form.threshold);
       if (isNaN(thr) || thr < 0.60 || thr > 0.95) {
         this.fire.error = 'Threshold must be between 0.60 and 0.95.'; return;
