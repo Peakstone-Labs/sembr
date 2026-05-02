@@ -334,3 +334,42 @@ def test_post_fire_rate_limit_independent_per_intent():
 
     assert r1.status_code == 202
     assert r2.status_code == 202
+
+
+# ---------------------------------------------------------------------------
+# EventSchedule intent → 409
+# ---------------------------------------------------------------------------
+
+
+def test_post_fire_event_intent_returns_409():
+    """POST /fire on an EventSchedule intent must return 409 (event path, not fire path)."""
+    from sembr.models import EventSchedule, Intent
+
+    event_intent = Intent(
+        id=10,
+        name="event-intent",
+        text="tracking topic",
+        threshold=0.75,
+        enabled=True,
+        channels=[],
+        tags=[],
+        schedule=EventSchedule(trigger_count=3, max_wait_seconds=1800),
+        feed_filter=None,
+        timezone="UTC",
+        language="en",
+        system_template="default",
+        instruction_template="default",
+        created_at=datetime.now(timezone.utc).isoformat(),
+        updated_at=datetime.now(timezone.utc).isoformat(),
+    )
+    app = _make_app()
+
+    with (
+        patch("sembr.api.fire.get_conn", return_value=MagicMock()),
+        patch("sembr.api.fire.get_intent", new=AsyncMock(return_value=event_intent)),
+    ):
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/intents/10/fire")
+
+    assert resp.status_code == 409
+    assert "event-mode" in resp.json()["detail"]

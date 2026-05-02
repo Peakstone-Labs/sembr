@@ -6,11 +6,14 @@ global aiosqlite connection from get_conn() so callers don't open their own.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 
 import aiosqlite
 from pydantic import TypeAdapter
+
+logger = logging.getLogger(__name__)
 
 from sembr.models import ChannelConfig, FeedFilter, Intent, IntentCreate, IntentUpdate, Schedule
 
@@ -20,18 +23,21 @@ _SCHEDULE_ADAPTER: TypeAdapter[Schedule] = TypeAdapter(Schedule)
 
 _CREATE_INTENTS = """
 CREATE TABLE IF NOT EXISTS intents (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-    name                    TEXT    NOT NULL,
-    text                    TEXT    NOT NULL,
-    threshold               REAL    NOT NULL DEFAULT 0.75,
-    enabled                 INTEGER NOT NULL DEFAULT 1,
-    channels                TEXT    NOT NULL DEFAULT '[]',
-    tags                    TEXT    NOT NULL DEFAULT '[]',
-    scan_interval_seconds   INTEGER NOT NULL DEFAULT 3600,
-    lookback_window_seconds INTEGER NOT NULL DEFAULT 86400,
-    first_scan_at           TEXT,
-    created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
-    updated_at              TEXT    NOT NULL DEFAULT (datetime('now'))
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                 TEXT    NOT NULL,
+    text                 TEXT    NOT NULL,
+    threshold            REAL    NOT NULL DEFAULT 0.75,
+    enabled              INTEGER NOT NULL DEFAULT 1,
+    channels             TEXT    NOT NULL DEFAULT '[]',
+    tags                 TEXT    NOT NULL DEFAULT '[]',
+    system_template      TEXT    NOT NULL DEFAULT 'default',
+    instruction_template TEXT    NOT NULL DEFAULT 'default',
+    feed_filter          TEXT    NOT NULL DEFAULT 'null',
+    schedule             TEXT    NOT NULL DEFAULT '{}',
+    timezone             TEXT    NOT NULL DEFAULT 'UTC',
+    language             TEXT    NOT NULL DEFAULT 'zh',
+    created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
 )
 """
 
@@ -80,7 +86,7 @@ _DATA_MIGRATIONS = [
                ELSE NULL
            END,
            'lookback_seconds', COALESCE(lookback_window_seconds, 86400),
-           'skip_seen', COALESCE(skip_seen, 1)
+           'skip_seen', COALESCE(skip_seen, 1) = 1
        )
        WHERE json_extract(schedule,'$.mode') = 'interval'""",
     # Sink lookback_seconds / skip_seen into existing cron rows that lack them
@@ -89,7 +95,7 @@ _DATA_MIGRATIONS = [
            '$.lookback_seconds', COALESCE(
                json_extract(schedule,'$.lookback_seconds'), lookback_window_seconds, 86400),
            '$.skip_seen', COALESCE(
-               json_extract(schedule,'$.skip_seen'), skip_seen, 1)
+               json_extract(schedule,'$.skip_seen') = 1, skip_seen = 1, 1) = 1
        )
        WHERE json_extract(schedule,'$.mode') = 'cron'
          AND (json_extract(schedule,'$.lookback_seconds') IS NULL
@@ -153,6 +159,18 @@ async def init_intent_tables(conn: aiosqlite.Connection) -> None:
             else:
                 raise
     await conn.commit()
+    # Warn on startup if any rows have an unrecognized schedule mode; these would crash _row_to_intent
+    async with conn.execute(
+        "SELECT id, json_extract(schedule, '$.mode') FROM intents "
+        "WHERE json_extract(schedule, '$.mode') NOT IN ('cron', 'event')"
+    ) as cur:
+        bad_rows = await cur.fetchall()
+    if bad_rows:
+        logger.warning(
+            "init_intent_tables: %d intent row(s) have unrecognized schedule mode: %s",
+            len(bad_rows),
+            [(row[0], row[1]) for row in bad_rows],
+        )
 
 
 def _parse_feed_filter(raw: str | None) -> FeedFilter | None:
@@ -306,7 +324,10 @@ async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: Intent
 
 
 async def update_intent_raw(conn: aiosqlite.Connection, intent_id: int, snapshot: Intent) -> None:
-    """Restore a snapshot to roll back a failed PUT (R7: write original updated_at, not now)."""
+    """Restore a snapshot to roll back a failed PUT (R7: write original updated_at, not now).
+
+    created_at is intentionally not written — no code path mutates it after INSERT.
+    """
     channels_json = json.dumps([c.model_dump() for c in snapshot.channels], ensure_ascii=False)
     tags_json = json.dumps(snapshot.tags, ensure_ascii=False)
     schedule_json = snapshot.schedule.model_dump_json()

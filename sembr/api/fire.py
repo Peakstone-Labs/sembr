@@ -92,6 +92,14 @@ async def post_fire(
     if intent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
 
+    from sembr.models import CronSchedule  # noqa: PLC0415
+
+    if not isinstance(intent.schedule, CronSchedule):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="POST /fire is only valid for cron-mode intents; event-mode intents trigger via ingestion.",
+        )
+
     if not throttle_check(intent_id):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -99,9 +107,9 @@ async def post_fire(
         )
 
     options = ScanOptions(
-        lookback_seconds=lookback if lookback is not None else getattr(intent.schedule, "lookback_seconds", 86400),
+        lookback_seconds=lookback if lookback is not None else intent.schedule.lookback_seconds,
         threshold=threshold if threshold is not None else intent.threshold,
-        skip_seen=skip_seen if skip_seen is not None else getattr(intent.schedule, "skip_seen", True),
+        skip_seen=skip_seen if skip_seen is not None else intent.schedule.skip_seen,
         feed_ids=intent.feed_filter.ids if intent.feed_filter else None,
         write_match_seen=False,  # fire never writes match_seen
     )

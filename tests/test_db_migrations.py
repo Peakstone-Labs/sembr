@@ -78,7 +78,7 @@ async def test_old_db_backfill_scan_interval_seconds() -> None:
         sched = json.loads(row[0])
         assert sched["mode"] == "cron"
         assert sched["lookback_seconds"] == 43200
-        assert sched["skip_seen"] in (0, 1, True, False)  # stored as int or bool
+        assert sched["skip_seen"] == 1  # stored as SQLite integer 1 (true)
 
         # Verify scan_interval_seconds column was dropped
         async with conn.execute("PRAGMA table_info(intents)") as cur:

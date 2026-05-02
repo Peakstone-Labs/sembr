@@ -243,12 +243,22 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
         logger.debug("intent_id=%d scan skipped: intent missing or disabled", intent_id)
         return
 
+    from sembr.models import CronSchedule  # noqa: PLC0415
+
+    if not isinstance(intent.schedule, CronSchedule):
+        logger.warning(
+            "intent_id=%d run_intent_scan called for non-cron schedule mode=%r; skipping",
+            intent_id,
+            intent.schedule.mode,
+        )
+        return
+
     qdrant_client = app.state.qdrant.client
 
     options = ScanOptions(
-        lookback_seconds=intent.schedule.lookback_seconds,  # type: ignore[union-attr]
+        lookback_seconds=intent.schedule.lookback_seconds,
         threshold=intent.threshold,
-        skip_seen=intent.schedule.skip_seen,  # type: ignore[union-attr]
+        skip_seen=intent.schedule.skip_seen,
         feed_ids=intent.feed_filter.ids if intent.feed_filter else None,
         write_match_seen=True,
     )
