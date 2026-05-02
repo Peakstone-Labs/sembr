@@ -43,6 +43,12 @@ CREATE TABLE IF NOT EXISTS intents (
 
 # Migrations for databases created before the reverse-rag feature was added.
 # ALTER TABLE ADD COLUMN is idempotent via exception suppression.
+#
+# NOTE: entries 0..4 below (scan_interval_seconds..skip_seen) add columns that
+# _DROP_COLUMNS removes in the same init pass. They exist solely to upgrade
+# pre-event-driven-intent DBs that still have those columns with live data.
+# On a fresh DB they add-then-drop immediately (wasted I/O, but idempotent).
+# Do NOT add new schema additions here; they go into _CREATE_INTENTS directly.
 _MIGRATIONS = [
     "ALTER TABLE intents ADD COLUMN scan_interval_seconds INTEGER NOT NULL DEFAULT 3600",
     "ALTER TABLE intents ADD COLUMN lookback_window_seconds INTEGER NOT NULL DEFAULT 86400",
@@ -162,7 +168,8 @@ async def init_intent_tables(conn: aiosqlite.Connection) -> None:
     # Warn on startup if any rows have an unrecognized schedule mode; these would crash _row_to_intent
     async with conn.execute(
         "SELECT id, json_extract(schedule, '$.mode') FROM intents "
-        "WHERE json_extract(schedule, '$.mode') NOT IN ('cron', 'event')"
+        "WHERE json_extract(schedule, '$.mode') NOT IN ('cron', 'event') "
+        "   OR json_extract(schedule, '$.mode') IS NULL"
     ) as cur:
         bad_rows = await cur.fetchall()
     if bad_rows:
