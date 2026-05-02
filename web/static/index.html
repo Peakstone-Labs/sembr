@@ -29,6 +29,7 @@
 <nav class="tab-nav">
   <button class="tab-btn" :class="{active: currentTab==='dashboard'}" @click="setTab('dashboard')">Dashboard</button>
   <button class="tab-btn" :class="{active: currentTab==='intents'}"   @click="setTab('intents')">Intents</button>
+  <button class="tab-btn" :class="{active: currentTab==='logs'}"      @click="setTab('logs')">Logs</button>
 </nav>
 
 <!-- ═══════════════════════════════════════════════════════
@@ -920,7 +921,73 @@
 
 </div><!-- /intents-view -->
 
+<!-- ═══════════════════════════════════════════════════════
+     Logs view
+     ══════════════════════════════════════════════════════ -->
+<div x-show="currentTab==='logs'" x-data="logsTab()" x-init="init()" class="logs-view">
+
+  <!-- Toolbar: sub-tabs + level dropdown -->
+  <div class="logs-toolbar">
+    <nav class="sub-tab-nav">
+      <template x-for="tag in allTags()" :key="tag">
+        <button class="sub-tab-btn" :class="{active: subTab===tag}"
+                @click="setSubTab(tag)"
+                x-text="tag"></button>
+      </template>
+    </nav>
+    <div class="logs-level-row">
+      <span class="muted" style="font-size:0.72rem; letter-spacing:0.06em; text-transform:uppercase;">level</span>
+      <select x-model="tagLevels[subTab]" @change="setLevel(subTab, tagLevels[subTab])"
+              class="level-select">
+        <template x-for="lvl in allLevels()" :key="lvl">
+          <option :value="lvl" x-text="lvl"></option>
+        </template>
+      </select>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div x-show="loading" class="logs-status muted">
+    <span class="spinner"></span>&nbsp;Connecting…
+  </div>
+  <div x-show="error && !loading" class="logs-status bad-text" x-text="error"></div>
+
+  <!-- Log table -->
+  <div class="log-table-wrap">
+    <table class="log-table" x-show="rows.length > 0">
+      <thead>
+        <tr>
+          <th class="col-ts">Time</th>
+          <th class="col-level">Level</th>
+          <th class="col-logger">Logger</th>
+          <th class="col-msg">Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="(row, idx) in rows" :key="idx">
+          <tr class="log-row" :class="levelClass(row.level)">
+            <td class="col-ts mono" x-text="fmtTs(row.ts)"></td>
+            <td class="col-level">
+              <span class="log-level-pill" :class="levelClass(row.level)" x-text="row.level"></span>
+            </td>
+            <td class="col-logger mono muted" x-text="row.logger"></td>
+            <td class="col-msg">
+              <span x-text="row.message"></span>
+              <pre class="log-exc" x-show="row.exc" x-text="row.exc"></pre>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div x-show="!loading && rows.length === 0" class="empty-state">
+      No log entries for <strong x-text="subTab"></strong> yet.
+    </div>
+  </div>
+
+</div><!-- /logs-view -->
+
 <script src="/dashboard/app.js"></script>
 <script src="/dashboard/intents.js"></script>
+<script src="/dashboard/logs.js"></script>
 </body>
 </html>

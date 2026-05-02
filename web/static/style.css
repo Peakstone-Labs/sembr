@@ -1074,3 +1074,142 @@ input:disabled, select:disabled, textarea:disabled {
   .modal-overlay { padding: 16px 8px 40px; }
   .intents-toolbar { flex-direction: column; align-items: flex-start; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   Logs Tab
+   ══════════════════════════════════════════════════════════ */
+
+.logs-view {
+  position: relative;
+  padding: 24px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.logs-level-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.level-select {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.logs-status {
+  display: flex;
+  align-items: center;
+  font-size: 0.78rem;
+  margin-bottom: 12px;
+  height: 24px;
+}
+
+/* ── Log table ── */
+
+.log-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  table-layout: fixed;
+}
+
+.log-table thead tr {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.log-table th {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.log-table .col-ts     { width: 100px; }
+.log-table .col-level  { width: 90px; }
+.log-table .col-logger { width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-table .col-msg    { width: auto; }
+
+.log-row {
+  border-bottom: 1px solid rgba(30, 45, 69, 0.6);
+  transition: background 0.1s;
+}
+
+.log-row:hover { background: rgba(30, 45, 69, 0.5); }
+
+.log-row td {
+  padding: 5px 12px;
+  vertical-align: top;
+  line-height: 1.45;
+}
+
+/* Row tint by severity */
+.log-row.log-level-debug  { color: var(--text-dim); }
+.log-row.log-level-info   { color: var(--text-primary); }
+.log-row.log-level-warning { background: rgba(255,152,0,0.04); color: var(--text-primary); }
+.log-row.log-level-error   { background: rgba(244,67,54,0.06); color: var(--text-primary); }
+
+/* Level pill */
+.log-level-pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.60rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.log-level-pill.log-level-debug   { color: var(--text-dim);   border: 1px solid var(--border);  background: none; }
+.log-level-pill.log-level-info    { color: var(--teal);       border: 1px solid var(--teal);    background: var(--teal-dim); }
+.log-level-pill.log-level-warning { color: var(--warn);       border: 1px solid var(--warn);    background: var(--warn-bg); }
+.log-level-pill.log-level-error   { color: var(--bad);        border: 1px solid var(--bad);     background: var(--bad-bg); }
+
+/* Exception traceback */
+.log-exc {
+  font-family: var(--font-mono);
+  font-size: 0.70rem;
+  color: var(--bad);
+  background: var(--bad-bg);
+  border: 1px solid rgba(244,67,54,0.2);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Responsive (logs) ── */
+@media (max-width: 768px) {
+  .logs-view { padding: 12px; }
+  .logs-toolbar { flex-direction: column; align-items: flex-start; }
+  .log-table .col-logger { width: 140px; }
+}

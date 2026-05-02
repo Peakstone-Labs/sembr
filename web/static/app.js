@@ -34,15 +34,23 @@ function dashboard() {
 
     _syncFromHash() {
       const hash = window.location.hash.slice(1) || 'dashboard';
-      this.currentTab = hash.startsWith('intents') ? 'intents' : 'dashboard';
+      if (hash.startsWith('intents')) this.currentTab = 'intents';
+      else if (hash.startsWith('logs'))   this.currentTab = 'logs';
+      else                                this.currentTab = 'dashboard';
     },
 
     setTab(tab) {
       this.currentTab = tab;
       if (tab === 'dashboard') {
         window.location.hash = 'dashboard';
-      } else if (!window.location.hash.startsWith('#intents')) {
-        window.location.hash = 'intents/cron';
+      } else if (tab === 'logs') {
+        if (!window.location.hash.startsWith('#logs')) {
+          window.location.hash = 'logs/scheduler';
+        }
+      } else {
+        if (!window.location.hash.startsWith('#intents')) {
+          window.location.hash = 'intents/cron';
+        }
       }
     },
 
