@@ -127,7 +127,7 @@
       <tbody>
         <template x-for="e in drawer.rows" :key="e.id">
           <tr :class="e.ok ? '' : 'row-fail'">
-            <td class="mono" x-text="e.started_at"></td>
+            <td class="mono" x-text="window.fmtDateTime(e.started_at)"></td>
             <td class="mono" x-text="e.elapsed_ms + ' ms'"></td>
             <td>
               <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
@@ -159,14 +159,14 @@
                  x-text="a.url" style="font-size:11px;"></a>
             </td>
             <td class="mono" x-text="a.feed_id ?? '—'"></td>
-            <td class="mono" x-text="a.published_at || '—'"></td>
+            <td class="mono" x-text="window.fmtDateTime(a.published_at)"></td>
             <td>
               <span x-show="a.bucket==='pending'" class="mono muted"
                     x-text="'retries=' + (a.retry_count ?? 0)"></span>
               <span x-show="a.bucket==='dead'" class="error-text"
                     x-text="a.error_message || ''"></span>
               <span x-show="a.bucket==='qdrant'" class="mono muted"
-                    x-text="a.ingested_at_ts ? new Date(a.ingested_at_ts*1000).toISOString() : ''"></span>
+                    x-text="window.fmtDateTime(a.ingested_at_ts)"></span>
             </td>
             <td>
               <button @click="openArticleDetail(a.md5, a.bucket)">view</button>
@@ -234,7 +234,7 @@
               <div class="muted mono" x-text="f.url" style="font-size:11px; margin-top:2px;"></div>
             </td>
             <td class="mono" x-text="f.poll_interval_minutes + 'm'"></td>
-            <td class="mono" x-text="f.last_collected_at || 'never'"></td>
+            <td class="mono" x-text="f.last_collected_at ? window.fmtDateTime(f.last_collected_at) : 'never'"></td>
             <td class="mono">
               <span class="good-text" x-text="f.fetch_24h?.ok ?? 0"></span>
               <span class="muted"> / </span>
@@ -302,7 +302,7 @@
                 <tbody>
                   <template x-for="e in expanded.rows" :key="e.id">
                     <tr :class="e.ok ? '' : 'row-fail'">
-                      <td class="mono" x-text="e.started_at"></td>
+                      <td class="mono" x-text="window.fmtDateTime(e.started_at)"></td>
                       <td class="mono" x-text="e.elapsed_ms + ' ms'"></td>
                       <td>
                         <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
@@ -335,8 +335,8 @@
                            target="_blank" rel="noopener noreferrer"
                            class="muted mono" x-text="a.url" style="font-size:11px;"></a>
                       </td>
-                      <td class="mono" x-text="a.published_at || '—'"></td>
-                      <td class="mono muted" x-text="a.ingested_at_ts ? new Date(a.ingested_at_ts*1000).toISOString() : '—'"></td>
+                      <td class="mono" x-text="window.fmtDateTime(a.published_at)"></td>
+                      <td class="mono muted" x-text="window.fmtDateTime(a.ingested_at_ts)"></td>
                       <td>
                         <button @click="openArticleBody(a.md5)">view</button>
                       </td>
@@ -1164,7 +1164,7 @@
                          style="color:var(--text-primary); text-decoration:underline; text-decoration-color:var(--border);"></a>
                     </td>
                     <td class="mono" x-text="m.score ? m.score.toFixed(3) : '—'"></td>
-                    <td class="mono" x-text="m.published_at || '—'"></td>
+                    <td class="mono" x-text="window.fmtDateTime(m.published_at)"></td>
                   </tr>
                 </template>
               </tbody>

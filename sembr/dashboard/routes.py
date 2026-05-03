@@ -40,6 +40,7 @@ async def get_config() -> ConfigResponse:
     return ConfigResponse(
         poll_interval_seconds=settings.dashboard_poll_interval_seconds,
         auth_required=bool(settings.dashboard_token.get_secret_value()),
+        display_timezone=settings.display_timezone,
     )
 
 

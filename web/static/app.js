@@ -3,6 +3,35 @@
  * Token (if any) is read from localStorage and sent as X-Dashboard-Token.
  */
 
+// Global date/time formatter, configured from /api/dashboard/config.
+// Renders YYYY-MM-DD HH:MM in the configured DISPLAY_TIMEZONE.
+// Accepts: ISO 8601 string, Unix epoch seconds (number), null/undefined → '—'.
+window.sembrTimezone = 'UTC';
+window.fmtDateTime = function (value) {
+  if (value === null || value === undefined || value === '' || value === 'never') return '—';
+  let d;
+  if (typeof value === 'number') {
+    // ingested_at_ts is epoch seconds; Date wants ms.
+    d = new Date(value * 1000);
+  } else {
+    // ISO string: handle "...Z", "...+00:00", and naive "YYYY-MM-DDTHH:MM:SS"
+    // (assume UTC for naive — sembr's timestamps are stored UTC).
+    let s = String(value);
+    if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s = s + 'Z';
+    d = new Date(s);
+  }
+  if (isNaN(d.getTime())) return String(value);
+  // Intl gives reliable timezone math without pulling a tz library.
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: window.sembrTimezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t) => (parts.find(p => p.type === t) || {}).value || '';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
+};
+
 function dashboard() {
   return {
     snapshot: {},
@@ -26,6 +55,7 @@ function dashboard() {
           const cfg = await cfgRes.json();
           this.pollInterval = (cfg.poll_interval_seconds || 10) * 1000;
           this.authRequired = cfg.auth_required;
+          if (cfg.display_timezone) window.sembrTimezone = cfg.display_timezone;
         }
       } catch (e) {}
       await this.refresh();

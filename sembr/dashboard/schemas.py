@@ -110,6 +110,7 @@ class ArticleDetail(ArticleListItem):
 class ConfigResponse(BaseModel):
     poll_interval_seconds: int
     auth_required: bool
+    display_timezone: str = "UTC"
 
 
 class FeedRowExtended(FeedRow):
