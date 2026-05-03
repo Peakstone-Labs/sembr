@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from sembr.collector.scheduler import add_feed_job, remove_feed_job
 from sembr.db.feed_tags import get_tags, replace_tags_in_tx
-from sembr.db.feeds import create_feed, delete_feed, get_feed, list_feeds
+from sembr.db.feeds import create_feed, delete_feed, get_feed, list_feeds_with_tags
 from sembr.db.intents import get_intent, intents_remove_feed_id
 from sembr.db.sqlite import get_conn, transaction
 from sembr.matcher.jobs import reregister_intent_job
@@ -53,7 +53,7 @@ async def post_feed(body: FeedCreate, request: Request) -> Feed:
 
 @router.get("", response_model=list[Feed])
 async def get_feeds() -> list[Feed]:
-    return await list_feeds(get_conn())
+    return await list_feeds_with_tags(get_conn())
 
 
 @router.patch("/{feed_id}/tags", response_model=Feed)

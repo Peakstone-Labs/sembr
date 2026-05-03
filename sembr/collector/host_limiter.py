@@ -37,9 +37,11 @@ class HostLimiter:
         self._proxy_hosts = proxy_hosts
         self._max = max_per_host
         self._semaphores: dict[str, asyncio.Semaphore] = {}
-        # Guards lazy-creation: two coroutines first-acquiring the same key
-        # must share one semaphore, not race-create two.
-        self._lock = asyncio.Lock()
+        # Lock is lazy so HostLimiter can be constructed outside a running loop
+        # (e.g. module import in static tests). asyncio.Lock binds to the running
+        # loop on first await; constructing pre-loop and using post-loop fails on
+        # older Pythons. (Loop 2 review #🟢-2)
+        self._lock: asyncio.Lock | None = None
 
     def group_key_for(self, url: str) -> str:
         return derive_group_key(url, self._proxy_hosts)
@@ -48,6 +50,8 @@ class HostLimiter:
         sem = self._semaphores.get(group_key)
         if sem is not None:
             return sem
+        if self._lock is None:
+            self._lock = asyncio.Lock()
         async with self._lock:
             sem = self._semaphores.get(group_key)
             if sem is None:

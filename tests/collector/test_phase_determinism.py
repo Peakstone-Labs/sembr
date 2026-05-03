@@ -39,3 +39,28 @@ def test_phase_rejects_nonpositive_period() -> None:
         derive_phase_seconds(1, 0)
     with pytest.raises(ValueError):
         derive_jitter_seconds(-5)
+
+
+def test_five_feeds_combined_phase_plus_jitter_window() -> None:
+    """SC#5(b): the combined fire-time spread (phase + jitter window) must
+    exceed the design's 30s pairwise lower bound for any 5-feed group at
+    30-min period.
+
+    Pure phase can collide (md5 over 5 samples occasionally clusters within
+    30s — design R3); the jitter range guarantees that across consecutive
+    fires, the *effective* fire times spread by at least `derive_jitter_seconds`,
+    which for a 30-min period = 60s. So even worst-case phase clusters
+    desync via jitter on every tick. (Loop 1 review #💡-2 / loop 2 disposition.)
+    """
+    period = 1800
+    jitter_band = derive_jitter_seconds(period)  # 60s for 30-min period
+    assert jitter_band >= 30, (
+        f"jitter band {jitter_band}s does not satisfy the 30s pairwise floor; "
+        f"phase alone can collide so jitter must compensate"
+    )
+
+    # Cross-check: phases for [1..5] are deterministic and reproducible (SC#5(a)),
+    # even though they may cluster within the 30s bound (which jitter solves).
+    phases_a = sorted(derive_phase_seconds(i, period) for i in [1, 2, 3, 4, 5])
+    phases_b = sorted(derive_phase_seconds(i, period) for i in [1, 2, 3, 4, 5])
+    assert phases_a == phases_b

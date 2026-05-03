@@ -199,8 +199,11 @@ async def lifespan(app: FastAPI):
         # complete. Async jobs that finish naturally between shutdown() and aclose() are
         # fine; those still mid-flight see ClientClosed → increment_retry (idempotent).
         scheduler.shutdown(wait=False)
-        # Drop the module-level reference so a subsequent process restart in the
-        # same interpreter (tests) doesn't see a stale limiter from a closed loop.
+        # Yield one tick so collect_feed coros that already entered but haven't
+        # yet read _LIMITER_REF can pick up the live limiter; otherwise they'd
+        # silently bypass the per-host gate via the _nullcontext fallback.
+        # (Loop 2 review #🟡-1)
+        await asyncio.sleep(0)
         set_host_limiter(None)
         load_task.cancel()
         try:

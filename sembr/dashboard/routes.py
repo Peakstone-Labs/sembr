@@ -85,6 +85,13 @@ async def get_feed_articles(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> list[ArticleListItem]:
+    # Symmetric with /feeds/{id}/events: 404 on missing feed instead of 200 + [].
+    # Avoids confusing UX where a deleted feed's articles silently appear empty.
+    # (Loop 2 review #🟢-3)
+    conn = get_conn()
+    async with conn.execute("SELECT 1 FROM feeds WHERE id=?", (feed_id,)) as cur:
+        if not await cur.fetchone():
+            raise HTTPException(status_code=404, detail="feed not found")
     qdrant = getattr(request.app.state, "qdrant", None)
     qclient = getattr(qdrant, "client", None) if qdrant is not None else None
     return await read_model.list_feed_articles_qdrant(

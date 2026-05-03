@@ -128,9 +128,21 @@ async def create_feed(
 
 
 async def list_feeds(conn: aiosqlite.Connection) -> list[Feed]:
+    """Lightweight: no tags fetched. Use for scheduler bootstrap (lifespan startup).
+
+    For API responses that must include tags, call list_feeds_with_tags() instead.
+    (Loop 2 review #🟡-3 — splits the per-call full-table feed_tags scan.)
+    """
     async with conn.execute(_SELECT_FEEDS) as cur:
         rows = await cur.fetchall()
-    feeds = [_row_to_feed(r) for r in rows]
+    return [_row_to_feed(r) for r in rows]
+
+
+async def list_feeds_with_tags(conn: aiosqlite.Connection) -> list[Feed]:
+    """list_feeds + populate tags via a single feed_tags scan (no N+1)."""
+    feeds = await list_feeds(conn)
+    if not feeds:
+        return feeds
     tag_map = await list_all_tags(conn)
     for f in feeds:
         f.tags = tag_map.get(f.id, [])
@@ -186,8 +198,8 @@ async def insert_fingerprint(conn: aiosqlite.Connection, md5: str, feed_id: int)
 
 async def update_last_collected(conn: aiosqlite.Connection, feed_id: int) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    async with transaction() as conn:
-        await conn.execute(
+    async with transaction() as txn:
+        await txn.execute(
             "UPDATE feeds SET last_collected_at=? WHERE id=?",
             (now, feed_id),
         )

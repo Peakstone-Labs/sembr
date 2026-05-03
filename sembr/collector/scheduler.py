@@ -111,9 +111,17 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
         if limiter is not None
         else _nullcontext()
     )
-    started_at = datetime.now(timezone.utc)
+    # Two timestamps so feed_fetch_log.elapsed_ms reflects ACTUAL fetch time, not
+    # queue-wait time; SC#5 / SC#6 dashboard evidence depends on this distinction.
+    # queued_at: scheduler triggered → we entered the limiter ctx
+    # started_at: limiter acquired → we are about to call source.fetch
+    # On exception inside acquire (rare), started_at falls back to queued_at.
+    # (Loop 2 review #🟡-2)
+    queued_at = datetime.now(timezone.utc)
+    started_at = queued_at
     try:
         async with fetch_ctx:
+            started_at = datetime.now(timezone.utc)
             articles = await source.fetch(since=since)
     except FetchError as exc:
         # Don't advance last_collected_at on failure — next run will retry the
