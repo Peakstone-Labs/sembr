@@ -1213,3 +1213,27 @@ input:disabled, select:disabled, textarea:disabled {
   .logs-toolbar { flex-direction: column; align-items: flex-start; }
   .log-table .col-logger { width: 140px; }
 }
+
+/* ─── Feeds tab ───────────────────────────────────────── */
+.feeds-view { padding: 24px; }
+.feeds-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.feeds-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.feeds-search {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-primary); padding: 6px 10px; font-size: 0.85rem;
+  border-radius: 4px; min-width: 180px;
+}
+.feeds-hint-card { text-align: left; }
+.feed-expand-row td {
+  background: rgba(15,25,40,0.45);
+  border-top: 1px dashed var(--border);
+  padding: 14px 16px;
+}
+.feed-expand-tags { margin-bottom: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.feed-expand-tags > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 768px) {
+  .feeds-toolbar { flex-direction: column; align-items: flex-start; }
+}

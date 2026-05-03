@@ -28,6 +28,7 @@
 <!-- Top-level Tab nav -->
 <nav class="tab-nav">
   <button class="tab-btn" :class="{active: currentTab==='dashboard'}" @click="setTab('dashboard')">Dashboard</button>
+  <button class="tab-btn" :class="{active: currentTab==='feeds'}"     @click="setTab('feeds')">Feeds</button>
   <button class="tab-btn" :class="{active: currentTab==='intents'}"   @click="setTab('intents')">Intents</button>
   <button class="tab-btn" :class="{active: currentTab==='logs'}"      @click="setTab('logs')">Logs</button>
 </nav>
@@ -101,87 +102,20 @@
     </div>
   </section>
 
-  <!-- Feeds -->
-  <section class="panel" style="grid-column: 1 / -1;">
+  <!-- Feeds (D14: dashboard table moved to dedicated tab) -->
+  <section class="panel feeds-hint-card" style="grid-column: 1 / -1;">
     <h2>feeds</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>name</th>
-          <th>poll</th>
-          <th>last collected</th>
-          <th>24h ok / fail</th>
-          <th>streak</th>
-          <th>sparkline</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <template x-for="f in (snapshot.feeds || [])" :key="f.id">
-          <tr :class="f.fetch_24h.consecutive_failures > 0 ? 'row-fail' : ''">
-            <td>
-              <div x-text="f.name"></div>
-              <div class="muted mono" x-text="f.url" style="font-size:11px; margin-top:2px;"></div>
-            </td>
-            <td class="mono" x-text="f.poll_interval_minutes + 'm'"></td>
-            <td class="mono" x-text="f.last_collected_at || 'never'"></td>
-            <td class="mono">
-              <span class="good-text" x-text="f.fetch_24h.ok"></span>
-              <span class="muted"> / </span>
-              <span :class="f.fetch_24h.fail ? 'bad-text' : 'good-text'"
-                    x-text="f.fetch_24h.fail"></span>
-            </td>
-            <td class="mono">
-              <span :class="f.fetch_24h.consecutive_failures > 0 ? 'bad-text' : 'muted'"
-                    x-text="f.fetch_24h.consecutive_failures"></span>
-            </td>
-            <td>
-              <span class="sparkline">
-                <template x-for="b in f.fetch_24h.sparkline_buckets" :key="$index">
-                  <span :class="b === 0 ? 'empty' : ''"
-                        :style="`height: ${Math.min(20, b*4 + 3)}px;`"></span>
-                </template>
-              </span>
-            </td>
-            <td>
-              <button @click="openFeedEvents(f.id, f.name)">events</button>
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
+    <p class="muted" style="font-size:0.85rem;">
+      Feed list, tags, scheduling, and per-feed drill-down moved to the
+      <a href="#feeds" @click.prevent="setTab('feeds')"
+         style="color:var(--gold); text-decoration:underline;">Feeds tab</a>.
+    </p>
   </section>
 
   <!-- Drawer -->
   <section class="panel" x-show="drawer.kind" style="grid-column: 1 / -1;">
     <h2 x-text="drawer.title"></h2>
     <p x-show="drawer.loading" class="muted">loading…</p>
-
-    <table x-show="drawer.kind === 'feed-events' && !drawer.loading">
-      <thead>
-        <tr>
-          <th>started</th><th>elapsed</th><th>ok</th>
-          <th>seen / new</th><th>error</th>
-        </tr>
-      </thead>
-      <tbody>
-        <template x-for="e in drawer.rows" :key="e.id">
-          <tr :class="e.ok ? '' : 'row-fail'">
-            <td class="mono" x-text="e.started_at"></td>
-            <td class="mono" x-text="e.elapsed_ms + ' ms'"></td>
-            <td>
-              <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
-                    x-text="e.ok ? 'ok' : 'fail'"></span>
-            </td>
-            <td class="mono" x-text="e.items_seen + ' / ' + e.items_new"></td>
-            <td>
-              <span class="muted" x-text="e.error_class || ''"></span>
-              <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
 
     <table x-show="drawer.kind === 'embedder-events' && !drawer.loading">
       <thead>
@@ -255,6 +189,335 @@
   </section>
 
 </main>
+
+<!-- ═══════════════════════════════════════════════════════
+     Feeds view
+     ══════════════════════════════════════════════════════ -->
+<div x-show="currentTab==='feeds'" x-data="feedsTab()" x-init="init()" class="feeds-view">
+
+  <div class="feeds-toolbar">
+    <div class="feeds-filters">
+      <input type="text" x-model.debounce.300ms="filterQ" @input="onFilterChange()"
+             placeholder="Search name…" class="feeds-search">
+      <input type="text" x-model.debounce.300ms="filterTag" @input="onFilterChange()"
+             placeholder="Filter by tag" class="feeds-search">
+      <span class="muted" x-text="pageInfo()" style="font-size:0.75rem;"></span>
+    </div>
+    <div>
+      <button @click="prevPage()" :disabled="page === 0">‹ prev</button>
+      <button @click="nextPage()" :disabled="(page + 1) * pageSize >= total">next ›</button>
+      <button class="primary" @click="openCreate()">+ Add Feed</button>
+    </div>
+  </div>
+
+  <div x-show="error" class="banner-warn" x-text="error" style="display:block;"></div>
+  <div x-show="loading" class="empty-state"><span class="spinner"></span>&nbsp;Loading…</div>
+
+  <table x-show="!loading">
+    <thead>
+      <tr>
+        <th>name</th>
+        <th>poll</th>
+        <th>last collected</th>
+        <th>24h ok / fail</th>
+        <th>group_key</th>
+        <th>tags</th>
+        <th>next run</th>
+        <th></th>
+      </tr>
+    </thead>
+    <template x-for="f in items" :key="f.id">
+      <tbody>
+          <tr :class="f.fetch_24h?.consecutive_failures > 0 ? 'row-fail' : ''">
+            <td>
+              <div x-text="f.name"></div>
+              <div class="muted mono" x-text="f.url" style="font-size:11px; margin-top:2px;"></div>
+            </td>
+            <td class="mono" x-text="f.poll_interval_minutes + 'm'"></td>
+            <td class="mono" x-text="f.last_collected_at || 'never'"></td>
+            <td class="mono">
+              <span class="good-text" x-text="f.fetch_24h?.ok ?? 0"></span>
+              <span class="muted"> / </span>
+              <span :class="f.fetch_24h?.fail ? 'bad-text' : 'good-text'"
+                    x-text="f.fetch_24h?.fail ?? 0"></span>
+            </td>
+            <td class="mono muted" x-text="f.group_key" style="font-size:11px;"></td>
+            <td>
+              <div class="tags-wrap">
+                <template x-for="tag in (f.tags || [])" :key="tag">
+                  <span class="intent-tag" x-text="tag"></span>
+                </template>
+                <span x-show="!f.tags?.length" class="muted" style="font-size:11px;">—</span>
+              </div>
+            </td>
+            <td class="mono muted" x-text="fmtNextRun(f.next_run_iso)" style="font-size:11px;"></td>
+            <td>
+              <div class="action-cell">
+                <button @click="toggleRow(f, 'events')"
+                        :class="(expandedFeedId===f.id && expanded.kind==='events') ? 'primary' : ''">events</button>
+                <button @click="toggleRow(f, 'articles')"
+                        :class="(expandedFeedId===f.id && expanded.kind==='articles') ? 'primary' : ''">articles</button>
+                <button class="danger" @click="confirmDelete(f)">×</button>
+              </div>
+            </td>
+          </tr>
+
+          <tr x-show="expandedFeedId === f.id" class="feed-expand-row">
+            <td colspan="8">
+              <div x-show="expanded.loading" class="muted"><span class="spinner"></span>&nbsp;loading…</div>
+
+              <!-- tag editor -->
+              <div class="feed-expand-tags">
+                <div x-show="!expanded.tagEdit">
+                  <strong>Tags:</strong>
+                  <template x-for="tag in (f.tags || [])" :key="tag">
+                    <span class="intent-tag" x-text="tag"></span>
+                  </template>
+                  <span x-show="!f.tags?.length" class="muted">none</span>
+                  <button @click="beginTagEdit(f)" style="margin-left:8px;">edit tags</button>
+                </div>
+                <div x-show="expanded.tagEdit">
+                  <strong>Edit tags:</strong>
+                  <template x-for="(tag, idx) in (expanded.tagEdit?.tags || [])" :key="tag + idx">
+                    <span class="intent-tag">
+                      <span x-text="tag"></span>
+                      <button class="tag-rm" @click="removeTagEdit(idx)" type="button">✕</button>
+                    </span>
+                  </template>
+                  <input type="text" x-model="expanded.tagEdit.input"
+                         placeholder="add tag…" style="width:160px;"
+                         @keydown.enter.prevent="addTagEdit()"
+                         @keydown="if($event.key===',') { $event.preventDefault(); addTagEdit(); }">
+                  <button @click="addTagEdit()">add</button>
+                  <button class="primary" @click="saveTagEdit(f)">save</button>
+                  <button @click="cancelTagEdit()">cancel</button>
+                </div>
+              </div>
+
+              <!-- events table -->
+              <table x-show="expanded.kind === 'events' && !expanded.loading">
+                <thead>
+                  <tr><th>started</th><th>elapsed</th><th>ok</th><th>seen / new</th><th>error</th></tr>
+                </thead>
+                <tbody>
+                  <template x-for="e in expanded.rows" :key="e.id">
+                    <tr :class="e.ok ? '' : 'row-fail'">
+                      <td class="mono" x-text="e.started_at"></td>
+                      <td class="mono" x-text="e.elapsed_ms + ' ms'"></td>
+                      <td>
+                        <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
+                              x-text="e.ok ? 'ok' : 'fail'"></span>
+                      </td>
+                      <td class="mono" x-text="e.items_seen + ' / ' + e.items_new"></td>
+                      <td>
+                        <span class="muted" x-text="e.error_class || ''"></span>
+                        <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
+                      </td>
+                    </tr>
+                  </template>
+                  <tr x-show="expanded.rows.length === 0">
+                    <td colspan="5" class="muted">No events recorded for this feed yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- articles table (D2: Qdrant only) -->
+              <table x-show="expanded.kind === 'articles' && !expanded.loading">
+                <thead>
+                  <tr><th>title</th><th>published</th><th>ingested</th><th></th></tr>
+                </thead>
+                <tbody>
+                  <template x-for="a in expanded.rows" :key="a.md5">
+                    <tr>
+                      <td>
+                        <div x-text="a.title || '(no title)'"></div>
+                        <a :href="/^https?:\/\//i.test(a.url) ? a.url : '#'"
+                           target="_blank" rel="noopener noreferrer"
+                           class="muted mono" x-text="a.url" style="font-size:11px;"></a>
+                      </td>
+                      <td class="mono" x-text="a.published_at || '—'"></td>
+                      <td class="mono muted" x-text="a.ingested_at_ts ? new Date(a.ingested_at_ts*1000).toISOString() : '—'"></td>
+                      <td>
+                        <button @click="openArticleBody(a.md5)">view</button>
+                      </td>
+                    </tr>
+                  </template>
+                  <tr x-show="expanded.rows.length === 0">
+                    <td colspan="4" class="muted">
+                      No articles ingested for this feed yet.
+                      Check Events for fetch errors, or the dashboard articles panel for pending/dead items.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- article body modal -->
+              <div class="modal-overlay" x-show="expanded.articleDetail" @click.self="closeArticleBody()">
+                <div class="modal-panel" style="max-width:760px;">
+                  <div class="modal-header">
+                    <span class="modal-title" x-text="expanded.articleDetail?.title || 'article'"></span>
+                    <button class="modal-close" @click="closeArticleBody()">✕</button>
+                  </div>
+                  <div x-show="expanded.articleDetail?.loading" class="muted"><span class="spinner"></span></div>
+                  <div x-show="!expanded.articleDetail?.loading">
+                    <div class="muted mono" style="font-size:11px; margin-bottom:8px;"
+                         x-text="expanded.articleDetail?.url"></div>
+                    <div class="detail" style="white-space:pre-wrap;" x-text="expanded.articleDetail?.body || ''"></div>
+                  </div>
+                </div>
+              </div>
+
+            </td>
+          </tr>
+      </tbody>
+    </template>
+    <tbody x-show="!loading && items.length === 0">
+      <tr>
+        <td colspan="8" class="empty-state">No feeds match the current filter. Click <strong>+ Add Feed</strong> to create one.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Create modal -->
+  <div class="modal-overlay" x-show="create.open" x-cloak @click.self="closeCreate()">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <span class="modal-title">+ Add Feed</span>
+        <button class="modal-close" @click="closeCreate()">✕</button>
+      </div>
+      <div class="form-sections">
+        <div class="form-section">
+          <div class="form-section-title">Basic</div>
+          <div class="form-grid">
+            <div class="form-field form-grid-full">
+              <label class="field-label">Name <span class="req">*</span></label>
+              <input type="text" x-model="create.form.name" maxlength="200"
+                     :class="create.errors.name ? 'field-err' : ''">
+              <span class="field-err-msg" x-show="create.errors.name" x-text="create.errors.name"></span>
+            </div>
+            <div class="form-field form-grid-full">
+              <label class="field-label">URL <span class="req">*</span></label>
+              <input type="text" x-model="create.form.url" maxlength="2048"
+                     placeholder="https://example.com/rss.xml"
+                     :class="create.errors.url ? 'field-err' : ''">
+              <span class="field-err-msg" x-show="create.errors.url" x-text="create.errors.url"></span>
+            </div>
+            <div class="form-field">
+              <label class="field-label">Source type <span class="req">*</span></label>
+              <select x-model="create.form.source_type" @change="onSourceTypeChange()">
+                <template x-for="t in Object.keys(schemas)" :key="t">
+                  <option :value="t" x-text="t"></option>
+                </template>
+                <template x-if="Object.keys(schemas).length === 0">
+                  <option value="rss">rss</option>
+                </template>
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="field-label">Poll interval (min) <span class="req">*</span></label>
+              <input type="number" x-model.number="create.form.poll_interval_minutes" min="5" max="1440">
+            </div>
+            <div class="form-field form-grid-full">
+              <label class="field-label">Tags <span class="field-hint" style="text-transform:none; letter-spacing:0;">(max 10, lowercase kebab-case)</span></label>
+              <div class="tags-wrap" style="margin-bottom:6px;">
+                <template x-for="(tag, idx) in create.form.tags" :key="tag">
+                  <span class="intent-tag">
+                    <span x-text="tag"></span>
+                    <button class="tag-rm" @click="removeCreateTag(idx)" type="button">✕</button>
+                  </span>
+                </template>
+              </div>
+              <div class="tag-input-row">
+                <input type="text" x-model="create.form.tagInput" placeholder="Add tag…"
+                       @keydown="handleCreateTagKey($event)" style="flex:1;">
+                <button type="button" @click="addCreateTag()">Add</button>
+              </div>
+              <span class="field-err-msg" x-show="create.errors.tags" x-text="create.errors.tags"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dynamic source config (D6 / D15) -->
+        <div class="form-section" x-show="schemaFields(create.form.source_type).length > 0">
+          <div class="form-section-title">Source config</div>
+          <div class="form-grid">
+            <template x-for="field in schemaFields(create.form.source_type)" :key="field.name">
+              <div class="form-field">
+                <label class="field-label">
+                  <span x-text="field.name"></span>
+                  <span x-show="field.description" class="field-hint" style="text-transform:none; letter-spacing:0;"
+                        x-text="' — ' + field.description"></span>
+                </label>
+                <template x-if="field.enum">
+                  <select x-model="create.form.config[field.name]">
+                    <template x-for="opt in field.enum" :key="opt">
+                      <option :value="opt" x-text="opt"></option>
+                    </template>
+                  </select>
+                </template>
+                <template x-if="!field.enum && field.type === 'boolean'">
+                  <label class="toggle-wrap">
+                    <span class="toggle">
+                      <input type="checkbox" x-model="create.form.config[field.name]">
+                      <span class="toggle-slider"></span>
+                    </span>
+                  </label>
+                </template>
+                <template x-if="!field.enum && (field.type === 'integer' || field.type === 'number')">
+                  <input type="number" x-model.number="create.form.config[field.name]"
+                         :step="field.type === 'integer' ? 1 : 'any'">
+                </template>
+                <template x-if="!field.enum && field.type === 'string'">
+                  <input type="text" x-model="create.form.config[field.name]">
+                </template>
+                <template x-if="field.type === 'raw'">
+                  <textarea rows="3" x-model="create.form.config[field.name]"
+                            placeholder="raw JSON value (advanced)"></textarea>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span x-show="create.errors._global" class="field-err-msg"
+              style="flex:1; text-align:left;" x-text="create.errors._global"></span>
+        <button @click="closeCreate()">Cancel</button>
+        <button class="primary" @click="submitCreate()" :disabled="create.submitting">
+          <span x-show="create.submitting"><span class="spinner"></span>&nbsp;</span>
+          Create
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete confirm -->
+  <div class="modal-overlay" x-show="del.open" x-cloak @click.self="closeDelete()">
+    <div class="modal-panel" style="max-width:480px;">
+      <div class="modal-header">
+        <span class="modal-title">Delete Feed</span>
+        <button class="modal-close" @click="closeDelete()">✕</button>
+      </div>
+      <p style="font-size:0.85rem; color:var(--text-secondary);">
+        Delete feed <strong x-text="del.feed?.name"></strong>?
+        Tags and intent feed_filter references will be cascaded server-side.
+      </p>
+      <div class="modal-footer">
+        <button @click="closeDelete()">Cancel</button>
+        <button class="danger" @click="runDelete()">Yes, Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- toasts -->
+  <div class="toast-container">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="toast" :class="'toast-' + t.type" x-text="t.msg"></div>
+    </template>
+  </div>
+
+</div><!-- /feeds-view -->
 
 <!-- ═══════════════════════════════════════════════════════
      Intents view
@@ -986,6 +1249,7 @@
 
 </div><!-- /logs-view -->
 
+<script src="/dashboard/feeds.js"></script>
 <script src="/dashboard/intents.js"></script>
 <script src="/dashboard/logs.js"></script>
 <script src="/dashboard/app.js"></script>

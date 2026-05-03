@@ -34,15 +34,18 @@ function dashboard() {
 
     _syncFromHash() {
       const hash = window.location.hash.slice(1) || 'dashboard';
-      if (hash.startsWith('intents')) this.currentTab = 'intents';
-      else if (hash.startsWith('logs'))   this.currentTab = 'logs';
-      else                                this.currentTab = 'dashboard';
+      if (hash.startsWith('intents'))    this.currentTab = 'intents';
+      else if (hash.startsWith('logs'))  this.currentTab = 'logs';
+      else if (hash.startsWith('feeds')) this.currentTab = 'feeds';
+      else                               this.currentTab = 'dashboard';
     },
 
     setTab(tab) {
       this.currentTab = tab;
       if (tab === 'dashboard') {
         window.location.hash = 'dashboard';
+      } else if (tab === 'feeds') {
+        if (!window.location.hash.startsWith('#feeds')) window.location.hash = 'feeds';
       } else if (tab === 'logs') {
         if (!window.location.hash.startsWith('#logs')) {
           window.location.hash = 'logs/scheduler';
