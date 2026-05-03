@@ -67,6 +67,15 @@ async def ensure_news_collection(client: "AsyncQdrantClient") -> None:
         field_schema=PayloadSchemaType.INTEGER,
     )
 
+    # Payload index on feed_id (D2 / R2): the Feeds tab drill-down filters
+    # news_current by feed_id. Without this index Qdrant degrades to a full
+    # collection scan on every expand. Idempotent.
+    await client.create_payload_index(
+        collection_name=COLLECTION_NAME,
+        field_name="feed_id",
+        field_schema=PayloadSchemaType.INTEGER,
+    )
+
     # Check alias globally to detect if news_current points elsewhere (D9)
     all_aliases = await client.get_aliases()
     alias_map = {a.alias_name: a.collection_name for a in all_aliases.aliases}

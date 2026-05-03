@@ -12,6 +12,12 @@ from datetime import datetime, timezone
 import aiosqlite
 
 from sembr.collector.initial_feeds import INITIAL_FEEDS
+from sembr.db.feed_tags import (
+    get_tags,
+    init_feed_tag_tables,
+    insert_tags_in_tx,
+    list_all_tags,
+)
 from sembr.db.sqlite import transaction
 from sembr.models import Feed
 
@@ -57,6 +63,7 @@ async def init_feed_tables(conn: aiosqlite.Connection) -> None:
     await conn.execute(_CREATE_SEEDED_INITIAL_FEEDS)
     await conn.execute(_CREATE_IDX)
     await conn.commit()
+    await init_feed_tag_tables(conn)
 
 
 async def seed_initial_feeds(conn: aiosqlite.Connection) -> int:
@@ -102,21 +109,32 @@ async def create_feed(
     source_type: str = "rss",
     config: dict | None = None,
     poll_interval_minutes: int = 30,
+    tags: list[str] | None = None,
 ) -> Feed:
-    cursor = await conn.execute(
-        """INSERT INTO feeds (name, url, source_type, config, poll_interval_minutes)
-           VALUES (?, ?, ?, ?, ?)""",
-        (name, url, source_type, json.dumps(config or {}), poll_interval_minutes),
-    )
-    await conn.commit()
-    feed_id = cursor.lastrowid
-    return await get_feed(conn, feed_id)  # type: ignore[arg-type]
+    # feeds insert + feed_tags insert must be atomic so a partial failure can't
+    # leave a tagless feed (see api/feeds.post_feed rollback path).
+    async with transaction() as txn:
+        cursor = await txn.execute(
+            """INSERT INTO feeds (name, url, source_type, config, poll_interval_minutes)
+               VALUES (?, ?, ?, ?, ?)""",
+            (name, url, source_type, json.dumps(config or {}), poll_interval_minutes),
+        )
+        feed_id = cursor.lastrowid
+        if tags:
+            await insert_tags_in_tx(txn, feed_id, tags)  # type: ignore[arg-type]
+    feed = await get_feed(conn, feed_id)  # type: ignore[arg-type]
+    assert feed is not None  # just inserted
+    return feed
 
 
 async def list_feeds(conn: aiosqlite.Connection) -> list[Feed]:
     async with conn.execute(_SELECT_FEEDS) as cur:
         rows = await cur.fetchall()
-    return [_row_to_feed(r) for r in rows]
+    feeds = [_row_to_feed(r) for r in rows]
+    tag_map = await list_all_tags(conn)
+    for f in feeds:
+        f.tags = tag_map.get(f.id, [])
+    return feeds
 
 
 async def get_feed_names(
@@ -140,7 +158,11 @@ async def get_feed(conn: aiosqlite.Connection, feed_id: int) -> Feed | None:
         (feed_id,),
     ) as cur:
         row = await cur.fetchone()
-    return _row_to_feed(row) if row else None
+    if row is None:
+        return None
+    feed = _row_to_feed(row)
+    feed.tags = await get_tags(conn, feed_id)
+    return feed
 
 
 async def delete_feed(conn: aiosqlite.Connection, feed_id: int) -> bool:

@@ -138,6 +138,31 @@ class Settings(BaseSettings):
         description="Ring buffer capacity per log tag (number of log entries retained in memory).",
     )
 
+    proxy_hosts: str = Field(
+        default="rsshub:1200",
+        description=(
+            "Comma-separated host[:port] entries that front many backends "
+            "(e.g. an RSSHub instance). For these hosts, the per-host concurrency "
+            "limiter additionally segments by the first URL path segment so backends "
+            "behind one proxy don't share a single semaphore. Default mirrors the "
+            "docker-compose RSSHub service."
+        ),
+    )
+
+    @property
+    def proxy_hosts_set(self) -> frozenset[str]:
+        # R7: tolerate whitespace, trailing slashes, schemes typed by the user.
+        out: set[str] = set()
+        for raw in self.proxy_hosts.split(","):
+            entry = raw.strip().lower()
+            for prefix in ("http://", "https://"):
+                if entry.startswith(prefix):
+                    entry = entry[len(prefix):]
+            entry = entry.rstrip("/")
+            if entry:
+                out.add(entry)
+        return frozenset(out)
+
     @classmethod
     def settings_customise_sources(
         cls,
