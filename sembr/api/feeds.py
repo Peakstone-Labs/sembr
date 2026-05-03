@@ -7,11 +7,12 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from sembr.collector.scheduler import add_feed_job, remove_feed_job
-from sembr.db.feeds import create_feed, delete_feed, list_feeds
+from sembr.db.feed_tags import get_tags, replace_tags_in_tx
+from sembr.db.feeds import create_feed, delete_feed, get_feed, list_feeds
 from sembr.db.intents import get_intent, intents_remove_feed_id
-from sembr.db.sqlite import get_conn
+from sembr.db.sqlite import get_conn, transaction
 from sembr.matcher.jobs import reregister_intent_job
-from sembr.models import Feed, FeedCreate
+from sembr.models import Feed, FeedCreate, FeedTagsUpdate
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/feeds", tags=["feeds"])
@@ -28,6 +29,7 @@ async def post_feed(body: FeedCreate, request: Request) -> Feed:
             source_type=body.source_type,
             config=body.config,
             poll_interval_minutes=body.poll_interval_minutes,
+            tags=body.tags,
         )
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="feed URL already exists") from exc
@@ -52,6 +54,20 @@ async def post_feed(body: FeedCreate, request: Request) -> Feed:
 @router.get("", response_model=list[Feed])
 async def get_feeds() -> list[Feed]:
     return await list_feeds(get_conn())
+
+
+@router.patch("/{feed_id}/tags", response_model=Feed)
+async def patch_feed_tags(feed_id: int, body: FeedTagsUpdate) -> Feed:
+    conn = get_conn()
+    async with conn.execute("SELECT id FROM feeds WHERE id=?", (feed_id,)) as cur:
+        if not await cur.fetchone():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
+    async with transaction() as txn:
+        await replace_tags_in_tx(txn, feed_id, body.tags)
+    feed = await get_feed(conn, feed_id)
+    if feed is None:  # racing DELETE — surface as 404 instead of 500
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
+    return feed
 
 
 @router.delete("/{feed_id}")

@@ -30,7 +30,8 @@ from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
 from sembr.api.intents import router as intents_router
 from sembr.api.prompts import router as prompts_router
-from sembr.collector.scheduler import add_feed_job, make_scheduler
+from sembr.collector.host_limiter import HostLimiter
+from sembr.collector.scheduler import add_feed_job, make_scheduler, set_host_limiter
 from sembr.config import get_settings
 from sembr.dashboard.auth import DashboardTokenMiddleware
 from sembr.dashboard.events import init_event_log_tables
@@ -133,9 +134,15 @@ async def lifespan(app: FastAPI):
     await ensure_intents_collection(qdrant.client)
     load_task = asyncio.create_task(embedder.load())  # background; /health probes status
     scheduler = make_scheduler()
+    # D4: per-host concurrency limiter must exist before any feed job can fire so
+    # the first tick already sees the cap. set_host_limiter is the module-level
+    # handle collect_feed reads; app.state.host_limiter is the readable handle.
+    host_limiter = HostLimiter(settings.proxy_hosts_set, max_per_host=2)
+    set_host_limiter(host_limiter)
+    app.state.host_limiter = host_limiter
     feeds = await list_feeds(conn)
-    for i, feed in enumerate(feeds):
-        await add_feed_job(scheduler, feed, jitter_seconds=i * 2)
+    for feed in feeds:
+        await add_feed_job(scheduler, feed)
     add_embedder_worker_job(scheduler, embedder, qdrant, app)
     add_log_retention_job(scheduler, settings)  # dashboard D9: hourly log prune
     # DD4: sweep expired fire tasks every 5 minutes
@@ -192,6 +199,9 @@ async def lifespan(app: FastAPI):
         # complete. Async jobs that finish naturally between shutdown() and aclose() are
         # fine; those still mid-flight see ClientClosed → increment_retry (idempotent).
         scheduler.shutdown(wait=False)
+        # Drop the module-level reference so a subsequent process restart in the
+        # same interpreter (tests) doesn't see a stale limiter from a closed loop.
+        set_host_limiter(None)
         load_task.cancel()
         try:
             # Await so the thread pool doesn't race with interpreter teardown.
