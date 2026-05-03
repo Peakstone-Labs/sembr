@@ -25,8 +25,9 @@ function feedsTab() {
 
     // single-row inline expansion (D7)
     expandedFeedId: null,
+    expandedPageSize: 10,
     expanded: { kind: null, rows: [], loading: false, articleDetail: null,
-                tagEdit: null /* {tags: [...], input: ''} when editing */ },
+                tagEdit: null, page: 0, hasMore: false, feed: null },
 
     // create modal
     schemas: {},             // {source_type: json-schema}
@@ -112,20 +113,43 @@ function feedsTab() {
         return;
       }
       this.expandedFeedId = feed.id;
-      this.expanded = { kind, rows: [], loading: true, articleDetail: null, tagEdit: null };
-      const path = kind === 'events'
-        ? `/api/dashboard/feeds/${feed.id}/events?limit=100`
-        : `/api/dashboard/feeds/${feed.id}/articles?limit=50`;
+      this.expanded = { kind, rows: [], loading: true, articleDetail: null,
+                        tagEdit: null, page: 0, hasMore: false, feed };
+      await this._loadExpanded();
+    },
+    async _loadExpanded() {
+      const f = this.expanded.feed;
+      if (!f) return;
+      this.expanded.loading = true;
+      const lim = this.expandedPageSize;
+      const off = this.expanded.page * lim;
+      const path = this.expanded.kind === 'events'
+        ? `/api/dashboard/feeds/${f.id}/events?limit=${lim}&offset=${off}`
+        : `/api/dashboard/feeds/${f.id}/articles?limit=${lim}&offset=${off}`;
       try {
-        this.expanded.rows = await this._api(path) || [];
+        const rows = await this._api(path) || [];
+        this.expanded.rows = rows;
+        this.expanded.hasMore = rows.length === lim;
       } catch (e) {
         this.expanded.rows = [];
         this.expanded.error = String(e.message || e);
+        this.expanded.hasMore = false;
       } finally { this.expanded.loading = false; }
+    },
+    expandedNextPage() {
+      if (!this.expanded.hasMore) return;
+      this.expanded.page += 1;
+      this._loadExpanded();
+    },
+    expandedPrevPage() {
+      if (this.expanded.page === 0) return;
+      this.expanded.page -= 1;
+      this._loadExpanded();
     },
     collapseRow() {
       this.expandedFeedId = null;
-      this.expanded = { kind: null, rows: [], loading: false, articleDetail: null, tagEdit: null };
+      this.expanded = { kind: null, rows: [], loading: false, articleDetail: null,
+                        tagEdit: null, page: 0, hasMore: false, feed: null };
     },
     truncateBody(s, n) {
       if (!s) return '';

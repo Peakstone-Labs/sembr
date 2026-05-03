@@ -1237,3 +1237,8 @@ input:disabled, select:disabled, textarea:disabled {
 @media (max-width: 768px) {
   .feeds-toolbar { flex-direction: column; align-items: flex-start; }
 }
+.feed-expand-pager {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 10px; padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}

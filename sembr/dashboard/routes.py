@@ -73,9 +73,11 @@ async def get_feeds_paged(
 
 @router.get("/feeds/{feed_id}/events", response_model=list[FeedFetchEvent])
 async def get_feed_events(
-    feed_id: int, limit: int = Query(default=100, ge=1, le=500)
+    feed_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> list[FeedFetchEvent]:
-    return await read_model.list_feed_events(get_conn(), feed_id, limit)
+    return await read_model.list_feed_events(get_conn(), feed_id, limit, offset)
 
 
 @router.get("/feeds/{feed_id}/articles", response_model=list[ArticleListItem])

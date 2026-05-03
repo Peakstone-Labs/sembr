@@ -291,14 +291,14 @@ async def build_snapshot(
 # ---------------------------------------------------------------------------
 
 async def list_feed_events(
-    conn: aiosqlite.Connection, feed_id: int, limit: int
+    conn: aiosqlite.Connection, feed_id: int, limit: int, offset: int = 0
 ) -> list[FeedFetchEvent]:
     async with conn.execute(
         "SELECT id, started_at, elapsed_ms, ok, items_seen, items_new, "
         "       error_class, error_message "
         "FROM feed_fetch_log WHERE feed_id=? "
-        "ORDER BY id DESC LIMIT ?",
-        (feed_id, limit),
+        "ORDER BY id DESC LIMIT ? OFFSET ?",
+        (feed_id, limit, offset),
     ) as cur:
         rows = await cur.fetchall()
     return [

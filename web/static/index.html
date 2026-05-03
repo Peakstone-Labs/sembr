@@ -257,7 +257,7 @@
                         :class="(expandedFeedId===f.id && expanded.kind==='events') ? 'primary' : ''">events</button>
                 <button @click="toggleRow(f, 'articles')"
                         :class="(expandedFeedId===f.id && expanded.kind==='articles') ? 'primary' : ''">articles</button>
-                <button class="danger" @click="confirmDelete(f)">×</button>
+                <button class="danger" @click="confirmDelete(f)">Delete</button>
               </div>
             </td>
           </tr>
@@ -350,6 +350,14 @@
                   </tr>
                 </tbody>
               </table>
+
+              <!-- pagination footer -->
+              <div class="feed-expand-pager" x-show="!expanded.loading && (expanded.page > 0 || expanded.hasMore)">
+                <button @click="expandedPrevPage()" :disabled="expanded.page === 0">‹ prev</button>
+                <span class="muted mono" style="font-size:11px;"
+                      x-text="'page ' + (expanded.page + 1)"></span>
+                <button @click="expandedNextPage()" :disabled="!expanded.hasMore">next ›</button>
+              </div>
 
               <!-- article body modal -->
               <div class="modal-overlay" x-show="expanded.articleDetail" @click.self="closeArticleBody()">
