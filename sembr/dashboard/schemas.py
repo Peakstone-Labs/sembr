@@ -110,3 +110,26 @@ class ArticleDetail(ArticleListItem):
 class ConfigResponse(BaseModel):
     poll_interval_seconds: int
     auth_required: bool
+
+
+class FeedRowExtended(FeedRow):
+    """Feeds-tab row: FeedRow + tags + per-feed grouping/scheduling metadata.
+
+    Backward-compatible: existing snapshot route still returns plain FeedRow.
+    """
+
+    source_type: str = "rss"
+    config: dict = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+    group_key: str
+    next_run_iso: str | None = None
+    created_at: str | None = None
+
+
+class FeedListResponse(BaseModel):
+    items: list[FeedRowExtended]
+    total: int
+
+
+class SourceSchemaResponse(BaseModel):
+    schemas: dict[str, dict]

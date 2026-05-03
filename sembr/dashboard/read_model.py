@@ -27,10 +27,13 @@ from sembr.dashboard.schemas import (
     EmbedderCalls24h,
     Fetch24hBlock,
     FeedFetchEvent,
+    FeedListResponse,
     FeedRow,
+    FeedRowExtended,
     SnapshotResponse,
 )
 from sembr.db.feeds import list_feeds
+from sembr.db.feed_tags import list_all_tags
 from sembr.db.sqlite import sqlite_ok
 
 logger = logging.getLogger(__name__)
@@ -488,3 +491,158 @@ async def get_article_detail(
     except Exception as exc:
         logger.warning("qdrant retrieve failed for md5=%s: %s", md5, exc)
         return None
+
+
+async def list_feeds_with_meta(
+    conn: aiosqlite.Connection,
+    *,
+    limit: int,
+    offset: int,
+    tag: str | None,
+    q: str | None,
+    proxy_hosts: frozenset[str],
+    scheduler: Any | None = None,
+    now: datetime | None = None,
+) -> FeedListResponse:
+    """Paginated feeds list for the Feeds tab (D8).
+
+    SQLite holds the source-of-truth feed rows; tags come from feed_tags;
+    group_key is derived in Python (D5) — no schema drift; next_run_iso comes
+    from APScheduler when available so the UI can show "next run" countdowns.
+    """
+    from sembr.collector.host_limiter import derive_group_key  # PLC0415: avoid cycle
+
+    # Build a single filtered base query so total + page share the same WHERE clause.
+    where_parts: list[str] = []
+    params: list[Any] = []
+    if q:
+        where_parts.append("LOWER(name) LIKE ?")
+        params.append(f"%{q.lower()}%")
+    if tag:
+        # Subquery is cheaper than JOIN+DISTINCT here because tag uniqueness
+        # is already enforced by feed_tags PK.
+        where_parts.append("id IN (SELECT feed_id FROM feed_tags WHERE tag=?)")
+        params.append(tag.lower())
+    where_sql = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+    async with conn.execute(
+        f"SELECT COUNT(*) FROM feeds{where_sql}", params
+    ) as cur:
+        total = (await cur.fetchone())[0]
+
+    async with conn.execute(
+        f"SELECT id, name, url, source_type, config, poll_interval_minutes, "
+        f"       last_collected_at, created_at "
+        f"FROM feeds{where_sql} ORDER BY id ASC LIMIT ? OFFSET ?",
+        [*params, limit, offset],
+    ) as cur:
+        rows = await cur.fetchall()
+
+    feed_ids = [r[0] for r in rows]
+    if not feed_ids:
+        return FeedListResponse(items=[], total=total)
+
+    tag_map = await list_all_tags(conn)
+    fetch_map = await _fetch_24h_all_feeds(conn, feed_ids, now or _utcnow())
+
+    items: list[FeedRowExtended] = []
+    import json as _json  # noqa: PLC0415
+    for r in rows:
+        fid, name, url, source_type, config_json, poll_min, last_collected, created_at = r
+        next_run_iso: str | None = None
+        if scheduler is not None:
+            try:
+                job = scheduler.get_job(f"feed_{fid}")
+                if job is not None and job.next_run_time is not None:
+                    next_run_iso = job.next_run_time.astimezone(timezone.utc).isoformat()
+            except Exception:
+                next_run_iso = None
+        try:
+            config = _json.loads(config_json) if config_json else {}
+        except Exception:
+            config = {}
+        items.append(
+            FeedRowExtended(
+                id=fid,
+                name=name,
+                url=url,
+                source_type=source_type,
+                config=config,
+                poll_interval_minutes=poll_min,
+                last_collected_at=last_collected,
+                fetch_24h=fetch_map.get(fid) or Fetch24hBlock(
+                    total=0, ok=0, fail=0,
+                    last_outcome="never", last_error_message=None,
+                    consecutive_failures=0, sparkline_buckets=[0] * _SPARKLINE_BUCKETS,
+                ),
+                tags=tag_map.get(fid, []),
+                group_key=derive_group_key(url, proxy_hosts),
+                next_run_iso=next_run_iso,
+                created_at=created_at,
+            )
+        )
+    return FeedListResponse(items=items, total=total)
+
+
+async def list_feed_articles_qdrant(
+    qdrant_client: Any | None,
+    feed_id: int,
+    *,
+    limit: int,
+    offset: int,
+) -> list[ArticleListItem]:
+    """Per-feed Qdrant-only article list (D2 降级 / R2).
+
+    Mirrors list_articles_qdrant's scroll-then-skip approach but adds a
+    `feed_id` keyword filter; relies on the payload index added in
+    vector_store.news.ensure_news_collection.
+    """
+    if qdrant_client is None:
+        return []
+    from qdrant_client.models import (  # noqa: PLC0415
+        FieldCondition,
+        Filter,
+        MatchValue,
+    )
+
+    items: list[ArticleListItem] = []
+    seen = 0
+    next_offset = None
+    target = limit + offset
+    qfilter = Filter(
+        must=[FieldCondition(key="feed_id", match=MatchValue(value=int(feed_id)))]
+    )
+    try:
+        while seen < target:
+            page_size = min(target - seen, 64)
+            points, next_offset = await qdrant_client.scroll(
+                collection_name=_QDRANT_COLLECTION,
+                limit=page_size,
+                with_payload=True,
+                with_vectors=False,
+                offset=next_offset,
+                scroll_filter=qfilter,
+                order_by={"key": "ingested_at_ts", "direction": "desc"},
+            )
+            for p in points:
+                payload = getattr(p, "payload", {}) or {}
+                items.append(
+                    ArticleListItem(
+                        md5=str(getattr(p, "id", "")),
+                        feed_id=payload.get("feed_id"),
+                        url=payload.get("url", ""),
+                        title=payload.get("title", ""),
+                        published_at=payload.get("published_at"),
+                        ingested_at_ts=payload.get("ingested_at_ts"),
+                        bucket="qdrant",
+                    )
+                )
+                seen += 1
+                if seen >= target:
+                    break
+            if next_offset is None:
+                break
+    except Exception as exc:
+        logger.warning("qdrant scroll for feed_id=%d failed: %s", feed_id, exc)
+        return []
+    return items[offset : offset + limit]

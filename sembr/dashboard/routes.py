@@ -23,7 +23,9 @@ from sembr.dashboard.schemas import (
     ConfigResponse,
     EmbedCallEvent,
     FeedFetchEvent,
+    FeedListResponse,
     SnapshotResponse,
+    SourceSchemaResponse,
 )
 from sembr.db.sqlite import get_conn
 
@@ -48,11 +50,61 @@ async def get_snapshot(request: Request) -> SnapshotResponse:
     return await read_model.build_snapshot(get_conn(), qdrant, embedder)
 
 
+@router.get("/feeds", response_model=FeedListResponse)
+async def get_feeds_paged(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    tag: str | None = Query(default=None, max_length=32),
+    q: str | None = Query(default=None, max_length=200),
+) -> FeedListResponse:
+    settings = get_settings()
+    scheduler = getattr(request.app.state, "scheduler", None)
+    return await read_model.list_feeds_with_meta(
+        get_conn(),
+        limit=limit,
+        offset=offset,
+        tag=tag,
+        q=q,
+        proxy_hosts=settings.proxy_hosts_set,
+        scheduler=scheduler,
+    )
+
+
 @router.get("/feeds/{feed_id}/events", response_model=list[FeedFetchEvent])
 async def get_feed_events(
     feed_id: int, limit: int = Query(default=100, ge=1, le=500)
 ) -> list[FeedFetchEvent]:
     return await read_model.list_feed_events(get_conn(), feed_id, limit)
+
+
+@router.get("/feeds/{feed_id}/articles", response_model=list[ArticleListItem])
+async def get_feed_articles(
+    feed_id: int,
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> list[ArticleListItem]:
+    qdrant = getattr(request.app.state, "qdrant", None)
+    qclient = getattr(qdrant, "client", None) if qdrant is not None else None
+    return await read_model.list_feed_articles_qdrant(
+        qclient, feed_id, limit=limit, offset=offset
+    )
+
+
+@router.get("/sources/schemas", response_model=SourceSchemaResponse)
+async def get_source_schemas() -> SourceSchemaResponse:
+    """D15: source_type → JSON-Schema map. Frontend uses this to render the
+    create-feed form dynamically. Read directly from SOURCE_REGISTRY so a
+    plugin registered via entry_points appears without a code change here."""
+    from sembr.collector.scheduler import SOURCE_REGISTRY  # noqa: PLC0415
+    schemas: dict[str, dict] = {}
+    for stype, cls in SOURCE_REGISTRY.items():
+        try:
+            schemas[stype] = cls.config_schema()
+        except Exception as exc:
+            logger.warning("source %r config_schema() failed: %s", stype, exc)
+    return SourceSchemaResponse(schemas=schemas)
 
 
 @router.get("/embedder/events", response_model=list[EmbedCallEvent])
