@@ -37,6 +37,36 @@ curl -i http://localhost:8000/health
 
 **Port override**: set `SEMBR_HOST_PORT=8080` in `.env` (or as a shell env var) to expose the API on `localhost:8080`. `API_PORT` controls the in-container bind port and should stay at `8000`. See `.env.example` for the full settings surface.
 
+## Production deployment
+
+The Settings tab edits the host `.env` and restarts containers in place. To do
+that, `docker-compose.yml` mounts two host paths into the API container:
+
+| Mount | Purpose | Risk |
+| ----- | ------- | ---- |
+| `./.env:/app/.env` | settings editor reads/writes the real `.env` | API can rewrite host config |
+| `/var/run/docker.sock:/var/run/docker.sock` | RestartController drives `docker restart sembr-rsshub` | **API container is effectively docker-root on the host** |
+
+Mounting the docker socket is a deliberate single-tenant trade-off (same model
+as Watchtower / Portainer). Anyone with API access — or any RCE in the API
+process — can launch privileged containers, read other volumes, and escape to
+root on the host. Concrete implications:
+
+- **Always set `DASHBOARD_TOKEN`** before exposing the API beyond `localhost`.
+  Without it, `/api/settings/*` is reachable by anyone who can reach the port.
+- **Do not run sembr on a multi-tenant host** unless you accept that an API
+  compromise = host compromise.
+- **Prefer a private network** (LAN, VPN, Tailscale) over a public IP. If you
+  must expose it publicly, put it behind a reverse proxy with mTLS or basic auth
+  _in addition_ to `DASHBOARD_TOKEN`.
+- **`cp .env.example .env` BEFORE the first `docker compose up`** — without an
+  existing host `.env` file, Docker creates a directory at the bind-mount path
+  and the API will refuse to start.
+
+If you cannot accept the docker-socket exposure, run sembr without the Settings
+tab: comment out the two volume mounts above; `/api/settings/save` will return
+500 on RSSHub restart but the rest of the app keeps working.
+
 ## RSS Feeds
 
 sembr comes with 23 pre-loaded free RSS sources. They start collecting on first launch — no configuration needed.
