@@ -262,7 +262,13 @@ def _envfile() -> EnvFile:
 
 @router.get("/values", response_model=ValuesResponse, dependencies=[Depends(require_header_token)])
 async def get_values() -> ValuesResponse:
-    ef = _envfile()
+    try:
+        ef = _envfile()
+    except IsADirectoryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="cp .env.example .env on the host then rebuild: /app/.env is a directory",
+        ) from exc
     raw = ef.values()
 
     out_values: dict[str, str] = {}
@@ -373,7 +379,20 @@ async def save_settings(body: SaveRequest) -> SaveResponse:
         )
 
     # ── load + mutate ─────────────────────────────────────────────────────
-    ef = _envfile()
+    try:
+        ef = _envfile()
+    except IsADirectoryError as exc:
+        logger.error("envfile is a directory: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="cp .env.example .env on the host then rebuild: /app/.env is a directory",
+        ) from exc
+    except Exception as exc:
+        logger.error("envfile load failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"failed to read .env: {exc}",
+        ) from exc
     raw_values = ef.values()
     saved: list[str] = []
     deleted: list[str] = []
