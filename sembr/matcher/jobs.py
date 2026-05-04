@@ -78,6 +78,7 @@ def register_intent_job(
         max_instances=1,
         replace_existing=True,
         next_run_time=None,
+        misfire_grace_time=None,  # never skip due to late wakeup
     )
     logger.info(
         "registered matcher job intent_id=%d preset=%s hour=%d minute=%d tz=%s next_run=%s",
