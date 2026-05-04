@@ -61,19 +61,10 @@ def register_intent_job(
     if isinstance(schedule, CronSchedule):
         trigger = _build_cron_trigger(schedule, intent.timezone)
         next_run_time = None  # CronTrigger computes its own first fire time
-        logger.debug(
-            "registered matcher job intent_id=%d cron preset=%s weekday=%s hour=%d minute=%d tz=%s",
-            intent.id,
-            schedule.preset,
-            schedule.weekday,
-            schedule.hour,
-            schedule.minute,
-            intent.timezone,
-        )
     else:
         raise NotImplementedError(f"unknown schedule mode: {schedule.mode!r}")
 
-    scheduler.add_job(
+    job = scheduler.add_job(
         run_intent_scan,
         trigger=trigger,
         id=_job_id(intent.id),
@@ -82,6 +73,15 @@ def register_intent_job(
         max_instances=1,
         replace_existing=True,
         next_run_time=next_run_time,
+    )
+    logger.info(
+        "registered matcher job intent_id=%d preset=%s hour=%d minute=%d tz=%s next_run=%s",
+        intent.id,
+        schedule.preset,
+        schedule.hour,
+        schedule.minute,
+        intent.timezone,
+        job.next_run_time,
     )
 
 
