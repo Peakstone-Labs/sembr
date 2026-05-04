@@ -31,6 +31,7 @@
   <button class="tab-btn" :class="{active: currentTab==='feeds'}"     @click="setTab('feeds')">Feeds</button>
   <button class="tab-btn" :class="{active: currentTab==='intents'}"   @click="setTab('intents')">Intents</button>
   <button class="tab-btn" :class="{active: currentTab==='logs'}"      @click="setTab('logs')">Logs</button>
+  <button class="tab-btn" :class="{active: currentTab==='settings'}"  @click="setTab('settings')">Settings</button>
 </nav>
 
 <!-- ═══════════════════════════════════════════════════════
@@ -1455,9 +1456,203 @@
 
 </div><!-- /logs-view -->
 
+<!-- ═══════════════════════════════════════════════════════
+     Settings view
+     ══════════════════════════════════════════════════════ -->
+<div x-show="currentTab==='settings'" x-data="settingsTab()" x-init="init()" class="settings-view">
+
+  <div x-show="loading" class="empty-state">
+    <span class="spinner spinner-lg"></span>
+    <span style="margin-left:10px;">Loading settings…</span>
+  </div>
+  <div x-show="error && !loading" class="banner-warn" style="display:block;" x-text="error"></div>
+
+  <div x-show="!loading && !error">
+    <div class="settings-toolbar">
+      <span class="muted" style="font-size:0.78rem;">
+        Edit values then click <strong>Save</strong>. Changes are written to the host
+        <code>.env</code> file and the API container restarts automatically.
+      </span>
+      <button class="primary" @click="openConfirm()" :disabled="!isDirty()">
+        Save
+      </button>
+    </div>
+
+    <!-- known sembr fields, grouped -->
+    <section class="panel" style="margin-bottom:16px;">
+      <h2>sembr</h2>
+      <div class="settings-grid">
+        <template x-for="field in schema.sembr_fields" :key="field.key">
+          <div class="settings-field">
+            <label class="field-label">
+              <span x-text="field.key"></span>
+              <span x-show="field.sensitive" class="settings-badge settings-badge-secret">secret</span>
+              <span x-show="overriddenByShellEnv.includes(field.key)"
+                    class="settings-badge settings-badge-override"
+                    title="A shell env var of the same name is set; pydantic-settings will use that, not the .env value, after restart.">
+                overridden by shell env
+              </span>
+            </label>
+
+            <template x-if="field.type === 'enum'">
+              <select x-model="form[field.key]">
+                <template x-for="opt in field.enum" :key="opt">
+                  <option :value="opt" x-text="opt"></option>
+                </template>
+              </select>
+            </template>
+            <template x-if="field.type === 'bool'">
+              <label class="toggle-wrap">
+                <span class="toggle">
+                  <input type="checkbox"
+                         :checked="form[field.key] === 'true' || form[field.key] === true"
+                         @change="form[field.key] = $event.target.checked ? 'true' : 'false'">
+                  <span class="toggle-slider"></span>
+                </span>
+              </label>
+            </template>
+            <template x-if="field.type === 'int' || field.type === 'float'">
+              <input type="number" x-model="form[field.key]"
+                     :step="field.type === 'float' ? 'any' : 1"
+                     :min="field.ge ?? null" :max="field.le ?? null">
+            </template>
+            <template x-if="field.type === 'secret'">
+              <input type="password" x-model="form[field.key]"
+                     :placeholder="form[field.key] === sensitiveMask ? 'unchanged (already set)' : ''">
+            </template>
+            <template x-if="field.type === 'str' || field.type === 'path'">
+              <input type="text" x-model="form[field.key]">
+            </template>
+
+            <span class="field-hint" x-show="field.description" x-text="field.description"></span>
+            <span class="field-hint" x-show="field.ge !== null || field.le !== null"
+                  x-text="'range: ' + (field.ge ?? '−∞') + ' .. ' + (field.le ?? '+∞')"></span>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- passthrough additions -->
+    <section class="panel" style="margin-bottom:16px;">
+      <h2>RSSHub passthrough</h2>
+      <p class="muted" style="font-size:0.78rem;">
+        Variables consumed by the RSSHub container only. Saving any change here
+        also restarts the RSSHub container.
+        Allowed key prefixes:
+        <template x-for="(p, i) in schema.passthrough_prefixes" :key="p">
+          <code x-text="p"></code>
+        </template>
+      </p>
+
+      <!-- already-known passthrough KVs -->
+      <div class="settings-grid">
+        <template x-for="key in passthroughKeysPresent()" :key="key">
+          <div class="settings-field">
+            <label class="field-label">
+              <span x-text="key"></span>
+              <span x-show="isSecretLike(key)" class="settings-badge settings-badge-secret">secret</span>
+              <button class="tag-rm" type="button" @click="markDeleted(key)" title="delete">✕</button>
+            </label>
+            <input :type="isSecretLike(key) ? 'password' : 'text'"
+                   x-model="form[key]"
+                   :placeholder="form[key] === sensitiveMask ? 'unchanged (already set)' : ''">
+          </div>
+        </template>
+      </div>
+
+      <!-- add new passthrough KV -->
+      <div class="settings-add-row">
+        <input type="text" x-model="newKey" placeholder="NEW_KEY (must match prefix above)" style="flex:1;">
+        <input type="text" x-model="newValue" placeholder="value" style="flex:2;">
+        <button @click="addPassthrough()" :disabled="!newKey">+ Add</button>
+      </div>
+      <span class="field-err-msg" x-show="addError" x-text="addError"></span>
+    </section>
+
+    <!-- legacy / unknown keys (read only) -->
+    <section class="panel" x-show="unknownKeys.length > 0" style="margin-bottom:16px;">
+      <h2>Unknown keys (read only)</h2>
+      <p class="muted" style="font-size:0.78rem;">
+        Present in <code>.env</code> but not declared by sembr nor matching the passthrough whitelist.
+        Edit <code>.env</code> directly on the host to change these.
+      </p>
+      <table>
+        <thead><tr><th>key</th><th>value</th></tr></thead>
+        <tbody>
+          <template x-for="u in unknownKeys" :key="u.key">
+            <tr><td class="mono" x-text="u.key"></td><td class="mono muted" x-text="u.value"></td></tr>
+          </template>
+        </tbody>
+      </table>
+    </section>
+
+    <div x-show="deletions.length > 0" class="banner-warn" style="display:block;">
+      Pending deletions: <span class="mono" x-text="deletions.join(', ')"></span>
+      <button @click="deletions = []">undo</button>
+    </div>
+  </div>
+
+  <!-- confirm modal -->
+  <div class="modal-overlay" x-show="confirm.open" x-cloak @click.self="closeConfirm()">
+    <div class="modal-panel" style="max-width:560px;">
+      <div class="modal-header">
+        <span class="modal-title">Confirm Save</span>
+        <button class="modal-close" @click="closeConfirm()">✕</button>
+      </div>
+      <div style="font-size:0.85rem; color:var(--text-secondary); padding:8px 0;">
+        <p>
+          About to write <strong x-text="diff.changes.length + diff.additions.length"></strong>
+          change(s) to <code>.env</code> and delete
+          <strong x-text="diff.deletions.length"></strong> key(s).
+        </p>
+        <p x-show="diff.touchesPassthrough">
+          ⚠ <strong>API + RSSHub will restart.</strong> The dashboard will be unreachable
+          for ~10–30 seconds. The page will refresh once <code>/health</code> returns 200.
+        </p>
+        <p x-show="!diff.touchesPassthrough">
+          ⚠ <strong>API will restart.</strong> The dashboard will be unreachable for ~10–30 seconds.
+        </p>
+        <p x-show="overriddenSubmittedFields.length > 0" style="color:var(--bad);">
+          ⚠ <strong x-text="overriddenSubmittedFields.join(', ')"></strong>
+          is overridden by a shell environment variable. The new value will be written
+          to <code>.env</code> but the shell variable still wins after restart.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeConfirm()">Cancel</button>
+        <button class="danger" @click="submit()" :disabled="confirm.submitting">
+          <span x-show="confirm.submitting"><span class="spinner"></span>&nbsp;</span>
+          Confirm Save &amp; Restart
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- restart overlay -->
+  <div class="restart-overlay" x-show="restart.active" x-cloak>
+    <div class="restart-panel">
+      <span class="spinner spinner-lg"></span>
+      <h3>Restarting…</h3>
+      <p class="muted" x-text="restart.message"></p>
+      <p class="muted mono" style="font-size:0.75rem;"
+         x-show="restart.elapsedMs > 0"
+         x-text="(restart.elapsedMs / 1000).toFixed(0) + 's elapsed'"></p>
+    </div>
+  </div>
+
+  <!-- toasts -->
+  <div class="toast-container">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="toast" :class="'toast-' + t.type" x-text="t.msg"></div>
+    </template>
+  </div>
+
+</div><!-- /settings-view -->
+
 <script src="/dashboard/feeds.js?v=4"></script>
 <script src="/dashboard/intents.js"></script>
 <script src="/dashboard/logs.js"></script>
+<script src="/dashboard/settings.js?v=1"></script>
 <script src="/dashboard/app.js"></script>
 </body>
 </html>
