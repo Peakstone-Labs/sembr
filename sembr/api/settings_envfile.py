@@ -250,8 +250,18 @@ class EnvFile:
         payload = self.render().encode("utf-8")
         # `wb` + explicit fsync: ensures bytes are on-disk before rename so a
         # crash mid-write can't leave a half-rewritten `.env`.
-        with open(tmp_path, "wb") as fh:
-            fh.write(payload)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_path, target)
+        try:
+            with open(tmp_path, "wb") as fh:
+                fh.write(payload)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_path, target)
+        finally:
+            # 🟢-1: defensive cleanup. `os.replace` succeeds → tmp_path now refers
+            # to the new content under target; the unlink() is a no-op (missing).
+            # `os.replace` raises (cross-fs EXDEV, etc.) → tmp_path remains as
+            # garbage; clean it up rather than leaking `.env.{pid}.tmp`.
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass

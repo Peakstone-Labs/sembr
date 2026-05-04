@@ -1617,6 +1617,11 @@
           is overridden by a shell environment variable. The new value will be written
           to <code>.env</code> but the shell variable still wins after restart.
         </p>
+        <p x-show="secretsBeingCleared.length > 0" style="color:var(--bad);">
+          ⚠ Will <strong>clear</strong> these secret field(s):
+          <strong x-text="secretsBeingCleared.join(', ')"></strong>.
+          Their value will be set to empty — the previous value cannot be recovered.
+        </p>
       </div>
       <div class="modal-footer">
         <button @click="closeConfirm()">Cancel</button>
@@ -1652,7 +1657,7 @@
 <script src="/dashboard/feeds.js?v=4"></script>
 <script src="/dashboard/intents.js"></script>
 <script src="/dashboard/logs.js"></script>
-<script src="/dashboard/settings.js?v=1"></script>
+<script src="/dashboard/settings.js?v=2"></script>
 <script src="/dashboard/app.js"></script>
 </body>
 </html>

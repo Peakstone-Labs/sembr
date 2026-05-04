@@ -24,6 +24,7 @@ function settingsTab() {
     confirm: { open: false, submitting: false },
     diff: { changes: [], additions: [], deletions: [], touchesPassthrough: false },
     overriddenSubmittedFields: [],
+    secretsBeingCleared: [],
     restart: { active: false, message: '', startedAt: 0, elapsedMs: 0, timer: null },
     toasts: [],
 
@@ -128,7 +129,12 @@ function settingsTab() {
       for (const k of Object.keys(this.form)) {
         const fresh = !(k in this.initialValues) || this.initialValues[k] === '__pending_addition__';
         if (fresh) return true;
-        if (this.form[k] !== this.initialValues[k]) return true;
+        // 🟡-2: <input type=number> + Alpine x-model coerces values to Number
+        // while initialValues comes from /values as String. Compare both sides
+        // as strings to avoid 8000 !== "8000" false positives.
+        const a = this.form[k] === undefined || this.form[k] === null ? '' : String(this.form[k]);
+        const b = this.initialValues[k] === undefined || this.initialValues[k] === null ? '' : String(this.initialValues[k]);
+        if (a !== b) return true;
       }
       return false;
     },
@@ -141,10 +147,15 @@ function settingsTab() {
       for (const key of Object.keys(this.form)) {
         const isAddition = !(key in this.initialValues) || this.initialValues[key] === '__pending_addition__';
         const value = this.form[key];
+        // 🟡-2: normalize both sides to string before comparing to dodge the
+        // <input type=number> Number-coercion trap.
+        const valueStr = value === undefined || value === null ? '' : String(value);
+        const initStr = this.initialValues[key] === undefined || this.initialValues[key] === null
+          ? '' : String(this.initialValues[key]);
         if (isAddition) {
-          additions[key] = value === undefined ? '' : String(value);
-        } else if (value !== this.initialValues[key]) {
-          changes[key] = value === undefined ? '' : String(value);
+          additions[key] = valueStr;
+        } else if (valueStr !== initStr) {
+          changes[key] = valueStr;
         }
       }
 
@@ -174,6 +185,15 @@ function settingsTab() {
       // warn the user (Decision #12).
       const submittedKeys = new Set([...Object.keys(d._changesObj), ...Object.keys(d._additionsObj)]);
       this.overriddenSubmittedFields = this.overriddenByShellEnv.filter(k => submittedKeys.has(k));
+      // 💡-2: detect "user is clearing a non-empty secret" so the confirm
+      // dialog can flag this destructive action explicitly. Trigger when the
+      // initial value was the mask sentinel (i.e. server had a real value)
+      // and the new value is the empty string.
+      this.secretsBeingCleared = Object.keys(d._changesObj).filter(k => {
+        const wasMasked = this.initialValues[k] === this.sensitiveMask;
+        const isEmpty = d._changesObj[k] === '';
+        return wasMasked && isEmpty;
+      });
       this.confirm.open = true;
     },
 
@@ -196,6 +216,9 @@ function settingsTab() {
         });
         this.confirm.open = false;
         const targets = res.restart_targets || [];
+        if (res.rsshub_restart_failed) {
+          this._toast('error', `RSSHub restart failed: ${res.rsshub_error || 'unknown'} — fix manually`);
+        }
         if (targets.length === 0) {
           this._toast('ok', 'saved (no restart needed)');
           await this._reload();

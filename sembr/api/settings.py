@@ -266,6 +266,8 @@ class SaveResponse(BaseModel):
     saved_keys: list[str]
     deleted_keys: list[str]
     restart_targets: list[Literal["api", "rsshub"]]
+    rsshub_restart_failed: bool = False
+    rsshub_error: str | None = None
 
 
 def _classify_key(key: str) -> Literal["sembr", "passthrough", "invalid"]:
@@ -343,6 +345,14 @@ async def save_settings(body: SaveRequest) -> SaveResponse:
 
     for key, val in body.additions.items():
         upper = key.upper()
+        # 🔴-1: writing the mask sentinel literal into a fresh KV would let a
+        # garbage value reach RSSHub. Reject explicitly — the sentinel is a
+        # display artifact, never a real value.
+        if val == SENSITIVE_MASK:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"addition {upper}: mask sentinel '{SENSITIVE_MASK}' is not a valid value",
+            )
         cls = _classify_key(upper)
         ef.upsert(upper, val)
         saved.append(upper)
@@ -383,20 +393,29 @@ async def save_settings(body: SaveRequest) -> SaveResponse:
             restart_targets.append("api")
 
     # ── trigger restart ───────────────────────────────────────────────────
-    # Constructed via module-level reference so tests can monkeypatch
-    # ``settings.RestartController`` to inject a fake without touching docker.
+    # 🟡-1: schedule the api self-restart FIRST. rsshub restart can fail (sock
+    # unreachable, container missing, daemon overloaded), but the api process
+    # MUST pick up the new .env regardless — otherwise we leave the system in
+    # an inconsistent state where disk has the new value but the running api
+    # holds stale Settings. rsshub failure becomes a soft warning, not a 500.
     rc = RestartController()
+    if "api" in restart_targets:
+        rc.schedule_self_restart()
+
+    rsshub_restart_failed = False
+    rsshub_error: str | None = None
     if "rsshub" in restart_targets:
         try:
             await rc.restart_rsshub()
         except Exception as exc:
-            logger.error("rsshub restart failed: %s", exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"failed to restart rsshub: {exc}",
-            ) from exc
-    if "api" in restart_targets:
-        # Schedule self-restart last so the response gets a chance to flush.
-        rc.schedule_self_restart()
+            logger.error("rsshub restart failed (continuing): %s", exc, exc_info=True)
+            rsshub_restart_failed = True
+            rsshub_error = str(exc)
 
-    return SaveResponse(saved_keys=saved, deleted_keys=deleted, restart_targets=restart_targets)
+    return SaveResponse(
+        saved_keys=saved,
+        deleted_keys=deleted,
+        restart_targets=restart_targets,
+        rsshub_restart_failed=rsshub_restart_failed,
+        rsshub_error=rsshub_error,
+    )

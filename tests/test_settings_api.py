@@ -171,11 +171,50 @@ def test_save_passthrough_addition_targets_both(
     assert r.status_code == 200
     body = r.json()
     assert set(body["restart_targets"]) == {"api", "rsshub"}
+    assert body["rsshub_restart_failed"] is False
     text = env_file.read_text(encoding="utf-8")
     assert "TELEGRAM_TOKEN=abc:def" in text
     assert USER_ADDITIONS_HEADER in text
     fake_rc.restart_rsshub.assert_called_once()
     fake_rc.schedule_self_restart.assert_called_once()
+
+
+# 🔴-1: addition with mask sentinel must be rejected as 422.
+def test_save_addition_with_mask_sentinel_rejected(
+    client: TestClient, env_file: Path
+) -> None:
+    original = env_file.read_text(encoding="utf-8")
+    r = client.post(
+        "/api/settings/save",
+        json={"additions": {"TWITTER_COOKIE": SENSITIVE_MASK}, "confirmed": True},
+    )
+    assert r.status_code == 422
+    assert "mask sentinel" in r.json()["detail"].lower()
+    assert env_file.read_text(encoding="utf-8") == original
+
+
+# 🟡-1: rsshub restart failure must NOT block the response and api self-restart
+# must still be scheduled. Status remains 200 with rsshub_restart_failed=true.
+def test_save_rsshub_failure_downgrades_to_warning(
+    client: TestClient, env_file: Path, fake_rc: MagicMock
+) -> None:
+    async def boom(*a, **k):
+        raise RuntimeError("docker daemon unreachable")
+    fake_rc.restart_rsshub.side_effect = boom
+
+    r = client.post(
+        "/api/settings/save",
+        json={"additions": {"TWITTER_COOKIE": "ct0=xyz"}, "confirmed": True},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["rsshub_restart_failed"] is True
+    assert "docker daemon unreachable" in body["rsshub_error"]
+    assert set(body["restart_targets"]) == {"api", "rsshub"}
+    # api self-restart was scheduled despite the rsshub failure
+    fake_rc.schedule_self_restart.assert_called_once()
+    # Disk write happened
+    assert "TWITTER_COOKIE=ct0=xyz" in env_file.read_text(encoding="utf-8")
 
 
 def test_save_rejects_non_whitelist_key(
@@ -308,3 +347,53 @@ def test_auth_passthrough_when_no_token_configured(client: TestClient) -> None:
     """Empty DASHBOARD_TOKEN → router behaves as public (matches middleware)."""
     r = client.get("/api/settings/schema")
     assert r.status_code == 200
+
+
+# 🟡-3: with the real DashboardTokenMiddleware mounted, cookie-only requests
+# pass middleware but must still be rejected by the router's header dependency.
+# This is the actual CSRF threat model for Decision #15.
+
+@pytest.fixture
+def app_with_middleware(env_file: Path) -> FastAPI:
+    from sembr.dashboard.auth import DashboardTokenMiddleware
+
+    app = FastAPI()
+    app.add_middleware(DashboardTokenMiddleware)
+    app.include_router(router)
+    return app
+
+
+def test_cookie_passes_middleware_but_rejected_by_router_dep(
+    monkeypatch: pytest.MonkeyPatch, app_with_middleware: FastAPI
+) -> None:
+    monkeypatch.setenv("DASHBOARD_TOKEN", "supersecret")
+    get_settings.cache_clear()
+
+    c = TestClient(app_with_middleware)
+    c.cookies.set("sembr_dashboard_token", "supersecret")
+    r = c.get("/api/settings/schema")
+    # Middleware sees a valid cookie → passes through.
+    # Router dependency requires X-Dashboard-Token header → 401.
+    assert r.status_code == 401
+
+
+def test_header_passes_both_middleware_and_router(
+    monkeypatch: pytest.MonkeyPatch, app_with_middleware: FastAPI
+) -> None:
+    monkeypatch.setenv("DASHBOARD_TOKEN", "supersecret")
+    get_settings.cache_clear()
+
+    c = TestClient(app_with_middleware)
+    r = c.get("/api/settings/schema", headers={"X-Dashboard-Token": "supersecret"})
+    assert r.status_code == 200
+
+
+def test_no_token_rejected_by_middleware(
+    monkeypatch: pytest.MonkeyPatch, app_with_middleware: FastAPI
+) -> None:
+    monkeypatch.setenv("DASHBOARD_TOKEN", "supersecret")
+    get_settings.cache_clear()
+
+    c = TestClient(app_with_middleware)
+    r = c.get("/api/settings/schema")
+    assert r.status_code == 401
