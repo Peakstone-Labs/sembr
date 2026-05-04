@@ -1252,22 +1252,89 @@ input:disabled, select:disabled, textarea:disabled {
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 18px 24px;
-  max-width: 1400px;
+/* Accordion sections */
+.settings-view { padding: 16px; max-width: 880px; }
+.settings-section {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  background: var(--panel-bg, #1c1c1c);
+  overflow: hidden;
 }
-.settings-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.settings-field .field-label {
+.settings-section-header {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 12px 16px;
+  background: transparent; color: inherit;
+  border: none; cursor: pointer; text-align: left;
+  font: inherit;
+}
+.settings-section-header:hover { background: rgba(255, 255, 255, 0.03); }
+.settings-section-chevron {
+  font-size: 0.9rem; transition: transform 0.15s ease;
+  color: var(--text-secondary, #999); flex-shrink: 0; width: 12px;
+}
+.settings-section-header.open .settings-section-chevron { transform: rotate(90deg); }
+.settings-section-title {
+  font-size: 0.95rem; font-weight: 600; letter-spacing: 0.01em;
+  flex: 1;
+}
+.settings-section-meta {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.72rem;
+}
+.settings-section-body {
+  padding: 4px 16px 16px 38px;
+  border-top: 1px solid var(--border);
+}
+.settings-section-desc {
+  font-size: 0.78rem; padding: 10px 0;
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  font-size: 0.72rem; letter-spacing: 0.06em;
 }
-.settings-field input,
-.settings-field select { width: 100%; box-sizing: border-box; }
-.settings-field .field-hint {
-  font-size: 0.7rem; line-height: 1.35; color: var(--text-secondary, #999);
+.settings-prefix-pill {
+  font-size: 0.7rem; padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border); border-radius: 3px;
 }
+
+/* One-field-per-row layout */
+.settings-row {
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-row-label {
+  flex: 0 0 280px; min-width: 0;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+  padding-top: 6px;
+}
+.settings-row-key {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem; font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.settings-row-hint {
+  flex-basis: 100%;
+  font-size: 0.7rem; line-height: 1.4;
+  color: var(--text-secondary, #999);
+  margin-top: 2px;
+}
+.settings-row-input {
+  flex: 1; min-width: 0;
+}
+.settings-row-input input,
+.settings-row-input select { width: 100%; box-sizing: border-box; }
+.settings-row-delete {
+  background: transparent; color: var(--bad, #d66);
+  border: 1px solid rgba(220, 60, 60, 0.35);
+  border-radius: 3px; padding: 0 6px; height: 18px;
+  font-size: 0.7rem; cursor: pointer; line-height: 1;
+}
+.settings-row-delete:hover {
+  background: rgba(220, 60, 60, 0.12);
+}
+
+/* Badges */
 .settings-badge {
   display: inline-flex; align-items: center; padding: 0 5px; height: 14px;
   font-size: 0.55rem; letter-spacing: 0.04em; text-transform: uppercase;
@@ -1278,15 +1345,30 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--gold); border: 1px solid rgba(255, 200, 0, 0.32);
 }
 .settings-badge-override {
-  /* Subtle outlined badge — most fields are NOT shell-overridden, so this
-   * should be a quiet hint, not a screaming red block. */
   background: transparent;
   color: var(--bad, #d66);
   border: 1px solid rgba(220, 60, 60, 0.45);
   cursor: help;
 }
+.settings-badge-dirty {
+  background: rgba(80, 160, 255, 0.14);
+  color: #69b6ff; border: 1px solid rgba(80, 160, 255, 0.4);
+}
+.settings-badge-readonly {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary, #999);
+  border: 1px solid var(--border);
+}
+
+/* Add KV row (RSSHub section only) */
 .settings-add-row {
-  display: flex; gap: 8px; align-items: center; margin-top: 12px;
+  display: flex; gap: 8px; align-items: center; margin-top: 14px;
+  padding-top: 14px; border-top: 1px solid var(--border);
+}
+
+@media (max-width: 720px) {
+  .settings-row { flex-direction: column; gap: 6px; }
+  .settings-row-label { flex: 1 1 auto; padding-top: 0; }
 }
 .restart-overlay {
   position: fixed; inset: 0; z-index: 9999;

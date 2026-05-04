@@ -7,6 +7,18 @@
 
 window.SENSITIVE_MASK = '••••••';
 
+// Mirror .env.example sections. Each entry: { id, title, prefixes, exact }
+// First match wins; unmatched fields fall through to "Other".
+const SECTION_DEFS = [
+  { id: 'api',       title: 'API & Storage',      prefixes: ['API_', 'QDRANT_', 'SQLITE_', 'SEMBR_'] },
+  { id: 'embedder',  title: 'Embedder',           prefixes: ['EMBEDDER_'] },
+  { id: 'llm',       title: 'LLM Summarizer',     prefixes: ['LLM_'] },
+  { id: 'smtp',      title: 'Email (SMTP)',       prefixes: ['SMTP_'] },
+  { id: 'display',   title: 'Display & Prompts',  prefixes: ['DISPLAY_', 'PROMPTS_'], exact: ['PROMPTS_DIR'] },
+  { id: 'dashboard', title: 'Dashboard',          prefixes: ['DASHBOARD_'] },
+  { id: 'proxy',     title: 'Proxy / Routing',    prefixes: ['PROXY_'] },
+];
+
 function settingsTab() {
   return {
     loading: true,
@@ -21,6 +33,10 @@ function settingsTab() {
     newValue: '',
     addError: '',
     sensitiveMask: window.SENSITIVE_MASK,
+    sections: [],               // computed [{ id, title, fields }]
+    expandedSections: {},       // { sectionId: bool } — accordion state
+    expandedRsshub: false,
+    expandedUnknown: false,
     confirm: { open: false, submitting: false },
     diff: { changes: [], additions: [], deletions: [], touchesPassthrough: false },
     overriddenSubmittedFields: [],
@@ -46,11 +62,54 @@ function settingsTab() {
         this.overriddenByShellEnv = values.overridden_by_shell_env || [];
         this.unknownKeys = values.unknown_keys || [];
         this.deletions = [];
+        this.sections = this._groupFields(schema.sembr_fields);
+        // Default: all sections collapsed. Expand any section that has a
+        // shell-overridden field, since the user usually wants to see those.
+        const overrideKeys = new Set(this.overriddenByShellEnv);
+        this.expandedSections = {};
+        for (const sec of this.sections) {
+          this.expandedSections[sec.id] = sec.fields.some(f => overrideKeys.has(f.key));
+        }
       } catch (e) {
         this.error = `Failed to load settings: ${e.message}`;
       } finally {
         this.loading = false;
       }
+    },
+
+    _groupFields(fields) {
+      const buckets = SECTION_DEFS.map(s => ({ id: s.id, title: s.title, fields: [] }));
+      const otherBucket = { id: 'other', title: 'Other', fields: [] };
+
+      outer: for (const f of fields) {
+        for (let i = 0; i < SECTION_DEFS.length; i++) {
+          const def = SECTION_DEFS[i];
+          if ((def.exact || []).includes(f.key) ||
+              (def.prefixes || []).some(p => f.key.startsWith(p))) {
+            buckets[i].fields.push(f);
+            continue outer;
+          }
+        }
+        otherBucket.fields.push(f);
+      }
+
+      const out = buckets.filter(b => b.fields.length > 0);
+      if (otherBucket.fields.length > 0) out.push(otherBucket);
+      return out;
+    },
+
+    toggleSection(id) {
+      this.expandedSections[id] = !this.expandedSections[id];
+    },
+
+    sectionDirtyCount(section) {
+      let n = 0;
+      for (const f of section.fields) {
+        const a = this.form[f.key] === undefined || this.form[f.key] === null ? '' : String(this.form[f.key]);
+        const b = this.initialValues[f.key] === undefined || this.initialValues[f.key] === null ? '' : String(this.initialValues[f.key]);
+        if (a !== b) n++;
+      }
+      return n;
     },
 
     _token() {
