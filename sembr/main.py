@@ -201,6 +201,10 @@ async def lifespan(app: FastAPI):
     app.state.embedder = embedder
     app.state.event_intent_cache = event_intent_cache
     scheduler.start()
+    # Log actual next_run_time for matcher jobs after scheduler.start() computes them.
+    for job in scheduler.get_jobs():
+        if job.id.startswith("matcher-intent-"):
+            logger.info("matcher job %s next_run=%s", job.id, job.next_run_time)
     try:
         yield
     finally:
