@@ -1,0 +1,402 @@
+"""Settings editor router — /api/settings/*.
+
+Reads / writes the host-side `.env` file (bind-mounted to /app/.env) and
+orchestrates the matching container restart(s). All endpoints require an
+``X-Dashboard-Token`` **header** (no cookie fallback) to defend against
+CSRF — see design.md Decision #15.
+
+Routes:
+
+- ``GET  /api/settings/schema``         field metadata derived from sembr.config.Settings
+- ``GET  /api/settings/values``         current values with sensitive fields masked
+- ``POST /api/settings/save``           atomic write + restart trigger
+"""
+from __future__ import annotations
+
+import logging
+import os
+import secrets
+import typing as _t
+from pathlib import Path
+from typing import Annotated, Any, Literal
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pydantic import BaseModel, Field, SecretStr
+from pydantic.fields import FieldInfo
+
+from sembr.api.settings_envfile import KEY_PATTERN, EnvFile
+from sembr.api.settings_restart import RestartController
+from sembr.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+# Container-side `.env` path. Compose bind-mounts host `./.env` here.
+ENV_FILE_PATH = Path("/app/.env")
+
+# RSSHub passthrough whitelist (design.md Decision #5 / O5a).
+# Why prefix-matching: lets RSSHub add new sources without sembr code
+# changes, but the strict ALL_CAPS regex defends against unicode-homograph
+# tricks ("ＴＷＩＴＴＥＲ_COOKIE" attempting to bypass the prefix check).
+_RSSHUB_PASSTHROUGH_PREFIXES: tuple[str, ...] = (
+    "TWITTER_",
+    "TELEGRAM_",
+    "GITHUB_",
+    "RSSHUB_",
+    "SOCIAL_",
+    "OPENAI_",
+)
+
+# Mask shown in place of any SecretStr value. The exact string also doubles
+# as the sentinel: clients that submit the mask back unmodified mean
+# "leave the existing secret alone" (design.md Decision #6).
+SENSITIVE_MASK = "••••••"
+
+
+# ── auth ──────────────────────────────────────────────────────────────────
+
+
+def require_header_token(
+    x_dashboard_token: Annotated[str | None, Header(alias="X-Dashboard-Token")] = None,
+) -> None:
+    """Header-only auth dependency for /api/settings/*.
+
+    Why a separate dependency rather than reusing DashboardTokenMiddleware:
+    the middleware accepts cookies, which makes settings POSTs trivially
+    CSRF-able from any logged-in browser tab (design.md Decision #15). This
+    dep enforces an explicit ``X-Dashboard-Token`` header — a value an
+    attacker on a different origin cannot inject from a cross-site form/fetch.
+    """
+    expected = get_settings().dashboard_token.get_secret_value()
+    if not expected:
+        # No token configured → middleware also treats every request as
+        # public; mirror that contract here so dev mode stays usable.
+        return
+    if not x_dashboard_token or not secrets.compare_digest(x_dashboard_token, expected):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized")
+
+
+# ── schema introspection ─────────────────────────────────────────────────
+
+
+class SembrFieldMeta(BaseModel):
+    key: str
+    type: Literal["str", "int", "float", "bool", "secret", "enum", "path"]
+    sensitive: bool
+    description: str = ""
+    enum: list[str] | None = None
+    ge: float | None = None
+    le: float | None = None
+    default: Any | None = None
+
+
+class SchemaResponse(BaseModel):
+    sembr_fields: list[SembrFieldMeta]
+    passthrough_prefixes: list[str]
+
+
+def _is_sensitive(field_info: FieldInfo) -> bool:
+    """Return True if the field's annotation is (Optional[]) SecretStr."""
+    annotation = field_info.annotation
+    if annotation is SecretStr:
+        return True
+    # Handle Optional[SecretStr] / Union[SecretStr, None]
+    args = _t.get_args(annotation)
+    return SecretStr in args if args else False
+
+
+def _enum_values(field_info: FieldInfo) -> list[str] | None:
+    annotation = field_info.annotation
+    origin = _t.get_origin(annotation)
+    if origin is Literal:
+        return [str(v) for v in _t.get_args(annotation)]
+    return None
+
+
+def _field_type(field_info: FieldInfo) -> str:
+    if _is_sensitive(field_info):
+        return "secret"
+    if _enum_values(field_info) is not None:
+        return "enum"
+    annotation = field_info.annotation
+    if annotation is bool:
+        return "bool"
+    if annotation is int:
+        return "int"
+    if annotation is float:
+        return "float"
+    if annotation is Path:
+        return "path"
+    return "str"
+
+
+def _field_constraints(field_info: FieldInfo) -> tuple[float | None, float | None]:
+    """Pull ge/le constraints out of pydantic v2 metadata."""
+    ge: float | None = None
+    le: float | None = None
+    for m in field_info.metadata:
+        if hasattr(m, "ge") and m.ge is not None:
+            ge = float(m.ge)
+        if hasattr(m, "le") and m.le is not None:
+            le = float(m.le)
+    return ge, le
+
+
+def _build_field_meta(name: str, field_info: FieldInfo) -> SembrFieldMeta:
+    ge, le = _field_constraints(field_info)
+    default = field_info.default
+    # Don't leak SecretStr default ("" usually but defensive)
+    if _is_sensitive(field_info):
+        default = ""
+    elif isinstance(default, Path):
+        default = str(default)
+    return SembrFieldMeta(
+        key=name.upper(),
+        type=_field_type(field_info),  # type: ignore[arg-type]
+        sensitive=_is_sensitive(field_info),
+        description=field_info.description or "",
+        enum=_enum_values(field_info),
+        ge=ge,
+        le=le,
+        default=default,
+    )
+
+
+def _sembr_field_metas() -> list[SembrFieldMeta]:
+    return [_build_field_meta(name, fi) for name, fi in Settings.model_fields.items()]
+
+
+@router.get("/schema", response_model=SchemaResponse, dependencies=[Depends(require_header_token)])
+async def get_schema() -> SchemaResponse:
+    return SchemaResponse(
+        sembr_fields=_sembr_field_metas(),
+        passthrough_prefixes=list(_RSSHUB_PASSTHROUGH_PREFIXES),
+    )
+
+
+# ── values ────────────────────────────────────────────────────────────────
+
+
+class UnknownKey(BaseModel):
+    key: str
+    value: str
+
+
+class ValuesResponse(BaseModel):
+    values: dict[str, str]
+    overridden_by_shell_env: list[str]
+    unknown_keys: list[UnknownKey]
+
+
+def _is_sembr_key(key: str) -> bool:
+    return key.lower() in Settings.model_fields
+
+
+def _is_passthrough_key(key: str) -> bool:
+    if not KEY_PATTERN.match(key):
+        return False
+    return any(key.startswith(p) for p in _RSSHUB_PASSTHROUGH_PREFIXES)
+
+
+def _detect_shell_overrides(env_keys: list[str]) -> list[str]:
+    """Keys present in shell env that pydantic-settings would prioritize over .env.
+
+    pydantic-settings is case-insensitive (Settings.model_config has
+    case_sensitive=False), so check both the upper and lower forms.
+    """
+    out: list[str] = []
+    for key in env_keys:
+        if not _is_sembr_key(key):
+            continue
+        if key.upper() in os.environ or key.lower() in os.environ:
+            out.append(key.upper())
+    return out
+
+
+def _envfile() -> EnvFile:
+    return EnvFile.load(ENV_FILE_PATH)
+
+
+@router.get("/values", response_model=ValuesResponse, dependencies=[Depends(require_header_token)])
+async def get_values() -> ValuesResponse:
+    ef = _envfile()
+    raw = ef.values()
+
+    out_values: dict[str, str] = {}
+    unknown: list[UnknownKey] = []
+    sembr_keys_present: list[str] = []
+
+    sensitive_keys = {
+        name.upper() for name, fi in Settings.model_fields.items() if _is_sensitive(fi)
+    }
+
+    for key, value in raw.items():
+        upper = key.upper()
+        if _is_sembr_key(key):
+            sembr_keys_present.append(upper)
+            out_values[upper] = SENSITIVE_MASK if upper in sensitive_keys and value else value
+        elif _is_passthrough_key(upper):
+            # Passthrough fields are also masked when they look secret-ish.
+            # Without a Settings field declaring them sensitive, infer by name.
+            if any(s in upper for s in ("TOKEN", "COOKIE", "SECRET", "KEY", "PASSWORD", "SESSION")):
+                out_values[upper] = SENSITIVE_MASK if value else ""
+            else:
+                out_values[upper] = value
+        else:
+            unknown.append(UnknownKey(key=upper, value=value))
+
+    return ValuesResponse(
+        values=out_values,
+        overridden_by_shell_env=_detect_shell_overrides(sembr_keys_present),
+        unknown_keys=unknown,
+    )
+
+
+# ── save ──────────────────────────────────────────────────────────────────
+
+
+class SaveRequest(BaseModel):
+    changes: dict[str, str] = Field(default_factory=dict)
+    additions: dict[str, str] = Field(default_factory=dict)
+    deletions: list[str] = Field(default_factory=list)
+    confirmed: bool
+
+
+class SaveResponse(BaseModel):
+    saved_keys: list[str]
+    deleted_keys: list[str]
+    restart_targets: list[Literal["api", "rsshub"]]
+
+
+def _classify_key(key: str) -> Literal["sembr", "passthrough", "invalid"]:
+    if _is_sembr_key(key):
+        return "sembr"
+    if _is_passthrough_key(key):
+        return "passthrough"
+    return "invalid"
+
+
+def _coalesce_value(key: str, submitted: str, current_raw: str) -> str:
+    """If user submitted the mask sentinel for a sensitive field, keep the
+    original disk value untouched (design.md Decision #6 / AC4)."""
+    sensitive = (
+        (key.lower() in Settings.model_fields and _is_sensitive(Settings.model_fields[key.lower()]))
+        or any(s in key for s in ("TOKEN", "COOKIE", "SECRET", "KEY", "PASSWORD", "SESSION"))
+    )
+    if sensitive and submitted == SENSITIVE_MASK:
+        return current_raw
+    return submitted
+
+
+def _build_passthrough_error_detail(bad_keys: list[str]) -> dict[str, Any]:
+    return {
+        "error": "key not in passthrough whitelist",
+        "rejected_keys": bad_keys,
+        "allowed_prefixes": list(_RSSHUB_PASSTHROUGH_PREFIXES),
+        "hint": "new keys must match ^[A-Z][A-Z0-9_]*$ and begin with one of the allowed prefixes",
+    }
+
+
+@router.post(
+    "/save",
+    response_model=SaveResponse,
+    dependencies=[Depends(require_header_token)],
+)
+async def save_settings(body: SaveRequest) -> SaveResponse:
+    if not body.confirmed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="confirmed must be true",
+        )
+
+    # ── validate ──────────────────────────────────────────────────────────
+    invalid_changes = [
+        k.upper() for k in body.changes if _classify_key(k.upper()) == "invalid"
+    ]
+    invalid_additions = [
+        k.upper() for k in body.additions if _classify_key(k.upper()) == "invalid"
+    ]
+    if invalid_changes or invalid_additions:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=_build_passthrough_error_detail(invalid_changes + invalid_additions),
+        )
+
+    # ── load + mutate ─────────────────────────────────────────────────────
+    ef = _envfile()
+    raw_values = ef.values()
+    saved: list[str] = []
+    deleted: list[str] = []
+    touched_classes: set[str] = set()
+
+    for key, val in body.changes.items():
+        upper = key.upper()
+        cls = _classify_key(upper)
+        coalesced = _coalesce_value(upper, val, raw_values.get(upper, ""))
+        if coalesced == raw_values.get(upper, "") and ef.has_key(upper):
+            # Nothing actually changed (sensitive submitted as mask) — skip
+            # both write and restart to avoid pointless container churn.
+            continue
+        ef.upsert(upper, coalesced)
+        saved.append(upper)
+        touched_classes.add(cls)
+
+    for key, val in body.additions.items():
+        upper = key.upper()
+        cls = _classify_key(upper)
+        ef.upsert(upper, val)
+        saved.append(upper)
+        touched_classes.add(cls)
+
+    for key in body.deletions:
+        upper = key.upper()
+        if ef.delete(upper):
+            deleted.append(upper)
+            touched_classes.add(_classify_key(upper))
+
+    if not saved and not deleted:
+        # Nothing to do — return without writing or restarting.
+        return SaveResponse(saved_keys=[], deleted_keys=[], restart_targets=[])
+
+    # ── persist ───────────────────────────────────────────────────────────
+    try:
+        ef.save()
+    except Exception as exc:
+        logger.error("envfile save failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="failed to persist .env",
+        ) from exc
+
+    # ── decide restart targets ────────────────────────────────────────────
+    restart_targets: list[Literal["api", "rsshub"]] = []
+    if "sembr" in touched_classes:
+        restart_targets.append("api")
+    if "passthrough" in touched_classes:
+        # RSSHub bind-mounts the same .env, so any passthrough change requires
+        # restarting it. The api container also re-reads the env on its own
+        # restart (it shares the same .env file via env_file:), so a
+        # passthrough-only edit *also* implies an api restart whenever the
+        # value should be observable to sembr code.
+        restart_targets.append("rsshub")
+        if "api" not in restart_targets:
+            restart_targets.append("api")
+
+    # ── trigger restart ───────────────────────────────────────────────────
+    # Constructed via module-level reference so tests can monkeypatch
+    # ``settings.RestartController`` to inject a fake without touching docker.
+    rc = RestartController()
+    if "rsshub" in restart_targets:
+        try:
+            await rc.restart_rsshub()
+        except Exception as exc:
+            logger.error("rsshub restart failed: %s", exc, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"failed to restart rsshub: {exc}",
+            ) from exc
+    if "api" in restart_targets:
+        # Schedule self-restart last so the response gets a chance to flush.
+        rc.schedule_self_restart()
+
+    return SaveResponse(saved_keys=saved, deleted_keys=deleted, restart_targets=restart_targets)
