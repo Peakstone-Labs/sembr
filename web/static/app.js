@@ -118,42 +118,46 @@ function dashboard() {
 
     _renderEmbedChart() {
       const data = this.snapshot.embedder?.calls_24h?.sparkline_latency_ms || [];
-      const ctx = document.getElementById('embed-chart');
-      if (!ctx) return;
       if (this._embedChart) {
         this._embedChart.data.datasets[0].data = data;
         this._embedChart.update('none');
         return;
       }
-      this._embedChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: data.map((_, i) => `${24 - i}h`),
-          datasets: [{
-            label: 'avg ms',
-            data,
-            backgroundColor: 'rgba(59,138,138,0.65)',
-            borderColor: 'rgba(59,138,138,0.9)',
-            borderWidth: 1,
-            borderRadius: 2,
-          }],
-        },
-        options: {
-          responsive: true,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { display: false },
-            y: {
-              beginAtZero: true,
-              ticks: {
-                precision: 0,
-                color: '#5a6678',
-                font: { family: "'JetBrains Mono', monospace", size: 10 },
+      // Defer first creation to $nextTick so Alpine has finished DOM updates and
+      // Chart.js can measure the container's actual width (avoids 0px bar issue).
+      this.$nextTick(() => {
+        const ctx = document.getElementById('embed-chart');
+        if (!ctx) return;
+        this._embedChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: data.map((_, i) => `${24 - i}h`),
+            datasets: [{
+              label: 'avg ms',
+              data,
+              backgroundColor: 'rgba(59,138,138,0.65)',
+              borderColor: 'rgba(59,138,138,0.9)',
+              borderWidth: 1,
+              borderRadius: 2,
+            }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { display: false },
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  precision: 0,
+                  color: '#5a6678',
+                  font: { family: "'JetBrains Mono', monospace", size: 10 },
+                },
+                grid: { color: 'rgba(30,45,69,0.8)' },
               },
-              grid: { color: 'rgba(30,45,69,0.8)' },
             },
           },
-        },
+        });
       });
     },
 
