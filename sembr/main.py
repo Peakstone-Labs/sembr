@@ -21,7 +21,12 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-logging.getLogger("sembr").setLevel(logging.INFO)
+# NOTE: do NOT pin `sembr` logger to INFO here. install_logbus() lowers the
+# root logger to DEBUG and keeps the basicConfig StreamHandler pinned at INFO,
+# so DEBUG records reach RingBufferHandler for per-tag filtering in LogBus
+# without flooding stderr. Pinning `sembr` at INFO would short-circuit the
+# Logs panel's level dropdown — DEBUG records never escape isEnabledFor().
+logging.getLogger("sembr").setLevel(logging.DEBUG)
 
 import aiosqlite
 
