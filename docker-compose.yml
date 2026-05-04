@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     ports:
       - "1200:1200"
+    env_file:
+      - .env
+    mem_limit: 512m
 
   api:
     build: .
