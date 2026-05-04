@@ -71,7 +71,7 @@ class FeedFetchEvent(BaseModel):
     started_at: str
     elapsed_ms: int
     ok: bool
-    items_seen: int
+    items_fetched: int
     items_new: int
     error_class: str | None = None
     error_message: str | None = None

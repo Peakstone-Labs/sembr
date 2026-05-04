@@ -84,7 +84,7 @@ async def _feed_dry_run(task: FeedFireTask, feed_url: str, source_type: str, con
             "status": status_label,
         })
 
-    task.articles_seen = len(articles)
+    task.articles_fetched = len(articles)
     task.articles_new = new_count
     task.articles = result_articles
     task.status = "done"
@@ -162,7 +162,7 @@ async def get_feed_fire_status(feed_id: int, task_id: str) -> dict[str, Any]:
         "status": task.status,
         "started_at": task.started_at.isoformat(),
         "finished_at": task.finished_at.isoformat() if task.finished_at else None,
-        "articles_seen": task.articles_seen,
+        "articles_fetched": task.articles_fetched,
         "articles_new": task.articles_new,
         "articles": task.articles,
         "error": task.error,

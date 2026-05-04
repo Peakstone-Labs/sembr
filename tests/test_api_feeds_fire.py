@@ -76,7 +76,7 @@ def test_feeds_fire_dry_run_no_writes(client: TestClient) -> None:
     # Mock _feed_dry_run to complete synchronously
     async def fake_dry_run(task, feed_url, source_type, config, since):
         task.articles = [{"title": "t", "url": "u", "published_at": None, "status": "NEW"}]
-        task.articles_seen = 1
+        task.articles_fetched = 1
         task.articles_new = 1
         task.status = "done"
         task.finished_at = datetime.now(timezone.utc)

@@ -25,7 +25,7 @@ class FeedFireTask:
     status: str  # "running" | "done" | "error"
     started_at: datetime
     finished_at: datetime | None = None
-    articles_seen: int = 0
+    articles_fetched: int = 0
     articles_new: int = 0
     articles: list[dict] = field(default_factory=list)
     error: str | None = None

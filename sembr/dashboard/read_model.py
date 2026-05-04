@@ -330,7 +330,7 @@ async def list_feed_events(
             started_at=r[1],
             elapsed_ms=r[2],
             ok=bool(r[3]),
-            items_seen=r[4],
+            items_fetched=r[4],
             items_new=r[5],
             error_class=r[6],
             error_message=r[7],

@@ -412,7 +412,7 @@ function feedsTab() {
       open: false, feed: null, dryRun: true,
       phase: 'form',   // 'form' | 'running' | 'result'
       taskId: null, taskUrl: null,
-      articles: [], articlesNew: 0, articlesSeen: 0,
+      articles: [], articlesNew: 0, articlesFetched: 0,
       error: null, pollTimer: null,
     },
     openFire(feed) {
@@ -421,7 +421,7 @@ function feedsTab() {
         open: true, feed, dryRun: true,
         phase: 'form',
         taskId: null, taskUrl: null,
-        articles: [], articlesNew: 0, articlesSeen: 0,
+        articles: [], articlesNew: 0, articlesFetched: 0,
         error: null, pollTimer: null,
       };
     },
@@ -454,7 +454,7 @@ function feedsTab() {
               this.fire.pollTimer = null;
               this.fire.articles = t.articles || [];
               this.fire.articlesNew = t.articles_new || 0;
-              this.fire.articlesSeen = t.articles_seen || 0;
+              this.fire.articlesFetched = t.articles_fetched || 0;
               if (t.status === 'error') this.fire.error = t.error || 'unknown error';
               this.fire.phase = 'result';
             }

@@ -310,7 +310,7 @@
               <!-- events table -->
               <table x-show="expanded.kind === 'events' && !expanded.loading">
                 <thead>
-                  <tr><th>started</th><th>elapsed</th><th>ok</th><th>seen / new</th><th>error</th></tr>
+                  <tr><th>started</th><th>elapsed</th><th>ok</th><th>fetched / new</th><th>error</th></tr>
                 </thead>
                 <tbody>
                   <template x-for="e in expanded.rows" :key="e.id">
@@ -321,7 +321,7 @@
                         <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
                               x-text="e.ok ? 'ok' : 'fail'"></span>
                       </td>
-                      <td class="mono" x-text="e.items_seen + ' / ' + e.items_new"></td>
+                      <td class="mono" x-text="e.items_fetched + ' / ' + e.items_new"></td>
                       <td>
                         <span class="muted" x-text="e.error_class || ''"></span>
                         <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
@@ -675,7 +675,7 @@
         <div x-show="fire.error" style="color:var(--danger); font-size:0.85rem; padding:8px 0;"
              x-text="fire.error"></div>
         <div x-show="!fire.error" style="font-size:0.85rem; color:var(--text-secondary); padding:6px 0;">
-          Seen: <strong x-text="fire.articlesSeen"></strong> &nbsp;
+          Fetched: <strong x-text="fire.articlesFetched"></strong> &nbsp;
           New: <strong x-text="fire.articlesNew"></strong>
           <span x-show="fire.dryRun" class="muted">&nbsp;(dry run — not saved)</span>
         </div>
@@ -1455,7 +1455,7 @@
 
 </div><!-- /logs-view -->
 
-<script src="/dashboard/feeds.js?v=3"></script>
+<script src="/dashboard/feeds.js?v=4"></script>
 <script src="/dashboard/intents.js"></script>
 <script src="/dashboard/logs.js"></script>
 <script src="/dashboard/app.js"></script>
