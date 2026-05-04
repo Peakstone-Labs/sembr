@@ -77,9 +77,11 @@ def register_intent_job(
         coalesce=True,
         max_instances=1,
         replace_existing=True,
-        next_run_time=None,
         misfire_grace_time=None,  # never skip due to late wakeup
     )
+    # Do NOT pass next_run_time=None — APScheduler treats explicit None as
+    # "paused", and the job will never fire. Omitting it lets _real_add_job
+    # compute the first fire time from the trigger.
     logger.info(
         "registered matcher job intent_id=%d preset=%s hour=%d minute=%d tz=%s next_run=%s",
         intent.id,
