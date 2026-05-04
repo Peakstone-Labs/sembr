@@ -81,12 +81,17 @@ async def _emit_fetch_event(
         logger.warning("log_fetch_event failed for feed_id=%d: %s", feed_id, exc)
 
 
-async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type: str, config: dict) -> None:
+async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type: str, config: dict) -> tuple[int, int]:
+    """Run one collection pass. Returns (items_seen, items_new).
+
+    Returns (0, 0) on configuration errors or fetch failures so callers (e.g.
+    feed fire popups) can surface a count without inspecting feed_fetch_log.
+    """
     source_cls = SOURCE_REGISTRY.get(source_type)
     if source_cls is None:
         # Configuration error, not a fetch attempt — per D4, don't write an event row.
         logger.error("unknown source_type=%r for feed_id=%d", source_type, feed_id)
-        return
+        return 0, 0
 
     conn = get_conn()
 
@@ -132,7 +137,7 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
             items_seen=0, items_new=0,
             error_class="FetchError", error_message=str(exc),
         )
-        return
+        return 0, 0
     except Exception as exc:
         logger.error("unexpected error in collect_feed for %r (id=%d): %s", feed_name, feed_id, exc, exc_info=True)
         await _emit_fetch_event(
@@ -140,7 +145,7 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
             items_seen=0, items_new=0,
             error_class=exc.__class__.__name__, error_message=str(exc),
         )
-        return
+        return 0, 0
 
     # Fetch succeeded (articles may be empty if the source has no new content).
     # Always advance the cursor so we don't re-scan the same window next run.
@@ -167,6 +172,7 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
         items_seen=len(articles), items_new=new_count,
         error_class=None, error_message=None,
     )
+    return len(articles), new_count
 
 
 async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
