@@ -275,6 +275,11 @@ async def get_values() -> ValuesResponse:
 
     for key, value in raw.items():
         upper = key.upper()
+        if upper in _HIDDEN_FROM_UI:
+            # Hidden fields stay on disk untouched but never reach the UI —
+            # otherwise the frontend (which trusts schema for sembr-key
+            # identity) would mis-classify them as passthrough additions.
+            continue
         if _is_sembr_key(key):
             sembr_keys_present.append(upper)
             out_values[upper] = SENSITIVE_MASK if upper in sensitive_keys and value else value

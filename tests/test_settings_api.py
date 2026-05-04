@@ -111,6 +111,24 @@ def test_values_masks_sensitive_fields(client: TestClient) -> None:
     assert body["values"]["TWITTER_COOKIE"] == SENSITIVE_MASK
 
 
+def test_values_hidden_fields_not_returned(
+    client: TestClient, env_file: Path
+) -> None:
+    """Hidden-from-UI sembr fields must not appear in /values either —
+    otherwise the frontend mis-classifies them as passthrough keys
+    (since schema also excludes them, frontend sees no sembr-key match)."""
+    # Add a hidden field to the .env fixture and reload.
+    contents = env_file.read_text(encoding="utf-8")
+    env_file.write_text(contents + "EMBEDDER_BACKEND=siliconflow\n", encoding="utf-8")
+
+    r = client.get("/api/settings/values")
+    body = r.json()
+    assert "EMBEDDER_BACKEND" not in body["values"]
+    # Also must not leak into unknown_keys (it's a known sembr field, just hidden).
+    unknown_keys = {u["key"] for u in body["unknown_keys"]}
+    assert "EMBEDDER_BACKEND" not in unknown_keys
+
+
 def test_values_unknown_keys_separated(client: TestClient) -> None:
     r = client.get("/api/settings/values")
     body = r.json()
