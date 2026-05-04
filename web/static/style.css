@@ -160,9 +160,6 @@ main {
 .status-warn    { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }
 .status-never   { border-color: var(--teal); color: var(--teal); background: var(--teal-dim); }
 
-/* ── Disabled feed row ── */
-.feed-row-disabled { opacity: 0.55; }  /* dim whole row; toggle stays proportionally visible */
-
 /* ── Articles stat grid ── */
 .articles-grid {
   display: grid;

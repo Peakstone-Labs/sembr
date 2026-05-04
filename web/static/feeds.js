@@ -321,22 +321,18 @@ function feedsTab() {
 
     // ── Toggle enabled (D16: optimistic update, rollback on error) ──
     async toggleEnabled(feed) {
-      if (feed._toggleInFlight) return;
-      feed._toggleInFlight = true;
-      const prev = feed.enabled ?? true;
+      const prev = feed.enabled !== false;  // treat undefined as true (matches :checked binding)
       feed.enabled = !prev;  // optimistic
       try {
         const updated = await this._api(`/feeds/${feed.id}`, {
           method: 'PATCH',
-          body: JSON.stringify({ enabled: feed.enabled }),
+          body: JSON.stringify({ enabled: !prev }),
         });
-        feed.enabled = updated.enabled ?? feed.enabled;
+        feed.enabled = updated.enabled;
         this.toast(feed.enabled ? 'feed enabled' : 'feed disabled', 'ok');
       } catch (e) {
         feed.enabled = prev;  // rollback
         this.toast(`toggle failed: ${e.message}`, 'err');
-      } finally {
-        feed._toggleInFlight = false;
       }
     },
 

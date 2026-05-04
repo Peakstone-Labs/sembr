@@ -223,12 +223,13 @@
         <th>group_key</th>
         <th>tags</th>
         <th>next run</th>
+        <th>Status</th>
         <th></th>
       </tr>
     </thead>
     <template x-for="f in items" :key="f.id">
       <tbody>
-          <tr :class="{'row-fail': f.fetch_24h?.consecutive_failures > 0, 'feed-row-disabled': f.enabled === false}">
+          <tr :class="{'row-fail': f.fetch_24h?.consecutive_failures > 0, 'row-disabled': f.enabled === false}">
             <td>
               <div x-text="f.name"></div>
               <div class="muted mono" x-text="f.url" style="font-size:11px; margin-top:2px;"></div>
@@ -252,13 +253,17 @@
             </td>
             <td class="mono muted" x-text="fmtNextRun(f.next_run_iso)" style="font-size:11px;"></td>
             <td>
+              <label class="toggle-wrap">
+                <span class="toggle">
+                  <input type="checkbox" :checked="f.enabled !== false" @change="toggleEnabled(f)">
+                  <span class="toggle-slider"></span>
+                </span>
+                <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;"
+                      x-text="f.enabled !== false ? 'on' : 'off'"></span>
+              </label>
+            </td>
+            <td>
               <div class="action-cell">
-                <label class="toggle-wrap" title="Enable / disable feed">
-                  <span class="toggle">
-                    <input type="checkbox" :checked="f.enabled ?? true" @change="toggleEnabled(f)" :disabled="f._toggleInFlight">
-                    <span class="toggle-slider"></span>
-                  </span>
-                </label>
                 <button @click="openEdit(f)">Edit</button>
                 <button @click="openFire(f)">Fire</button>
                 <button @click="toggleRow(f, 'events')"
@@ -271,7 +276,7 @@
           </tr>
 
           <tr x-show="expandedFeedId === f.id" class="feed-expand-row">
-            <td colspan="8">
+            <td colspan="9">
               <div x-show="expanded.loading" class="muted"><span class="spinner"></span>&nbsp;loading…</div>
 
               <!-- tag editor -->
@@ -1450,7 +1455,7 @@
 
 </div><!-- /logs-view -->
 
-<script src="/dashboard/feeds.js?v=2"></script>
+<script src="/dashboard/feeds.js?v=3"></script>
 <script src="/dashboard/intents.js"></script>
 <script src="/dashboard/logs.js"></script>
 <script src="/dashboard/app.js"></script>
