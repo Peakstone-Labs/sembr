@@ -123,16 +123,11 @@ async def post_feed_fire(
 
     task = create_task(feed_id, dry_run=dry_run)
 
-    since: datetime | None = None
-    if feed.last_collected_at:
-        try:
-            since = datetime.fromisoformat(feed.last_collected_at.replace("Z", "+00:00"))
-        except ValueError:
-            pass
-
     if dry_run:
+        # Dry run ignores last_collected_at so the user always sees the full
+        # current feed contents, not a window relative to the last real fetch.
         bg = asyncio.create_task(
-            _feed_dry_run(task, str(feed.url), feed.source_type, feed.config, since)
+            _feed_dry_run(task, str(feed.url), feed.source_type, feed.config, None)
         )
     else:
         # D10: disabled feeds can also be fired (B2) — use create_task directly, not scheduler
