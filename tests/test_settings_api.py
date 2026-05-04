@@ -17,8 +17,8 @@ from sembr.config import Settings, get_settings
 
 
 SAMPLE_ENV = """\
-API_HOST=0.0.0.0
-API_PORT=8000
+QDRANT_URL=http://qdrant:6333
+DASHBOARD_LOG_RETENTION_DAYS=7
 EMBEDDER_API_KEY=sk-original
 EMBEDDER_MODEL=BAAI/bge-m3
 SMTP_PASSWORD=plaintext
@@ -75,23 +75,26 @@ def test_schema_returns_sembr_fields_and_passthrough(client: TestClient) -> None
     assert r.status_code == 200
     body = r.json()
     keys = {f["key"] for f in body["sembr_fields"]}
-    assert "API_HOST" in keys
+    assert "QDRANT_URL" in keys
     assert "EMBEDDER_API_KEY" in keys
     assert "DASHBOARD_TOKEN" in keys
+    # API_HOST / API_PORT removed (Dockerfile hardcodes); not in Settings anymore.
+    assert "API_HOST" not in keys
+    assert "API_PORT" not in keys
+    # Hidden-from-UI: EMBEDDER_BACKEND (single-value Literal) is filtered out.
+    assert "EMBEDDER_BACKEND" not in keys
     # Sensitive marking
     secret_field = next(f for f in body["sembr_fields"] if f["key"] == "EMBEDDER_API_KEY")
     assert secret_field["sensitive"] is True
     assert secret_field["type"] == "secret"
-    # Enum field
-    enum_field = next(f for f in body["sembr_fields"] if f["key"] == "EMBEDDER_BACKEND")
-    assert enum_field["type"] == "enum"
-    assert enum_field["enum"] == ["siliconflow"]
     # Numeric ge/le
     threshold = next(f for f in body["sembr_fields"] if f["key"] == "LLM_GROUPING_THRESHOLD")
     assert threshold["ge"] == 0.0 and threshold["le"] == 1.0
-    # Passthrough prefixes
+    # Passthrough prefixes + recommended
     assert "TWITTER_" in body["passthrough_prefixes"]
     assert "GITHUB_" in body["passthrough_prefixes"]
+    rec_keys = {r["key"] for r in body["passthrough_recommended"]}
+    assert {"TWITTER_COOKIE", "TELEGRAM_TOKEN", "TELEGRAM_SESSION", "GITHUB_ACCESS_TOKEN"} <= rec_keys
 
 
 # ── /values ───────────────────────────────────────────────────────────────
@@ -101,7 +104,7 @@ def test_values_masks_sensitive_fields(client: TestClient) -> None:
     r = client.get("/api/settings/values")
     assert r.status_code == 200
     body = r.json()
-    assert body["values"]["API_HOST"] == "0.0.0.0"
+    assert body["values"]["QDRANT_URL"] == "http://qdrant:6333"
     assert body["values"]["EMBEDDER_API_KEY"] == SENSITIVE_MASK
     assert body["values"]["SMTP_PASSWORD"] == SENSITIVE_MASK
     # Passthrough secret-named field also masked
@@ -118,10 +121,10 @@ def test_values_unknown_keys_separated(client: TestClient) -> None:
 def test_values_overridden_by_shell_env(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("API_HOST", "shellvalue")
+    monkeypatch.setenv("QDRANT_URL", "http://other:6333")
     r = client.get("/api/settings/values")
     body = r.json()
-    assert "API_HOST" in body["overridden_by_shell_env"]
+    assert "QDRANT_URL" in body["overridden_by_shell_env"]
 
 
 def test_values_env_file_injection_not_flagged_as_override(
@@ -131,11 +134,11 @@ def test_values_env_file_injection_not_flagged_as_override(
     presence must NOT flag the field as shell-overridden — only true value
     mismatches qualify."""
     # Match the fixture .env value byte-for-byte.
-    monkeypatch.setenv("API_HOST", "0.0.0.0")
+    monkeypatch.setenv("QDRANT_URL", "http://qdrant:6333")
     monkeypatch.setenv("EMBEDDER_API_KEY", "sk-original")
     r = client.get("/api/settings/values")
     body = r.json()
-    assert "API_HOST" not in body["overridden_by_shell_env"]
+    assert "QDRANT_URL" not in body["overridden_by_shell_env"]
     assert "EMBEDDER_API_KEY" not in body["overridden_by_shell_env"]
 
 
@@ -143,12 +146,12 @@ def test_values_partial_override_only_flags_changed_keys(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Mixed scenario: same-value injection on one key, true override on another."""
-    monkeypatch.setenv("API_HOST", "0.0.0.0")     # matches .env → not overridden
-    monkeypatch.setenv("API_PORT", "9999")         # differs from .env=8000 → overridden
+    monkeypatch.setenv("QDRANT_URL", "http://qdrant:6333")     # matches .env → not overridden
+    monkeypatch.setenv("DASHBOARD_LOG_RETENTION_DAYS", "30")   # differs from .env=7 → overridden
     r = client.get("/api/settings/values")
     body = r.json()
-    assert "API_HOST" not in body["overridden_by_shell_env"]
-    assert "API_PORT" in body["overridden_by_shell_env"]
+    assert "QDRANT_URL" not in body["overridden_by_shell_env"]
+    assert "DASHBOARD_LOG_RETENTION_DAYS" in body["overridden_by_shell_env"]
 
 
 def test_values_empty_secret_not_masked(client: TestClient) -> None:
@@ -162,12 +165,12 @@ def test_values_empty_secret_not_masked(client: TestClient) -> None:
 
 
 def test_save_requires_confirmed_true(client: TestClient) -> None:
-    r = client.post("/api/settings/save", json={"changes": {"API_HOST": "1.2.3.4"}, "confirmed": False})
+    r = client.post("/api/settings/save", json={"changes": {"QDRANT_URL": "http://q:6333"}, "confirmed": False})
     assert r.status_code == 422
 
 
 def test_save_missing_confirmed_field(client: TestClient) -> None:
-    r = client.post("/api/settings/save", json={"changes": {"API_HOST": "1.2.3.4"}})
+    r = client.post("/api/settings/save", json={"changes": {"QDRANT_URL": "http://q:6333"}})
     assert r.status_code == 422
 
 
@@ -176,14 +179,14 @@ def test_save_sembr_field_changes_only_targets_api(
 ) -> None:
     r = client.post(
         "/api/settings/save",
-        json={"changes": {"API_HOST": "127.0.0.1"}, "confirmed": True},
+        json={"changes": {"QDRANT_URL": "http://other:6333"}, "confirmed": True},
     )
     assert r.status_code == 200
     body = r.json()
     assert body["restart_targets"] == ["api"]
-    assert body["saved_keys"] == ["API_HOST"]
+    assert body["saved_keys"] == ["QDRANT_URL"]
     text = env_file.read_text(encoding="utf-8")
-    assert "API_HOST=127.0.0.1" in text
+    assert "QDRANT_URL=http://other:6333" in text
     fake_rc.schedule_self_restart.assert_called_once()
     fake_rc.restart_rsshub.assert_not_called()
 
@@ -292,7 +295,7 @@ def test_save_mask_sentinel_does_not_overwrite_secret(
         "/api/settings/save",
         json={
             "changes": {
-                "API_HOST": "10.0.0.5",
+                "QDRANT_URL": "http://other:6333",
                 "EMBEDDER_API_KEY": SENSITIVE_MASK,
                 "SMTP_PASSWORD": SENSITIVE_MASK,
             },
@@ -303,12 +306,12 @@ def test_save_mask_sentinel_does_not_overwrite_secret(
     text = env_file.read_text(encoding="utf-8")
     assert "EMBEDDER_API_KEY=sk-original" in text
     assert "SMTP_PASSWORD=plaintext" in text
-    assert "API_HOST=10.0.0.5" in text
+    assert "QDRANT_URL=http://other:6333" in text
     body = r.json()
     # Mask-only submissions don't appear in saved_keys (no-op skipped).
     assert "EMBEDDER_API_KEY" not in body["saved_keys"]
     assert "SMTP_PASSWORD" not in body["saved_keys"]
-    assert "API_HOST" in body["saved_keys"]
+    assert "QDRANT_URL" in body["saved_keys"]
 
 
 def test_save_real_secret_value_overwrites(
@@ -350,12 +353,12 @@ def test_save_no_op_returns_empty_targets(
 def test_save_creates_bak(client: TestClient, env_file: Path) -> None:
     r = client.post(
         "/api/settings/save",
-        json={"changes": {"API_HOST": "5.5.5.5"}, "confirmed": True},
+        json={"changes": {"QDRANT_URL": "http://changed:6333"}, "confirmed": True},
     )
     assert r.status_code == 200
     bak = env_file.with_name(".env.bak")
     assert bak.exists()
-    assert "API_HOST=0.0.0.0" in bak.read_text(encoding="utf-8")
+    assert "QDRANT_URL=http://qdrant:6333" in bak.read_text(encoding="utf-8")
 
 
 # ── auth ──────────────────────────────────────────────────────────────────

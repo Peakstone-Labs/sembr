@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=3">
+<link rel="stylesheet" href="/dashboard/style.css?v=4">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 </head>
@@ -1575,12 +1575,19 @@
             <div class="settings-row-label">
               <span class="settings-row-key" x-text="key"></span>
               <span x-show="isSecretLike(key)" class="settings-badge settings-badge-secret">secret</span>
-              <button class="settings-row-delete" type="button" @click="markDeleted(key)" title="delete this key">✕</button>
+              <span x-show="isRecommendedPassthrough(key) && initialValues[key] === '__pending_addition__'"
+                    class="settings-badge settings-badge-suggested">suggested</span>
+              <button x-show="initialValues[key] !== '__pending_addition__'"
+                      class="settings-row-delete" type="button"
+                      @click="markDeleted(key)" title="delete this key">✕</button>
+              <span class="field-hint settings-row-hint"
+                    x-show="passthroughDescription(key)"
+                    x-text="passthroughDescription(key)"></span>
             </div>
             <div class="settings-row-input">
               <input :type="isSecretLike(key) ? 'password' : 'text'"
                      x-model="form[key]"
-                     :placeholder="form[key] === sensitiveMask ? 'unchanged (already set)' : ''">
+                     :placeholder="form[key] === sensitiveMask ? 'unchanged (already set)' : (isRecommendedPassthrough(key) ? 'optional — leave empty to skip' : '')">
             </div>
           </div>
         </template>
@@ -1694,7 +1701,7 @@
 <script src="/dashboard/feeds.js?v=4"></script>
 <script src="/dashboard/intents.js"></script>
 <script src="/dashboard/logs.js"></script>
-<script src="/dashboard/settings.js?v=3"></script>
+<script src="/dashboard/settings.js?v=4"></script>
 <script src="/dashboard/app.js"></script>
 </body>
 </html>

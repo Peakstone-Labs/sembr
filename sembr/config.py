@@ -47,8 +47,6 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    api_host: str = Field(default="0.0.0.0")
-    api_port: int = Field(default=8000)
     qdrant_url: str = Field(default="http://qdrant:6333")
     sqlite_path: str = Field(default="/app/data/sembr.db")
     embedder_backend: Literal["siliconflow"] = Field(
@@ -69,7 +67,11 @@ class Settings(BaseSettings):
     )
     embedder_timeout_seconds: float = Field(
         default=30.0,
-        description="Per-request HTTP timeout in seconds for embedding calls.",
+        description=(
+            "HTTP timeout for the startup probe and as the httpx client default. "
+            "Note: batch embed calls compute a dynamic timeout = max(30s, total_chars/1500) "
+            "in scheduler.py, so values below 30 do not tighten the batch path."
+        ),
     )
 
     llm_api_base_url: str = Field(

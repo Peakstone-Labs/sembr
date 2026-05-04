@@ -52,6 +52,24 @@ _RSSHUB_PASSTHROUGH_PREFIXES: tuple[str, ...] = (
 # "leave the existing secret alone" (design.md Decision #6).
 SENSITIVE_MASK = "••••••"
 
+# Well-known RSSHub passthrough variables shown in the UI as starter rows
+# even when absent from `.env`. Lets the user fill them in without first
+# clicking "+ Add". Each entry must match a passthrough prefix.
+_RSSHUB_RECOMMENDED: tuple[dict[str, str], ...] = (
+    {"key": "TWITTER_COOKIE",
+     "description": "Twitter/X cookie (auth_token=...; ct0=...) for user timelines and search."},
+    {"key": "TELEGRAM_TOKEN",
+     "description": "Telegram bot token (BotFather) for public channel feeds."},
+    {"key": "TELEGRAM_SESSION",
+     "description": "Telegram user session string (Telethon/Pyrogram) for restricted channels."},
+    {"key": "GITHUB_ACCESS_TOKEN",
+     "description": "GitHub PAT — raises API rate limit from 60 to 5000 req/h."},
+)
+
+# Settings fields hidden from the UI: declared in Settings but the field is
+# either a single-value Literal (no real choice) or otherwise not user-editable.
+_HIDDEN_FROM_UI: frozenset[str] = frozenset({"EMBEDDER_BACKEND"})
+
 
 # ── auth ──────────────────────────────────────────────────────────────────
 
@@ -90,9 +108,15 @@ class SembrFieldMeta(BaseModel):
     default: Any | None = None
 
 
+class PassthroughRecommended(BaseModel):
+    key: str
+    description: str = ""
+
+
 class SchemaResponse(BaseModel):
     sembr_fields: list[SembrFieldMeta]
     passthrough_prefixes: list[str]
+    passthrough_recommended: list[PassthroughRecommended]
 
 
 def _is_sensitive(field_info: FieldInfo) -> bool:
@@ -163,7 +187,12 @@ def _build_field_meta(name: str, field_info: FieldInfo) -> SembrFieldMeta:
 
 
 def _sembr_field_metas() -> list[SembrFieldMeta]:
-    return [_build_field_meta(name, fi) for name, fi in Settings.model_fields.items()]
+    out: list[SembrFieldMeta] = []
+    for name, fi in Settings.model_fields.items():
+        if name.upper() in _HIDDEN_FROM_UI:
+            continue
+        out.append(_build_field_meta(name, fi))
+    return out
 
 
 @router.get("/schema", response_model=SchemaResponse, dependencies=[Depends(require_header_token)])
@@ -171,6 +200,7 @@ async def get_schema() -> SchemaResponse:
     return SchemaResponse(
         sembr_fields=_sembr_field_metas(),
         passthrough_prefixes=list(_RSSHUB_PASSTHROUGH_PREFIXES),
+        passthrough_recommended=[PassthroughRecommended(**r) for r in _RSSHUB_RECOMMENDED],
     )
 
 

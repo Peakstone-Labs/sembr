@@ -62,6 +62,15 @@ function settingsTab() {
         this.overriddenByShellEnv = values.overridden_by_shell_env || [];
         this.unknownKeys = values.unknown_keys || [];
         this.deletions = [];
+        // Pre-seed recommended RSSHub keys as starter rows when missing from .env.
+        // The __pending_addition__ sentinel makes _computeDiff treat any user
+        // input as an addition (server route handles addition vs change).
+        for (const rec of (schema.passthrough_recommended || [])) {
+          if (!(rec.key in this.initialValues)) {
+            this.initialValues[rec.key] = '__pending_addition__';
+            this.form[rec.key] = '';
+          }
+        }
         this.sections = this._groupFields(schema.sembr_fields);
         // Default: all sections collapsed. Expand any section that has a
         // shell-overridden field, since the user usually wants to see those.
@@ -146,7 +155,24 @@ function settingsTab() {
 
     passthroughKeysPresent() {
       const sembrKeys = new Set(this.schema.sembr_fields.map(f => f.key));
-      return Object.keys(this.initialValues).filter(k => !sembrKeys.has(k));
+      // Include keys actually in .env AND recommended starter keys.
+      const keys = Object.keys(this.initialValues).filter(k => !sembrKeys.has(k));
+      // Sort: recommended (in declared order) first, then everything else.
+      const recOrder = (this.schema.passthrough_recommended || []).map(r => r.key);
+      const recIdx = (k) => {
+        const i = recOrder.indexOf(k);
+        return i === -1 ? Infinity : i;
+      };
+      return keys.sort((a, b) => recIdx(a) - recIdx(b) || a.localeCompare(b));
+    },
+
+    passthroughDescription(key) {
+      const rec = (this.schema.passthrough_recommended || []).find(r => r.key === key);
+      return rec ? rec.description : '';
+    },
+
+    isRecommendedPassthrough(key) {
+      return (this.schema.passthrough_recommended || []).some(r => r.key === key);
     },
 
     isPassthroughKey(key) {
@@ -187,11 +213,12 @@ function settingsTab() {
       if (this.deletions.length > 0) return true;
       for (const k of Object.keys(this.form)) {
         const fresh = !(k in this.initialValues) || this.initialValues[k] === '__pending_addition__';
-        if (fresh) return true;
-        // 🟡-2: <input type=number> + Alpine x-model coerces values to Number
-        // while initialValues comes from /values as String. Compare both sides
-        // as strings to avoid 8000 !== "8000" false positives.
         const a = this.form[k] === undefined || this.form[k] === null ? '' : String(this.form[k]);
+        if (fresh) {
+          // Empty fresh fields (recommended-but-unfilled) aren't dirty.
+          if (a !== '') return true;
+          continue;
+        }
         const b = this.initialValues[k] === undefined || this.initialValues[k] === null ? '' : String(this.initialValues[k]);
         if (a !== b) return true;
       }
@@ -212,6 +239,9 @@ function settingsTab() {
         const initStr = this.initialValues[key] === undefined || this.initialValues[key] === null
           ? '' : String(this.initialValues[key]);
         if (isAddition) {
+          // Skip empty additions — recommended starter rows that the user
+          // didn't fill should NOT be written to .env as empty values.
+          if (valueStr === '') continue;
           additions[key] = valueStr;
         } else if (valueStr !== initStr) {
           changes[key] = valueStr;
