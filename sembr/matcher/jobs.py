@@ -7,6 +7,7 @@ D8:  EventSchedule intents skip APScheduler registration (event-driven path).
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apscheduler.jobstores.base import JobLookupError
@@ -60,11 +61,14 @@ def register_intent_job(
 
     if isinstance(schedule, CronSchedule):
         trigger = _build_cron_trigger(schedule, intent.timezone)
-        next_run_time = None  # CronTrigger computes its own first fire time
     else:
         raise NotImplementedError(f"unknown schedule mode: {schedule.mode!r}")
 
-    job = scheduler.add_job(
+    # Compute expected next fire time directly from the trigger before add_job,
+    # because job.next_run_time is None when the scheduler hasn't started yet.
+    expected_next = trigger.get_next_fire_time(None, datetime.now(timezone.utc))
+
+    scheduler.add_job(
         run_intent_scan,
         trigger=trigger,
         id=_job_id(intent.id),
@@ -72,7 +76,7 @@ def register_intent_job(
         coalesce=True,
         max_instances=1,
         replace_existing=True,
-        next_run_time=next_run_time,
+        next_run_time=None,
     )
     logger.info(
         "registered matcher job intent_id=%d preset=%s hour=%d minute=%d tz=%s next_run=%s",
@@ -81,7 +85,7 @@ def register_intent_job(
         schedule.hour,
         schedule.minute,
         intent.timezone,
-        job.next_run_time,
+        expected_next,
     )
 
 
