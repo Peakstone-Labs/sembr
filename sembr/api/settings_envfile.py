@@ -226,14 +226,17 @@ class EnvFile:
         return "\n".join(ln.raw for ln in self._lines) + ("\n" if self._lines else "")
 
     def save(self) -> None:
-        """Atomic write with single-gen `.env.bak`.
+        """Write with single-gen `.env.bak` fallback.
 
-        Sequence (design.md Decision Log #8/#9):
+        Sequence:
           1. backup current file → ``.env.bak`` (if file exists)
-          2. write new content to ``.env.{pid}.tmp`` in same directory
-          3. fsync tmp file
-          4. ``os.replace`` tmp → target (atomic on POSIX, atomic on NTFS too
-             because tmp is in the same directory / same volume)
+          2. write new content directly to target with fsync
+
+        Why not tmp+rename: Docker Desktop on macOS (VirtioFS/osxfs) returns
+        EBUSY when ``os.replace(tmp, target)`` is called on a bind-mounted
+        file because the mount-point inode is held busy by the hypervisor.
+        Writing directly to the same path avoids the rename entirely; the
+        backup provides recovery if the write is interrupted.
         """
         target = self.path
         directory = target.parent
@@ -246,22 +249,8 @@ class EnvFile:
             backup_path = target.with_suffix(target.suffix + ".bak") if target.suffix else target.with_name(target.name + ".bak")
             backup_path.write_bytes(target.read_bytes())
 
-        tmp_path = directory / f"{target.name}.{os.getpid()}.tmp"
         payload = self.render().encode("utf-8")
-        # `wb` + explicit fsync: ensures bytes are on-disk before rename so a
-        # crash mid-write can't leave a half-rewritten `.env`.
-        try:
-            with open(tmp_path, "wb") as fh:
-                fh.write(payload)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp_path, target)
-        finally:
-            # 🟢-1: defensive cleanup. `os.replace` succeeds → tmp_path now refers
-            # to the new content under target; the unlink() is a no-op (missing).
-            # `os.replace` raises (cross-fs EXDEV, etc.) → tmp_path remains as
-            # garbage; clean it up rather than leaking `.env.{pid}.tmp`.
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        with open(target, "wb") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
