@@ -393,15 +393,17 @@ async def save_settings(body: SaveRequest) -> SaveResponse:
             restart_targets.append("api")
 
     # ── trigger restart ───────────────────────────────────────────────────
-    # 🟡-1: schedule the api self-restart FIRST. rsshub restart can fail (sock
-    # unreachable, container missing, daemon overloaded), but the api process
-    # MUST pick up the new .env regardless — otherwise we leave the system in
-    # an inconsistent state where disk has the new value but the running api
-    # holds stale Settings. rsshub failure becomes a soft warning, not a 500.
+    # Ordering rationale (Loop 2 🟡-1 + Loop 2 🟡-A):
+    #   1. await rsshub restart first — docker SDK call typically takes 5–15s.
+    #   2. THEN schedule the api self-restart. SIGTERM fires 1.5s after the
+    #      schedule call, so it must come *after* awaiting rsshub: scheduling
+    #      it earlier would let SIGTERM trigger uvicorn graceful shutdown
+    #      while the response is still being assembled, dropping the
+    #      connection before the client receives the JSON body.
+    #   3. rsshub failure is downgraded to a 200 warning (rsshub_restart_failed
+    #      flag) so the api self-restart still happens — disk + process state
+    #      converge regardless of rsshub state. (Loop 2 🟡-1 contract.)
     rc = RestartController()
-    if "api" in restart_targets:
-        rc.schedule_self_restart()
-
     rsshub_restart_failed = False
     rsshub_error: str | None = None
     if "rsshub" in restart_targets:
@@ -411,6 +413,9 @@ async def save_settings(body: SaveRequest) -> SaveResponse:
             logger.error("rsshub restart failed (continuing): %s", exc, exc_info=True)
             rsshub_restart_failed = True
             rsshub_error = str(exc)
+
+    if "api" in restart_targets:
+        rc.schedule_self_restart()
 
     return SaveResponse(
         saved_keys=saved,

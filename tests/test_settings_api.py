@@ -217,6 +217,24 @@ def test_save_rsshub_failure_downgrades_to_warning(
     assert "TWITTER_COOKIE=ct0=xyz" in env_file.read_text(encoding="utf-8")
 
 
+# Loop 2 🟡-A: schedule_self_restart must run AFTER restart_rsshub awaits.
+# Scheduling earlier would let SIGTERM (1.5s) fire mid-await and drop the response.
+def test_save_passthrough_schedules_self_restart_after_rsshub(
+    client: TestClient, env_file: Path, fake_rc: MagicMock
+) -> None:
+    r = client.post(
+        "/api/settings/save",
+        json={"additions": {"GITHUB_ACCESS_TOKEN": "ghp_xxx"}, "confirmed": True},
+    )
+    assert r.status_code == 200
+    call_order = [c[0] for c in fake_rc.method_calls]
+    rsshub_idx = call_order.index("restart_rsshub")
+    schedule_idx = call_order.index("schedule_self_restart")
+    assert rsshub_idx < schedule_idx, (
+        f"schedule_self_restart must come after restart_rsshub, got order: {call_order}"
+    )
+
+
 def test_save_rejects_non_whitelist_key(
     client: TestClient, env_file: Path
 ) -> None:
