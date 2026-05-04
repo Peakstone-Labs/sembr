@@ -124,6 +124,33 @@ def test_values_overridden_by_shell_env(
     assert "API_HOST" in body["overridden_by_shell_env"]
 
 
+def test_values_env_file_injection_not_flagged_as_override(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """compose env_file: injects every .env key into os.environ. Same-value
+    presence must NOT flag the field as shell-overridden — only true value
+    mismatches qualify."""
+    # Match the fixture .env value byte-for-byte.
+    monkeypatch.setenv("API_HOST", "0.0.0.0")
+    monkeypatch.setenv("EMBEDDER_API_KEY", "sk-original")
+    r = client.get("/api/settings/values")
+    body = r.json()
+    assert "API_HOST" not in body["overridden_by_shell_env"]
+    assert "EMBEDDER_API_KEY" not in body["overridden_by_shell_env"]
+
+
+def test_values_partial_override_only_flags_changed_keys(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mixed scenario: same-value injection on one key, true override on another."""
+    monkeypatch.setenv("API_HOST", "0.0.0.0")     # matches .env → not overridden
+    monkeypatch.setenv("API_PORT", "9999")         # differs from .env=8000 → overridden
+    r = client.get("/api/settings/values")
+    body = r.json()
+    assert "API_HOST" not in body["overridden_by_shell_env"]
+    assert "API_PORT" in body["overridden_by_shell_env"]
+
+
 def test_values_empty_secret_not_masked(client: TestClient) -> None:
     r = client.get("/api/settings/values")
     body = r.json()

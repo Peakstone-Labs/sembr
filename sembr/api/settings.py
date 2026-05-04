@@ -198,18 +198,31 @@ def _is_passthrough_key(key: str) -> bool:
     return any(key.startswith(p) for p in _RSSHUB_PASSTHROUGH_PREFIXES)
 
 
-def _detect_shell_overrides(env_keys: list[str]) -> list[str]:
-    """Keys present in shell env that pydantic-settings would prioritize over .env.
+def _detect_shell_overrides(env_keys: list[str], envfile_values: dict[str, str]) -> list[str]:
+    """Keys whose live ``os.environ`` value diverges from the `.env` value.
+
+    docker compose's ``env_file: .env`` injects EVERY key from `.env` into the
+    container's process environment, so mere presence in ``os.environ`` is not
+    an override — the env_file pass-through case sees the same value on both
+    sides. A real shell-time override requires the user to ``export KEY=...``
+    in the shell *before* ``docker compose up``; pydantic-settings then sees
+    that exported value (which differs from the disk value) and prefers it.
 
     pydantic-settings is case-insensitive (Settings.model_config has
-    case_sensitive=False), so check both the upper and lower forms.
+    case_sensitive=False), so check both the upper and lower forms of each key.
     """
     out: list[str] = []
     for key in env_keys:
         if not _is_sembr_key(key):
             continue
-        if key.upper() in os.environ or key.lower() in os.environ:
-            out.append(key.upper())
+        for case_key in (key.upper(), key.lower()):
+            if case_key not in os.environ:
+                continue
+            runtime_value = os.environ[case_key]
+            file_value = envfile_values.get(key, envfile_values.get(key.upper(), ""))
+            if runtime_value != file_value:
+                out.append(key.upper())
+            break
     return out
 
 
@@ -247,7 +260,7 @@ async def get_values() -> ValuesResponse:
 
     return ValuesResponse(
         values=out_values,
-        overridden_by_shell_env=_detect_shell_overrides(sembr_keys_present),
+        overridden_by_shell_env=_detect_shell_overrides(sembr_keys_present, raw),
         unknown_keys=unknown,
     )
 

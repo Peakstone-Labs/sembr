@@ -1253,24 +1253,36 @@ input:disabled, select:disabled, textarea:disabled {
   flex-wrap: wrap;
 }
 .settings-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 18px 24px;
+  max-width: 1400px;
 }
-.settings-field { display: flex; flex-direction: column; gap: 4px; }
+.settings-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.settings-field .field-label {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 0.72rem; letter-spacing: 0.06em;
+}
 .settings-field input,
-.settings-field select { width: 100%; }
+.settings-field select { width: 100%; box-sizing: border-box; }
+.settings-field .field-hint {
+  font-size: 0.7rem; line-height: 1.35; color: var(--text-secondary, #999);
+}
 .settings-badge {
-  display: inline-block; margin-left: 6px; padding: 1px 6px;
-  font-size: 0.65rem; letter-spacing: 0.05em; text-transform: uppercase;
-  border-radius: 3px; vertical-align: middle;
+  display: inline-flex; align-items: center; padding: 0 5px; height: 14px;
+  font-size: 0.55rem; letter-spacing: 0.04em; text-transform: uppercase;
+  border-radius: 2px; flex-shrink: 0;
 }
 .settings-badge-secret {
-  background: rgba(255, 200, 0, 0.18);
-  color: var(--gold); border: 1px solid rgba(255, 200, 0, 0.4);
+  background: rgba(255, 200, 0, 0.14);
+  color: var(--gold); border: 1px solid rgba(255, 200, 0, 0.32);
 }
 .settings-badge-override {
-  background: rgba(220, 60, 60, 0.18);
-  color: var(--danger, #d33); border: 1px solid rgba(220, 60, 60, 0.5);
+  /* Subtle outlined badge — most fields are NOT shell-overridden, so this
+   * should be a quiet hint, not a screaming red block. */
+  background: transparent;
+  color: var(--bad, #d66);
+  border: 1px solid rgba(220, 60, 60, 0.45);
   cursor: help;
 }
 .settings-add-row {
