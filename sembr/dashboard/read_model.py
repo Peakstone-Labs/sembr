@@ -10,6 +10,7 @@ the AsyncQdrantClient handed in by the caller.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -158,24 +159,31 @@ async def _embedder_calls_24h(
 ) -> EmbedderCalls24h:
     cutoff = (now - timedelta(hours=_SPARKLINE_BUCKETS)).isoformat()
     async with conn.execute(
-        "SELECT ok, elapsed_ms FROM embed_call_log "
-        "WHERE started_at >= ?",
+        "SELECT COUNT(*), "
+        "       SUM(CASE WHEN ok=1 THEN 1 ELSE 0 END), "
+        "       AVG(elapsed_ms) "
+        "FROM embed_call_log WHERE started_at >= ?",
         (cutoff,),
     ) as cur:
-        rows = await cur.fetchall()
-
-    total = len(rows)
-    ok_count = sum(1 for r in rows if r[0] == 1)
+        agg = await cur.fetchone()
+    total = int(agg[0] or 0)
+    ok_count = int(agg[1] or 0)
+    avg_ms = int(agg[2] or 0) if agg[2] is not None else 0
     fail_count = total - ok_count
-    elapsed_values = [int(r[1]) for r in rows]
-    avg_ms = int(sum(elapsed_values) / len(elapsed_values)) if elapsed_values else 0
 
     p95_ms = 0
-    if elapsed_values:
-        sorted_vals = sorted(elapsed_values)
-        # nearest-rank p95
-        idx = max(0, int(round(0.95 * len(sorted_vals))) - 1)
-        p95_ms = sorted_vals[idx]
+    if total > 0:
+        p95_offset = max(0, int(round(0.95 * total)) - 1)
+        async with conn.execute(
+            "SELECT elapsed_ms FROM embed_call_log "
+            "WHERE started_at >= ? "
+            "ORDER BY elapsed_ms "
+            "LIMIT 1 OFFSET ?",
+            (cutoff, p95_offset),
+        ) as cur:
+            p95_row = await cur.fetchone()
+        if p95_row:
+            p95_ms = int(p95_row[0])
 
     async with conn.execute(
         "SELECT strftime('%Y-%m-%d %H', started_at) AS h, "
@@ -199,13 +207,17 @@ async def _embedder_calls_24h(
     )
 
 
+_QDRANT_TIMEOUT = 3.0  # seconds; prevents slow Qdrant from stalling the snapshot
+
+
 async def _qdrant_count(qdrant_client: Any | None) -> int:
     """Approximate count of news_current; -1 on error so the UI can show a hint."""
     if qdrant_client is None:
         return 0
     try:
-        result = await qdrant_client.count(
-            collection_name=_QDRANT_COLLECTION, exact=False
+        result = await asyncio.wait_for(
+            qdrant_client.count(collection_name=_QDRANT_COLLECTION, exact=False),
+            timeout=_QDRANT_TIMEOUT,
         )
         # qdrant-client returns CountResult(count=int)
         return int(getattr(result, "count", 0))
@@ -221,7 +233,11 @@ async def _component_status(
     if qdrant_handle is None:
         qdrant_status = "down"
     else:
-        qdrant_status = "ok" if await qdrant_handle.ping() else "down"
+        try:
+            ok = await asyncio.wait_for(qdrant_handle.ping(), timeout=_QDRANT_TIMEOUT)
+        except asyncio.TimeoutError:
+            ok = False
+        qdrant_status = "ok" if ok else "down"
     embedder_status = (
         getattr(embedder, "status", "error") if embedder is not None else "error"
     )
@@ -239,12 +255,30 @@ async def build_snapshot(
 ) -> SnapshotResponse:
     """Top-level snapshot for the polling client (D5)."""
     now = _utcnow()
-    components = await _component_status(qdrant_handle, embedder)
-
-    feeds_list = await list_feeds(conn)
-    fetch_blocks = await _fetch_24h_all_feeds(
-        conn, [f.id for f in feeds_list], now
+    qdrant_client = (
+        getattr(qdrant_handle, "client", None) if qdrant_handle is not None else None
     )
+    # Fire Qdrant network tasks immediately so they run while SQLite queries execute.
+    component_task = asyncio.create_task(_component_status(qdrant_handle, embedder))
+    qdrant_count_task = asyncio.create_task(_qdrant_count(qdrant_client))
+    try:
+        feeds_list = await list_feeds(conn)
+        fetch_blocks = await _fetch_24h_all_feeds(
+            conn, [f.id for f in feeds_list], now
+        )
+        calls = await _embedder_calls_24h(conn, now)
+        async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
+            pending_count = int((await cur.fetchone())[0])
+        async with conn.execute("SELECT COUNT(*) FROM dead_articles") as cur:
+            dead_count = int((await cur.fetchone())[0])
+        components, qdrant_count_value = await asyncio.gather(
+            component_task, qdrant_count_task
+        )
+    except BaseException:
+        component_task.cancel()
+        qdrant_count_task.cancel()
+        raise
+
     feed_rows: list[FeedRow] = [
         FeedRow(
             id=f.id,
@@ -256,22 +290,11 @@ async def build_snapshot(
         )
         for f in feeds_list
     ]
-
-    calls = await _embedder_calls_24h(conn, now)
     embedder_block = EmbedderBlock(
         status=components.embedder,
         model_version=getattr(embedder, "model_version", None) if embedder else None,
         calls_24h=calls,
     )
-
-    async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
-        pending_count = int((await cur.fetchone())[0])
-    async with conn.execute("SELECT COUNT(*) FROM dead_articles") as cur:
-        dead_count = int((await cur.fetchone())[0])
-    qdrant_count_value = await _qdrant_count(
-        getattr(qdrant_handle, "client", None) if qdrant_handle is not None else None
-    )
-
     return SnapshotResponse(
         schema_version=1,
         generated_at=now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),

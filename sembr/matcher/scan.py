@@ -231,10 +231,16 @@ async def scan_once(
 
 
 async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
-    # D6: skip tick if embedder not loaded (startup race / reload window)
+    # D6: warn if embedder not ready — scan_once uses pre-computed Qdrant vectors,
+    # not the embedder, so we proceed. Skipping here was asymmetric with Fire and
+    # caused permanent silent misses when the SiliconFlow probe failed at startup
+    # (load() does not retry on failure, so is_loaded stays False indefinitely).
     if not app.state.embedder.is_loaded:
-        logger.warning("intent_id=%d scan skipped: embedder not ready", intent_id)
-        return
+        logger.warning(
+            "intent_id=%d: embedder status=%r at scan tick; proceeding (scan does not use embedder)",
+            intent_id,
+            app.state.embedder.status,
+        )
 
     conn = get_conn()
     intent = await get_intent(conn, intent_id)
