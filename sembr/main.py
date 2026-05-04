@@ -36,6 +36,7 @@ from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
 from sembr.api.intents import router as intents_router
 from sembr.api.prompts import router as prompts_router
+from sembr.api.settings import router as settings_router
 from sembr.collector.host_limiter import HostLimiter
 from sembr.collector.scheduler import add_feed_job, make_scheduler, set_host_limiter
 from sembr.config import get_settings
@@ -252,6 +253,7 @@ app.include_router(feeds_fire_router)
 app.include_router(intents_router)
 app.include_router(fire_router)
 app.include_router(prompts_router)
+app.include_router(settings_router)
 app.include_router(dashboard_router)
 app.include_router(logs_router)
 
