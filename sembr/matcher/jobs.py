@@ -25,19 +25,20 @@ def _job_id(intent_id: int) -> str:
 
 
 def _build_cron_trigger(schedule: "CronSchedule", timezone_str: str) -> CronTrigger:
-    from zoneinfo import ZoneInfo  # noqa: PLC0415
-
-    tz = ZoneInfo(timezone_str)
+    # Pass timezone as a string so APScheduler converts it to pytz internally.
+    # Passing a ZoneInfo object causes type mismatches in APScheduler 3.x's
+    # get_due_jobs() sorted-list comparison (ZoneInfo vs pytz datetimes),
+    # which silently prevents the job from ever firing.
     if schedule.preset == "hourly":
-        return CronTrigger(minute=schedule.minute, timezone=tz)
+        return CronTrigger(minute=schedule.minute, timezone=timezone_str)
     elif schedule.preset == "daily":
-        return CronTrigger(hour=schedule.hour, minute=schedule.minute, timezone=tz)
+        return CronTrigger(hour=schedule.hour, minute=schedule.minute, timezone=timezone_str)
     else:  # weekly
         return CronTrigger(
             day_of_week=schedule.weekday,
             hour=schedule.hour,
             minute=schedule.minute,
-            timezone=tz,
+            timezone=timezone_str,
         )
 
 
