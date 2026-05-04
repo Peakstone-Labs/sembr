@@ -85,7 +85,7 @@ async def post_fire(
     request: Request,
     lookback: int | None = Query(default=None, ge=300, le=2592000),
     skip_seen: bool | None = Query(default=None),
-    threshold: float | None = Query(default=None, ge=0.60, le=0.95),
+    threshold: float | None = Query(default=None, ge=0.20, le=0.95),
 ) -> dict[str, Any]:
     conn = get_conn()
     intent = await get_intent(conn, intent_id)

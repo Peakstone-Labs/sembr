@@ -485,8 +485,8 @@ function intentsTab() {
       }
       const lb = Math.round(lbHours * 3600);
       const thr = parseFloat(form.threshold);
-      if (isNaN(thr) || thr < 0.60 || thr > 0.95) {
-        this.fire.error = 'Threshold must be between 0.60 and 0.95.'; return;
+      if (isNaN(thr) || thr < 0.20 || thr > 0.95) {
+        this.fire.error = 'Threshold must be between 0.20 and 0.95.'; return;
       }
       const qs = new URLSearchParams({
         lookback:  lb,
