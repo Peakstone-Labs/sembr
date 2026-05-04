@@ -24,6 +24,14 @@ services:
       # SQLite WAL fsync and Qdrant mmap (./data/qdrant) are both unsafe on network shares.
       - ./data:/app/data
       - ./prompts:/app/prompts:ro
+      # Settings editor: bind-mount the host .env so /api/settings/save can
+      # rewrite it. `cp .env.example .env` BEFORE first `compose up`, otherwise
+      # Docker creates a directory here and the API fails fast on startup.
+      - ./.env:/app/.env
+      # docker.sock: required by RestartController to drive RSSHub restarts.
+      # SECURITY: this grants the API container docker-root on the host.
+      # See README "Production deployment" for trade-offs.
+      - /var/run/docker.sock:/var/run/docker.sock
     mem_limit: 3g
     mem_reservation: 1g
     restart: unless-stopped
