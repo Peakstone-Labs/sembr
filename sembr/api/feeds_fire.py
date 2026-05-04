@@ -94,9 +94,10 @@ async def _feed_dry_run(task: FeedFireTask, feed_url: str, source_type: str, con
 async def _feed_real_run(task: FeedFireTask, feed_id: int, feed_name: str, feed_url: str, source_type: str, config: dict) -> None:
     """Background: run collect_feed (writes feed_items, pending_articles, feed_fetch_log)."""
     try:
-        items_seen, items_new = await collect_feed(feed_id, feed_name, feed_url, source_type, config)
+        items_seen, items_new, article_results = await collect_feed(feed_id, feed_name, feed_url, source_type, config)
         task.articles_fetched = items_seen
         task.articles_new = items_new
+        task.articles = article_results
         task.status = "done"
     except Exception as exc:
         logger.exception("feed fire real_run failed for feed_id=%d: %s", feed_id, exc)
