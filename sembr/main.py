@@ -26,6 +26,7 @@ logging.getLogger("sembr").setLevel(logging.INFO)
 import aiosqlite
 
 from sembr.api.feeds import router as feeds_router
+from sembr.api.feeds_fire import router as feeds_fire_router
 from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
 from sembr.api.intents import router as intents_router
@@ -49,6 +50,7 @@ from sembr.matcher.event_buffer import sweep_timed_out as _event_sweep_timed_out
 from sembr.matcher.event_cache import EventIntentCache, load_event_cache
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
+from sembr.collector.fire_tasks import sweep_expired as feed_fire_sweep_expired
 from sembr.matcher.fire_tasks import sweep_expired
 from sembr.matcher.jobs import register_all_enabled
 from sembr.notifier.email import EmailChannel, EmailChannelConfig
@@ -142,7 +144,8 @@ async def lifespan(app: FastAPI):
     app.state.host_limiter = host_limiter
     feeds = await list_feeds(conn)
     for feed in feeds:
-        await add_feed_job(scheduler, feed)
+        if feed.enabled:
+            await add_feed_job(scheduler, feed)
     add_embedder_worker_job(scheduler, embedder, qdrant, app)
     add_log_retention_job(scheduler, settings)  # dashboard D9: hourly log prune
     # DD4: sweep expired fire tasks every 5 minutes
@@ -151,6 +154,14 @@ async def lifespan(app: FastAPI):
         sweep_expired,
         trigger=_IT(minutes=5),
         id="fire-tasks-sweep",
+        coalesce=True,
+        replace_existing=True,
+    )
+    # D20: sweep expired feed fire tasks (symmetric with intent fire sweep)
+    scheduler.add_job(
+        feed_fire_sweep_expired,
+        trigger=_IT(minutes=5),
+        id="feed-fire-tasks-sweep",
         coalesce=True,
         replace_existing=True,
     )
@@ -228,6 +239,7 @@ app = FastAPI(title="sembr", version="0.1.0.dev0", lifespan=lifespan)
 app.add_middleware(DashboardTokenMiddleware)
 app.include_router(health_router)
 app.include_router(feeds_router)
+app.include_router(feeds_fire_router)
 app.include_router(intents_router)
 app.include_router(fire_router)
 app.include_router(prompts_router)

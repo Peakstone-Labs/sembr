@@ -8,11 +8,11 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from sembr.collector.scheduler import add_feed_job, remove_feed_job
 from sembr.db.feed_tags import get_tags, replace_tags_in_tx
-from sembr.db.feeds import create_feed, delete_feed, get_feed, list_feeds_with_tags
+from sembr.db.feeds import create_feed, delete_feed, get_feed, list_feeds_with_tags, update_feed
 from sembr.db.intents import get_intent, intents_remove_feed_id
 from sembr.db.sqlite import get_conn, transaction
 from sembr.matcher.jobs import reregister_intent_job
-from sembr.models import Feed, FeedCreate, FeedTagsUpdate
+from sembr.models import Feed, FeedCreate, FeedTagsUpdate, FeedUpdate
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/feeds", tags=["feeds"])
@@ -54,6 +54,56 @@ async def post_feed(body: FeedCreate, request: Request) -> Feed:
 @router.get("", response_model=list[Feed])
 async def get_feeds() -> list[Feed]:
     return await list_feeds_with_tags(get_conn())
+
+
+@router.patch("/{feed_id}", response_model=Feed)
+async def patch_feed(feed_id: int, body: FeedUpdate, request: Request) -> Feed:
+    conn = get_conn()
+    scheduler = request.app.state.scheduler
+
+    # Collect only the fields that were explicitly set in the request body
+    set_fields = body.model_fields_set
+    fields: dict = {}
+    tags = None
+
+    if "name" in set_fields:
+        fields["name"] = body.name
+    if "config" in set_fields:
+        fields["config"] = body.config
+    if "poll_interval_minutes" in set_fields:
+        fields["poll_interval_minutes"] = body.poll_interval_minutes
+    if "enabled" in set_fields:
+        fields["enabled"] = body.enabled
+    if "tags" in set_fields:
+        tags = body.tags
+
+    old_feed = await get_feed(conn, feed_id)
+    if old_feed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
+
+    updated = await update_feed(conn, feed_id, tags=tags, **fields)
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
+
+    # Reconcile scheduler state based on actual value changes vs old_feed
+    was_enabled = old_feed.enabled
+    now_enabled = updated.enabled
+    interval_changed = (
+        "poll_interval_minutes" in set_fields
+        and body.poll_interval_minutes != old_feed.poll_interval_minutes
+    )
+
+    if was_enabled and not now_enabled:
+        # true→false: remove job immediately (in-flight collect_feed not interrupted)
+        remove_feed_job(scheduler, feed_id)
+    elif not was_enabled and now_enabled:
+        # false→true: add job (phase re-randomised for spread)
+        await add_feed_job(scheduler, updated)
+    elif now_enabled and interval_changed:
+        # still enabled, new interval: reschedule with new trigger
+        await add_feed_job(scheduler, updated)
+
+    return updated
 
 
 @router.patch("/{feed_id}/tags", response_model=Feed)

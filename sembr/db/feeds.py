@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS feeds (
     config                TEXT NOT NULL DEFAULT '{}',
     poll_interval_minutes INTEGER NOT NULL DEFAULT 30,
     last_collected_at     TEXT,
-    created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+    enabled               INTEGER NOT NULL DEFAULT 1
 )
 """
 
@@ -57,12 +58,24 @@ CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id)
 """
 
 
+async def _ensure_enabled_column(conn: aiosqlite.Connection) -> None:
+    """C1: idempotent migration — add enabled column to existing DB."""
+    async with conn.execute("PRAGMA table_info(feeds)") as cur:
+        cols = {row[1] for row in await cur.fetchall()}
+    if "enabled" not in cols:
+        await conn.execute(
+            "ALTER TABLE feeds ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1"
+        )
+        await conn.commit()
+
+
 async def init_feed_tables(conn: aiosqlite.Connection) -> None:
     await conn.execute(_CREATE_FEEDS)
     await conn.execute(_CREATE_FEED_ITEMS)
     await conn.execute(_CREATE_SEEDED_INITIAL_FEEDS)
     await conn.execute(_CREATE_IDX)
     await conn.commit()
+    await _ensure_enabled_column(conn)
     await init_feed_tag_tables(conn)
 
 
@@ -97,9 +110,10 @@ def _row_to_feed(row: tuple) -> Feed:
         poll_interval_minutes=row[5],
         last_collected_at=row[6],
         created_at=row[7],
+        enabled=bool(row[8]),
     )
 
-_SELECT_FEEDS = "SELECT id,name,url,source_type,config,poll_interval_minutes,last_collected_at,created_at FROM feeds"
+_SELECT_FEEDS = "SELECT id,name,url,source_type,config,poll_interval_minutes,last_collected_at,created_at,enabled FROM feeds"
 
 
 async def create_feed(
@@ -203,3 +217,47 @@ async def update_last_collected(conn: aiosqlite.Connection, feed_id: int) -> Non
             "UPDATE feeds SET last_collected_at=? WHERE id=?",
             (now, feed_id),
         )
+
+
+_UPDATABLE_FEED_COLS = frozenset({"name", "config", "poll_interval_minutes", "enabled"})
+
+
+async def update_feed(
+    conn: aiosqlite.Connection,
+    feed_id: int,
+    tags: list[str] | None = None,
+    **fields,
+) -> Feed | None:
+    """Partial update of a feed row.
+
+    Pass only the fields to change; unknown or non-updatable fields raise ValueError.
+    tags are handled separately via feed_tags tables. Returns the updated Feed or
+    None if feed_id not found.
+    """
+    bad = set(fields) - _UPDATABLE_FEED_COLS
+    if bad:
+        raise ValueError(f"non-updatable fields: {bad}")
+
+    if fields or tags is not None:
+        async with transaction() as txn:
+            # Existence check inside the write lock so a concurrent delete_feed()
+            # cannot slip between our check and the tag insert (TOCTOU prevention).
+            # An empty BEGIN/COMMIT when feed is absent is a negligible cost.
+            async with txn.execute("SELECT 1 FROM feeds WHERE id=?", (feed_id,)) as cur:
+                if await cur.fetchone() is None:
+                    return None
+            if fields:
+                set_clauses = ", ".join(f"{col}=?" for col in fields)
+                values = []
+                for col, val in fields.items():
+                    values.append(json.dumps(val) if col == "config" else val)
+                values.append(feed_id)
+                await txn.execute(
+                    f"UPDATE feeds SET {set_clauses} WHERE id=?", values
+                )
+            if tags is not None:
+                await txn.execute("DELETE FROM feed_tags WHERE feed_id=?", (feed_id,))
+                if tags:
+                    await insert_tags_in_tx(txn, feed_id, tags)
+
+    return await get_feed(conn, feed_id)

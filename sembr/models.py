@@ -5,7 +5,7 @@ import re
 from typing import Annotated, Literal, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from sembr.notifier.email import EmailChannelConfig
 
@@ -98,8 +98,32 @@ class FeedTagsUpdate(BaseModel):
 
 class Feed(FeedCreate):
     id: int
+    enabled: bool = True
     last_collected_at: str | None
     created_at: str
+
+
+class FeedUpdate(BaseModel):
+    """Partial update body for PATCH /feeds/{id}.
+
+    Only editable fields; url and source_type are intentionally absent so
+    extra="forbid" causes a 422 if the client tries to send them.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    tags: list[str] | None = Field(default=None, max_length=10)
+    poll_interval_minutes: int | None = Field(default=None, ge=5, le=1440)
+    config: dict | None = None
+    enabled: bool | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def _tag_syntax(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        return _normalize_feed_tags(v)
 
 
 _TEMPLATE_IDENT_RE = re.compile(r"^(?!\.)(?!.*\.\.)[^/\\]{1,100}$")

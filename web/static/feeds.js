@@ -7,7 +7,10 @@
  *   GET    /api/dashboard/sources/schemas    JSON-Schema map for source_type → form fields
  *   GET    /api/dashboard/articles/{md5}?bucket=qdrant  full body modal
  *   POST   /feeds                            create (with tags)
- *   PATCH  /feeds/{id}/tags                  replace tag set
+ *   PATCH  /feeds/{id}                      edit name/tags/poll_interval/config/enabled
+ *   PATCH  /feeds/{id}/tags                  replace tag set (legacy path, kept)
+ *   POST   /feeds/{id}/fire?dry_run=bool     fire feed (returns task_id)
+ *   GET    /feeds/{id}/fire/{task_id}        poll fire task status
  *   DELETE /feeds/{id}                       delete (cascade handled server-side)
  */
 
@@ -313,6 +316,164 @@ function feedsTab() {
         await this.refresh();
       } catch (e) {
         this.toast(`delete failed: ${e.message}`, 'err');
+      }
+    },
+
+    // ── Toggle enabled (D16: optimistic update, rollback on error) ──
+    async toggleEnabled(feed) {
+      if (feed._toggleInFlight) return;
+      feed._toggleInFlight = true;
+      const prev = feed.enabled ?? true;
+      feed.enabled = !prev;  // optimistic
+      try {
+        const updated = await this._api(`/feeds/${feed.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ enabled: feed.enabled }),
+        });
+        feed.enabled = updated.enabled ?? feed.enabled;
+        this.toast(feed.enabled ? 'feed enabled' : 'feed disabled', 'ok');
+      } catch (e) {
+        feed.enabled = prev;  // rollback
+        this.toast(`toggle failed: ${e.message}`, 'err');
+      } finally {
+        feed._toggleInFlight = false;
+      }
+    },
+
+    // ── Edit modal (D17) ──
+    edit: {
+      open: false, submitting: false, feed: null,
+      form: { name: '', poll_interval_minutes: 30, tags: [], tagInput: '', config: {} },
+      errors: {},
+    },
+    openEdit(feed) {
+      this.edit = {
+        open: true, submitting: false, feed,
+        form: {
+          name: feed.name,
+          poll_interval_minutes: feed.poll_interval_minutes,
+          tags: [...(feed.tags || [])],
+          tagInput: '',
+          config: Object.assign({}, feed.config || {}),
+        },
+        errors: {},
+      };
+    },
+    closeEdit() { this.edit.open = false; },
+    addEditTag() {
+      const raw = (this.edit.form.tagInput || '').trim().toLowerCase();
+      if (!raw) return;
+      if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(raw)) {
+        this.edit.errors.tags = `invalid tag: ${raw}`; return;
+      }
+      if (this.edit.form.tags.length >= 10) {
+        this.edit.errors.tags = 'max 10 tags'; return;
+      }
+      if (!this.edit.form.tags.includes(raw)) this.edit.form.tags.push(raw);
+      this.edit.form.tagInput = '';
+      delete this.edit.errors.tags;
+    },
+    removeEditTag(idx) { this.edit.form.tags.splice(idx, 1); },
+    async submitEdit() {
+      this.edit.errors = {};
+      const feed = this.edit.feed;
+      if (!feed) return;
+      if (!this.edit.form.name.trim()) {
+        this.edit.errors.name = 'required'; return;
+      }
+      const body = {};
+      if (this.edit.form.name.trim() !== feed.name)
+        body.name = this.edit.form.name.trim();
+      if (this.edit.form.poll_interval_minutes !== feed.poll_interval_minutes)
+        body.poll_interval_minutes = parseInt(this.edit.form.poll_interval_minutes, 10) || feed.poll_interval_minutes;
+      if (JSON.stringify(this.edit.form.tags) !== JSON.stringify(feed.tags || []))
+        body.tags = this.edit.form.tags;
+      if (JSON.stringify(this.edit.form.config) !== JSON.stringify(feed.config || {}))
+        body.config = this.edit.form.config;
+      if (Object.keys(body).length === 0) { this.edit.open = false; return; }
+      this.edit.submitting = true;
+      try {
+        const updated = await this._api(`/feeds/${feed.id}`, {
+          method: 'PATCH', body: JSON.stringify(body),
+        });
+        // patch in-place so list updates without full refresh
+        Object.assign(feed, {
+          name: updated.name,
+          poll_interval_minutes: updated.poll_interval_minutes,
+          tags: updated.tags,
+          config: updated.config,
+          enabled: updated.enabled,
+        });
+        this.edit.open = false;
+        this.toast('feed updated', 'ok');
+      } catch (e) {
+        this.edit.errors._global = String(e.message || e);
+      } finally { this.edit.submitting = false; }
+    },
+
+    // ── Fire dialog (D18: form → running → result) ──
+    fire: {
+      open: false, feed: null, dryRun: true,
+      phase: 'form',   // 'form' | 'running' | 'result'
+      taskId: null, taskUrl: null,
+      articles: [], articlesNew: 0, articlesSeen: 0,
+      error: null, pollTimer: null,
+    },
+    openFire(feed) {
+      if (this.fire.pollTimer) { clearInterval(this.fire.pollTimer); }
+      this.fire = {
+        open: true, feed, dryRun: true,
+        phase: 'form',
+        taskId: null, taskUrl: null,
+        articles: [], articlesNew: 0, articlesSeen: 0,
+        error: null, pollTimer: null,
+      };
+    },
+    closeFire() {
+      if (this.fire.pollTimer) { clearInterval(this.fire.pollTimer); }
+      this.fire.taskId = null;  // sentinel: in-flight poll callbacks become no-ops
+      this.fire.open = false;
+    },
+    async runFire() {
+      const feed = this.fire.feed;
+      if (!feed) return;
+      const myFeed = feed;  // capture for session check after POST await
+      this.fire.phase = 'running';
+      this.fire.error = null;
+      try {
+        const dryParam = this.fire.dryRun ? 'true' : 'false';
+        const res = await this._api(`/feeds/${feed.id}/fire?dry_run=${dryParam}`, { method: 'POST' });
+        if (this.fire.feed !== myFeed || !this.fire.open) return;  // closed/reopened during POST
+        const myTaskId = res.task_id;
+        this.fire.taskId = myTaskId;
+        this.fire.taskUrl = `/feeds/${feed.id}/fire/${myTaskId}`;
+        // Poll until done; sentinel guards against stale in-flight closures
+        this.fire.pollTimer = setInterval(async () => {
+          if (this.fire.taskId !== myTaskId) { clearInterval(this.fire.pollTimer); return; }
+          try {
+            const t = await this._api(`/feeds/${feed.id}/fire/${myTaskId}`);
+            if (this.fire.taskId !== myTaskId) return;
+            if (t.status === 'done' || t.status === 'error') {
+              clearInterval(this.fire.pollTimer);
+              this.fire.pollTimer = null;
+              this.fire.articles = t.articles || [];
+              this.fire.articlesNew = t.articles_new || 0;
+              this.fire.articlesSeen = t.articles_seen || 0;
+              if (t.status === 'error') this.fire.error = t.error || 'unknown error';
+              this.fire.phase = 'result';
+            }
+          } catch (e) {
+            if (this.fire.taskId !== myTaskId) return;
+            clearInterval(this.fire.pollTimer);
+            this.fire.pollTimer = null;
+            this.fire.error = String(e.message || e);
+            this.fire.phase = 'result';
+          }
+        }, 2000);
+      } catch (e) {
+        if (this.fire.feed !== myFeed || !this.fire.open) return;  // closed during POST
+        this.fire.error = String(e.message || e);
+        this.fire.phase = 'result';
       }
     },
 

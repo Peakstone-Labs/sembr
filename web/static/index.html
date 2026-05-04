@@ -228,7 +228,7 @@
     </thead>
     <template x-for="f in items" :key="f.id">
       <tbody>
-          <tr :class="f.fetch_24h?.consecutive_failures > 0 ? 'row-fail' : ''">
+          <tr :class="{'row-fail': f.fetch_24h?.consecutive_failures > 0, 'feed-row-disabled': f.enabled === false}">
             <td>
               <div x-text="f.name"></div>
               <div class="muted mono" x-text="f.url" style="font-size:11px; margin-top:2px;"></div>
@@ -253,6 +253,14 @@
             <td class="mono muted" x-text="fmtNextRun(f.next_run_iso)" style="font-size:11px;"></td>
             <td>
               <div class="action-cell">
+                <label class="toggle-wrap" title="Enable / disable feed">
+                  <span class="toggle">
+                    <input type="checkbox" :checked="f.enabled ?? true" @change="toggleEnabled(f)" :disabled="f._toggleInFlight">
+                    <span class="toggle-slider"></span>
+                  </span>
+                </label>
+                <button @click="openEdit(f)">Edit</button>
+                <button @click="openFire(f)">Fire</button>
                 <button @click="toggleRow(f, 'events')"
                         :class="(expandedFeedId===f.id && expanded.kind==='events') ? 'primary' : ''">events</button>
                 <button @click="toggleRow(f, 'articles')"
@@ -514,6 +522,191 @@
       <div class="modal-footer">
         <button @click="closeDelete()">Cancel</button>
         <button class="danger" @click="runDelete()">Yes, Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit modal (D17) -->
+  <div class="modal-overlay" x-show="edit.open" x-cloak @click.self="closeEdit()">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <span class="modal-title">Edit Feed</span>
+        <button class="modal-close" @click="closeEdit()">✕</button>
+      </div>
+      <div class="form-sections">
+        <div class="form-section">
+          <div class="form-section-title">Basic</div>
+          <div class="form-grid">
+            <div class="form-field form-grid-full">
+              <label class="field-label">Name <span class="req">*</span></label>
+              <input type="text" x-model="edit.form.name" maxlength="200"
+                     :class="edit.errors.name ? 'field-err' : ''">
+              <span class="field-err-msg" x-show="edit.errors.name" x-text="edit.errors.name"></span>
+            </div>
+            <div class="form-field form-grid-full">
+              <label class="field-label">URL</label>
+              <input type="text" :value="edit.feed?.url" disabled style="opacity:0.5;">
+            </div>
+            <div class="form-field">
+              <label class="field-label">Poll interval (min)</label>
+              <input type="number" x-model.number="edit.form.poll_interval_minutes" min="5" max="1440">
+            </div>
+            <div class="form-field form-grid-full">
+              <label class="field-label">Tags <span class="field-hint" style="text-transform:none; letter-spacing:0;">(max 10)</span></label>
+              <div class="tags-wrap" style="margin-bottom:6px;">
+                <template x-for="(tag, idx) in edit.form.tags" :key="tag + idx">
+                  <span class="intent-tag">
+                    <span x-text="tag"></span>
+                    <button class="tag-rm" @click="removeEditTag(idx)" type="button">✕</button>
+                  </span>
+                </template>
+              </div>
+              <div class="tag-input-row">
+                <input type="text" x-model="edit.form.tagInput" placeholder="Add tag…"
+                       @keydown.enter.prevent="addEditTag()"
+                       @keydown="if($event.key===','){$event.preventDefault();addEditTag();}"
+                       style="flex:1;">
+                <button type="button" @click="addEditTag()">Add</button>
+              </div>
+              <span class="field-err-msg" x-show="edit.errors.tags" x-text="edit.errors.tags"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dynamic source config -->
+        <div class="form-section" x-show="schemaFields(edit.feed?.source_type).length > 0">
+          <div class="form-section-title">Source config</div>
+          <div class="form-grid">
+            <template x-for="field in schemaFields(edit.feed?.source_type)" :key="field.name">
+              <div class="form-field">
+                <label class="field-label">
+                  <span x-text="field.name"></span>
+                  <span x-show="field.description" class="field-hint" style="text-transform:none; letter-spacing:0;"
+                        x-text="' — ' + field.description"></span>
+                </label>
+                <template x-if="field.enum">
+                  <select x-model="edit.form.config[field.name]">
+                    <template x-for="opt in field.enum" :key="opt">
+                      <option :value="opt" x-text="opt"></option>
+                    </template>
+                  </select>
+                </template>
+                <template x-if="!field.enum && field.type === 'boolean'">
+                  <label class="toggle-wrap">
+                    <span class="toggle">
+                      <input type="checkbox" x-model="edit.form.config[field.name]">
+                      <span class="toggle-slider"></span>
+                    </span>
+                  </label>
+                </template>
+                <template x-if="!field.enum && (field.type === 'integer' || field.type === 'number')">
+                  <input type="number" x-model.number="edit.form.config[field.name]"
+                         :step="field.type === 'integer' ? 1 : 'any'">
+                </template>
+                <template x-if="!field.enum && field.type === 'string'">
+                  <input type="text" x-model="edit.form.config[field.name]">
+                </template>
+                <template x-if="field.type === 'raw'">
+                  <textarea rows="3" x-model="edit.form.config[field.name]"
+                            placeholder="raw JSON value (advanced)"></textarea>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span x-show="edit.errors._global" class="field-err-msg"
+              style="flex:1; text-align:left;" x-text="edit.errors._global"></span>
+        <button @click="closeEdit()">Cancel</button>
+        <button class="primary" @click="submitEdit()" :disabled="edit.submitting">
+          <span x-show="edit.submitting"><span class="spinner"></span>&nbsp;</span>
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fire dialog (D18) -->
+  <div class="modal-overlay" x-show="fire.open" x-cloak @click.self="closeFire()">
+    <div class="modal-panel" style="max-width:640px;">
+      <div class="modal-header">
+        <span class="modal-title">Fire Feed — <span class="muted" x-text="fire.feed?.name"></span></span>
+        <button class="modal-close" @click="closeFire()">✕</button>
+      </div>
+
+      <!-- phase: form -->
+      <div x-show="fire.phase === 'form'">
+        <div style="padding:12px 0 4px; font-size:0.85rem; color:var(--text-secondary);">
+          Manually trigger an immediate fetch for this feed.
+        </div>
+        <div style="padding:8px 0;">
+          <label class="toggle-wrap" style="gap:8px;">
+            <span class="toggle">
+              <input type="checkbox" x-model="fire.dryRun">
+              <span class="toggle-slider"></span>
+            </span>
+            <span style="font-size:0.85rem;">Dry run (do not write to DB)</span>
+          </label>
+          <p x-show="fire.dryRun" style="font-size:0.8rem; color:var(--text-secondary); margin:6px 0 0 44px;">
+            Dry run: articles will be fetched and shown but <strong>not persisted</strong>.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeFire()">Cancel</button>
+          <button class="primary" @click="runFire()">Run</button>
+        </div>
+      </div>
+
+      <!-- phase: running -->
+      <div x-show="fire.phase === 'running'" style="padding:24px 0; text-align:center;">
+        <span class="spinner spinner-lg"></span>
+        <p style="margin-top:12px; color:var(--text-secondary); font-size:0.85rem;">Fetching…</p>
+      </div>
+
+      <!-- phase: result -->
+      <div x-show="fire.phase === 'result'">
+        <div x-show="fire.error" style="color:var(--danger); font-size:0.85rem; padding:8px 0;"
+             x-text="fire.error"></div>
+        <div x-show="!fire.error" style="font-size:0.85rem; color:var(--text-secondary); padding:6px 0;">
+          Seen: <strong x-text="fire.articlesSeen"></strong> &nbsp;
+          New: <strong x-text="fire.articlesNew"></strong>
+          <span x-show="fire.dryRun" class="muted">&nbsp;(dry run — not saved)</span>
+        </div>
+        <div x-show="fire.articles && fire.articles.length > 0" style="overflow-x:auto; max-height:320px; overflow-y:auto;">
+          <table style="width:100%; font-size:0.8rem;">
+            <thead>
+              <tr>
+                <th style="text-align:left;">Title</th>
+                <th style="text-align:left;">Published</th>
+                <th style="text-align:left;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(a, idx) in (fire.articles || [])" :key="idx">
+                <tr>
+                  <td>
+                    <a :href="a.url" target="_blank" rel="noopener"
+                       x-text="a.title || '(no title)'"
+                       style="color:var(--link); text-decoration:none;"></a>
+                  </td>
+                  <td class="mono muted" x-text="a.published_at ? a.published_at.slice(0,16).replace('T',' ') : '—'"></td>
+                  <td>
+                    <span class="status-pill"
+                          :class="a.status === 'NEW' ? 'status-ok' : 'status-warn'"
+                          x-text="a.status || '—'"></span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div x-show="!fire.error && (!fire.articles || fire.articles.length === 0)"
+             class="muted" style="font-size:0.85rem; padding:8px 0;">No articles returned.</div>
+        <div class="modal-footer">
+          <button @click="closeFire()">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1257,7 +1450,7 @@
 
 </div><!-- /logs-view -->
 
-<script src="/dashboard/feeds.js"></script>
+<script src="/dashboard/feeds.js?v=2"></script>
 <script src="/dashboard/intents.js"></script>
 <script src="/dashboard/logs.js"></script>
 <script src="/dashboard/app.js"></script>

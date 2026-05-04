@@ -532,7 +532,7 @@ async def list_feeds_with_meta(
 
     async with conn.execute(
         f"SELECT id, name, url, source_type, config, poll_interval_minutes, "
-        f"       last_collected_at, created_at "
+        f"       last_collected_at, created_at, enabled "
         f"FROM feeds{where_sql} ORDER BY id ASC LIMIT ? OFFSET ?",
         [*params, limit, offset],
     ) as cur:
@@ -548,7 +548,7 @@ async def list_feeds_with_meta(
     items: list[FeedRowExtended] = []
     import json as _json  # noqa: PLC0415
     for r in rows:
-        fid, name, url, source_type, config_json, poll_min, last_collected, created_at = r
+        fid, name, url, source_type, config_json, poll_min, last_collected, created_at, enabled = r
         next_run_iso: str | None = None
         if scheduler is not None:
             try:
@@ -576,6 +576,7 @@ async def list_feeds_with_meta(
                     consecutive_failures=0, sparkline_buckets=[0] * _SPARKLINE_BUCKETS,
                 ),
                 tags=tag_map.get(fid, []),
+                enabled=bool(enabled),
                 group_key=derive_group_key(url, proxy_hosts),
                 next_run_iso=next_run_iso,
                 created_at=created_at,

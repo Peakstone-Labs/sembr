@@ -122,6 +122,7 @@ class FeedRowExtended(FeedRow):
     source_type: str = "rss"
     config: dict = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
+    enabled: bool = True
     group_key: str
     next_run_iso: str | None = None
     created_at: str | None = None
