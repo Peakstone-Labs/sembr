@@ -41,4 +41,11 @@ RUN mkdir -p /app/data
 EXPOSE 8000
 
 ENV PATH="/app/.venv/bin:$PATH"
-CMD ["uvicorn", "sembr.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --timeout-graceful-shutdown: after SIGTERM, uvicorn forcibly closes any
+# still-open connections (e.g. SSE log streams) after this many seconds and
+# proceeds to lifespan shutdown.  Without this, a persistent SSE client keeps
+# uvicorn in "Waiting for connections to close" indefinitely, the lifespan
+# finally block never runs, and _force_exit is never called.
+# 5s is well inside the 8s lifespan_shutdown_timeout and the 10s docker SIGKILL.
+CMD ["uvicorn", "sembr.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--timeout-graceful-shutdown", "5"]
