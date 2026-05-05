@@ -32,6 +32,14 @@ services:
       # SECURITY: this grants the API container docker-root on the host.
       # See README "Production deployment" for trade-offs.
       - /var/run/docker.sock:/var/run/docker.sock
+      # RestartController needs the compose file to drive `docker compose up
+      # --force-recreate rsshub` from inside the container.
+      - ./docker-compose.yml:/app/docker-compose.yml:ro
+    environment:
+      # Without this, `docker compose` inside the container defaults to the
+      # cwd-based project name "app" instead of "sembr", and would create a
+      # parallel set of containers rather than targeting sembr-rsshub.
+      - COMPOSE_PROJECT_NAME=sembr
     mem_limit: 3g
     mem_reservation: 1g
     restart: unless-stopped

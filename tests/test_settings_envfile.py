@@ -138,25 +138,26 @@ def test_save_overwrites_prior_bak(env_path: Path) -> None:
     assert "API_HOST=10.0.0.1" in second_bak  # bak now contains prev save
 
 
-def test_atomic_write_uses_replace(monkeypatch: pytest.MonkeyPatch, env_path: Path) -> None:
+def test_direct_write_no_tmp_rename(env_path: Path) -> None:
+    # save() was changed to write directly to target (no tmp+rename) to fix
+    # EBUSY on Docker Desktop macOS VirtioFS bind-mounts (commit 157aff3).
     env_path.write_text(SAMPLE, encoding="utf-8")
+    original = env_path.read_text(encoding="utf-8")
     ef = EnvFile.load(env_path)
     ef.upsert("API_HOST", "1.2.3.4")
-
-    calls: list[tuple[str, str]] = []
-    real_replace = __import__("os").replace
-
-    def fake_replace(src, dst):
-        calls.append((str(src), str(dst)))
-        real_replace(src, dst)
-
-    monkeypatch.setattr("sembr.api.settings_envfile.os.replace", fake_replace)
     ef.save()
 
-    assert len(calls) == 1
-    src, dst = calls[0]
-    assert src.endswith(".tmp")
-    assert dst == str(env_path)
+    result = env_path.read_text(encoding="utf-8")
+    assert "API_HOST=1.2.3.4" in result
+
+    # No .tmp sibling should be left behind
+    tmp_candidates = list(env_path.parent.glob("*.tmp"))
+    assert tmp_candidates == [], f"unexpected .tmp files: {tmp_candidates}"
+
+    # Backup must contain the original content
+    bak = env_path.with_name(env_path.name + ".bak")
+    assert bak.exists(), ".env.bak must be created before overwriting"
+    assert bak.read_text(encoding="utf-8") == original
 
 
 def test_load_directory_raises(tmp_path: Path) -> None:

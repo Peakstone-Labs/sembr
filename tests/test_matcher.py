@@ -155,16 +155,24 @@ def _make_app(
 
 
 @pytest.mark.asyncio
-async def test_scan_skips_when_embedder_not_ready(mem_conn) -> None:
+async def test_scan_proceeds_when_embedder_not_ready(mem_conn, caplog) -> None:
+    # SC#11 behaviour changed: scan_once uses pre-computed Qdrant vectors, not
+    # the embedder. Skipping caused permanent silent misses when the SiliconFlow
+    # probe failed at startup (is_loaded stays False indefinitely).
+    # New contract: warn and proceed; on_match is not called when no articles match.
+    import logging
     intent = await create_intent(mem_conn, _INTENT_BODY)
-    app = _make_app(embedder_loaded=False)
+    on_match = AsyncMock()
+    app = _make_app(embedder_loaded=False, on_match=on_match)
 
-    with patch("sembr.matcher.scan.get_conn", return_value=mem_conn):
-        from sembr.matcher.scan import run_intent_scan
-        await run_intent_scan(intent.id, app)
+    with caplog.at_level(logging.WARNING, logger="sembr.matcher.scan"):
+        with patch("sembr.matcher.scan.get_conn", return_value=mem_conn):
+            from sembr.matcher.scan import run_intent_scan
+            await run_intent_scan(intent.id, app)
 
-    app.state.qdrant.client.retrieve.assert_not_called()
-    app.state.qdrant.client.search.assert_not_called()
+    assert any("proceeding" in r.message for r in caplog.records), \
+        "expected a warning that scan is proceeding despite embedder not ready"
+    on_match.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

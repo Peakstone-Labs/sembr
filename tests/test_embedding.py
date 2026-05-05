@@ -419,7 +419,7 @@ def test_siliconflow_embedder_uses_configured_timeout():
 
     e = SiliconFlowEmbedder(api_key="k", timeout=7.5)
     client = httpx.AsyncClient(timeout=e._timeout)
-    assert client.timeout.connect == 7.5
+    assert client.timeout.read == 7.5
 
 
 async def test_siliconflow_embedder_aembed_empty_data_field_raises():

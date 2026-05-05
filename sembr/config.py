@@ -140,6 +140,15 @@ class Settings(BaseSettings):
         description="Ring buffer capacity per log tag (number of log entries retained in memory).",
     )
 
+    lifespan_shutdown_timeout: float = Field(
+        default=8.0,
+        description=(
+            "Maximum seconds allowed for graceful lifespan shutdown before forcing exit. "
+            "Set below docker stop's SIGKILL deadline (default 10s). Only applies during "
+            "self-restart; normal `docker compose down` is not affected."
+        ),
+    )
+
     proxy_hosts: str = Field(
         default="rsshub:1200",
         description=(

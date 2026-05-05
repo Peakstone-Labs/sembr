@@ -30,6 +30,7 @@ logging.getLogger("sembr").setLevel(logging.DEBUG)
 
 import aiosqlite
 
+from sembr.api import settings_restart
 from sembr.api.feeds import router as feeds_router
 from sembr.api.feeds_fire import router as feeds_fire_router
 from sembr.api.fire import router as fire_router
@@ -214,33 +215,49 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        # wait=False: for AsyncIOScheduler, wait=True only blocks on ThreadPoolExecutor
-        # jobs — it does NOT await async coroutines like embedder_worker. Blocking the
-        # event loop here risks hitting Docker's 10s SIGKILL before aclose/close_sqlite
-        # complete. Async jobs that finish naturally between shutdown() and aclose() are
-        # fine; those still mid-flight see ClientClosed → increment_retry (idempotent).
-        scheduler.shutdown(wait=False)
-        # Yield one tick so collect_feed coros that already entered but haven't
-        # yet read _LIMITER_REF can pick up the live limiter; otherwise they'd
-        # silently bypass the per-host gate via the _nullcontext fallback.
-        # (Loop 2 review #🟡-1)
-        await asyncio.sleep(0)
-        set_host_limiter(None)
-        load_task.cancel()
+        async def _shutdown() -> None:
+            # wait=False: for AsyncIOScheduler, wait=True only blocks on
+            # ThreadPoolExecutor jobs — it does NOT await async coroutines like
+            # embedder_worker. Blocking the event loop here risks hitting
+            # Docker's 10s SIGKILL before aclose/close_sqlite complete.
+            scheduler.shutdown(wait=False)
+            # Yield one tick so collect_feed coros that already entered but
+            # haven't yet read _LIMITER_REF can pick up the live limiter;
+            # otherwise they'd silently bypass the per-host gate via the
+            # _nullcontext fallback. (Loop 2 review #🟡-1)
+            await asyncio.sleep(0)
+            set_host_limiter(None)
+            load_task.cancel()
+            try:
+                await asyncio.wait_for(load_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            if hasattr(embedder, "aclose"):
+                await embedder.aclose()
+            # Close qdrant first so any in-flight matcher coroutines that
+            # survived scheduler.shutdown(wait=False) hit a ClientClosed
+            # before the LLM client disappears under them.
+            await qdrant.close()
+            if hasattr(llm_backend, "aclose"):
+                await llm_backend.aclose()
+            await close_sqlite()
+
         try:
-            # Await so the thread pool doesn't race with interpreter teardown.
-            await asyncio.wait_for(load_task, timeout=2.0)
-        except (asyncio.CancelledError, asyncio.TimeoutError):
-            pass
-        if hasattr(embedder, "aclose"):
-            await embedder.aclose()
-        # Close qdrant first so any in-flight matcher coroutines that survived
-        # scheduler.shutdown(wait=False) hit a ClientClosed before the LLM client
-        # disappears under them — symmetric with the embedder ordering above.
-        await qdrant.close()
-        if hasattr(llm_backend, "aclose"):
-            await llm_backend.aclose()
-        await close_sqlite()
+            await asyncio.wait_for(_shutdown(), timeout=settings.lifespan_shutdown_timeout)
+            logger.info("lifespan graceful shutdown complete")
+        except asyncio.TimeoutError:
+            logger.error(
+                "lifespan graceful shutdown timed out after %ss; forcing exit",
+                settings.lifespan_shutdown_timeout,
+            )
+        finally:
+            # Only force-exit when a self-restart was requested.  Normal
+            # `docker compose down` leaves _RESTART_REQUESTED=False so
+            # uvicorn shuts down cleanly without os._exit.  TestClient paths
+            # never send SIGTERM so the flag stays False — no risk of test
+            # process being killed.
+            if settings_restart.is_restart_requested():
+                settings_restart._force_exit(0)
 
 
 app = FastAPI(title="sembr", version="0.1.0.dev0", lifespan=lifespan)
