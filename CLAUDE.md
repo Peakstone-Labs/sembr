@@ -22,7 +22,9 @@ Internal development & strategy docs are kept in a **private sibling repository*
   retro.md            ← retro
 ```
 
-`<feature-name>` is **kebab-case** (e.g. `rss-collector`, `intent-crud`). The main repo's `.gitignore` excludes `/docs/` defensively; do not create a `docs/` directory in this repository.
+`<feature-name>` is **kebab-case** (e.g. `rss-collector`, `intent-crud`).
+
+**Public docs (MkDocs site)** live at `/docs/` in this repo and ARE tracked in git. They are the open-source-facing documentation rendered to GitHub Pages via `.github/workflows/docs.yml`. Internal feature docs go in the private sibling repo above; user-facing module / API / getting-started docs go in `/docs/`.
 
 ## Project Overview
 

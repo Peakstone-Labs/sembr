@@ -1,5 +1,7 @@
 # sembr
 
+[中文文档](docs/zh/index.md) · [Documentation](https://peakstone-labs.github.io/sembr)
+
 > Semantic news monitoring via reverse RAG.
 
 **sembr** lets you write a natural-language intent once — _"monitor Fed policy impact on emerging-market currencies"_ — and receive matching news pushed to Telegram, Discord, or Slack as it arrives. No keyword lists, no hand-tuned filters.
@@ -171,7 +173,7 @@ The backend speaks the OpenAI-compatible `/v1/embeddings` protocol via [SiliconF
 
 ## Dashboard
 
-Once `docker compose up --build` is healthy, browse to **http://localhost:8000/dashboard** for a read-only monitoring view: per-feed fetch outcomes (with 24h sparkline), embedder latency / failure counts, and pending / dead / Qdrant article counts with drill-down detail.
+Once `docker compose up --build` is healthy, browse to **[http://localhost:8000/dashboard](http://localhost:8000/dashboard)** for a read-only monitoring view: per-feed fetch outcomes (with 24h sparkline), embedder latency / failure counts, and pending / dead / Qdrant article counts with drill-down detail.
 
 Set `DASHBOARD_TOKEN` in `.env` whenever the host is reachable beyond `localhost` — feed URLs and dead-article error messages are otherwise public. With a token set, the UI prompts for it once and then persists in the browser's `localStorage` + a path-scoped cookie. The JSON API at `/api/dashboard/*` accepts the same token via the `X-Dashboard-Token` header for scripting.
 

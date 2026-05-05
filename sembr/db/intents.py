@@ -15,6 +15,7 @@ from pydantic import TypeAdapter
 
 logger = logging.getLogger(__name__)
 
+from sembr.db.sqlite import transaction
 from sembr.models import ChannelConfig, FeedFilter, Intent, IntentCreate, IntentUpdate, Schedule
 
 # Reused per-call: cheaper than re-building the validator each time a row is parsed.
@@ -228,31 +229,31 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
     schedule_json = body.schedule.model_dump_json()
     feed_filter_json = _feed_filter_json(body.feed_filter)
     now = _now_utc()
-    cursor = await conn.execute(
-        """INSERT INTO intents
-               (name,text,threshold,enabled,channels,tags,
-                system_template,instruction_template,
-                feed_filter,schedule,timezone,language,
-                created_at,updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (
-            body.name,
-            body.text,
-            body.threshold,
-            int(body.enabled),
-            channels_json,
-            tags_json,
-            body.system_template,
-            body.instruction_template,
-            feed_filter_json,
-            schedule_json,
-            body.timezone,
-            body.language,
-            now,
-            now,
-        ),
-    )
-    await conn.commit()
+    async with transaction() as txn:
+        cursor = await txn.execute(
+            """INSERT INTO intents
+                   (name,text,threshold,enabled,channels,tags,
+                    system_template,instruction_template,
+                    feed_filter,schedule,timezone,language,
+                    created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                body.name,
+                body.text,
+                body.threshold,
+                int(body.enabled),
+                channels_json,
+                tags_json,
+                body.system_template,
+                body.instruction_template,
+                feed_filter_json,
+                schedule_json,
+                body.timezone,
+                body.language,
+                now,
+                now,
+            ),
+        )
     assert cursor.lastrowid is not None  # AUTOINCREMENT INSERT on SQLite always sets lastrowid (M2)
     result = await get_intent(conn, cursor.lastrowid)
     return result  # type: ignore[return-value]
@@ -301,31 +302,31 @@ async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: Intent
     schedule_json = new_schedule.model_dump_json()
     feed_filter_json = _feed_filter_json(new_feed_filter)
     now = _now_utc()
-    await conn.execute(
-        """UPDATE intents
-           SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
-               system_template=?,instruction_template=?,
-               feed_filter=?,schedule=?,timezone=?,language=?,
-               updated_at=?
-           WHERE id=?""",
-        (
-            new_name,
-            new_text,
-            new_threshold,
-            int(new_enabled),
-            channels_json,
-            tags_json,
-            new_system_template,
-            new_instruction_template,
-            feed_filter_json,
-            schedule_json,
-            new_timezone,
-            new_language,
-            now,
-            intent_id,
-        ),
-    )
-    await conn.commit()
+    async with transaction() as txn:
+        await txn.execute(
+            """UPDATE intents
+               SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
+                   system_template=?,instruction_template=?,
+                   feed_filter=?,schedule=?,timezone=?,language=?,
+                   updated_at=?
+               WHERE id=?""",
+            (
+                new_name,
+                new_text,
+                new_threshold,
+                int(new_enabled),
+                channels_json,
+                tags_json,
+                new_system_template,
+                new_instruction_template,
+                feed_filter_json,
+                schedule_json,
+                new_timezone,
+                new_language,
+                now,
+                intent_id,
+            ),
+        )
     result = await get_intent(conn, intent_id)
     return result  # type: ignore[return-value]
 
@@ -339,37 +340,39 @@ async def update_intent_raw(conn: aiosqlite.Connection, intent_id: int, snapshot
     tags_json = json.dumps(snapshot.tags, ensure_ascii=False)
     schedule_json = snapshot.schedule.model_dump_json()
     feed_filter_json = _feed_filter_json(snapshot.feed_filter)
-    await conn.execute(
-        """UPDATE intents
-           SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
-               system_template=?,instruction_template=?,
-               feed_filter=?,schedule=?,timezone=?,language=?,
-               updated_at=?
-           WHERE id=?""",
-        (
-            snapshot.name,
-            snapshot.text,
-            snapshot.threshold,
-            int(snapshot.enabled),
-            channels_json,
-            tags_json,
-            snapshot.system_template,
-            snapshot.instruction_template,
-            feed_filter_json,
-            schedule_json,
-            snapshot.timezone,
-            snapshot.language,
-            snapshot.updated_at,
-            intent_id,
-        ),
-    )
-    await conn.commit()
+    async with transaction() as txn:
+        await txn.execute(
+            """UPDATE intents
+               SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
+                   system_template=?,instruction_template=?,
+                   feed_filter=?,schedule=?,timezone=?,language=?,
+                   updated_at=?
+               WHERE id=?""",
+            (
+                snapshot.name,
+                snapshot.text,
+                snapshot.threshold,
+                int(snapshot.enabled),
+                channels_json,
+                tags_json,
+                snapshot.system_template,
+                snapshot.instruction_template,
+                feed_filter_json,
+                schedule_json,
+                snapshot.timezone,
+                snapshot.language,
+                snapshot.updated_at,
+                intent_id,
+            ),
+        )
 
 
 async def delete_intent(conn: aiosqlite.Connection, intent_id: int) -> bool:
-    cursor = await conn.execute("DELETE FROM intents WHERE id=?", (intent_id,))
-    await conn.commit()
-    return cursor.rowcount > 0
+    async with transaction() as txn:
+        await txn.execute("DELETE FROM intents WHERE id=?", (intent_id,))
+        async with txn.execute("SELECT changes()") as cur:
+            n = (await cur.fetchone())[0]
+    return n > 0
 
 
 async def intents_remove_feed_id(conn: aiosqlite.Connection, feed_id: int) -> list[int]:

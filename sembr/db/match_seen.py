@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import aiosqlite
 
+from sembr.db.sqlite import transaction
+
 _CREATE_MATCH_SEEN = """
 CREATE TABLE IF NOT EXISTS match_seen (
     intent_id        INTEGER NOT NULL,
@@ -41,15 +43,15 @@ async def insert_unseen_returning_new(
         return []
     placeholders = ",".join(["(?,?)"] * len(article_ids))
     params = [v for aid in article_ids for v in (intent_id, aid)]
-    async with conn.execute(
-        # noqa: S608 — not a SQL injection risk: `placeholders` is "(?,?)" * n,
-        # built entirely from a fixed template with no user-supplied content.
-        f"INSERT OR IGNORE INTO match_seen (intent_id, article_id)"
-        f" VALUES {placeholders} RETURNING article_id",
-        params,
-    ) as cur:
-        rows = await cur.fetchall()
-    await conn.commit()
+    async with transaction() as txn:
+        async with txn.execute(
+            # noqa: S608 — not a SQL injection risk: `placeholders` is "(?,?)" * n,
+            # built entirely from a fixed template with no user-supplied content.
+            f"INSERT OR IGNORE INTO match_seen (intent_id, article_id)"
+            f" VALUES {placeholders} RETURNING article_id",
+            params,
+        ) as cur:
+            rows = await cur.fetchall()
     return [r[0] for r in rows]
 
 
@@ -60,5 +62,5 @@ async def clear_intent(conn: aiosqlite.Connection, intent_id: int) -> None:
     previously seen articles are no longer semantically de-duplicated against the
     new query vector and must be re-evaluated.
     """
-    await conn.execute("DELETE FROM match_seen WHERE intent_id=?", (intent_id,))
-    await conn.commit()
+    async with transaction() as txn:
+        await txn.execute("DELETE FROM match_seen WHERE intent_id=?", (intent_id,))

@@ -1,7 +1,5 @@
-# Internal docs are kept in a private sibling repo (sembr-dev-docs)
-# and surfaced here via a Windows junction at ./docs (see DEVELOPING.md).
-# Ignore the entire path so the junction contents never leak.
-/docs/
+# MkDocs build output (the source files under /docs/ are tracked)
+/site/
 
 # Python
 __pycache__/

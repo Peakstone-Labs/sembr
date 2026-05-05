@@ -26,7 +26,7 @@ _MIGRATIONS_EVENT: list[str] = []
 
 
 async def init_event_buffer_tables(conn: aiosqlite.Connection) -> None:
-    await conn.execute("PRAGMA foreign_keys = ON")
+    # PRAGMA foreign_keys=ON is set globally in sembr.db.sqlite.init_sqlite.
     await conn.execute(_CREATE_EVENT_PENDING)
     for migration in _MIGRATIONS_EVENT:
         try:

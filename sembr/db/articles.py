@@ -5,6 +5,7 @@ Dead articles are kept for forensics even after their feed is deleted (no FK cas
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
@@ -12,6 +13,8 @@ import aiosqlite
 
 from sembr.collector.base import RawArticle
 from sembr.db.sqlite import transaction
+
+logger = logging.getLogger(__name__)
 
 _BODY_CAP_BYTES = 1_048_576  # 1 MB sanity cap (D11)
 _MD5_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -100,6 +103,11 @@ async def insert_article_pending(
             n = (await cur.fetchone())[0]
         if n == 0:
             return False  # empty COMMIT is a no-op; no row was actually changed
+        if len(article.body) > _BODY_CAP_BYTES:
+            logger.info(
+                "article body truncated: feed_id=%d md5=%s original=%d bytes cap=%d",
+                feed_id, article.feed_md5, len(article.body), _BODY_CAP_BYTES,
+            )
         body_capped = article.body[:_BODY_CAP_BYTES]
         await conn.execute(
             "INSERT INTO pending_articles (md5, feed_id, url, title, body, published_at) "

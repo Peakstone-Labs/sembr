@@ -192,9 +192,11 @@ async def get_feed(conn: aiosqlite.Connection, feed_id: int) -> Feed | None:
 
 
 async def delete_feed(conn: aiosqlite.Connection, feed_id: int) -> bool:
-    cursor = await conn.execute("DELETE FROM feeds WHERE id=?", (feed_id,))
-    await conn.commit()
-    return cursor.rowcount > 0
+    async with transaction() as txn:
+        await txn.execute("DELETE FROM feeds WHERE id=?", (feed_id,))
+        async with txn.execute("SELECT changes()") as cur:
+            n = (await cur.fetchone())[0]
+    return n > 0
 
 
 async def fingerprint_exists(conn: aiosqlite.Connection, md5: str) -> bool:
