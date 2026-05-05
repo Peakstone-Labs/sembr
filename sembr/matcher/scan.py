@@ -123,11 +123,17 @@ async def scan_once(
         # Diagnostic probe: when normal query returns nothing, run two fallback queries
         # to distinguish "time filter too narrow" from "threshold too high".
         if not results:
+            _feed_cond = (
+                [FieldCondition(key="feed_id", match=MatchAny(any=options.feed_ids))]
+                if options.feed_ids is not None
+                else []
+            )
             _probe_no_time = await qdrant_client.query_points(
                 collection_name=_NEWS_ALIAS,
                 query=intent_vector,
                 score_threshold=options.threshold,
                 limit=3,
+                query_filter=Filter(must=_feed_cond) if _feed_cond else None,
             )
             _probe_no_thresh = await qdrant_client.query_points(
                 collection_name=_NEWS_ALIAS,
@@ -139,7 +145,8 @@ async def scan_once(
                         FieldCondition(
                             key="ingested_at_ts",
                             range=Range(gte=lookback_cutoff_ts),
-                        )
+                        ),
+                        *_feed_cond,
                     ]
                 ),
             )

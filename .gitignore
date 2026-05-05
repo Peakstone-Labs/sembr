@@ -64,3 +64,9 @@ sembr.yaml
 
 # Docker
 .docker/
+
+# Personal prompt templates (not for the public repo)
+prompts/system/github_quant.md
+prompts/instruction/github_quant.md
+prompts/system/science_curious.md
+prompts/instruction/science_curious.md
