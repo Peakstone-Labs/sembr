@@ -31,7 +31,8 @@ from typing import Callable
 logger = logging.getLogger(__name__)
 
 DEFAULT_SELF_SHUTDOWN_DELAY = 1.5  # seconds — long enough for an HTTP response to flush
-RSSHUB_CONTAINER_NAME = "sembr-rsshub"
+RSSHUB_SERVICE_NAME = "rsshub"          # docker compose service name (for `compose up`)
+RSSHUB_CONTAINER_NAME = "sembr-rsshub"  # legacy docker SDK name; kept for callers that need it
 COMPOSE_FILE_PATH = "/app/docker-compose.yml"
 
 # Module-level flag: set to True by _send_sigterm_to_self so the lifespan
@@ -77,21 +78,22 @@ class RestartController:
 
     # ── RSSHub ────────────────────────────────────────────────────────────
 
-    async def restart_rsshub(self, container_name: str = RSSHUB_CONTAINER_NAME) -> None:
-        """Force-recreate the named service via docker compose.
+    async def restart_rsshub(self, service_name: str = RSSHUB_SERVICE_NAME) -> None:
+        """Force-recreate the named compose service.
 
-        Runs in a thread so the synchronous subprocess call does not block
-        the event loop (design.md R6).  Errors propagate as RuntimeError
-        (router maps to 500 / 200+warning path per design.md D5).
+        ``service_name`` is the docker-compose service name (e.g. ``rsshub``),
+        NOT the container name (``sembr-rsshub``).  Runs in a thread so the
+        synchronous subprocess call does not block the event loop (design.md R6).
+        Errors propagate as RuntimeError (router maps to 200+warning per D5).
         """
-        await asyncio.to_thread(self._restart_rsshub_sync, container_name)
+        await asyncio.to_thread(self._restart_rsshub_sync, service_name)
 
-    def _restart_rsshub_sync(self, container_name: str) -> None:
+    def _restart_rsshub_sync(self, service_name: str) -> None:
         cmd = [
             "docker", "compose",
             "-f", COMPOSE_FILE_PATH,
             "up", "-d", "--force-recreate", "--no-deps",
-            container_name,
+            service_name,
         ]
         try:
             result = self._subprocess_runner(
@@ -105,7 +107,7 @@ class RestartController:
             raise RuntimeError(
                 f"docker compose recreate failed: {result.stderr.strip()}"
             )
-        logger.info("rsshub container %s recreated via compose", container_name)
+        logger.info("rsshub service %s recreated via compose", service_name)
 
     # ── API self-restart ──────────────────────────────────────────────────
 

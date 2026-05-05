@@ -14,7 +14,7 @@ from sembr.api import settings_restart
 from sembr.api.settings_restart import (
     COMPOSE_FILE_PATH,
     DEFAULT_SELF_SHUTDOWN_DELAY,
-    RSSHUB_CONTAINER_NAME,
+    RSSHUB_SERVICE_NAME,
     RestartController,
 )
 
@@ -55,7 +55,7 @@ async def test_restart_rsshub_invokes_compose_subprocess() -> None:
     assert "-d" in cmd
     assert "--force-recreate" in cmd
     assert "--no-deps" in cmd
-    assert RSSHUB_CONTAINER_NAME in cmd
+    assert RSSHUB_SERVICE_NAME in cmd   # service name "rsshub", not container name "sembr-rsshub"
     # D6: timeout=60 must be passed (design.md guarantees 4× headroom)
     assert kwargs.get("timeout") == 60
     assert kwargs.get("capture_output") is True
