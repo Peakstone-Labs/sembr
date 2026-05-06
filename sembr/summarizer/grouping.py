@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from sembr.matcher.callback import Match
 
 
-def _normalize(title: str) -> str:
+def normalize(title: str) -> str:
     """Lowercase + strip punctuation for stable ratio comparison."""
     title = title.lower()
     title = title.translate(str.maketrans("", "", string.punctuation))
@@ -50,7 +50,7 @@ class GroupingStep:
         if n == 0:
             return []
 
-        normalized = [_normalize(m.payload.get("title", "")) for m in matches]
+        normalized = [normalize(m.payload.get("title", "")) for m in matches]
         uf = _UnionFind(n)
 
         for i in range(n):

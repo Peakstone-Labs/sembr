@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
-from sembr.summarizer.grouping import GroupingStep, _normalize
+from sembr.summarizer.grouping import GroupingStep, normalize
 
 if TYPE_CHECKING:
     from sembr.matcher.callback import Match
@@ -66,7 +66,7 @@ async def absorb(
 
         for batch_group in batch_groups:
             rep = batch_group[0]
-            rep_norm = _normalize(rep.payload.get("title", ""))
+            rep_norm = normalize(rep.payload.get("title", ""))
 
             # NOTE: first-merge-wins by group_id insertion order — intentional.
             # If rep_norm is ≥0.85 similar to two existing groups they were not

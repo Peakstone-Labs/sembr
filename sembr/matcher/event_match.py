@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 
 from sembr.matcher.callback import Match
+from sembr.vector_store.qdrant import extract_point_vector
 
 if TYPE_CHECKING:
     from sembr.matcher.event_cache import EventIntentCache
@@ -57,13 +58,27 @@ async def _event_match_batch_inner(
     if len(cache) == 0:
         return
 
+    # _dot computes cosine via plain dot product, which is only correct when the
+    # embedder returns unit-norm vectors. Verifying once per batch is cheaper than
+    # adding the L2 normalization to the hot loop, and refusing to score is safer
+    # than producing silently wrong similarities.
+    embedder = getattr(app.state, "embedder", None)
+    if embedder is not None and not embedder.is_unit_normalized:
+        logger.warning(
+            "event_match: embedder %r is not unit-normalized; refusing to score "
+            "(would yield wrong similarities). Switch to a normalized backend or "
+            "implement an L2-aware matcher.",
+            type(embedder).__name__,
+        )
+        return
+
     # Collect (article_vector, payload) from each point
     article_entries: list[tuple[list[float], dict, str]] = []
     for pt in points:
-        vec = pt.vector if not isinstance(pt.vector, dict) else None
+        vec = extract_point_vector(pt)
         if vec is None:
             continue
-        article_entries.append((list(vec), pt.payload or {}, str(pt.id)))
+        article_entries.append((vec, pt.payload or {}, str(pt.id)))
 
     if not article_entries:
         return

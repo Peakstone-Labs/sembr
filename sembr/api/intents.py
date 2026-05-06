@@ -244,12 +244,12 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
                     cache_vector = existing_entry.vector
                 else:
                     # Intent was disabled (not in cache); retrieve once from Qdrant.
-                    # Use _extract_vector for named-vector safety (🟡1 fix).
-                    from sembr.matcher.event_cache import _extract_vector  # noqa: PLC0415
+                    # extract_point_vector handles the named-vector dict case.
+                    from sembr.vector_store.qdrant import extract_point_vector  # noqa: PLC0415
                     pts = await qdrant_client.retrieve(
                         collection_name="intents_current", ids=[intent_id], with_vectors=True
                     )
-                    cache_vector = _extract_vector(pts[0]) if pts else None
+                    cache_vector = extract_point_vector(pts[0]) if pts else None
             if cache_vector is None:
                 # Vector absent — intent is enabled in SQLite but unresolvable in Qdrant.
                 # Surface as 500 so the operator knows to DELETE+POST (🟡2 fix).

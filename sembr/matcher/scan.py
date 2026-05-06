@@ -13,6 +13,7 @@ Flow per tick (from design):
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -23,6 +24,9 @@ from sembr.db.intents import get_intent
 from sembr.db.match_seen import insert_unseen_returning_new
 from sembr.db.sqlite import get_conn
 from sembr.matcher.callback import Match
+from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
+from sembr.vector_store.news import ALIAS_NAME as _NEWS_ALIAS
+from sembr.vector_store.qdrant import extract_point_vector
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -30,8 +34,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_NEWS_ALIAS = "news_current"
-_INTENTS_ALIAS = "intents_current"
 # Upper bound on search results per tick. 100 is generous for MVP intent counts.
 _SEARCH_LIMIT = 100
 
@@ -81,7 +83,14 @@ async def scan_once(
                 intent.id,
             )
             return []
-        intent_vector = points[0].vector
+        intent_vector = extract_point_vector(points[0])
+        if intent_vector is None:
+            logger.warning(
+                "intent_id=%d Qdrant point has no resolvable vector "
+                "(named-vector layout?); skipping scan tick",
+                intent.id,
+            )
+            return []
 
         lookback_cutoff_ts = (
             int(datetime.now(timezone.utc).timestamp()) - options.lookback_seconds
@@ -122,7 +131,10 @@ async def scan_once(
 
         # Diagnostic probe: when normal query returns nothing, run two fallback queries
         # to distinguish "time filter too narrow" from "threshold too high".
-        if not results:
+        # Gated behind SEMBR_DEBUG_MATCHER because empty results are the common case
+        # under cron mode — running two extra Qdrant queries per intent per tick
+        # multiplies load by ~3× when most intents have nothing to match this window.
+        if not results and os.environ.get("SEMBR_DEBUG_MATCHER"):
             _feed_cond = (
                 [FieldCondition(key="feed_id", match=MatchAny(any=options.feed_ids))]
                 if options.feed_ids is not None
@@ -238,17 +250,13 @@ async def scan_once(
 
 
 async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
-    # D6: warn if embedder not ready — scan_once uses pre-computed Qdrant vectors,
-    # not the embedder, so we proceed. Skipping here was asymmetric with Fire and
-    # caused permanent silent misses when the SiliconFlow probe failed at startup
-    # (load() does not retry on failure, so is_loaded stays False indefinitely).
-    if not app.state.embedder.is_loaded:
-        logger.warning(
-            "intent_id=%d: embedder status=%r at scan tick; proceeding (scan does not use embedder)",
-            intent_id,
-            app.state.embedder.status,
-        )
-
+    # The scan path reads pre-computed vectors from Qdrant; it does not call the
+    # embedder. An earlier version skipped the tick when `embedder.is_loaded` was
+    # False, which caused permanent silent misses when the SiliconFlow startup
+    # probe failed (load() does not retry, so is_loaded stays False until restart).
+    # We deliberately do not log embedder status here — the /health endpoint and
+    # the dashboard already surface it once, and a per-tick warning would be pure
+    # log noise on a degraded but still-functional matcher.
     conn = get_conn()
     intent = await get_intent(conn, intent_id)
     if intent is None or not intent.enabled:

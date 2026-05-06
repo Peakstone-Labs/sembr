@@ -32,3 +32,20 @@ class QdrantHandle:
 
     async def close(self) -> None:
         await self._client.close()
+
+
+def extract_point_vector(point) -> list[float] | None:
+    """Return a flat float list from a Qdrant point's `vector` field.
+
+    Qdrant returns vectors as either a flat list (unnamed-vector collection,
+    sembr's default) or a `dict[name, list[float]]` (named-vector collection).
+    Returns None when the point carries no vector or carries a named-vector
+    dict without a resolvable default — callers must treat None as
+    "vector absent" and skip the point rather than crash on type mismatch.
+    """
+    raw = getattr(point, "vector", None)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        raw = raw.get("default") or next(iter(raw.values()), None)
+    return list(raw) if raw is not None else None

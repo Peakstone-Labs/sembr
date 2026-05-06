@@ -9,28 +9,15 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
+from sembr.vector_store.qdrant import extract_point_vector
+
 if TYPE_CHECKING:
     import aiosqlite
     from sembr.models import EventSchedule
     from sembr.vector_store.qdrant import QdrantHandle
 
 logger = logging.getLogger(__name__)
-
-
-def _extract_vector(point) -> list[float] | None:
-    """Extract a flat float list from a Qdrant point's vector field.
-
-    Mirrors the named-vector guard in event_match._event_match_batch_inner:64.
-    Returns None when the point has no vector or carries a named-vector dict
-    without a resolvable default — callers must treat None as "vector absent".
-    """
-    raw = getattr(point, "vector", None)
-    if raw is None:
-        return None
-    if isinstance(raw, dict):
-        # Named-vector layout: pick "default" or fall back to first available
-        raw = raw.get("default") or next(iter(raw.values()), None)
-    return list(raw) if raw is not None else None
 
 
 @dataclass
@@ -89,11 +76,11 @@ async def load_event_cache(
     loaded = 0
     for intent in event_intents:
         points = await qdrant_handle.client.retrieve(
-            collection_name="intents_current",
+            collection_name=_INTENTS_ALIAS,
             ids=[intent.id],
             with_vectors=True,
         )
-        vec = _extract_vector(points[0]) if points else None
+        vec = extract_point_vector(points[0]) if points else None
         if vec is None:
             logger.error(
                 "intent_id=%d (event-mode) has no Qdrant vector at startup; "

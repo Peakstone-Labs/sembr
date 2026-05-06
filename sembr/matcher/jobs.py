@@ -14,6 +14,8 @@ from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
+
 if TYPE_CHECKING:
     from sembr.models import CronSchedule, EventSchedule, Intent
 
@@ -123,7 +125,7 @@ async def register_all_enabled(
     registered = 0
     for intent in intents:
         points = await qdrant_client.retrieve(
-            collection_name="intents_current",
+            collection_name=_INTENTS_ALIAS,
             ids=[intent.id],
             with_vectors=False,
         )

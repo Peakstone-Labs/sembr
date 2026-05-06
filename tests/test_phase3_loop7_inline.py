@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 # ── a. _extract_vector: single-vector list ────────────────────────────────────
 def test_extract_vector_single_list():
-    from sembr.matcher.event_cache import _extract_vector
+    from sembr.vector_store.qdrant import extract_point_vector as _extract_vector
     point = MagicMock()
     point.vector = [1.0, 2.0]
     assert _extract_vector(point) == [1.0, 2.0]
@@ -18,7 +18,7 @@ def test_extract_vector_single_list():
 
 # ── b. _extract_vector: named-vector dict ─────────────────────────────────────
 def test_extract_vector_named_dict():
-    from sembr.matcher.event_cache import _extract_vector
+    from sembr.vector_store.qdrant import extract_point_vector as _extract_vector
     point = MagicMock()
     point.vector = {"default": [1.0, 2.0]}
     assert _extract_vector(point) == [1.0, 2.0]
@@ -26,7 +26,7 @@ def test_extract_vector_named_dict():
 
 # ── c. _extract_vector: None vector ──────────────────────────────────────────
 def test_extract_vector_none():
-    from sembr.matcher.event_cache import _extract_vector
+    from sembr.vector_store.qdrant import extract_point_vector as _extract_vector
     point = MagicMock()
     point.vector = None
     assert _extract_vector(point) is None

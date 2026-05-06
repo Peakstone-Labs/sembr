@@ -91,6 +91,11 @@ class SiliconFlowEmbedder(BaseEmbedder):
         return self.MAX_INPUT_CHARS
 
     @property
+    def is_unit_normalized(self) -> bool:
+        # BGE-M3 returns L2-normalized vectors per its model card.
+        return True
+
+    @property
     def is_loaded(self) -> bool:
         return self._status == "ok"
 

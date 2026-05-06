@@ -38,6 +38,18 @@ class BaseEmbedder(ABC):
 
     @property
     @abstractmethod
+    def is_unit_normalized(self) -> bool:
+        """True iff the backend returns L2-normalized vectors.
+
+        When True, callers may compute cosine similarity as a plain dot product
+        (the event-driven matcher relies on this to score in pure Python without
+        a numpy dependency). When False, callers must divide by the L2 norms or
+        ask Qdrant to compute cosine. A backend that lies here will produce
+        silently wrong scores — there is no runtime guard.
+        """
+
+    @property
+    @abstractmethod
     def is_loaded(self) -> bool:
         """False until the underlying model weights are in memory."""
 
