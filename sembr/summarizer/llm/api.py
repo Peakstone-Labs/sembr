@@ -20,11 +20,13 @@ class APIBackend(BaseLLMBackend):
         api_key: str,
         model: str,
         timeout: float,
+        max_prompt_chars: int,
     ) -> None:
         self._model = model
         # Held so error paths can scrub the key from any echoed response body
         # (some upstream proxies reflect Authorization headers in 401 bodies).
         self._api_key = api_key
+        self._max_prompt_chars = max_prompt_chars
         self._client = httpx.AsyncClient(
             base_url=base_url,
             headers={
@@ -33,6 +35,10 @@ class APIBackend(BaseLLMBackend):
             },
             timeout=timeout,
         )
+
+    @property
+    def max_prompt_chars(self) -> int:
+        return self._max_prompt_chars
 
     async def summarize(self, prompt: str, *, system: str | None = None) -> str:
         messages: list[dict[str, str]] = []

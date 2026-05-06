@@ -90,14 +90,19 @@ class Settings(BaseSettings):
         default=60.0,
         description="Per-request HTTP timeout in seconds for LLM summarization calls.",
     )
-    llm_max_body_chars: int = Field(
-        default=200_000,
-        ge=1_000,
+    llm_max_prompt_chars: int = Field(
+        default=2_000_000,
+        ge=2_000,
         description=(
-            "Per-article body cap (in characters) before the article is included in the LLM "
-            "prompt. Tune this to your model's context window: 200_000 is generous for "
-            "DeepSeek-V4-Flash (1M ctx), too large for an 8K-ctx local model — drop to "
-            "~10_000 in that case."
+            "Total prompt-side character budget for the LLM backend (system + "
+            "instruction + assembled articles). The pipeline reserves ~15% for the "
+            "LLM response and instruction overhead, then water-fills article bodies "
+            "into the remainder — short articles stay whole, only the longest get "
+            "truncated. Tune to your model's context window: 2_000_000 is generous "
+            "for DeepSeek-V4-Flash (1M token ctx ≈ 2M Chinese chars / 4M English "
+            "chars); drop to ~16_000 for an 8K-token local model. Characters "
+            "(not tokens) so the pipeline can operate on strings; set "
+            "conservatively for non-English content."
         ),
     )
 

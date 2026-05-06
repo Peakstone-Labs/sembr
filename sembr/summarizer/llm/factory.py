@@ -19,4 +19,5 @@ def build_llm_backend(settings: Settings) -> BaseLLMBackend:
         api_key=key,
         model=settings.llm_model,
         timeout=settings.llm_timeout_seconds,
+        max_prompt_chars=settings.llm_max_prompt_chars,
     )

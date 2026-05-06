@@ -62,6 +62,7 @@ async def test_pipeline_injects_language_en_into_system_prompt(prompts_dir: Path
     """Pipeline passes language='en' to LLM system prompt."""
     llm = MagicMock()
     llm.summarize = AsyncMock(return_value="summary text")
+    llm.max_prompt_chars = 2_000_000
 
     async def ctx_fetcher(intent_id: int):
         return "default", "default", "Bitcoin price movements", "en"
@@ -85,6 +86,7 @@ async def test_pipeline_injects_language_zh_into_system_prompt(prompts_dir: Path
     """Pipeline passes language='zh' to LLM system prompt."""
     llm = MagicMock()
     llm.summarize = AsyncMock(return_value="summary text")
+    llm.max_prompt_chars = 2_000_000
 
     async def ctx_fetcher(intent_id: int):
         return "default", "default", "比特币价格动向", "zh"
@@ -108,6 +110,7 @@ async def test_pipeline_default_language_zh_when_no_ctx_fetcher(prompts_dir: Pat
     """Without ctx_fetcher, default language 'zh' is used."""
     llm = MagicMock()
     llm.summarize = AsyncMock(return_value="summary")
+    llm.max_prompt_chars = 2_000_000
 
     pipeline = SummaryPipeline(llm=llm, prompts_dir=prompts_dir)
     await pipeline.handle([_make_match()])
@@ -126,6 +129,7 @@ async def test_pipeline_named_system_template_uses_language(prompts_dir: Path) -
     )
     llm = MagicMock()
     llm.summarize = AsyncMock(return_value="summary")
+    llm.max_prompt_chars = 2_000_000
 
     async def ctx_fetcher(intent_id: int):
         return "brief", "default", "topic", "ja"

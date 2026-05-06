@@ -37,6 +37,7 @@ def _match(article_id: str, title: str, published_at: str | None = None, intent_
 def _make_llm(summary: str = "test summary") -> AsyncMock:
     llm = AsyncMock()
     llm.summarize = AsyncMock(return_value=summary)
+    llm.max_prompt_chars = 2_000_000  # roomy default; tests can override
     return llm
 
 
