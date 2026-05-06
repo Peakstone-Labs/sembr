@@ -11,7 +11,11 @@ import hashlib
 def derive_phase_seconds(feed_id: int, period_seconds: int) -> int:
     if period_seconds <= 0:
         raise ValueError("period_seconds must be positive")
-    digest = hashlib.md5(f"feed-{feed_id}".encode("utf-8")).hexdigest()
+    # MD5 is a deterministic-spread function here, not a security primitive.
+    # `usedforsecurity=False` keeps this importable on FIPS-mode systems.
+    digest = hashlib.md5(
+        f"feed-{feed_id}".encode("utf-8"), usedforsecurity=False
+    ).hexdigest()
     return int(digest[:8], 16) % period_seconds
 
 

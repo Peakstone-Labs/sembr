@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import logging
 import re
 from calendar import timegm
@@ -40,13 +41,23 @@ class _HTMLStripper(HTMLParser):
 
 
 def _strip_html(text: str) -> str:
+    """Strip tags and decode HTML entities.
+
+    `html.parser.HTMLParser.handle_data` only emits character data, so entities
+    like `&amp;` / `&#39;` / `&quot;` arrive at the embedder unchanged unless we
+    run `html.unescape` afterward. The raw `&amp;` form degrades semantic
+    matching on text the article actually intended as `&`.
+    """
     s = _HTMLStripper()
     s.feed(text)
-    return s.get_text()
+    return html.unescape(s.get_text())
 
 
 def _compute_md5(url: str, title: str) -> str:
-    return hashlib.md5((url + title).encode()).hexdigest()
+    # MD5 is used here purely as a non-cryptographic content fingerprint.
+    # `usedforsecurity=False` keeps this importable on FIPS-mode systems where
+    # the cryptographic MD5 path is disabled at the OS level.
+    return hashlib.md5((url + title).encode(), usedforsecurity=False).hexdigest()
 
 
 def _entry_published(entry: feedparser.FeedParserDict) -> datetime | None:

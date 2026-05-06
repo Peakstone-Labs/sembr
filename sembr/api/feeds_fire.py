@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from typing import Any
 
@@ -19,7 +20,7 @@ from sembr.collector.fire_tasks import (
     throttle_check,
 )
 from sembr.collector.rss import FetchError
-from sembr.collector.scheduler import SOURCE_REGISTRY, _LIMITER_REF, _nullcontext, collect_feed
+from sembr.collector.scheduler import SOURCE_REGISTRY, _LIMITER_REF, collect_feed
 from sembr.db.feeds import fingerprint_exists, get_feed
 from sembr.db.sqlite import get_conn
 
@@ -52,7 +53,7 @@ async def _feed_dry_run(task: FeedFireTask, feed_url: str, source_type: str, con
     fetch_ctx = (
         limiter.acquire(limiter.group_key_for(feed_url))
         if limiter is not None
-        else _nullcontext()
+        else nullcontext()
     )
 
     try:

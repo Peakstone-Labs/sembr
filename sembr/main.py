@@ -224,7 +224,7 @@ async def lifespan(app: FastAPI):
             # Yield one tick so collect_feed coros that already entered but
             # haven't yet read _LIMITER_REF can pick up the live limiter;
             # otherwise they'd silently bypass the per-host gate via the
-            # _nullcontext fallback. (Loop 2 review #🟡-1)
+            # contextlib.nullcontext fallback.
             await asyncio.sleep(0)
             set_host_limiter(None)
             load_task.cancel()

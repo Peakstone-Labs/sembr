@@ -6,26 +6,12 @@ Each feed gets its own IntervalTrigger job so poll_interval_minutes is exact.
 from __future__ import annotations
 
 import logging
-from contextlib import asynccontextmanager
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 
+from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-
-
-@asynccontextmanager
-async def _nullcontext():
-    yield
-
-
-# Module-level handle for the host limiter so collect_feed (an APScheduler-invoked
-# coroutine without access to FastAPI's request/app) can find it without changing
-# add_feed_job's signature. set_host_limiter is called from main.lifespan.
-_LIMITER_REF: dict[str, "HostLimiter | None"] = {"limiter": None}
-
-
-def set_host_limiter(limiter: "HostLimiter | None") -> None:
-    _LIMITER_REF["limiter"] = limiter
 
 from sembr.collector.base import BaseSource
 from sembr.collector.host_limiter import HostLimiter
@@ -36,6 +22,15 @@ from sembr.db.articles import insert_article_pending
 from sembr.db.feeds import fingerprint_exists, insert_fingerprint, update_last_collected
 from sembr.db.sqlite import get_conn
 from sembr.models import Feed
+
+# Module-level handle for the host limiter so collect_feed (an APScheduler-invoked
+# coroutine without access to FastAPI's request/app) can find it without changing
+# add_feed_job's signature. set_host_limiter is called from main.lifespan.
+_LIMITER_REF: dict[str, HostLimiter | None] = {"limiter": None}
+
+
+def set_host_limiter(limiter: HostLimiter | None) -> None:
+    _LIMITER_REF["limiter"] = limiter
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +87,7 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
     if source_cls is None:
         # Configuration error, not a fetch attempt — per D4, don't write an event row.
         logger.error("unknown source_type=%r for feed_id=%d", source_type, feed_id)
-        return 0, 0, [], []
+        return 0, 0, []
 
     conn = get_conn()
 
@@ -115,7 +110,7 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
     fetch_ctx = (
         limiter.acquire(limiter.group_key_for(feed_url))
         if limiter is not None
-        else _nullcontext()
+        else nullcontext()
     )
     # Two timestamps so feed_fetch_log.elapsed_ms reflects ACTUAL fetch time, not
     # queue-wait time; SC#5 / SC#6 dashboard evidence depends on this distinction.
@@ -206,5 +201,7 @@ async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
 def remove_feed_job(scheduler: AsyncIOScheduler, feed_id: int) -> None:
     try:
         scheduler.remove_job(f"feed_{feed_id}")
-    except Exception:
-        pass  # job may not exist if service restarted after delete
+    except JobLookupError:
+        # Job may not exist if the service restarted after the row was deleted —
+        # treat as no-op rather than an error.
+        logger.debug("remove_feed_job: feed_%d already absent", feed_id)
