@@ -6,36 +6,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from sembr.summarizer.pipeline import SummaryPipeline, _FALLBACK_SYSTEM_PROMPT
+from sembr.summarizer.pipeline import SummaryPipeline
 
 
 # ---------------------------------------------------------------------------
-# Fallback system prompt format tests (mirrors prompts/system/default.md)
+# Verify the on-disk default system template carries the language contract.
 # ---------------------------------------------------------------------------
 
 
-def test_fallback_system_prompt_contains_language_placeholder() -> None:
-    assert "{language}" in _FALLBACK_SYSTEM_PROMPT
-
-
-def test_fallback_system_prompt_format_en() -> None:
-    rendered = _FALLBACK_SYSTEM_PROMPT.format(language="en")
-    assert "Respond in language: en" in rendered
-    assert "{language}" not in rendered
-
-
-def test_fallback_system_prompt_format_zh() -> None:
-    rendered = _FALLBACK_SYSTEM_PROMPT.format(language="zh")
-    assert "Respond in language: zh" in rendered
-
-
-def test_fallback_system_prompt_format_unrecognized() -> None:
-    rendered = _FALLBACK_SYSTEM_PROMPT.format(language="tlh")
-    assert "Respond in language: tlh" in rendered
-    assert "default to English" in rendered
-
-
-# Also verify the actual default.md on disk has the same property.
 def test_default_system_md_contains_language_placeholder() -> None:
     repo_root = Path(__file__).parent.parent
     default_md = repo_root / "prompts" / "system" / "default.md"

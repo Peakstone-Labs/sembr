@@ -194,12 +194,12 @@ async def lifespan(app: FastAPI):
     email_ch = EmailChannel(settings)
     pipeline = SummaryPipeline(
         llm=llm_backend,
-        grouping_threshold=settings.llm_grouping_threshold,
         get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(conn, iid),
         get_feed_names=lambda ids: get_feed_names(conn, ids),
         on_summary=lambda r: _dispatch_notification(conn, email_ch, r),
         on_template_error=lambda iid, k, n, r: _dispatch_template_error(conn, email_ch, iid, k, n, r),
         prompts_dir=settings.prompts_dir,
+        max_body_chars=settings.llm_max_body_chars,
     )
     app.state.on_match = pipeline.handle
     app.state.qdrant = qdrant

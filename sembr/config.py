@@ -90,11 +90,15 @@ class Settings(BaseSettings):
         default=60.0,
         description="Per-request HTTP timeout in seconds for LLM summarization calls.",
     )
-    llm_grouping_threshold: float = Field(
-        default=0.85,
-        ge=0.0,
-        le=1.0,
-        description="difflib title similarity threshold for grouping articles into one event.",
+    llm_max_body_chars: int = Field(
+        default=200_000,
+        ge=1_000,
+        description=(
+            "Per-article body cap (in characters) before the article is included in the LLM "
+            "prompt. Tune this to your model's context window: 200_000 is generous for "
+            "DeepSeek-V4-Flash (1M ctx), too large for an 8K-ctx local model — drop to "
+            "~10_000 in that case."
+        ),
     )
 
     smtp_host: str = Field(default="", description="SMTP server hostname. Empty = email disabled.")

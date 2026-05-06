@@ -1,4 +1,4 @@
-"""SummaryPipeline: on_match → group → LLM → hook → on_summary.
+"""SummaryPipeline: on_match → LLM → hook → on_summary.
 
 on_match must never raise; all errors are logged and the tick is silently
 skipped (same contract as log_matches in matcher/callback.py).
@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Protocol
 import html2text as _h2t
 
 from sembr.summarizer import templates as _templates
-from sembr.summarizer.grouping import GroupingStep
 from sembr.summarizer.models import Citation, OnSummaryCallback, PrePushHook, SummaryResult
 from sembr.summarizer.templates import TemplateNotFoundError, TemplateRenderError
 
@@ -21,33 +20,6 @@ if TYPE_CHECKING:
     from sembr.summarizer.llm.base import BaseLLMBackend
 
 logger = logging.getLogger(__name__)
-
-# Hardcoded fallback strings — kept as documentation / last-resort reference.
-# Not used at runtime: template errors are routed to on_template_error, not
-# silently replaced. These mirror the content of prompts/system/default.md
-# and prompts/instruction/default.md respectively.
-_FALLBACK_SYSTEM_PROMPT = (
-    "You are a news monitoring assistant. Output Markdown only "
-    "(## / ### for sub-topic headings, - or * for bullets, **bold** for emphasis). "
-    "Start directly with the content — no preamble. "
-    "Do not restate the topic or add a top-level title. "
-    "Respond in language: {language}. If the requested language is unrecognized, default to English. "
-    "Structure by event or sub-topic; length reflects news density. "
-    "Merge duplicate facts; note source conflicts briefly. "
-    "Do not reproduce URLs or bracketed index numbers."
-)
-
-_FALLBACK_PROMPT = (
-    "The user is tracking:\n\n"
-    "> {intent_text}\n\n"
-    "The following articles were semantically matched to this topic. "
-    "Each entry contains: the article title, full body text, and the source URL.\n\n"
-    "{articles}\n\n"
-    "---\n\n"
-    "Write a digest of the key developments above."
-)
-
-_BODY_TRUNCATE = 1_000_000  # DeepSeek Flash V4 has 1M context; effectively no truncation
 
 _h2t_converter = _h2t.HTML2Text()
 _h2t_converter.ignore_links = True
@@ -72,11 +44,11 @@ async def log_summaries(result: SummaryResult) -> None:
     )
 
 
-def _build_articles_text(group: list[Match]) -> str:
+def _build_articles_text(matches: list[Match], max_body_chars: int) -> str:
     lines: list[str] = []
-    for i, m in enumerate(group, 1):
+    for i, m in enumerate(matches, 1):
         title = m.payload.get("title", "")
-        body = _to_plain_text(m.payload.get("body", ""))[:_BODY_TRUNCATE]
+        body = _to_plain_text(m.payload.get("body", ""))[:max_body_chars]
         url = m.payload.get("url", "")
         lines.append(f"[{i}] {title}\n{body}\nSource: {url}")
     return "\n\n".join(lines)
@@ -109,25 +81,35 @@ OnTemplateError = Callable[[int, str, str, str], Awaitable[None]]
 
 
 class SummaryPipeline:
+    """Per-intent: render prompt → call LLM → emit one SummaryResult per tick.
+
+    The pipeline is intentionally one-summary-per-intent-per-tick. The matcher
+    delivers everything that scored above threshold in this scan window as a
+    single batch; the LLM groups and structures the digest itself in the
+    output, so the pipeline does not pre-cluster on its own. Cross-source
+    near-duplicate dedup, when needed at all, is the LLM's job under the
+    system prompt.
+    """
+
     def __init__(
         self,
         llm: BaseLLMBackend,
-        grouping_threshold: float = 0.85,
         on_summary: OnSummaryCallback | None = None,
         pre_push_hook: PrePushHook | None = None,
         get_intent_prompt_ctx: IntentPromptCtxFetcher | None = None,
         get_feed_names: FeedNameFetcher | None = None,
         on_template_error: OnTemplateError | None = None,
         prompts_dir: Path = Path("/app/prompts"),
+        max_body_chars: int = 200_000,
     ) -> None:
         self._llm = llm
-        self._grouper = GroupingStep(threshold=grouping_threshold)
         self._on_summary: OnSummaryCallback = on_summary or log_summaries
         self._pre_push_hook = pre_push_hook
         self._get_intent_prompt_ctx = get_intent_prompt_ctx
         self._get_feed_names = get_feed_names
         self._on_template_error = on_template_error
         self._prompts_dir = prompts_dir
+        self._max_body_chars = max_body_chars
 
     async def handle(self, matches: list[Match]) -> None:
         """on_match callback entry point — must never raise."""
@@ -145,7 +127,6 @@ class SummaryPipeline:
             key=lambda m: (m.payload.get("published_at") or "", m.article_id),
             reverse=True,
         )
-        groups = [ordered]
 
         system_tpl_name: str = "default"
         instruction_tpl_name: str = "default"
@@ -169,7 +150,6 @@ class SummaryPipeline:
                 )
                 return
 
-        # Render system prompt once per tick (shared across all groups).
         try:
             system_prompt = _templates.render_system(
                 self._prompts_dir, system_tpl_name, language=language
@@ -196,55 +176,54 @@ class SummaryPipeline:
                     exc,
                 )
 
-        for group in groups:
-            articles_text = _build_articles_text(group)
+        articles_text = _build_articles_text(ordered, self._max_body_chars)
 
+        try:
+            prompt = _templates.render_instruction(
+                self._prompts_dir,
+                instruction_tpl_name,
+                intent_text=intent_text,
+                articles=articles_text,
+            )
+        except (TemplateNotFoundError, TemplateRenderError) as exc:
+            logger.error(
+                "SummaryPipeline: instruction template error for intent_id=%d: %s",
+                intent_id,
+                exc,
+            )
+            if self._on_template_error is not None:
+                await self._on_template_error(
+                    intent_id, "instruction", instruction_tpl_name, str(exc)
+                )
+            return
+
+        try:
+            summary = await self._llm.summarize(prompt, system=system_prompt)
+        except Exception as exc:
+            logger.error(
+                "SummaryPipeline: LLM error for intent_id=%d batch_size=%d: %s",
+                intent_id,
+                len(ordered),
+                exc,
+            )
+            return
+
+        citations = [_to_citation(m, feed_name_map) for m in ordered]
+        result = SummaryResult(
+            intent_id=intent_id,
+            summary=summary,
+            citations=citations,
+            primary=citations[0] if citations else None,
+            other_sources=citations[1:] if len(citations) > 1 else [],
+        )
+
+        if self._pre_push_hook is not None:
             try:
-                prompt = _templates.render_instruction(
-                    self._prompts_dir,
-                    instruction_tpl_name,
-                    intent_text=intent_text,
-                    articles=articles_text,
-                )
-            except (TemplateNotFoundError, TemplateRenderError) as exc:
-                logger.error(
-                    "SummaryPipeline: instruction template error for intent_id=%d: %s",
-                    intent_id,
-                    exc,
-                )
-                if self._on_template_error is not None:
-                    await self._on_template_error(
-                        intent_id, "instruction", instruction_tpl_name, str(exc)
-                    )
+                should_push = await self._pre_push_hook(result)
+            except Exception:
+                logger.exception("SummaryPipeline: pre_push_hook error, skipping result")
+                return
+            if not should_push:
                 return
 
-            try:
-                summary = await self._llm.summarize(prompt, system=system_prompt)
-            except Exception as exc:
-                logger.error(
-                    "SummaryPipeline: LLM error for intent_id=%d group_size=%d: %s",
-                    intent_id,
-                    len(group),
-                    exc,
-                )
-                continue
-
-            citations = [_to_citation(m, feed_name_map) for m in group]
-            result = SummaryResult(
-                intent_id=intent_id,
-                summary=summary,
-                citations=citations,
-                primary=citations[0] if citations else None,
-                other_sources=citations[1:] if len(citations) > 1 else [],
-            )
-
-            if self._pre_push_hook is not None:
-                try:
-                    should_push = await self._pre_push_hook(result)
-                except Exception:
-                    logger.exception("SummaryPipeline: pre_push_hook error, skipping result")
-                    continue
-                if not should_push:
-                    continue
-
-            await self._on_summary(result)
+        await self._on_summary(result)

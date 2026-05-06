@@ -22,6 +22,9 @@ class APIBackend(BaseLLMBackend):
         timeout: float,
     ) -> None:
         self._model = model
+        # Held so error paths can scrub the key from any echoed response body
+        # (some upstream proxies reflect Authorization headers in 401 bodies).
+        self._api_key = api_key
         self._client = httpx.AsyncClient(
             base_url=base_url,
             headers={
@@ -48,8 +51,11 @@ class APIBackend(BaseLLMBackend):
         except httpx.RequestError as exc:
             raise LLMError(f"LLM request error: {exc}") from exc
 
-        if resp.status_code != 200:
-            raise LLMError(f"LLM API returned {resp.status_code}: {resp.text[:200]}")
+        if not resp.is_success:
+            safe_body = resp.text[:200]
+            if self._api_key:
+                safe_body = safe_body.replace(self._api_key, "***")
+            raise LLMError(f"LLM API returned {resp.status_code}: {safe_body}")
 
         try:
             text = resp.json()["choices"][0]["message"]["content"]

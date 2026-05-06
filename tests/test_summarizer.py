@@ -128,7 +128,6 @@ async def test_citations_ordered_newest_first(prompts_dir: Path) -> None:
     llm = _make_llm()
     pipeline = SummaryPipeline(
         llm=llm,
-        grouping_threshold=0.85,
         on_summary=capture,
         get_intent_prompt_ctx=_ctx,
         prompts_dir=prompts_dir,
@@ -157,7 +156,6 @@ async def test_primary_none_published_at_sorts_last(prompts_dir: Path) -> None:
     llm = _make_llm()
     pipeline = SummaryPipeline(
         llm=llm,
-        grouping_threshold=0.85,
         on_summary=capture,
         get_intent_prompt_ctx=_ctx,
         prompts_dir=prompts_dir,
