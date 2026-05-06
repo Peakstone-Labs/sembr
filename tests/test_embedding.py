@@ -29,13 +29,13 @@ from sembr.db.articles import (
 )
 from sembr.db.feeds import init_feed_tables
 from sembr.embedder.scheduler import (
-    ALIAS_NAME,
     BATCH_SIZE,
     MAX_ATTEMPTS,
     _md5_to_uuid,
     add_embedder_worker_job,
     embedder_worker,
 )
+from sembr.vector_store.news import ALIAS_NAME
 
 
 # ---------------------------------------------------------------------------

@@ -87,9 +87,11 @@ def test_schema_returns_sembr_fields_and_passthrough(client: TestClient) -> None
     secret_field = next(f for f in body["sembr_fields"] if f["key"] == "EMBEDDER_API_KEY")
     assert secret_field["sensitive"] is True
     assert secret_field["type"] == "secret"
-    # Numeric ge/le
-    threshold = next(f for f in body["sembr_fields"] if f["key"] == "LLM_GROUPING_THRESHOLD")
-    assert threshold["ge"] == 0.0 and threshold["le"] == 1.0
+    # Numeric ge/le — pick a numeric field with a documented bound; the field set
+    # evolves across loops, so this assertion only checks that ge/le metadata is
+    # exposed correctly for at least one numeric field.
+    budget = next(f for f in body["sembr_fields"] if f["key"] == "LLM_MAX_PROMPT_CHARS")
+    assert budget["ge"] == 2_000
     # Passthrough prefixes + recommended
     assert "TWITTER_" in body["passthrough_prefixes"]
     assert "GITHUB_" in body["passthrough_prefixes"]

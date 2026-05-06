@@ -42,6 +42,7 @@ async def test_missing_instruction_template_calls_on_template_error(prompts_dir:
     """Missing instruction file → on_template_error called with kind='instruction'; LLM not called."""
     llm = MagicMock()
     llm.summarize = AsyncMock(return_value="summary")
+    llm.max_prompt_chars = 2_000_000
     on_template_error = AsyncMock()
 
     async def ctx(iid):
@@ -68,6 +69,7 @@ async def test_missing_system_template_calls_on_template_error(prompts_dir: Path
     """Missing system file → on_template_error called with kind='system'; LLM not called."""
     llm = MagicMock()
     llm.summarize = AsyncMock(return_value="summary")
+    llm.max_prompt_chars = 2_000_000
     on_template_error = AsyncMock()
 
     async def ctx(iid):
@@ -96,6 +98,7 @@ async def test_render_error_in_instruction_calls_on_template_error(prompts_dir: 
     )
     llm = MagicMock()
     llm.summarize = AsyncMock(return_value="summary")
+    llm.max_prompt_chars = 2_000_000
     on_template_error = AsyncMock()
 
     async def ctx(iid):
@@ -120,6 +123,7 @@ async def test_happy_path_still_works(prompts_dir: Path) -> None:
     """Normal flow: both templates exist → LLM called, on_summary called."""
     llm = MagicMock()
     llm.summarize = AsyncMock(return_value="digest text")
+    llm.max_prompt_chars = 2_000_000
     on_summary = AsyncMock()
     on_template_error = AsyncMock()
 
@@ -145,6 +149,7 @@ async def test_no_on_template_error_callback_still_doesnt_raise(prompts_dir: Pat
     """Template error with no on_template_error callback → logs only, no exception."""
     llm = MagicMock()
     llm.summarize = AsyncMock()
+    llm.max_prompt_chars = 2_000_000
 
     async def ctx(iid):
         return "default", "ghost", "fed rate", "zh"
