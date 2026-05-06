@@ -1,30 +1,45 @@
-"""news_bge-m3_v1 collection bootstrap.
+"""News collection bootstrap + write helpers.
 
 Idempotent: checks existence before creating collection and alias.
-Alias switching for model upgrades is out of scope for MVP (D9).
+Alias switching for model upgrades is out of scope for the MVP and is owned
+by a future model-upgrade flow, not bootstrap.
 """
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from qdrant_client import AsyncQdrantClient
 
+    from sembr.embedder.base import BaseEmbedder
+
 logger = logging.getLogger(__name__)
 
-COLLECTION_NAME = "news_bge-m3_v1"
 ALIAS_NAME = "news_current"
 
 
-async def ensure_news_collection(client: "AsyncQdrantClient") -> None:
-    """Create the news collection and alias if either is missing. Idempotent (D8, D9).
+def collection_name(model_version: str) -> str:
+    """Versioned collection name for the news store.
 
-    If news_current already points to a different collection, logs a warning and
-    leaves it unchanged — alias migration belongs to the 0.2.0 alias-switch feature.
+    Production callers should write through `ALIAS_NAME` (`news_current`); the
+    versioned name only matters for bootstrap and alias migration.
+    """
+    return f"news_{model_version}"
 
-    qdrant_client models are imported lazily so this module is importable on the
-    Windows dev machine without qdrant_client installed.
+
+async def ensure_news_collection(
+    client: "AsyncQdrantClient", embedder: "BaseEmbedder"
+) -> None:
+    """Create the news collection and alias if either is missing. Idempotent.
+
+    Collection name and vector dim are derived from the embedder so a backend swap
+    flips the storage in lockstep. If `news_current` already points to a different
+    collection, logs a warning and leaves it unchanged — alias migration belongs to
+    the model-upgrade flow, not bootstrap.
+
+    `qdrant_client` models are imported lazily so this module remains importable
+    on a development machine without `qdrant_client` installed.
     """
     from qdrant_client.models import (  # noqa: PLC0415
         CreateAlias,
@@ -37,14 +52,16 @@ async def ensure_news_collection(client: "AsyncQdrantClient") -> None:
         VectorParams,
     )
 
+    name = collection_name(embedder.model_version)
+
     collections = await client.get_collections()
     existing_names = {c.name for c in collections.collections}
 
-    if COLLECTION_NAME not in existing_names:
+    if name not in existing_names:
         await client.create_collection(
-            collection_name=COLLECTION_NAME,
+            collection_name=name,
             vectors_config=VectorParams(
-                size=1024,
+                size=embedder.dim,
                 distance=Distance.COSINE,
                 on_disk=True,
             ),
@@ -55,28 +72,27 @@ async def ensure_news_collection(client: "AsyncQdrantClient") -> None:
                 ),
             ),
         )
-        logger.info("created Qdrant collection %r", COLLECTION_NAME)
+        logger.info("created Qdrant collection %r", name)
 
     # Payload index on ingested_at_ts: required for the dashboard's
     # scroll(order_by="ingested_at_ts") "latest articles" listing. Qdrant rejects
     # order_by on un-indexed fields; create_payload_index is idempotent so
     # repeated startup is safe.
     await client.create_payload_index(
-        collection_name=COLLECTION_NAME,
+        collection_name=name,
         field_name="ingested_at_ts",
         field_schema=PayloadSchemaType.INTEGER,
     )
 
-    # Payload index on feed_id (D2 / R2): the Feeds tab drill-down filters
-    # news_current by feed_id. Without this index Qdrant degrades to a full
-    # collection scan on every expand. Idempotent.
+    # Payload index on feed_id: the Feeds tab drill-down filters news_current by
+    # feed_id. Without this index Qdrant degrades to a full collection scan on
+    # every expand. Idempotent.
     await client.create_payload_index(
-        collection_name=COLLECTION_NAME,
+        collection_name=name,
         field_name="feed_id",
         field_schema=PayloadSchemaType.INTEGER,
     )
 
-    # Check alias globally to detect if news_current points elsewhere (D9)
     all_aliases = await client.get_aliases()
     alias_map = {a.alias_name: a.collection_name for a in all_aliases.aliases}
 
@@ -85,17 +101,37 @@ async def ensure_news_collection(client: "AsyncQdrantClient") -> None:
             change_aliases_operations=[
                 CreateAliasOperation(
                     create_alias=CreateAlias(
-                        collection_name=COLLECTION_NAME,
+                        collection_name=name,
                         alias_name=ALIAS_NAME,
                     )
                 )
             ],
         )
-        logger.info("created alias %r → %r", ALIAS_NAME, COLLECTION_NAME)
-    elif alias_map[ALIAS_NAME] != COLLECTION_NAME:
+        logger.info("created alias %r → %r", ALIAS_NAME, name)
+    elif alias_map[ALIAS_NAME] != name:
         logger.warning(
-            "alias %r already points to %r, not %r — skipping (D9)",
+            "alias %r already points to %r, not %r — leaving as-is "
+            "(alias migration is owned by the model-upgrade flow, not bootstrap)",
             ALIAS_NAME,
             alias_map[ALIAS_NAME],
-            COLLECTION_NAME,
+            name,
         )
+
+
+async def upsert_news_points(
+    client: "AsyncQdrantClient",
+    points: list[Any],
+    *,
+    wait: bool = True,
+) -> None:
+    """Upsert article points through the `news_current` alias.
+
+    Caller owns `PointStruct` construction (the embedder worker has model-version
+    metadata it needs to inject into payloads); this helper exists so that the
+    collection alias is not duplicated at every write site.
+    """
+    await client.upsert(
+        collection_name=ALIAS_NAME,
+        points=points,
+        wait=wait,
+    )

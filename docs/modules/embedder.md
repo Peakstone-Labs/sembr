@@ -28,6 +28,9 @@ class BaseEmbedder(ABC):
     def model_version(self) -> str: ...        # persisted in payload as embedding_model_version
     @property
     @abstractmethod
+    def dim(self) -> int: ...                  # vector dimensionality; vector store uses this to size collections
+    @property
+    @abstractmethod
     def max_input_chars(self) -> int: ...      # per-text char cap the worker enforces before aembed
     @property
     @abstractmethod

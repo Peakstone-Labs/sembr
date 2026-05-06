@@ -83,6 +83,10 @@ class SiliconFlowEmbedder(BaseEmbedder):
         return self.MODEL_VERSION
 
     @property
+    def dim(self) -> int:
+        return self.EXPECTED_DIM
+
+    @property
     def max_input_chars(self) -> int:
         return self.MAX_INPUT_CHARS
 

@@ -37,6 +37,7 @@ from sembr.db.articles import (
     pull_pending_batch,
 )
 from sembr.db.sqlite import get_conn
+from sembr.vector_store.news import upsert_news_points
 
 if TYPE_CHECKING:
     from sembr.embedder.base import BaseEmbedder
@@ -54,8 +55,6 @@ BATCH_SIZE = 32
 # can publish its own bound (tied to the model's context window).
 MAX_ATTEMPTS = 3  # total embed+upsert attempts before a row is demoted to dead_articles
 POLL_INTERVAL_SECONDS = 30
-
-ALIAS_NAME = "news_current"
 
 
 def _md5_to_uuid(md5: str) -> str:
@@ -182,11 +181,7 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
     # Only transient connection errors skip retry increment (D20).
     points = [_to_point(row, vec, embedder.model_version) for row, vec in zip(batch, vectors)]
     try:
-        await qdrant.client.upsert(
-            collection_name=ALIAS_NAME,
-            points=points,
-            wait=True,
-        )
+        await upsert_news_points(qdrant.client, points, wait=True)
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
         logger.warning("qdrant transient, retrying next tick: %s", exc)
         await _emit_embed_event(

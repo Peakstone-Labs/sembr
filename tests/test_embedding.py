@@ -768,7 +768,13 @@ def test_embedder_worker_no_more_wait_for_wrap():
 async def test_ensure_news_collection_idempotent():
     import sys
 
-    from sembr.vector_store.news import COLLECTION_NAME, ensure_news_collection
+    from sembr.vector_store.news import collection_name, ensure_news_collection
+
+    expected_name = collection_name("bge-m3_v1")
+
+    mock_embedder = MagicMock()
+    mock_embedder.model_version = "bge-m3_v1"
+    mock_embedder.dim = 1024
 
     mock_client = AsyncMock()
 
@@ -788,20 +794,20 @@ async def test_ensure_news_collection_idempotent():
         sys.modules,
         {"qdrant_client": MagicMock(), "qdrant_client.models": mock_qdrant_models},
     ):
-        await ensure_news_collection(mock_client)
+        await ensure_news_collection(mock_client, mock_embedder)
 
         mock_client.create_collection.assert_called_once()
         mock_client.update_collection_aliases.assert_called_once()
 
         col = MagicMock()
-        col.name = COLLECTION_NAME
+        col.name = expected_name
         collections_resp2 = MagicMock()
         collections_resp2.collections = [col]
         mock_client.get_collections = AsyncMock(return_value=collections_resp2)
 
         alias = MagicMock()
         alias.alias_name = "news_current"
-        alias.collection_name = COLLECTION_NAME
+        alias.collection_name = expected_name
         aliases_resp2 = MagicMock()
         aliases_resp2.aliases = [alias]
         mock_client.get_aliases = AsyncMock(return_value=aliases_resp2)
@@ -809,7 +815,7 @@ async def test_ensure_news_collection_idempotent():
         mock_client.create_collection.reset_mock()
         mock_client.update_collection_aliases.reset_mock()
 
-        await ensure_news_collection(mock_client)
+        await ensure_news_collection(mock_client, mock_embedder)
 
     mock_client.create_collection.assert_not_called()
     mock_client.update_collection_aliases.assert_not_called()

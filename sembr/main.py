@@ -139,8 +139,8 @@ async def lifespan(app: FastAPI):
     await init_event_buffer_tables(conn)  # D6/D22: after intents (FK dependency)
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
-    await ensure_news_collection(qdrant.client)
-    await ensure_intents_collection(qdrant.client)
+    await ensure_news_collection(qdrant.client, embedder)
+    await ensure_intents_collection(qdrant.client, embedder)
     load_task = asyncio.create_task(embedder.load())  # background; /health probes status
     scheduler = make_scheduler()
     # D4: per-host concurrency limiter must exist before any feed job can fire so

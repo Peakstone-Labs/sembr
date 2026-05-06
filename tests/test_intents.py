@@ -412,9 +412,15 @@ def test_put_text_change_rollback_on_upsert_failure() -> None:
 async def test_ensure_intents_collection_creates_with_correct_config() -> None:
     from sembr.vector_store.intents import (  # noqa: PLC0415
         ALIAS_NAME,
-        COLLECTION_NAME,
+        collection_name,
         ensure_intents_collection,
     )
+
+    expected_name = collection_name("bge-m3_v1")
+
+    mock_embedder = MagicMock()
+    mock_embedder.model_version = "bge-m3_v1"
+    mock_embedder.dim = 1024
 
     mock_client = AsyncMock()
 
@@ -431,16 +437,16 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
 
     mock_qdrant_models = MagicMock()
     with patch.dict(sys.modules, {"qdrant_client": MagicMock(), "qdrant_client.models": mock_qdrant_models}):
-        await ensure_intents_collection(mock_client)
+        await ensure_intents_collection(mock_client, mock_embedder)
 
-        # D3: size=1024, distance=COSINE, on_disk=False, no quantization_config
+        # D3: size=embedder.dim, distance=COSINE, on_disk=False, no quantization_config
         mock_qdrant_models.VectorParams.assert_called_once_with(
             size=1024,
             distance=mock_qdrant_models.Distance.COSINE,
             on_disk=False,
         )
         create_kwargs = mock_client.create_collection.call_args.kwargs
-        assert create_kwargs["collection_name"] == COLLECTION_NAME
+        assert create_kwargs["collection_name"] == expected_name
         assert "quantization_config" not in create_kwargs  # O2-B: no quantization
 
         # D4: alias intents_current → intents_bge-m3_v1
@@ -448,14 +454,14 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
 
         # Idempotency: second call with collection + alias already present must be no-op
         col = MagicMock()
-        col.name = COLLECTION_NAME
+        col.name = expected_name
         collections_resp2 = MagicMock()
         collections_resp2.collections = [col]
         mock_client.get_collections = AsyncMock(return_value=collections_resp2)
 
         alias = MagicMock()
         alias.alias_name = ALIAS_NAME
-        alias.collection_name = COLLECTION_NAME
+        alias.collection_name = expected_name
         aliases_resp2 = MagicMock()
         aliases_resp2.aliases = [alias]
         mock_client.get_aliases = AsyncMock(return_value=aliases_resp2)
@@ -463,7 +469,7 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
         mock_client.create_collection.reset_mock()
         mock_client.update_collection_aliases.reset_mock()
 
-        await ensure_intents_collection(mock_client)
+        await ensure_intents_collection(mock_client, mock_embedder)
 
     mock_client.create_collection.assert_not_called()
     mock_client.update_collection_aliases.assert_not_called()

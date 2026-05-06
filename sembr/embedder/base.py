@@ -19,6 +19,16 @@ class BaseEmbedder(ABC):
 
     @property
     @abstractmethod
+    def dim(self) -> int:
+        """Embedding dimensionality. Vector store uses this to size its collections.
+
+        Tied to the backend model. Vector-store callers must read this rather than
+        hardcode a literal — a model swap that changes dim would otherwise produce
+        a silently mismatched collection.
+        """
+
+    @property
+    @abstractmethod
     def max_input_chars(self) -> int:
         """Per-text character cap the worker applies before calling `aembed`.
 
