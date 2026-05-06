@@ -35,9 +35,15 @@ class EmbedderSchemaError(EmbedderAPIError):
 
 
 class SiliconFlowEmbedder(BaseEmbedder):
-    """BGE-M3 via SiliconFlow /v1/embeddings (OpenAI-compatible protocol)."""
+    """BGE-M3 via SiliconFlow /v1/embeddings (OpenAI-compatible protocol).
+
+    This class is bge-m3-specific: `MODEL_VERSION` and the 1024-dim probe assertion
+    are tied to that model. Other SiliconFlow-hosted embedders (Voyage, Jina) need
+    their own subclass — do not silently swap `model` to something other than bge-m3.
+    """
 
     MODEL_VERSION = "bge-m3_v1"
+    EXPECTED_DIM = 1024
 
     def __init__(
         self,
@@ -47,6 +53,12 @@ class SiliconFlowEmbedder(BaseEmbedder):
         model: str = "BAAI/bge-m3",
         timeout: float = 30.0,
     ) -> None:
+        if "bge-m3" not in model.lower():
+            raise ValueError(
+                f"SiliconFlowEmbedder is bge-m3-specific (MODEL_VERSION={self.MODEL_VERSION},"
+                f" probe expects {self.EXPECTED_DIM}-dim); refusing model={model!r}."
+                " Add a new subclass for other embedding models."
+            )
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._model = model
@@ -54,7 +66,7 @@ class SiliconFlowEmbedder(BaseEmbedder):
         # a per-request timeout. Batch calls compute a dynamic timeout from
         # total char count and override this via aembed(timeout=...).
         self._timeout = httpx.Timeout(connect=10.0, read=float(timeout), write=10.0, pool=5.0)
-        self._status: Literal["loading", "ok", "error"] = "loading"
+        self._status: Literal["loading", "ok", "error", "closed"] = "loading"
         self._client: httpx.AsyncClient | None = None
         if not self._base_url.startswith(("https://", "http://localhost", "http://127.")):
             logger.warning(
@@ -71,7 +83,7 @@ class SiliconFlowEmbedder(BaseEmbedder):
         return self._status == "ok"
 
     @property
-    def status(self) -> Literal["loading", "ok", "error"]:
+    def status(self) -> Literal["loading", "ok", "error", "closed"]:
         return self._status
 
     async def load(self) -> None:
@@ -83,9 +95,10 @@ class SiliconFlowEmbedder(BaseEmbedder):
         self._client = httpx.AsyncClient(timeout=self._timeout)
         try:
             vectors = await self._call([" "])
-            if not vectors or len(vectors[0]) != 1024:
+            if not vectors or len(vectors[0]) != self.EXPECTED_DIM:
                 raise ValueError(
-                    f"unexpected probe response: dim={len(vectors[0]) if vectors else 0}"
+                    f"unexpected probe response: dim={len(vectors[0]) if vectors else 0},"
+                    f" expected={self.EXPECTED_DIM}"
                 )
             self._status = "ok"
             logger.info("siliconflow probe ok, model=%s", self._model)
@@ -168,4 +181,4 @@ class SiliconFlowEmbedder(BaseEmbedder):
         if self._client is not None:
             await self._client.aclose()
             self._client = None
-            self._status = "error"
+            self._status = "closed"

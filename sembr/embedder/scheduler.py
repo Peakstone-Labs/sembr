@@ -6,6 +6,7 @@ D17 (module constants), D20 (transient Qdrant error handling).
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -158,12 +159,11 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
     )
 
     started_at = datetime.now(timezone.utc)
-    import time as _t
-    _t0 = _t.perf_counter()
+    t0 = time.perf_counter()
     try:
         vectors: list[list[float]] = await embedder.aembed(texts, timeout=embed_timeout)
     except Exception as exc:
-        elapsed = _t.perf_counter() - _t0
+        elapsed = time.perf_counter() - t0
         logger.warning(
             "embed failed for batch of %d after %.1fs (timeout=%.1fs): %s",
             len(batch), elapsed, embed_timeout, exc, exc_info=True,
@@ -223,6 +223,10 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
 
     # D12: event-driven matching — after upsert success, before delete_pending.
     # Synchronous await so failed event_match does not skip delete (Risk 7 catch is inside).
+    # Local import: top-level `from sembr.matcher.event_match import ...` would create a
+    # cycle (matcher → vector_store → embedder.scheduler → matcher). Long-term fix is to
+    # invert the dependency (matcher subscribes to embedder events via a bus); tracked in
+    # ../sembr-dev-docs/development/event-driven-intent/.
     if app is not None:
         from sembr.matcher.event_match import event_match_batch  # noqa: PLC0415
         await event_match_batch(app, points, conn)

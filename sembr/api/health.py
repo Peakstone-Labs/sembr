@@ -26,7 +26,7 @@ async def health(request: Request, response: Response) -> dict:
 
     sqlite_ok_value = await _sqlite_ok()
 
-    embedder_status = embedder.status  # "loading" | "ok" | "error"
+    embedder_status = embedder.status  # "loading" | "ok" | "error" | "closed"
     embedder_ok = embedder_status == "ok"
 
     components = {

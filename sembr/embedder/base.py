@@ -1,8 +1,9 @@
 """Embedder abstract base.
 
-设计决策 #7 / Option Set D-2: only the smallest surface this Feature can justify is fixed
-now. Real model loading lands in a later feature; nothing in this scaffold imports
-this module yet. Subclasses MAY add async / batching variants without breaking callers.
+设计决策 #7 / Option Set D-2: only the smallest surface this Feature can justify is fixed.
+Subclasses MAY add async / batching variants without breaking callers — the only
+required override is `embed`; `aembed` has a thread-pool fallback that suits local
+backends, while remote backends (e.g. SiliconFlow) override `aembed` directly.
 """
 from __future__ import annotations
 

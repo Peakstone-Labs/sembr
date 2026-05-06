@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 ComponentStatus = Literal["ok", "down"]
-EmbedderStatus = Literal["ok", "loading", "error"]
+EmbedderStatus = Literal["ok", "loading", "error", "closed"]
 LastOutcome = Literal["ok", "fail", "never"]
 ArticleBucket = Literal["pending", "dead", "qdrant"]
 
