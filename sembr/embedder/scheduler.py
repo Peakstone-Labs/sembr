@@ -50,11 +50,8 @@ logger = logging.getLogger(__name__)
 # (see embedder_worker), so batch size doesn't need to be conservative.
 BATCH_SIZE = 32
 
-# BGE-M3 context window is 8192 tokens.
-# Chinese tokenizes at ~1 char/token (BERT BPE), English at ~4 chars/token.
-# 8 000 chars is the safe upper bound for pure Chinese; English articles get ~2000 tokens
-# which is more than enough for semantic matching on news headlines + lead paragraphs.
-_EMBED_CHARS_MAX = 8_000
+# Per-text character cap is read from `embedder.max_input_chars` so each backend
+# can publish its own bound (tied to the model's context window).
 MAX_ATTEMPTS = 3  # total embed+upsert attempts before a row is demoted to dead_articles
 POLL_INTERVAL_SECONDS = 30
 
@@ -140,7 +137,8 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
     if not batch:
         return
 
-    texts = [(row.title + "\n\n" + row.body)[:_EMBED_CHARS_MAX] for row in batch]
+    char_cap = embedder.max_input_chars
+    texts = [(row.title + "\n\n" + row.body)[:char_cap] for row in batch]
     md5s = [row.md5 for row in batch]
 
     # Compute which rows are one retry away from exhaustion BEFORE incrementing

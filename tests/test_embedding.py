@@ -395,6 +395,13 @@ def test_siliconflow_embedder_model_version_string():
     assert embedder.model_version == "bge-m3_v1"
 
 
+def test_siliconflow_embedder_max_input_chars():
+    from sembr.embedder.openai_compat import SiliconFlowEmbedder
+
+    embedder = SiliconFlowEmbedder(api_key="k")
+    assert embedder.max_input_chars == 8_000
+
+
 async def test_siliconflow_embedder_aembed_empty_list_returns_empty():
     from sembr.embedder.openai_compat import SiliconFlowEmbedder
 
@@ -526,6 +533,7 @@ def _mock_embedder(is_loaded: bool = True, model_version: str = "bge-m3_v1") -> 
     e = MagicMock()
     e.is_loaded = is_loaded
     e.model_version = model_version
+    e.max_input_chars = 8_000
     e.aembed = AsyncMock(return_value=[[0.1] * 1024])
     return e
 

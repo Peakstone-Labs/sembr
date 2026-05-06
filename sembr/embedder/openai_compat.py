@@ -44,6 +44,10 @@ class SiliconFlowEmbedder(BaseEmbedder):
 
     MODEL_VERSION = "bge-m3_v1"
     EXPECTED_DIM = 1024
+    # BGE-M3 context window is 8192 tokens. Chinese tokenizes at ~1 char/token (BERT BPE),
+    # English at ~4 chars/token. 8 000 chars is the safe upper bound for pure Chinese;
+    # English articles get ~2000 tokens which is plenty for headlines + lead paragraphs.
+    MAX_INPUT_CHARS = 8_000
 
     def __init__(
         self,
@@ -77,6 +81,10 @@ class SiliconFlowEmbedder(BaseEmbedder):
     @property
     def model_version(self) -> str:
         return self.MODEL_VERSION
+
+    @property
+    def max_input_chars(self) -> int:
+        return self.MAX_INPUT_CHARS
 
     @property
     def is_loaded(self) -> bool:

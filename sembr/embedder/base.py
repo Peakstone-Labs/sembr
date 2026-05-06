@@ -19,6 +19,15 @@ class BaseEmbedder(ABC):
 
     @property
     @abstractmethod
+    def max_input_chars(self) -> int:
+        """Per-text character cap the worker applies before calling `aembed`.
+
+        Tied to the backend model's context window; the worker does not assume a value.
+        Subclasses pick the bound from their tokenizer + safety margin.
+        """
+
+    @property
+    @abstractmethod
     def is_loaded(self) -> bool:
         """False until the underlying model weights are in memory."""
 

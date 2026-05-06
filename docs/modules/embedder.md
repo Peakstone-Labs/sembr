@@ -28,6 +28,9 @@ class BaseEmbedder(ABC):
     def model_version(self) -> str: ...        # persisted in payload as embedding_model_version
     @property
     @abstractmethod
+    def max_input_chars(self) -> int: ...      # per-text char cap the worker enforces before aembed
+    @property
+    @abstractmethod
     def is_loaded(self) -> bool: ...           # False until startup probe succeeds
     @abstractmethod
     def embed(self, texts: list[str]) -> list[list[float]]: ...
@@ -42,6 +45,7 @@ The default `aembed` offloads `embed` to a thread pool (suitable for local/CPU-b
 class SiliconFlowEmbedder(BaseEmbedder):
     MODEL_VERSION = "bge-m3_v1"
     EXPECTED_DIM = 1024
+    MAX_INPUT_CHARS = 8_000   # BGE-M3 8192-token ctx, conservative for pure-Chinese
 
     def __init__(*, api_key, base_url='https://api.siliconflow.cn/v1',
                  model='BAAI/bge-m3', timeout=30.0)
@@ -90,7 +94,7 @@ async def embedder_worker(embedder, qdrant, app=None) -> None
 
 1. Skip silently if `embedder.is_loaded` is False (don't write an event row — D4)
 2. `pull_pending_batch(BATCH_SIZE=32, MAX_ATTEMPTS=3)` — empty queue is a no-op, no event row
-3. Truncate each `(title + "\n\n" + body)` to `_EMBED_CHARS_MAX=8000` (BGE-M3 8192-token ctx, conservative for pure-Chinese)
+3. Truncate each `(title + "\n\n" + body)` to `embedder.max_input_chars` (8000 for the bge-m3 backend)
 4. Compute dynamic timeout `max(30, total_chars / 1500)` — ~1500 chars/sec is the conservative SiliconFlow throughput from 2026-04-30 calibration
 5. `embedder.aembed(texts, timeout=...)` — on failure: `increment_retry`; if retry+1 ≥ MAX_ATTEMPTS for a row, `demote_md5s_to_dead` for that row only (per-row attribution, not whole batch)
 6. Build `PointStruct` with deterministic UUID = `UUID(hex=md5)` so re-runs are idempotent
@@ -104,7 +108,6 @@ Module constants (D17):
 | Constant | Value | Why |
 |---|---|---|
 | `BATCH_SIZE` | 32 | SiliconFlow single-request input cap |
-| `_EMBED_CHARS_MAX` | 8 000 | Pure-Chinese safe upper bound (BGE-M3 ~1 char/token); English headlines stay well under 2000 tokens |
 | `MAX_ATTEMPTS` | 3 | Embed+upsert attempts before demote to `dead_articles` |
 | `POLL_INTERVAL_SECONDS` | 30 | Interval trigger; matches the matcher cadence |
 | `ALIAS_NAME` | `"news_current"` | Qdrant alias targeted; actual collection switched at upgrade time |

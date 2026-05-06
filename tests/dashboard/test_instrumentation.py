@@ -147,6 +147,7 @@ def _embedder(*, is_loaded: bool = True, exc: Exception | None = None) -> MagicM
     e = MagicMock()
     e.is_loaded = is_loaded
     e.model_version = "bge-m3_v1"
+    e.max_input_chars = 8_000
     if exc is not None:
         e.aembed = AsyncMock(side_effect=exc)
     else:

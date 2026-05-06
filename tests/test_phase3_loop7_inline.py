@@ -157,6 +157,7 @@ async def test_embedder_worker_app_none_no_event_match():
     mock_embedder = MagicMock()
     mock_embedder.is_loaded = True
     mock_embedder.model_version = "bge-m3-v1"
+    mock_embedder.max_input_chars = 8_000
     mock_embedder.aembed = AsyncMock(return_value=[[0.1] * 1024])
 
     mock_qdrant = MagicMock()
