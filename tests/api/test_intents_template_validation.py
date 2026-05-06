@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from sembr.api.intents import router
 from sembr.db.intents import init_intent_tables
 from sembr.db.match_seen import init_match_seen_tables
+from sembr.db.sqlite import install_for_test
 
 FAKE_VECTOR = [0.1] * 1024
 
@@ -57,6 +58,7 @@ def _client(prompts_dir: Path):
         await conn.execute("PRAGMA foreign_keys=ON")
         await init_intent_tables(conn)
         await init_match_seen_tables(conn)
+        install_for_test(conn)
         conn_holder["conn"] = conn
         yield
         await conn.close()

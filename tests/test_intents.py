@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from sembr.api.intents import router
 from sembr.db.intents import init_intent_tables
 from sembr.db.match_seen import init_match_seen_tables
+from sembr.db.sqlite import install_for_test
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -80,6 +81,7 @@ def _client(embedder: MagicMock | None = None, vs: dict | None = None):
         await conn.execute("PRAGMA foreign_keys=ON")
         await init_intent_tables(conn)
         await init_match_seen_tables(conn)
+        install_for_test(conn)
         conn_holder["conn"] = conn
         yield
         await conn.close()
@@ -561,6 +563,7 @@ def test_put_reenable_with_text_change_clears_match_seen() -> None:
         await conn.execute("PRAGMA foreign_keys=ON")
         await init_intent_tables(conn)
         await init_match_seen_tables(conn)
+        install_for_test(conn)
         intent = await create_intent(
             conn,
             IntentCreate(
@@ -625,6 +628,7 @@ def test_put_text_change_clear_intent_failure_not_silent() -> None:
         await conn.execute("PRAGMA foreign_keys=ON")
         await init_intent_tables(conn)
         await init_match_seen_tables(conn)
+        install_for_test(conn)
         intent = await create_intent(
             conn,
             IntentCreate(

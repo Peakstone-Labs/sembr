@@ -13,6 +13,7 @@ import aiosqlite
 import pytest
 
 from sembr.db.intents import init_intent_tables, create_intent, get_intent
+from sembr.db.sqlite import install_for_test
 from sembr.models import IntentCreate
 
 
@@ -30,6 +31,7 @@ async def test_fresh_db_migration_idempotent() -> None:
     try:
         await init_intent_tables(conn)
         await init_intent_tables(conn)  # second call must not raise
+        install_for_test(conn)
         intent = await create_intent(conn, VALID_INTENT)
         fetched = await get_intent(conn, intent.id)
         assert fetched is not None
@@ -153,6 +155,7 @@ async def test_new_intent_schedule_defaults() -> None:
     conn = await aiosqlite.connect(":memory:")
     try:
         await init_intent_tables(conn)
+        install_for_test(conn)
         intent = await create_intent(conn, VALID_INTENT)
         assert intent.schedule.mode == "cron"
         assert intent.schedule.preset == "daily"  # type: ignore[union-attr]

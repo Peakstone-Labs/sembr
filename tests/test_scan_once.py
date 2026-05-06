@@ -60,6 +60,7 @@ _install_qdrant_stub()
 # Import after stub is in place
 from sembr.db.intents import create_intent, init_intent_tables  # noqa: E402
 from sembr.db.match_seen import init_match_seen_tables  # noqa: E402
+from sembr.db.sqlite import install_for_test  # noqa: E402
 from sembr.matcher.scan import ScanOptions, scan_once  # noqa: E402
 from sembr.models import FeedFilter, IntentCreate  # noqa: E402
 
@@ -101,6 +102,7 @@ async def db():
     await conn.execute("PRAGMA foreign_keys=ON")
     await init_intent_tables(conn)
     await init_match_seen_tables(conn)
+    install_for_test(conn)
     yield conn
     await conn.close()
 

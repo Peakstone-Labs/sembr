@@ -22,6 +22,7 @@ import pytest
 
 from sembr.db.intents import create_intent, init_intent_tables
 from sembr.db.match_seen import clear_intent, init_match_seen_tables, insert_unseen_returning_new
+from sembr.db.sqlite import install_for_test
 from sembr.models import IntentCreate
 
 
@@ -37,6 +38,7 @@ async def mem_conn():
     await conn.execute("PRAGMA foreign_keys=ON")
     await init_intent_tables(conn)
     await init_match_seen_tables(conn)
+    install_for_test(conn)
     yield conn
     await conn.close()
 
@@ -155,23 +157,23 @@ def _make_app(
 
 
 @pytest.mark.asyncio
-async def test_scan_proceeds_when_embedder_not_ready(mem_conn, caplog) -> None:
-    # SC#11 behaviour changed: scan_once uses pre-computed Qdrant vectors, not
-    # the embedder. Skipping caused permanent silent misses when the SiliconFlow
+async def test_scan_proceeds_when_embedder_not_ready(mem_conn) -> None:
+    # SC#11 behaviour: scan_once uses pre-computed Qdrant vectors, not the
+    # embedder. Skipping caused permanent silent misses when the SiliconFlow
     # probe failed at startup (is_loaded stays False indefinitely).
-    # New contract: warn and proceed; on_match is not called when no articles match.
-    import logging
+    # Contract: scan proceeds past the embedder check (reaches Qdrant) and
+    # on_match is not called when no articles match.
     intent = await create_intent(mem_conn, _INTENT_BODY)
     on_match = AsyncMock()
-    app = _make_app(embedder_loaded=False, on_match=on_match)
+    qdrant_client = AsyncMock()
+    qdrant_client.retrieve = AsyncMock(return_value=[])  # no intent vector → early-return
+    app = _make_app(embedder_loaded=False, qdrant_client=qdrant_client, on_match=on_match)
 
-    with caplog.at_level(logging.WARNING, logger="sembr.matcher.scan"):
-        with patch("sembr.matcher.scan.get_conn", return_value=mem_conn):
-            from sembr.matcher.scan import run_intent_scan
-            await run_intent_scan(intent.id, app)
+    with patch("sembr.matcher.scan.get_conn", return_value=mem_conn):
+        from sembr.matcher.scan import run_intent_scan
+        await run_intent_scan(intent.id, app)
 
-    assert any("proceeding" in r.message for r in caplog.records), \
-        "expected a warning that scan is proceeding despite embedder not ready"
+    qdrant_client.retrieve.assert_awaited()  # proves scan reached Qdrant despite embedder not loaded
     on_match.assert_not_called()
 
 
@@ -373,6 +375,7 @@ def test_post_intent_rollback_on_register_job_failure() -> None:
         await conn.execute("PRAGMA foreign_keys=ON")
         await init_intent_tables(conn)
         await init_match_seen_tables(conn)
+        install_for_test(conn)
         conn_holder["conn"] = conn
         yield
         await conn.close()

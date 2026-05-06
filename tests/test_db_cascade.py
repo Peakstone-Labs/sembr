@@ -7,6 +7,7 @@ import aiosqlite
 import pytest
 
 from sembr.db.intents import create_intent, get_intent, init_intent_tables, intents_remove_feed_id
+from sembr.db.sqlite import install_for_test
 from sembr.models import FeedFilter, IntentCreate
 
 
@@ -24,6 +25,7 @@ async def mem_conn():
     conn = await aiosqlite.connect(":memory:")
     await conn.execute("PRAGMA foreign_keys=ON")
     await init_intent_tables(conn)
+    install_for_test(conn)
     yield conn
     await conn.close()
 

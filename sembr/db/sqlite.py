@@ -62,6 +62,17 @@ async def close_sqlite() -> None:
     _WRITE_LOCK = None
 
 
+def install_for_test(conn: aiosqlite.Connection) -> None:
+    """Register an externally-opened connection as the singleton + create the lock.
+
+    Test-only. Skips the WAL pragma / verification so :memory: connections (which
+    cannot use WAL) work. Production code must continue to call init_sqlite().
+    """
+    global _conn, _WRITE_LOCK
+    _conn = conn
+    _WRITE_LOCK = asyncio.Lock()
+
+
 @asynccontextmanager
 async def transaction():
     """Acquire the write lock and run a BEGIN…COMMIT block on the shared connection.

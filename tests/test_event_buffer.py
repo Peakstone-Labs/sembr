@@ -10,6 +10,7 @@ import pytest
 
 from sembr.db.event_buffer import init_event_buffer_tables
 from sembr.db.intents import create_intent, init_intent_tables
+from sembr.db.sqlite import install_for_test
 from sembr.matcher.callback import Match
 from sembr.matcher.event_buffer import absorb, flush, sweep_timed_out
 from sembr.models import EventSchedule, IntentCreate
@@ -43,6 +44,7 @@ async def _setup_db() -> tuple[aiosqlite.Connection, int]:
     conn = await aiosqlite.connect(":memory:")
     await init_intent_tables(conn)
     await init_event_buffer_tables(conn)
+    install_for_test(conn)
     intent = await create_intent(conn, _INTENT_BODY)
     return conn, intent.id
 
@@ -317,6 +319,7 @@ async def test_sweep_isolates_per_intent_failures():
     conn = await aiosqlite.connect(":memory:")
     await init_intent_tables(conn)
     await init_event_buffer_tables(conn)
+    install_for_test(conn)
 
     # Create two intents
     body1 = IntentCreate(
