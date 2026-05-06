@@ -17,6 +17,7 @@ class Citation:
     source: int  # feed_id; raw integer for downstream lookups
     published_at: str | None
     source_name: str | None = None  # resolved feed.name; None when feed deleted
+    score: float | None = None  # cosine similarity from the matcher; None when synthesised outside the match path
 
 
 @dataclass

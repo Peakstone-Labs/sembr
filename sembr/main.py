@@ -84,7 +84,12 @@ async def _dispatch_notification(
             return
         for ch in intent.channels:
             if isinstance(ch, EmailChannelConfig):
-                await email_ch.send(result, config=ch, intent_name=intent.name)
+                await email_ch.send(
+                    result,
+                    config=ch,
+                    intent_name=intent.name,
+                    intent_timezone=intent.timezone,
+                )
     except Exception:
         logger.error(
             "dispatch_notification failed for intent_id=%d", result.intent_id, exc_info=True

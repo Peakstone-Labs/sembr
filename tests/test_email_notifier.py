@@ -32,6 +32,7 @@ def _citation(
     url: str = "https://example.com/1",
     published_at: str | None = None,
     source_name: str | None = "Example Feed",
+    score: float | None = None,
 ) -> Citation:
     return Citation(
         article_id=article_id,
@@ -40,6 +41,7 @@ def _citation(
         source=1,
         published_at=published_at,
         source_name=source_name,
+        score=score,
     )
 
 
@@ -114,11 +116,91 @@ def test_published_at_empty_returns_empty() -> None:
     assert _render_published_at("", ZoneInfo("UTC")) == ""
 
 
-def test_unknown_timezone_falls_back_to_utc() -> None:
-    """display_timezone=garbage must not crash channel construction."""
-    ch = _make_channel(display_timezone="Not/A/Real_Zone")
-    # Construction succeeds and tz attr is UTC.
-    assert ch._tz.key == "UTC"
+@pytest.mark.asyncio
+async def test_intent_timezone_overrides_settings_default() -> None:
+    """The per-intent timezone — not settings.display_timezone — controls citation rendering."""
+    # Settings default is irrelevant: use UTC default and pass Asia/Shanghai per-intent.
+    ch = _make_channel(display_timezone="UTC")
+    citations = [_citation("a", published_at="2026-01-01T10:00:00Z")]
+    result = _result(citations)
+
+    captured: list[MIMEText] = []
+    with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
+        await ch.send(
+            result,
+            config=_cfg("x@example.com"),
+            intent_name="Intent",
+            intent_timezone="Asia/Shanghai",
+        )
+
+    body = _extract_html(captured[0])
+    # 10:00 UTC == 18:00 CST
+    assert "18:00" in body
+
+
+@pytest.mark.asyncio
+async def test_score_rendered_in_citation_when_present() -> None:
+    """Citation.score is rendered as a 0.NN badge in the sources list."""
+    ch = _make_channel()
+    citations = [_citation("a", published_at="2026-01-01T00:00:00Z", score=0.823)]
+    result = _result(citations)
+
+    captured: list[MIMEText] = []
+    with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
+        await ch.send(
+            result,
+            config=_cfg("x@example.com"),
+            intent_name="Intent",
+            intent_timezone="UTC",
+        )
+
+    body = _extract_html(captured[0])
+    assert "0.82" in body
+    assert 'class="score-badge"' in body
+
+
+@pytest.mark.asyncio
+async def test_score_omitted_when_none() -> None:
+    """Citation.score=None → no badge in the rendered HTML."""
+    ch = _make_channel()
+    citations = [_citation("a", published_at="2026-01-01T00:00:00Z", score=None)]
+    result = _result(citations)
+
+    captured: list[MIMEText] = []
+    with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
+        await ch.send(
+            result,
+            config=_cfg("x@example.com"),
+            intent_name="Intent",
+            intent_timezone="UTC",
+        )
+
+    body = _extract_html(captured[0])
+    # The CSS rule for .score-badge is always present in <style>; ensure no
+    # inline span uses it when score is None.
+    assert 'class="score-badge"' not in body
+    assert 'span class="score-badge"' not in body
+
+
+@pytest.mark.asyncio
+async def test_unknown_intent_timezone_falls_back_to_utc() -> None:
+    """A bad intent.timezone string must not crash send; the citation is rendered in UTC."""
+    ch = _make_channel()
+    citations = [_citation("a", published_at="2026-01-01T10:00:00Z")]
+    result = _result(citations)
+
+    captured: list[MIMEText] = []
+    with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
+        await ch.send(
+            result,
+            config=_cfg("x@example.com"),
+            intent_name="Intent",
+            intent_timezone="Not/A/Real_Zone",
+        )
+
+    body = _extract_html(captured[0])
+    # 10:00 UTC stays 10:00 in UTC fallback
+    assert "10:00" in body
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +250,7 @@ async def test_render_includes_indexed_sources() -> None:
         captured.append(msg)
 
     with patch.object(ch, "_send_sync", side_effect=fake_send_sync):
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="My Intent")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="My Intent", intent_timezone="UTC")
 
     assert len(captured) == 1
     body = _extract_html(captured[0])
@@ -195,7 +277,7 @@ async def test_logo_embedded_as_inline_image() -> None:
 
     captured: list = []
     with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent", intent_timezone="UTC")
 
     msg = captured[0]
     assert msg.is_multipart(), "expected multipart/related when logo present"
@@ -221,7 +303,7 @@ async def test_render_xss_escape_in_title() -> None:
 
     captured: list[MIMEText] = []
     with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent", intent_timezone="UTC")
 
     body = _extract_html(captured[0])
     assert "<script>" not in body
@@ -252,7 +334,7 @@ async def test_multi_recipient_to_cc_bcc() -> None:
             cc=["watcher@example.com"],
             bcc=["secret@example.com"],
         )
-        await ch.send(result, config=cfg, intent_name="Multi")
+        await ch.send(result, config=cfg, intent_name="Multi", intent_timezone="UTC")
 
     assert captured_rcpts == [[
         "primary@example.com",
@@ -301,7 +383,7 @@ async def test_smtp_failure_does_not_reraise() -> None:
         mock_smtp_cls.return_value = instance
 
         result = _result([_citation("a", published_at="2026-01-01T00:00:00Z")])
-        await ch.send(result, config=_cfg("dest@example.com"), intent_name="Test")
+        await ch.send(result, config=_cfg("dest@example.com"), intent_name="Test", intent_timezone="UTC")
 
     mock_logger.error.assert_called_once()
     instance.quit.assert_called_once()
@@ -319,7 +401,7 @@ async def test_empty_smtp_host_skips_send() -> None:
     with patch("smtplib.SMTP") as mock_smtp_cls, \
          patch("smtplib.SMTP_SSL") as mock_ssl_cls:
         result = _result([_citation("a")])
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent", intent_timezone="UTC")
 
     mock_smtp_cls.assert_not_called()
     mock_ssl_cls.assert_not_called()
@@ -345,7 +427,7 @@ async def test_subject_format(n: int, expected_word: str) -> None:
             _citation(str(i), published_at="2026-01-01T00:00:00Z") for i in range(n)
         ]
         result = _result(citations)
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="My Intent")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="My Intent", intent_timezone="UTC")
 
     assert len(captured_msgs) == 1
     assert expected_word in captured_msgs[0]["Subject"]
@@ -374,7 +456,7 @@ async def test_smtp_ssl_branch_uses_smtp_ssl() -> None:
         mock_ssl.return_value = instance
 
         result = _result([_citation("a", published_at="2026-01-01T00:00:00Z")])
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="I")
+        await ch.send(result, config=_cfg("x@example.com"), intent_name="I", intent_timezone="UTC")
 
     mock_ssl.assert_called_once_with("smtp.example.com", 465)
     mock_plain.assert_not_called()

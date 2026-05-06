@@ -116,6 +116,7 @@ def _to_citation(m: Match, feed_name_map: dict[int, str] | None = None) -> Citat
         source=feed_id,
         published_at=m.payload.get("published_at"),
         source_name=(feed_name_map or {}).get(feed_id),
+        score=m.score,
     )
 
 

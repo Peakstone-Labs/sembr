@@ -33,6 +33,7 @@ class Citation:
     source: int               # feed_id; raw integer for downstream lookups
     published_at: str | None
     source_name: str | None    # resolved feed.name; None when the feed was deleted
+    score: float | None        # cosine similarity from the matcher; None when the citation came from a non-match path
 
 @dataclass
 class SummaryResult:

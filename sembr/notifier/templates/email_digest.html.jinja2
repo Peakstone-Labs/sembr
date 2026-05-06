@@ -33,6 +33,7 @@
   .article-list a { color: #4a6cf7; text-decoration: none; }
   .article-list a:hover { text-decoration: underline; }
   .article-meta { display: block; font-size: 12px; color: #888; margin-top: 2px; }
+  .score-badge { display: inline-block; background: #e6ebff; color: #4a6cf7; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 8px; margin-right: 6px; font-variant-numeric: tabular-nums; }
   .footer { border-top: 1px solid #eee; padding: 16px 24px; font-size: 11px; color: #999; text-align: center; }
 </style>
 </head>
@@ -63,7 +64,7 @@
         <span class="body">
           <a href="{{ c.url }}" style="color:#4a6cf7;text-decoration:none;">{{ c.title }}</a>
           <span class="article-meta" style="display:block;font-size:12px;color:#888;margin-top:2px;">
-            {{ c.source_name }}{% if c.datetime_display %} · {{ c.datetime_display }}{% endif %}
+            {% if c.score_display %}<span class="score-badge" style="display:inline-block;background:#e6ebff;color:#4a6cf7;font-size:11px;font-weight:600;padding:1px 6px;border-radius:8px;margin-right:6px;font-variant-numeric:tabular-nums;">{{ c.score_display }}</span>{% endif %}{{ c.source_name }}{% if c.datetime_display %} · {{ c.datetime_display }}{% endif %}
           </span>
         </span>
       </li>

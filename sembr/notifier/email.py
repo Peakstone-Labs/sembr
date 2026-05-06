@@ -93,13 +93,14 @@ def _summary_to_html(summary: str, num_citations: int) -> Markup:
 
 @dataclass
 class _RenderedCitation:
-    """Display-ready citation: index, title, url, source label, datetime string."""
+    """Display-ready citation: index, title, url, source label, datetime string, score."""
 
     index: int
     title: str
     url: str
     source_name: str
     datetime_display: str  # e.g. "2026-04-28 14:32 CST" or "" when unknown
+    score_display: str  # e.g. "0.82" or "" when score not available
 
 
 def _render_published_at(raw: str | None, tz: ZoneInfo) -> str:
@@ -122,6 +123,12 @@ def _render_published_at(raw: str | None, tz: ZoneInfo) -> str:
     return local.strftime("%Y-%m-%d %H:%M %Z")
 
 
+def _format_score(score: float | None) -> str:
+    if score is None:
+        return ""
+    return f"{score:.2f}"
+
+
 def _build_rendered_citations(
     citations: list[Citation], tz: ZoneInfo
 ) -> list[_RenderedCitation]:
@@ -132,6 +139,7 @@ def _build_rendered_citations(
             url=c.url,
             source_name=c.source_name or "Unknown source",
             datetime_display=_render_published_at(c.published_at, tz),
+            score_display=_format_score(c.score),
         )
         for i, c in enumerate(citations, 1)
     ]
@@ -141,14 +149,13 @@ def _resolve_zoneinfo(name: str) -> ZoneInfo:
     try:
         return ZoneInfo(name)
     except ZoneInfoNotFoundError:
-        logger.warning("display_timezone=%r not found; falling back to UTC", name)
+        logger.warning("timezone=%r not found; falling back to UTC", name)
         return ZoneInfo("UTC")
 
 
 class EmailChannel(BaseChannel):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._tz = _resolve_zoneinfo(settings.display_timezone)
         # Fail fast at startup if template file is missing, not silently at send time.
         self._env = Environment(
             loader=FileSystemLoader(str(_TEMPLATES_DIR)),
@@ -161,9 +168,15 @@ class EmailChannel(BaseChannel):
         *,
         config: EmailChannelConfig,
         intent_name: str,
+        intent_timezone: str,
     ) -> None:
         try:
-            await self._send(result, config=config, intent_name=intent_name)
+            await self._send(
+                result,
+                config=config,
+                intent_name=intent_name,
+                intent_timezone=intent_timezone,
+            )
         except Exception:
             logger.error(
                 "EmailChannel.send failed for intent_id=%d to=%r",
@@ -178,6 +191,7 @@ class EmailChannel(BaseChannel):
         *,
         config: EmailChannelConfig,
         intent_name: str,
+        intent_timezone: str,
     ) -> None:
         s = self._settings
         if not s.smtp_host:
@@ -193,7 +207,8 @@ class EmailChannel(BaseChannel):
         else:
             citations = []
 
-        rendered = _build_rendered_citations(citations, self._tz)
+        tz = _resolve_zoneinfo(intent_timezone)
+        rendered = _build_rendered_citations(citations, tz)
         summary_html = _summary_to_html(result.summary, len(rendered))
         html_body = self._render_html(intent_name, summary_html, rendered)
 
