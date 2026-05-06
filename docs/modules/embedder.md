@@ -92,18 +92,18 @@ async def embedder_worker(embedder, qdrant, app=None) -> None
 
 `embedder_worker` is the coroutine. One tick = one batch:
 
-1. Skip silently if `embedder.is_loaded` is False (don't write an event row — D4)
+1. Skip silently if `embedder.is_loaded` is False (no event row written — only actual call attempts produce events)
 2. `pull_pending_batch(BATCH_SIZE=32, MAX_ATTEMPTS=3)` — empty queue is a no-op, no event row
 3. Truncate each `(title + "\n\n" + body)` to `embedder.max_input_chars` (8000 for the bge-m3 backend)
-4. Compute dynamic timeout `max(30, total_chars / 1500)` — ~1500 chars/sec is the conservative SiliconFlow throughput from 2026-04-30 calibration
+4. Compute dynamic timeout `max(30, total_chars / 1500)` — ~1500 chars/sec is a conservative throughput floor that covers server queueing + BGE-M3 forward + RTT
 5. `embedder.aembed(texts, timeout=...)` — on failure: `increment_retry`; if retry+1 ≥ MAX_ATTEMPTS for a row, `demote_md5s_to_dead` for that row only (per-row attribution, not whole batch)
 6. Build `PointStruct` with deterministic UUID = `UUID(hex=md5)` so re-runs are idempotent
-7. `qdrant.upsert(collection_name="news_current", points, wait=True)` — transient `httpx.ConnectError`/`TimeoutException` → log + return (next tick retries, retry counter NOT incremented per D20); other errors → increment retry, demote if at limit
+7. `qdrant.upsert(collection_name="news_current", points, wait=True)` — transient `httpx.ConnectError`/`TimeoutException` → log + return without incrementing the retry counter (next tick retries); other errors → increment retry, demote if at limit
 8. Emit success event row with batch size + total chars + timeout
-9. If `app` is passed, fire `event_match_batch` (D12 event-driven matching) before delete
+9. If `app` is passed, fire `event_match_batch` before delete (event-driven matching path)
 10. `delete_pending(md5s)` — failure here is logged but swallowed; the deterministic UUID makes the next tick's re-embed safe
 
-Module constants (D17):
+Module constants:
 
 | Constant | Value | Why |
 |---|---|---|
@@ -133,7 +133,7 @@ Module constants (D17):
 ## Downstream consumers
 
 - `vector_store.qdrant.QdrantHandle` — receives `upsert` calls with `news_current` alias
-- `matcher.event_match.event_match_batch` — invoked synchronously after Qdrant upsert when `app` is passed (D12 event-driven matching). The import is local to break a circular dependency; long-term fix is to invert the dependency via the logbus.
+- `matcher.event_match.event_match_batch` — invoked synchronously after Qdrant upsert when `app` is passed (event-driven matching path). The import is local to break a circular dependency between `embedder` and `matcher`; the planned long-term fix is to invert the direction via the in-process log bus so the embedder only emits events and the matcher subscribes.
 - `api.health` and `dashboard.read_model` — read `embedder.status` for `/health` and dashboard render
 
 ## Known constraints
@@ -144,4 +144,4 @@ Module constants (D17):
 - **`aembed` empty input → empty output**: returns `[]` without a network call, but `texts=[""]` (single empty string) does call SiliconFlow.
 - **Idempotency relies on deterministic UUID**: `_md5_to_uuid(md5)` is the Qdrant point id. If the article md5 changes (it shouldn't — md5 is `MD5(url + title)`), the same article would write a duplicate point.
 - **Worker max_instances=1**: long-running batches block the next tick. With `total_chars/1500` per batch and `BATCH_SIZE=32 × 8000 chars = 171 s` worst case, the 30 s tick can drift but `coalesce=True` prevents backlog.
-- **Event-driven matching coupling**: the local import of `matcher.event_match` inside `embedder_worker` is a known layering smell — see `../sembr-dev-docs/development/event-driven-intent/`.
+- **Event-driven matching coupling**: `embedder_worker` calls into `matcher` via a local import to avoid a top-level cycle. This is a deliberate, documented smell — the matcher should subscribe to embedder-emitted events through the log bus rather than be invoked synchronously. Until that flip lands, treat the local import as load-bearing, not accidental.
