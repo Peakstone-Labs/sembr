@@ -1483,128 +1483,142 @@
       </button>
     </div>
 
-    <!-- sembr fields, grouped into collapsible sections -->
+    <!-- sembr fields + RSSHub passthrough, grouped into collapsible sections.
+         RSSHub is a special-marker section (no sembr fields) that renders the
+         passthrough KV editor inline at its declared position in SECTION_DEFS. -->
     <template x-for="section in sections" :key="section.id">
       <section class="settings-section">
-        <button class="settings-section-header"
-                :class="{ open: expandedSections[section.id] }"
-                @click="toggleSection(section.id)"
-                type="button">
-          <span class="settings-section-chevron">▸</span>
-          <span class="settings-section-title" x-text="section.title"></span>
-          <span class="settings-section-meta">
-            <span class="muted" x-text="section.fields.length + ' field' + (section.fields.length === 1 ? '' : 's')"></span>
-            <span x-show="sectionDirtyCount(section) > 0"
-                  class="settings-badge settings-badge-dirty"
-                  x-text="sectionDirtyCount(section) + ' modified'"></span>
-          </span>
-        </button>
-        <div class="settings-section-body" x-show="expandedSections[section.id]" x-cloak>
-          <template x-for="field in section.fields" :key="field.key">
-            <div class="settings-row">
-              <div class="settings-row-label">
-                <span class="settings-row-key" x-text="field.key"></span>
-                <span x-show="field.sensitive" class="settings-badge settings-badge-secret">secret</span>
-                <span x-show="overriddenByShellEnv.includes(field.key)"
-                      class="settings-badge settings-badge-override"
-                      title="A shell env var of the same name overrides the .env value after restart.">
-                  overridden by shell env
-                </span>
-                <span class="field-hint settings-row-hint"
-                      x-show="field.description" x-text="field.description"></span>
-                <span class="field-hint settings-row-hint"
-                      x-show="field.ge !== null || field.le !== null"
-                      x-text="'range: ' + (field.ge ?? '−∞') + ' .. ' + (field.le ?? '+∞')"></span>
-              </div>
-              <div class="settings-row-input">
-                <template x-if="field.type === 'enum'">
-                  <select x-model="form[field.key]">
-                    <template x-for="opt in field.enum" :key="opt">
-                      <option :value="opt" x-text="opt"></option>
-                    </template>
-                  </select>
+        <!-- ── Special: RSSHub passthrough KV editor ─────────────────── -->
+        <template x-if="section.special === 'rsshub'">
+          <div>
+            <button class="settings-section-header"
+                    :class="{ open: expandedSections[section.id] }"
+                    @click="toggleSection(section.id)"
+                    type="button">
+              <span class="settings-section-chevron">▸</span>
+              <span class="settings-section-title" x-text="section.title"></span>
+              <span class="settings-section-meta">
+                <span class="muted" x-text="passthroughKeysPresent().length + ' key' + (passthroughKeysPresent().length === 1 ? '' : 's')"></span>
+              </span>
+            </button>
+            <div class="settings-section-body" x-show="expandedSections[section.id]" x-cloak>
+              <p class="muted settings-section-desc">
+                Variables consumed by the RSSHub container only. Saving any change here
+                also restarts the RSSHub container.
+                Allowed key prefixes:
+                <template x-for="p in schema.passthrough_prefixes" :key="p">
+                  <code class="settings-prefix-pill" x-text="p"></code>
                 </template>
-                <template x-if="field.type === 'bool'">
-                  <label class="toggle-wrap">
-                    <span class="toggle">
-                      <input type="checkbox"
-                             :checked="form[field.key] === 'true' || form[field.key] === true"
-                             @change="form[field.key] = $event.target.checked ? 'true' : 'false'">
-                      <span class="toggle-slider"></span>
-                    </span>
-                  </label>
-                </template>
-                <template x-if="field.type === 'int' || field.type === 'float'">
-                  <input type="number" x-model="form[field.key]"
-                         :step="field.type === 'float' ? 'any' : 1"
-                         :min="field.ge ?? null" :max="field.le ?? null">
-                </template>
-                <template x-if="field.type === 'secret'">
-                  <input type="password" x-model="form[field.key]"
-                         :placeholder="form[field.key] === sensitiveMask ? 'unchanged (already set)' : ''">
-                </template>
-                <template x-if="field.type === 'str' || field.type === 'path'">
-                  <input type="text" x-model="form[field.key]">
-                </template>
-              </div>
-            </div>
-          </template>
-        </div>
-      </section>
-    </template>
+              </p>
 
-    <!-- RSSHub passthrough (only section with Add KV) -->
-    <section class="settings-section">
-      <button class="settings-section-header"
-              :class="{ open: expandedRsshub }"
-              @click="expandedRsshub = !expandedRsshub"
-              type="button">
-        <span class="settings-section-chevron">▸</span>
-        <span class="settings-section-title">RSSHub Passthrough</span>
-        <span class="settings-section-meta">
-          <span class="muted" x-text="passthroughKeysPresent().length + ' key' + (passthroughKeysPresent().length === 1 ? '' : 's')"></span>
-        </span>
-      </button>
-      <div class="settings-section-body" x-show="expandedRsshub" x-cloak>
-        <p class="muted settings-section-desc">
-          Variables consumed by the RSSHub container only. Saving any change here
-          also restarts the RSSHub container.
-          Allowed key prefixes:
-          <template x-for="p in schema.passthrough_prefixes" :key="p">
-            <code class="settings-prefix-pill" x-text="p"></code>
-          </template>
-        </p>
+              <template x-for="key in passthroughKeysPresent()" :key="key">
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    <span class="settings-row-key" x-text="key"></span>
+                    <span x-show="isSecretLike(key)" class="settings-badge settings-badge-secret">secret</span>
+                    <span x-show="isRecommendedPassthrough(key) && initialValues[key] === '__pending_addition__'"
+                          class="settings-badge settings-badge-suggested">suggested</span>
+                    <button x-show="initialValues[key] !== '__pending_addition__'"
+                            class="settings-row-delete" type="button"
+                            @click="markDeleted(key)" title="delete this key">✕</button>
+                    <span class="field-hint settings-row-hint"
+                          x-show="passthroughDescription(key)"
+                          x-text="passthroughDescription(key)"></span>
+                  </div>
+                  <div class="settings-row-input">
+                    <input :type="isSecretLike(key) ? 'password' : 'text'"
+                           x-model="form[key]"
+                           :placeholder="form[key] === sensitiveMask ? 'unchanged (already set)' : (isRecommendedPassthrough(key) ? 'optional — leave empty to skip' : '')">
+                  </div>
+                </div>
+              </template>
 
-        <template x-for="key in passthroughKeysPresent()" :key="key">
-          <div class="settings-row">
-            <div class="settings-row-label">
-              <span class="settings-row-key" x-text="key"></span>
-              <span x-show="isSecretLike(key)" class="settings-badge settings-badge-secret">secret</span>
-              <span x-show="isRecommendedPassthrough(key) && initialValues[key] === '__pending_addition__'"
-                    class="settings-badge settings-badge-suggested">suggested</span>
-              <button x-show="initialValues[key] !== '__pending_addition__'"
-                      class="settings-row-delete" type="button"
-                      @click="markDeleted(key)" title="delete this key">✕</button>
-              <span class="field-hint settings-row-hint"
-                    x-show="passthroughDescription(key)"
-                    x-text="passthroughDescription(key)"></span>
-            </div>
-            <div class="settings-row-input">
-              <input :type="isSecretLike(key) ? 'password' : 'text'"
-                     x-model="form[key]"
-                     :placeholder="form[key] === sensitiveMask ? 'unchanged (already set)' : (isRecommendedPassthrough(key) ? 'optional — leave empty to skip' : '')">
+              <div class="settings-add-row">
+                <input type="text" x-model="newKey" placeholder="NEW_KEY (must match a prefix above)" style="flex:1;">
+                <input type="text" x-model="newValue" placeholder="value" style="flex:2;">
+                <button @click="addPassthrough()" :disabled="!newKey">+ Add</button>
+              </div>
+              <span class="field-err-msg" x-show="addError" x-text="addError"></span>
             </div>
           </div>
         </template>
 
-        <div class="settings-add-row">
-          <input type="text" x-model="newKey" placeholder="NEW_KEY (must match a prefix above)" style="flex:1;">
-          <input type="text" x-model="newValue" placeholder="value" style="flex:2;">
-          <button @click="addPassthrough()" :disabled="!newKey">+ Add</button>
-        </div>
-        <span class="field-err-msg" x-show="addError" x-text="addError"></span>
-      </div>
-    </section>
+        <!-- ── Standard sembr-fields section ──────────────────────────── -->
+        <template x-if="!section.special">
+          <div>
+            <button class="settings-section-header"
+                    :class="{ open: expandedSections[section.id] }"
+                    @click="toggleSection(section.id)"
+                    type="button">
+              <span class="settings-section-chevron">▸</span>
+              <span class="settings-section-title" x-text="section.title"></span>
+              <span class="settings-section-meta">
+                <span class="muted" x-text="section.fields.length + ' field' + (section.fields.length === 1 ? '' : 's')"></span>
+                <span x-show="sectionDirtyCount(section) > 0"
+                      class="settings-badge settings-badge-dirty"
+                      x-text="sectionDirtyCount(section) + ' modified'"></span>
+              </span>
+            </button>
+            <div class="settings-section-body" x-show="expandedSections[section.id]" x-cloak>
+              <template x-for="field in section.fields" :key="field.key">
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    <span class="settings-row-key" x-text="field.key"></span>
+                    <span x-show="field.sensitive" class="settings-badge settings-badge-secret">secret</span>
+                    <span x-show="overriddenByShellEnv.includes(field.key)"
+                          class="settings-badge settings-badge-override"
+                          title="A shell env var of the same name overrides the .env value after restart.">
+                      overridden by shell env
+                    </span>
+                    <span class="field-hint settings-row-hint"
+                          x-show="field.description" x-text="field.description"></span>
+                    <span class="field-hint settings-row-hint"
+                          x-show="field.ge !== null || field.le !== null"
+                          x-text="'range: ' + (field.ge ?? '−∞') + ' .. ' + (field.le ?? '+∞')"></span>
+                  </div>
+                  <div class="settings-row-input">
+                    <template x-if="field.type === 'enum'">
+                      <select x-model="form[field.key]">
+                        <option value="" disabled
+                                x-show="field.default !== null && field.default !== undefined && field.default !== ''"
+                                x-text="'— default: ' + field.default + ' —'"></option>
+                        <template x-for="opt in field.enum" :key="opt">
+                          <option :value="opt" x-text="opt"></option>
+                        </template>
+                      </select>
+                    </template>
+                    <template x-if="field.type === 'bool'">
+                      <label class="toggle-wrap">
+                        <span class="toggle">
+                          <input type="checkbox"
+                                 :checked="(form[field.key] === undefined || form[field.key] === '') ? (field.default === true || field.default === 'true') : (form[field.key] === 'true' || form[field.key] === true)"
+                                 @change="form[field.key] = $event.target.checked ? 'true' : 'false'">
+                          <span class="toggle-slider"></span>
+                        </span>
+                      </label>
+                    </template>
+                    <template x-if="field.type === 'int' || field.type === 'float'">
+                      <input type="number" x-model="form[field.key]"
+                             :step="field.type === 'float' ? 'any' : 1"
+                             :min="field.ge ?? null" :max="field.le ?? null"
+                             :placeholder="field.default !== null && field.default !== undefined && field.default !== '' ? String(field.default) : ''">
+                    </template>
+                    <template x-if="field.type === 'secret'">
+                      <input type="password" x-model="form[field.key]"
+                             :placeholder="form[field.key] === sensitiveMask ? 'unchanged (already set)' : ''">
+                    </template>
+                    <template x-if="field.type === 'str' || field.type === 'path'">
+                      <input type="text" x-model="form[field.key]"
+                             :placeholder="field.default !== null && field.default !== undefined && field.default !== '' ? String(field.default) : ''">
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </section>
+    </template>
 
     <!-- Unknown keys (read only) -->
     <section class="settings-section" x-show="unknownKeys.length > 0">

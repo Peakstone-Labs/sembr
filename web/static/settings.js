@@ -7,16 +7,24 @@
 
 window.SENSITIVE_MASK = '••••••';
 
-// Mirror .env.example sections. Each entry: { id, title, prefixes, exact }
+// Section ordering. Sorted by setup-necessity + change-frequency: required
+// + frequently-touched sections at top; defaults-just-work sections at bottom.
 // First match wins; unmatched fields fall through to "Other".
+//
+// `special: 'rsshub'` is a marker (no fields) — the template renders the
+// passthrough KV editor at this slot instead of the standard sembr-fields
+// block. Lets RSSHub Passthrough appear inline at position 3 instead of
+// being pinned to the bottom.
 const SECTION_DEFS = [
-  { id: 'api',       title: 'API & Storage',      prefixes: ['API_', 'QDRANT_', 'SQLITE_', 'SEMBR_'] },
   { id: 'embedder',  title: 'Embedder',           prefixes: ['EMBEDDER_'] },
   { id: 'llm',       title: 'LLM Summarizer',     prefixes: ['LLM_'] },
+  { id: 'rsshub',    title: 'RSSHub Passthrough', special: 'rsshub' },
   { id: 'smtp',      title: 'Email (SMTP)',       prefixes: ['SMTP_'] },
-  { id: 'display',   title: 'Display & Prompts',  prefixes: ['DISPLAY_', 'PROMPTS_'], exact: ['PROMPTS_DIR'] },
   { id: 'dashboard', title: 'Dashboard',          prefixes: ['DASHBOARD_'] },
+  { id: 'display',   title: 'Display & Prompts',  prefixes: ['DISPLAY_', 'PROMPTS_'], exact: ['PROMPTS_DIR'] },
+  { id: 'lifespan',  title: 'Lifespan',           prefixes: ['LIFESPAN_'] },
   { id: 'proxy',     title: 'Proxy / Routing',    prefixes: ['PROXY_'] },
+  { id: 'storage',   title: 'Storage',            prefixes: ['QDRANT_', 'SQLITE_'] },
 ];
 
 function settingsTab() {
@@ -33,9 +41,8 @@ function settingsTab() {
     newValue: '',
     addError: '',
     sensitiveMask: window.SENSITIVE_MASK,
-    sections: [],               // computed [{ id, title, fields }]
+    sections: [],               // computed [{ id, title, fields, special? }]
     expandedSections: {},       // { sectionId: bool } — accordion state
-    expandedRsshub: false,
     expandedUnknown: false,
     confirm: { open: false, submitting: false },
     diff: { changes: [], additions: [], deletions: [], touchesPassthrough: false },
@@ -87,12 +94,13 @@ function settingsTab() {
     },
 
     _groupFields(fields) {
-      const buckets = SECTION_DEFS.map(s => ({ id: s.id, title: s.title, fields: [] }));
+      const buckets = SECTION_DEFS.map(s => ({ ...s, fields: [] }));
       const otherBucket = { id: 'other', title: 'Other', fields: [] };
 
       outer: for (const f of fields) {
         for (let i = 0; i < SECTION_DEFS.length; i++) {
           const def = SECTION_DEFS[i];
+          if (def.special) continue;  // markers don't bucket fields
           if ((def.exact || []).includes(f.key) ||
               (def.prefixes || []).some(p => f.key.startsWith(p))) {
             buckets[i].fields.push(f);
@@ -102,7 +110,8 @@ function settingsTab() {
         otherBucket.fields.push(f);
       }
 
-      const out = buckets.filter(b => b.fields.length > 0);
+      // Keep buckets that have fields OR are special markers (always rendered).
+      const out = buckets.filter(b => b.fields.length > 0 || b.special);
       if (otherBucket.fields.length > 0) out.push(otherBucket);
       return out;
     },
