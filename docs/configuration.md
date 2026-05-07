@@ -52,7 +52,7 @@ The same key is reused as `LLM_API_KEY` by default — SiliconFlow hosts both BG
 | `LLM_API_KEY` | — | API key. Default-shares the SiliconFlow embedder key when left blank |
 | `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Model name passed to the chat completions endpoint |
 | `LLM_TIMEOUT_SECONDS` | `60` | Per-request HTTP timeout |
-| `LLM_MAX_PROMPT_CHARS` | `2_000_000` | Total prompt-side character budget (system + instruction + assembled articles). The pipeline reserves ~15 % for the response, then water-fills article bodies into the remainder — short articles stay whole, only the longest get truncated. Tune to your model's context window: `2_000_000` is generous for DeepSeek-V4-Flash (1 M-token ctx ≈ 2 M Chinese chars / 4 M English chars); drop to `~16_000` for an 8 K-token local model. Characters, not tokens — set conservatively for non-English content. Lower bound `2_000` |
+| `LLM_MAX_PROMPT_CHARS` | `1_500_000` | Total prompt-side character budget (system + instruction + assembled articles). The pipeline reserves ~15 % for the response, then water-fills article bodies into the remainder — short articles stay whole, only the longest get truncated. Tune to your model's context window. Characters, not tokens — Chinese ≈ 1–1.7 chars/token, English ≈ 4 chars/token. Defaults: `1_500_000` for a 1 M-token ctx model (DeepSeek-V4-Flash) on mixed-language news; bump to `3_000_000` for English-only feeds, drop to `1_000_000` for pure-Chinese feeds with very long articles, `~200_000` for 128 K ctx, `~16_000` for an 8 K-token local model. Lower bound `2_000` |
 
 Only the API-style backend (any `/v1/chat/completions` endpoint) ships today.
 
@@ -93,7 +93,7 @@ The per-intent timezone (`Intent.timezone`) is what the email template uses to r
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PROMPTS_DIR` | `/app/prompts` | Root directory for prompt templates. Subdirectories: `system/` and `instruction/`. Template edits on the host take effect on the next tick — no restart needed. Override via `SEMBR_PROMPTS_DIR` |
+| `PROMPTS_DIR` | `/app/prompts` | Root directory holding the LLM prompt templates the summarizer feeds to every digest. Subdirectories: `system/` (system prompts) and `instruction/` (user instruction templates with `{intent_text}` / `{articles}` placeholders). Templates are read on every tick — host-side edits take effect on the next summary, no restart needed. The bundled `docker-compose.yml` bind-mounts `./prompts` here. Override via `SEMBR_PROMPTS_DIR` for local dev |
 
 ## Lifespan / shutdown
 
@@ -113,7 +113,7 @@ These environment variables are forwarded as-is to the bundled RSSHub container 
 
 | Variable | Used by | Notes |
 |---|---|---|
-| `TWITTER_COOKIE` | RSSHub Twitter routes | Full cookie value from a logged-in browser session — minimum `auth_token=...; ct0=...` |
+| `TWITTER_AUTH_TOKEN` | RSSHub Twitter routes | The `auth_token` cookie value (40-char hex) from a logged-in `x.com` session — DevTools → Application → Cookies. Comma-separate multiple values to rotate between accounts |
 | `TELEGRAM_TOKEN` | RSSHub Telegram routes | Bot token from BotFather, for public channel feeds |
 | `TELEGRAM_SESSION` | RSSHub Telegram routes | User session string (Telethon / Pyrogram) for restricted channels |
 | `GITHUB_ACCESS_TOKEN` | RSSHub GitHub routes | PAT — raises the API rate limit from 60 to 5000 req/h |

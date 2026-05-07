@@ -93,4 +93,4 @@ Feed list and article fingerprints are stored in `./data/sembr.db` (SQLite, bind
 
 ## Port override
 
-Set `SEMBR_HOST_PORT=8080` in `.env` to expose the API on `localhost:8080`. `API_PORT` controls the in-container bind port and should stay at `8000`.
+Set `SEMBR_HOST_PORT=8080` in `.env` to expose the API on `localhost:8080`. The in-container bind port is hardcoded to `8000` in the Dockerfile CMD.

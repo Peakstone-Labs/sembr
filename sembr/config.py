@@ -91,18 +91,18 @@ class Settings(BaseSettings):
         description="Per-request HTTP timeout in seconds for LLM summarization calls.",
     )
     llm_max_prompt_chars: int = Field(
-        default=2_000_000,
+        default=1_500_000,
         ge=2_000,
         description=(
             "Total prompt-side character budget for the LLM backend (system + "
             "instruction + assembled articles). The pipeline reserves ~15% for the "
             "LLM response and instruction overhead, then water-fills article bodies "
             "into the remainder — short articles stay whole, only the longest get "
-            "truncated. Tune to your model's context window: 2_000_000 is generous "
-            "for DeepSeek-V4-Flash (1M token ctx ≈ 2M Chinese chars / 4M English "
-            "chars); drop to ~16_000 for an 8K-token local model. Characters "
-            "(not tokens) so the pipeline can operate on strings; set "
-            "conservatively for non-English content."
+            "truncated. Tune to your model's context window. Characters (not tokens), "
+            "so the safe budget depends on language mix — Chinese ≈ 1–1.7 chars/token, "
+            "English ≈ 4 chars/token. Defaults: 1_500_000 for a 1M-token ctx model "
+            "(DeepSeek-V4-Flash) on mixed-language news; 200_000 for 128K-token ctx; "
+            "16_000 for an 8K-token local model."
         ),
     )
 
@@ -116,7 +116,15 @@ class Settings(BaseSettings):
 
     prompts_dir: Path = Field(
         default=Path("/app/prompts"),
-        description="Root directory for prompt templates. Subdirs: system/ and instruction/. Override via SEMBR_PROMPTS_DIR.",
+        description=(
+            "Root directory holding the LLM prompt templates the summarizer feeds "
+            "to every digest. Two subdirectories: `system/` (system prompts) and "
+            "`instruction/` (user instruction templates with {intent_text} / "
+            "{articles} placeholders). Templates are read on every tick — host-side "
+            "edits take effect on the next summary, no restart needed. Default "
+            "`/app/prompts` is bind-mounted from `./prompts` by the bundled "
+            "docker-compose.yml; override via SEMBR_PROMPTS_DIR for local dev."
+        ),
     )
 
     display_timezone: str = Field(

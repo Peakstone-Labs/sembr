@@ -73,13 +73,13 @@ def test_upsert_in_place_keeps_other_lines_byte_identical(env_path: Path) -> Non
 def test_upsert_new_key_appends_to_user_additions(env_path: Path) -> None:
     env_path.write_text(SAMPLE, encoding="utf-8")
     ef = EnvFile.load(env_path)
-    ef.upsert("TWITTER_COOKIE", "auth_token=abc; ct0=def")
+    ef.upsert("TELEGRAM_SESSION", "session=abc; flag=def")
     ef.save()
 
     text = env_path.read_text(encoding="utf-8")
     assert USER_ADDITIONS_HEADER in text
     # Quoting needed because of `=`/`;`/spaces
-    assert 'TWITTER_COOKIE="auth_token=abc; ct0=def"' in text
+    assert 'TELEGRAM_SESSION="session=abc; flag=def"' in text
     # Header appears exactly once
     assert text.count(USER_ADDITIONS_HEADER) == 1
 
@@ -87,7 +87,7 @@ def test_upsert_new_key_appends_to_user_additions(env_path: Path) -> None:
 def test_repeated_additions_share_one_header(env_path: Path) -> None:
     env_path.write_text(SAMPLE, encoding="utf-8")
     ef = EnvFile.load(env_path)
-    ef.upsert("TWITTER_COOKIE", "v1")
+    ef.upsert("TWITTER_AUTH_TOKEN", "v1")
     ef.save()
     ef2 = EnvFile.load(env_path)
     ef2.upsert("GITHUB_ACCESS_TOKEN", "ghp_xxx")
@@ -95,7 +95,7 @@ def test_repeated_additions_share_one_header(env_path: Path) -> None:
 
     text = env_path.read_text(encoding="utf-8")
     assert text.count(USER_ADDITIONS_HEADER) == 1
-    assert "TWITTER_COOKIE=v1" in text
+    assert "TWITTER_AUTH_TOKEN=v1" in text
     assert "GITHUB_ACCESS_TOKEN=ghp_xxx" in text
 
 
@@ -215,12 +215,12 @@ def test_quote_for_write_escapes_backslash_and_quote() -> None:
 
 
 def test_key_pattern_accepts_all_caps() -> None:
-    assert KEY_PATTERN.match("TWITTER_COOKIE")
+    assert KEY_PATTERN.match("TWITTER_AUTH_TOKEN")
     assert KEY_PATTERN.match("GITHUB_ACCESS_TOKEN_2")
 
 
 def test_key_pattern_rejects_lowercase_and_unicode() -> None:
-    assert not KEY_PATTERN.match("twitter_cookie")
+    assert not KEY_PATTERN.match("twitter_auth_token")
     assert not KEY_PATTERN.match("ＴＷＩＴＴＥＲ")  # fullwidth unicode
     assert not KEY_PATTERN.match("../../etc/passwd")
     assert not KEY_PATTERN.match("KEY-WITH-DASH")

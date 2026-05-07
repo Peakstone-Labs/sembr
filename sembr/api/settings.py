@@ -53,7 +53,7 @@ _RSSHUB_PASSTHROUGH_PREFIXES: tuple[str, ...] = (
 SENSITIVE_MASK = "••••••"
 
 # Substrings that mark a passthrough variable as secret-ish when no Settings
-# field declares it sensitive (e.g. TWITTER_COOKIE, GITHUB_ACCESS_TOKEN).
+# field declares it sensitive (e.g. TWITTER_AUTH_TOKEN, GITHUB_ACCESS_TOKEN).
 # Used to mask values on read and to coalesce a submitted mask back to the
 # stored value on write — keep both call sites pointed at this single tuple.
 _SENSITIVE_SUBSTRINGS: tuple[str, ...] = (
@@ -64,8 +64,8 @@ _SENSITIVE_SUBSTRINGS: tuple[str, ...] = (
 # even when absent from `.env`. Lets the user fill them in without first
 # clicking "+ Add". Each entry must match a passthrough prefix.
 _RSSHUB_RECOMMENDED: tuple[dict[str, str], ...] = (
-    {"key": "TWITTER_COOKIE",
-     "description": "Twitter/X cookie (auth_token=...; ct0=...) for user timelines and search."},
+    {"key": "TWITTER_AUTH_TOKEN",
+     "description": "Twitter/X auth_token cookie value (40-char hex) for user timelines and search. Comma-separate multiple accounts."},
     {"key": "TELEGRAM_TOKEN",
      "description": "Telegram bot token (BotFather) for public channel feeds."},
     {"key": "TELEGRAM_SESSION",

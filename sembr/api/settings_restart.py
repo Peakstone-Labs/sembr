@@ -3,7 +3,7 @@
 Two responsibilities:
 
 1. **RSSHub** restart — when the user adds/changes a passthrough variable
-   (TWITTER_COOKIE etc.) the RSSHub container must be restarted to re-read
+   (TWITTER_AUTH_TOKEN etc.) the RSSHub container must be restarted to re-read
    the bind-mounted `.env`. We drive this via `docker compose up --force-recreate`
    using the compose CLI available inside the API container (see design.md D1-D7).
 

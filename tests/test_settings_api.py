@@ -23,7 +23,7 @@ EMBEDDER_API_KEY=sk-original
 EMBEDDER_MODEL=BAAI/bge-m3
 SMTP_PASSWORD=plaintext
 DASHBOARD_TOKEN=
-TWITTER_COOKIE=ct0=abc
+TWITTER_AUTH_TOKEN=abcdef0123456789
 SOMETHING_LEGACY=value
 """
 
@@ -96,7 +96,7 @@ def test_schema_returns_sembr_fields_and_passthrough(client: TestClient) -> None
     assert "TWITTER_" in body["passthrough_prefixes"]
     assert "GITHUB_" in body["passthrough_prefixes"]
     rec_keys = {r["key"] for r in body["passthrough_recommended"]}
-    assert {"TWITTER_COOKIE", "TELEGRAM_TOKEN", "TELEGRAM_SESSION", "GITHUB_ACCESS_TOKEN"} <= rec_keys
+    assert {"TWITTER_AUTH_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_SESSION", "GITHUB_ACCESS_TOKEN"} <= rec_keys
 
 
 # ── /values ───────────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ def test_values_masks_sensitive_fields(client: TestClient) -> None:
     assert body["values"]["EMBEDDER_API_KEY"] == SENSITIVE_MASK
     assert body["values"]["SMTP_PASSWORD"] == SENSITIVE_MASK
     # Passthrough secret-named field also masked
-    assert body["values"]["TWITTER_COOKIE"] == SENSITIVE_MASK
+    assert body["values"]["TWITTER_AUTH_TOKEN"] == SENSITIVE_MASK
 
 
 def test_values_hidden_fields_not_returned(
@@ -236,7 +236,7 @@ def test_save_addition_with_mask_sentinel_rejected(
     original = env_file.read_text(encoding="utf-8")
     r = client.post(
         "/api/settings/save",
-        json={"additions": {"TWITTER_COOKIE": SENSITIVE_MASK}, "confirmed": True},
+        json={"additions": {"TWITTER_AUTH_TOKEN": SENSITIVE_MASK}, "confirmed": True},
     )
     assert r.status_code == 422
     assert "mask sentinel" in r.json()["detail"].lower()
@@ -254,7 +254,7 @@ def test_save_rsshub_failure_downgrades_to_warning(
 
     r = client.post(
         "/api/settings/save",
-        json={"additions": {"TWITTER_COOKIE": "ct0=xyz"}, "confirmed": True},
+        json={"additions": {"TWITTER_AUTH_TOKEN": "cafebabe0123"}, "confirmed": True},
     )
     assert r.status_code == 200
     body = r.json()
@@ -264,7 +264,7 @@ def test_save_rsshub_failure_downgrades_to_warning(
     # api self-restart was scheduled despite the rsshub failure
     fake_rc.schedule_self_restart.assert_called_once()
     # Disk write happened
-    assert "TWITTER_COOKIE=ct0=xyz" in env_file.read_text(encoding="utf-8")
+    assert "TWITTER_AUTH_TOKEN=cafebabe0123" in env_file.read_text(encoding="utf-8")
 
 
 # Loop 2 🟡-A: schedule_self_restart must run AFTER restart_rsshub awaits.
@@ -350,13 +350,13 @@ def test_save_real_secret_value_overwrites(
 def test_save_deletions(client: TestClient, env_file: Path) -> None:
     r = client.post(
         "/api/settings/save",
-        json={"deletions": ["TWITTER_COOKIE"], "confirmed": True},
+        json={"deletions": ["TWITTER_AUTH_TOKEN"], "confirmed": True},
     )
     assert r.status_code == 200
     body = r.json()
-    assert "TWITTER_COOKIE" in body["deleted_keys"]
+    assert "TWITTER_AUTH_TOKEN" in body["deleted_keys"]
     text = env_file.read_text(encoding="utf-8")
-    assert "TWITTER_COOKIE" not in text
+    assert "TWITTER_AUTH_TOKEN" not in text
 
 
 def test_save_no_op_returns_empty_targets(

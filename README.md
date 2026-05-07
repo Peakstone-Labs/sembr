@@ -37,7 +37,7 @@ curl -i http://localhost:8000/health
 
 **Filesystem note**: keep `./data/` on a local POSIX-ish filesystem (ext4 / APFS / NTFS local). SQLite WAL is unsafe on network shares (NFS, SMB, virtio-9p).
 
-**Port override**: set `SEMBR_HOST_PORT=8080` in `.env` (or as a shell env var) to expose the API on `localhost:8080`. `API_PORT` controls the in-container bind port and should stay at `8000`. See `.env.example` for the full settings surface.
+**Port override**: set `SEMBR_HOST_PORT=8080` in `.env` (or as a shell env var) to expose the API on `localhost:8080`. The in-container bind port is hardcoded to `8000` in the Dockerfile CMD. See [docs/configuration.md](docs/configuration.md) for the full settings surface.
 
 ## Production deployment
 

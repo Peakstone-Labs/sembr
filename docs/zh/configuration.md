@@ -52,7 +52,7 @@ LLM 默认共享同一把 Key（SiliconFlow 同时托管 BGE-M3 和 DeepSeek-V4-
 | `LLM_API_KEY` | — | 留空时默认与 `EMBEDDER_API_KEY` 共用 |
 | `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | 模型名 |
 | `LLM_TIMEOUT_SECONDS` | `60` | 单次请求 HTTP 超时 |
-| `LLM_MAX_PROMPT_CHARS` | `2_000_000` | prompt 端总字符预算（system + instruction + 文章）。pipeline 预留 ~15% 给响应，剩余按 water-fill 喂文章——短文章保留完整，只裁最长几篇。按你的模型 ctx 调整：DeepSeek-V4-Flash 1M token ctx 折合 ~2M 中文字 / ~4M 英文字，`2_000_000` 宽松；本地 8K-token 模型应降至 `~16_000`。单位是字符不是 token，非英文场景请保守一些。下界 `2_000` |
+| `LLM_MAX_PROMPT_CHARS` | `1_500_000` | prompt 端总字符预算（system + instruction + 文章）。pipeline 预留 ~15% 给响应，剩余按 water-fill 喂文章——短文章保留完整，只裁最长几篇。按你的模型 ctx 调整。单位是字符不是 token——中文 ≈ 1–1.7 字/token，英文 ≈ 4 字/token。建议默认值：1M token ctx 模型（DeepSeek-V4-Flash）混合语种新闻 `1_500_000`；纯英文且想塞更多文章可调到 `3_000_000`，纯中文且经常碰到长文可降到 `1_000_000`；128K ctx 约 `200_000`，本地 8K-token 模型约 `16_000`。下界 `2_000` |
 
 目前只内置 API 风格的 backend（任何 OpenAI 兼容 `/v1/chat/completions` 端点）。
 
@@ -93,7 +93,7 @@ LLM 默认共享同一把 Key（SiliconFlow 同时托管 BGE-M3 和 DeepSeek-V4-
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PROMPTS_DIR` | `/app/prompts` | 模板根目录。子目录为 `system/` 和 `instruction/`。宿主机改模板下一个 tick 即生效，无需重启。可通过 `SEMBR_PROMPTS_DIR` 覆盖 |
+| `PROMPTS_DIR` | `/app/prompts` | summarizer 喂给每次 digest 的 LLM 提示词模板根目录。两个子目录：`system/`（系统提示词）和 `instruction/`（含 `{intent_text}` / `{articles}` 占位符的用户指令模板）。每个 tick 重读盘——宿主机改模板下次出摘要立即生效，无需重启。打包的 `docker-compose.yml` 把 `./prompts` 只读 bind-mount 到此处。可通过 `SEMBR_PROMPTS_DIR` 覆盖（本地开发用） |
 
 ## Lifespan / 关停
 
@@ -113,7 +113,7 @@ LLM 默认共享同一把 Key（SiliconFlow 同时托管 BGE-M3 和 DeepSeek-V4-
 
 | 变量 | 用途 | 备注 |
 |---|---|---|
-| `TWITTER_COOKIE` | RSSHub Twitter 路由 | 浏览器登录态 cookie 全文,至少包含 `auth_token=...; ct0=...` |
+| `TWITTER_AUTH_TOKEN` | RSSHub Twitter 路由 | 已登录 `x.com` 浏览器会话中 `auth_token` cookie 的值（40 位 hex）—— DevTools → Application → Cookies 即可复制。多账号轮换时用逗号分隔 |
 | `TELEGRAM_TOKEN` | RSSHub Telegram 路由 | BotFather 颁发的 bot token,适用于公开频道 |
 | `TELEGRAM_SESSION` | RSSHub Telegram 路由 | Telethon / Pyrogram 生成的 user session 字符串,用于受限频道 |
 | `GITHUB_ACCESS_TOKEN` | RSSHub GitHub 路由 | PAT —— 把 API 速率上限从 60 提升到 5000 req/h |

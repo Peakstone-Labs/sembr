@@ -93,4 +93,4 @@ Feed 列表和文章指纹存储在 `./data/sembr.db`（SQLite，从宿主机挂
 
 ## 修改端口
 
-在 `.env` 中设置 `SEMBR_HOST_PORT=8080` 可将 API 暴露在 `localhost:8080`。`API_PORT` 控制容器内部绑定端口，保持 `8000` 不变即可。
+在 `.env` 中设置 `SEMBR_HOST_PORT=8080` 可将 API 暴露在 `localhost:8080`。容器内绑定端口在 Dockerfile CMD 里硬编码为 `8000`。
