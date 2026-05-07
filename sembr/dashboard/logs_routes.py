@@ -13,7 +13,7 @@ import logging
 from enum import Enum
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
@@ -95,7 +95,6 @@ async def put_level(body: LevelRequest) -> Response:
 @router.get("/stream")
 async def stream_logs(request: Request, tag: str = Query(default="api")) -> StreamingResponse:
     if tag not in ALL_TAGS:
-        from fastapi import HTTPException  # noqa: PLC0415
         raise HTTPException(status_code=422, detail=f"Unknown tag: {tag!r}")
 
     return StreamingResponse(

@@ -14,6 +14,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from sembr.collector.scheduler import SOURCE_REGISTRY
 from sembr.config import get_settings
 from sembr.dashboard import read_model
 from sembr.dashboard.schemas import (
@@ -107,7 +108,6 @@ async def get_source_schemas() -> SourceSchemaResponse:
     """D15: source_type → JSON-Schema map. Frontend uses this to render the
     create-feed form dynamically. Read directly from SOURCE_REGISTRY so a
     plugin registered via entry_points appears without a code change here."""
-    from sembr.collector.scheduler import SOURCE_REGISTRY  # noqa: PLC0415
     schemas: dict[str, dict] = {}
     for stype, cls in SOURCE_REGISTRY.items():
         try:

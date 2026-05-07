@@ -4,19 +4,23 @@ This module is the only place that joins SQLite + Qdrant + app.state.embedder
 into the snapshot/drill-down response shapes. Routes call these helpers; helpers
 do not import FastAPI types — they take primitives and return Pydantic models.
 
-Lazy Qdrant import: Windows dev machine has no qdrant_client installed, so the
-top-level imports stay pure-stdlib + Pydantic. Qdrant calls are dispatched on
-the AsyncQdrantClient handed in by the caller.
+The qdrant-client *models* (Filter, FieldCondition, ...) stay lazy-imported
+inside the few helpers that need them — Windows dev machines may not have
+qdrant_client installed and we want this module to import cleanly there.
+The AsyncQdrantClient is always handed in by the caller, never constructed here.
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiosqlite
 
+from sembr.collector.host_limiter import derive_group_key
 from sembr.dashboard.schemas import (
     ArticleBucket,
     ArticleDetail,
@@ -36,10 +40,10 @@ from sembr.dashboard.schemas import (
 from sembr.db.feeds import list_feeds
 from sembr.db.feed_tags import list_all_tags
 from sembr.db.sqlite import sqlite_ok
+from sembr.vector_store.news import ALIAS_NAME as _NEWS_ALIAS
 
 logger = logging.getLogger(__name__)
 
-_QDRANT_COLLECTION = "news_current"
 _SPARKLINE_BUCKETS = 24
 
 
@@ -216,7 +220,7 @@ async def _qdrant_count(qdrant_client: Any | None) -> int:
         return 0
     try:
         result = await asyncio.wait_for(
-            qdrant_client.count(collection_name=_QDRANT_COLLECTION, exact=False),
+            qdrant_client.count(collection_name=_NEWS_ALIAS, exact=False),
             timeout=_QDRANT_TIMEOUT,
         )
         # qdrant-client returns CountResult(count=int)
@@ -403,29 +407,43 @@ async def list_articles_dead(
     ]
 
 
-async def list_articles_qdrant(
-    qdrant_client: Any | None, limit: int, offset: int
+async def _scroll_articles_qdrant(
+    qdrant_client: Any,
+    *,
+    limit: int,
+    offset: int,
+    scroll_filter: Any | None = None,
+    log_label: str,
 ) -> list[ArticleListItem]:
-    """Newest-first list of news_current points. offset implemented client-side
-    (Qdrant scroll uses next_page_offset, not numeric offset) so we scroll
-    forward limit+offset times then drop."""
-    if qdrant_client is None:
-        return []
+    """Newest-first scroll over `news_current` with client-side offset.
+
+    Qdrant's scroll API uses an opaque `next_page_offset` cursor, not a
+    numeric offset, so we walk forward `limit + offset` items and drop the
+    first `offset`. `scroll_filter`, when given, is forwarded as the
+    `scroll_filter` parameter (uses qdrant_client.models.Filter shape).
+    `log_label` is interpolated into the warning message on failure so
+    operators can tell which call site failed.
+    """
     items: list[ArticleListItem] = []
     seen = 0
     next_offset = None
     target = limit + offset
+    scroll_kwargs: dict[str, Any] = {
+        "collection_name": _NEWS_ALIAS,
+        "with_payload": True,
+        "with_vectors": False,
+        # Order by ingested_at desc so the latest articles come first.
+        "order_by": {"key": "ingested_at_ts", "direction": "desc"},
+    }
+    if scroll_filter is not None:
+        scroll_kwargs["scroll_filter"] = scroll_filter
     try:
         while seen < target:
             page_size = min(target - seen, 64)
             points, next_offset = await qdrant_client.scroll(
-                collection_name=_QDRANT_COLLECTION,
                 limit=page_size,
-                with_payload=True,
-                with_vectors=False,
                 offset=next_offset,
-                # Order by ingested_at desc so the latest articles come first.
-                order_by={"key": "ingested_at_ts", "direction": "desc"},
+                **scroll_kwargs,
             )
             for p in points:
                 payload = getattr(p, "payload", {}) or {}
@@ -446,9 +464,20 @@ async def list_articles_qdrant(
             if next_offset is None:
                 break
     except Exception as exc:
-        logger.warning("qdrant scroll failed: %s", exc)
+        logger.warning("qdrant scroll %s failed: %s", log_label, exc)
         return []
     return items[offset : offset + limit]
+
+
+async def list_articles_qdrant(
+    qdrant_client: Any | None, limit: int, offset: int
+) -> list[ArticleListItem]:
+    """Newest-first list of news_current points (no filter)."""
+    if qdrant_client is None:
+        return []
+    return await _scroll_articles_qdrant(
+        qdrant_client, limit=limit, offset=offset, log_label="(all)"
+    )
 
 
 async def get_article_detail(
@@ -489,10 +518,9 @@ async def get_article_detail(
     if qdrant_client is None:
         return None
     try:
-        import uuid
         point_id = str(uuid.UUID(hex=md5))
         result = await qdrant_client.retrieve(
-            collection_name=_QDRANT_COLLECTION,
+            collection_name=_NEWS_ALIAS,
             ids=[point_id],
             with_payload=True,
             with_vectors=False,
@@ -533,8 +561,6 @@ async def list_feeds_with_meta(
     group_key is derived in Python (D5) — no schema drift; next_run_iso comes
     from APScheduler when available so the UI can show "next run" countdowns.
     """
-    from sembr.collector.host_limiter import derive_group_key  # PLC0415: avoid cycle
-
     # Build a single filtered base query so total + page share the same WHERE clause.
     where_parts: list[str] = []
     params: list[Any] = []
@@ -569,7 +595,6 @@ async def list_feeds_with_meta(
     fetch_map = await _fetch_24h_all_feeds(conn, feed_ids, now or _utcnow())
 
     items: list[FeedRowExtended] = []
-    import json as _json  # noqa: PLC0415
     for r in rows:
         fid, name, url, source_type, config_json, poll_min, last_collected, created_at, enabled = r
         next_run_iso: str | None = None
@@ -581,7 +606,7 @@ async def list_feeds_with_meta(
             except Exception:
                 next_run_iso = None
         try:
-            config = _json.loads(config_json) if config_json else {}
+            config = json.loads(config_json) if config_json else {}
         except Exception:
             config = {}
         items.append(
@@ -615,12 +640,8 @@ async def list_feed_articles_qdrant(
     limit: int,
     offset: int,
 ) -> list[ArticleListItem]:
-    """Per-feed Qdrant-only article list (D2 降级 / R2).
-
-    Mirrors list_articles_qdrant's scroll-then-skip approach but adds a
-    `feed_id` keyword filter; relies on the payload index added in
-    vector_store.news.ensure_news_collection.
-    """
+    """Per-feed Qdrant-only article list. Relies on the payload index added
+    in vector_store.news.ensure_news_collection."""
     if qdrant_client is None:
         return []
     from qdrant_client.models import (  # noqa: PLC0415
@@ -629,44 +650,13 @@ async def list_feed_articles_qdrant(
         MatchValue,
     )
 
-    items: list[ArticleListItem] = []
-    seen = 0
-    next_offset = None
-    target = limit + offset
     qfilter = Filter(
         must=[FieldCondition(key="feed_id", match=MatchValue(value=int(feed_id)))]
     )
-    try:
-        while seen < target:
-            page_size = min(target - seen, 64)
-            points, next_offset = await qdrant_client.scroll(
-                collection_name=_QDRANT_COLLECTION,
-                limit=page_size,
-                with_payload=True,
-                with_vectors=False,
-                offset=next_offset,
-                scroll_filter=qfilter,
-                order_by={"key": "ingested_at_ts", "direction": "desc"},
-            )
-            for p in points:
-                payload = getattr(p, "payload", {}) or {}
-                items.append(
-                    ArticleListItem(
-                        md5=str(getattr(p, "id", "")),
-                        feed_id=payload.get("feed_id"),
-                        url=payload.get("url", ""),
-                        title=payload.get("title", ""),
-                        published_at=payload.get("published_at"),
-                        ingested_at_ts=payload.get("ingested_at_ts"),
-                        bucket="qdrant",
-                    )
-                )
-                seen += 1
-                if seen >= target:
-                    break
-            if next_offset is None:
-                break
-    except Exception as exc:
-        logger.warning("qdrant scroll for feed_id=%d failed: %s", feed_id, exc)
-        return []
-    return items[offset : offset + limit]
+    return await _scroll_articles_qdrant(
+        qdrant_client,
+        limit=limit,
+        offset=offset,
+        scroll_filter=qfilter,
+        log_label=f"for feed_id={feed_id}",
+    )
