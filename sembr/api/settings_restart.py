@@ -14,10 +14,11 @@ Two responsibilities:
    ``SIGTERM`` so the response that triggered the restart can be flushed
    to the browser first (design.md D8-D11).
 
-Why not ``containers.get("sembr-api").restart()`` from inside ourselves:
-that bypasses lifespan shutdown — APScheduler / Qdrant / sqlite cleanup
-gets SIGKILL'd at the 10s docker stop timeout, defeating the careful
-ordering enforced in ``sembr.main.lifespan`` (memory: feedback_lifespan).
+Why SIGTERM rather than restarting the api container externally: the
+external path bypasses our own lifespan shutdown chain — APScheduler,
+Qdrant, and sqlite cleanup get SIGKILL'd at the docker-stop timeout,
+defeating the ordering enforced in ``sembr.main.lifespan``. SIGTERM lets
+uvicorn's lifespan run to completion before the process exits.
 """
 from __future__ import annotations
 
@@ -32,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SELF_SHUTDOWN_DELAY = 1.5  # seconds — long enough for an HTTP response to flush
 RSSHUB_SERVICE_NAME = "rsshub"          # docker compose service name (for `compose up`)
-RSSHUB_CONTAINER_NAME = "sembr-rsshub"  # legacy docker SDK name; kept for callers that need it
 COMPOSE_FILE_PATH = "/app/docker-compose.yml"
 
 # Module-level flag: set to True by _send_sigterm_to_self so the lifespan
@@ -57,22 +57,15 @@ class RestartController:
     The class is *not* a singleton — instantiated per request inside the
     settings router. Holds no resources between calls.
 
-    ``subprocess_runner`` is injectable for unit tests (design.md D7);
-    default is ``subprocess.run``.
-
-    ``docker_client_factory`` is **currently unused** — the SDK restart path
-    was replaced by subprocess compose CLI (Phase 1). Retained per design.md
-    D12 in case a future caller needs direct SDK access; remove in a follow-up
-    PR if that never materialises.
+    ``subprocess_runner`` is injectable for unit tests; default is
+    ``subprocess.run``.
     """
 
     def __init__(
         self,
-        docker_client_factory=None,
         subprocess_runner: Callable[..., subprocess.CompletedProcess] | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
-        self._client_factory = docker_client_factory or _default_docker_client_factory  # unused; see D12
         self._subprocess_runner = subprocess_runner or subprocess.run
         self._loop = loop
 
@@ -136,13 +129,3 @@ def _send_sigterm_to_self() -> None:
     _RESTART_REQUESTED = True
     logger.info("api self-restart firing now (SIGTERM to PID %d)", os.getpid())
     os.kill(os.getpid(), signal.SIGTERM)
-
-
-def _default_docker_client_factory():
-    # Currently unreachable: _client_factory is never called after the SDK
-    # restart path was replaced by subprocess compose CLI (Phase 1 / D12).
-    # Kept so docker_client_factory= injection point stays wire-compatible
-    # with any future SDK callers.  Remove together with that parameter if
-    # docker-py is dropped as a dependency.
-    import docker  # noqa: PLC0415
-    return docker.from_env()

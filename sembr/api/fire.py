@@ -17,6 +17,7 @@ from sembr.db.intents import get_intent
 from sembr.db.sqlite import get_conn
 from sembr.matcher.fire_tasks import FireTask, create_task, get_task, throttle_check
 from sembr.matcher.scan import ScanOptions, scan_once
+from sembr.models import CronSchedule
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +92,6 @@ async def post_fire(
     intent = await get_intent(conn, intent_id)
     if intent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
-
-    from sembr.models import CronSchedule  # noqa: PLC0415
 
     if not isinstance(intent.schedule, CronSchedule):
         raise HTTPException(

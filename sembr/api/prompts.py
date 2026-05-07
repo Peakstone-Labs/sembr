@@ -6,7 +6,12 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
-from sembr.summarizer.templates import TemplateNotFoundError, list_templates, load_template, template_exists
+from sembr.summarizer.templates import (
+    TemplateNotFoundError,
+    list_templates,
+    load_template,
+    template_path,
+)
 
 router = APIRouter(prefix="/api/prompts", tags=["prompts"])
 
@@ -46,6 +51,7 @@ async def get_template(kind: str, name: str, request: Request) -> TemplateDetail
         )
     prompts_dir: Path = request.app.state.settings.prompts_dir
     try:
+        path = template_path(prompts_dir, kind, name)
         content = load_template(prompts_dir, kind, name)
     except ValueError as exc:
         raise HTTPException(
@@ -58,7 +64,6 @@ async def get_template(kind: str, name: str, request: Request) -> TemplateDetail
             detail=f"template '{kind}/{name}' not found",
         )
 
-    path = prompts_dir / kind / f"{name}.md"
     stat = path.stat()
     return TemplateDetail(
         name=name,

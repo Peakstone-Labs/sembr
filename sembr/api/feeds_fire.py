@@ -20,7 +20,7 @@ from sembr.collector.fire_tasks import (
     throttle_check,
 )
 from sembr.collector.rss import FetchError
-from sembr.collector.scheduler import SOURCE_REGISTRY, _LIMITER_REF, collect_feed
+from sembr.collector.scheduler import SOURCE_REGISTRY, collect_feed, get_host_limiter
 from sembr.db.feeds import fingerprint_exists, get_feed
 from sembr.db.sqlite import get_conn
 
@@ -49,7 +49,7 @@ async def _feed_dry_run(task: FeedFireTask, feed_url: str, source_type: str, con
     timeout = float(config.get("timeout", 30.0))
     source = source_cls(feed_url, timeout=timeout)
 
-    limiter = _LIMITER_REF.get("limiter")
+    limiter = get_host_limiter()
     fetch_ctx = (
         limiter.acquire(limiter.group_key_for(feed_url))
         if limiter is not None

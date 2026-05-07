@@ -16,18 +16,21 @@ from sembr.db.intents import (
 )
 from sembr.db.match_seen import clear_intent
 from sembr.db.sqlite import get_conn
+from sembr.matcher.event_cache import EventIntentEntry
 from sembr.matcher.jobs import (
     register_intent_job,
     reregister_intent_job,
     unregister_intent_job,
 )
-from sembr.models import Intent, IntentCreate, IntentUpdate
+from sembr.models import EventSchedule, Intent, IntentCreate, IntentUpdate
 from sembr.summarizer.templates import template_exists
+from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
 from sembr.vector_store.intents import (
     delete_intent_point,
     update_intent_payload,
     upsert_intent_point,
 )
+from sembr.vector_store.qdrant import extract_point_vector
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/intents", tags=["intents"])
@@ -80,9 +83,7 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
         )
         qdrant_written = True
         # D10: sync event-mode intent into in-process cache (after Qdrant, before job reg)
-        from sembr.models import EventSchedule  # noqa: PLC0415
         if body.enabled and isinstance(intent.schedule, EventSchedule):
-            from sembr.matcher.event_cache import EventIntentEntry  # noqa: PLC0415
             request.app.state.event_intent_cache.add(
                 intent.id,
                 EventIntentEntry(
@@ -97,7 +98,6 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
             register_intent_job(request.app.state.scheduler, intent, request.app, fire_immediately=True)
     except Exception as exc:
         # Rollback in reverse order: cache, job (already failed/not-registered), Qdrant, SQLite
-        from sembr.models import EventSchedule  # noqa: PLC0415
         if isinstance(intent.schedule, EventSchedule):
             request.app.state.event_intent_cache.remove(intent.id)
         if qdrant_written:
@@ -230,9 +230,7 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     # D10: sync event-mode intent into in-process cache.
     # Placed after Qdrant confirm and clear_intent; outside the Qdrant try/except so no
     # cache rollback is needed (if we get here, all writes succeeded).
-    from sembr.models import EventSchedule  # noqa: PLC0415
     if isinstance(updated.schedule, EventSchedule):
-        from sembr.matcher.event_cache import EventIntentEntry  # noqa: PLC0415
         cache = request.app.state.event_intent_cache
         if updated.enabled:
             # Resolve vector: new embed if text changed, else reuse cached or retrieve from Qdrant
@@ -245,9 +243,8 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
                 else:
                     # Intent was disabled (not in cache); retrieve once from Qdrant.
                     # extract_point_vector handles the named-vector dict case.
-                    from sembr.vector_store.qdrant import extract_point_vector  # noqa: PLC0415
                     pts = await qdrant_client.retrieve(
-                        collection_name="intents_current", ids=[intent_id], with_vectors=True
+                        collection_name=_INTENTS_ALIAS, ids=[intent_id], with_vectors=True
                     )
                     cache_vector = extract_point_vector(pts[0]) if pts else None
             if cache_vector is None:
@@ -306,7 +303,6 @@ async def delete_intent_handler(intent_id: int, request: Request) -> Response:
     # D9: unregister job first so no new ticks fire during the delete window
     unregister_intent_job(request.app.state.scheduler, intent_id)
     # D10: remove from event cache (no-op for cron-mode intents)
-    from sembr.models import EventSchedule  # noqa: PLC0415
     if isinstance(current.schedule, EventSchedule):
         request.app.state.event_intent_cache.remove(intent_id)
 

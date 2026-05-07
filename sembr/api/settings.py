@@ -52,6 +52,14 @@ _RSSHUB_PASSTHROUGH_PREFIXES: tuple[str, ...] = (
 # "leave the existing secret alone" (design.md Decision #6).
 SENSITIVE_MASK = "••••••"
 
+# Substrings that mark a passthrough variable as secret-ish when no Settings
+# field declares it sensitive (e.g. TWITTER_COOKIE, GITHUB_ACCESS_TOKEN).
+# Used to mask values on read and to coalesce a submitted mask back to the
+# stored value on write — keep both call sites pointed at this single tuple.
+_SENSITIVE_SUBSTRINGS: tuple[str, ...] = (
+    "TOKEN", "COOKIE", "SECRET", "KEY", "PASSWORD", "SESSION",
+)
+
 # Well-known RSSHub passthrough variables shown in the UI as starter rows
 # even when absent from `.env`. Lets the user fill them in without first
 # clicking "+ Add". Each entry must match a passthrough prefix.
@@ -292,7 +300,7 @@ async def get_values() -> ValuesResponse:
         elif _is_passthrough_key(upper):
             # Passthrough fields are also masked when they look secret-ish.
             # Without a Settings field declaring them sensitive, infer by name.
-            if any(s in upper for s in ("TOKEN", "COOKIE", "SECRET", "KEY", "PASSWORD", "SESSION")):
+            if any(s in upper for s in _SENSITIVE_SUBSTRINGS):
                 out_values[upper] = SENSITIVE_MASK if value else ""
             else:
                 out_values[upper] = value
@@ -337,7 +345,7 @@ def _coalesce_value(key: str, submitted: str, current_raw: str) -> str:
     original disk value untouched (design.md Decision #6 / AC4)."""
     sensitive = (
         (key.lower() in Settings.model_fields and _is_sensitive(Settings.model_fields[key.lower()]))
-        or any(s in key for s in ("TOKEN", "COOKIE", "SECRET", "KEY", "PASSWORD", "SESSION"))
+        or any(s in key for s in _SENSITIVE_SUBSTRINGS)
     )
     if sensitive and submitted == SENSITIVE_MASK:
         return current_raw

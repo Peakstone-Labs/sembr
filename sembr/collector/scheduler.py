@@ -32,6 +32,14 @@ _LIMITER_REF: dict[str, HostLimiter | None] = {"limiter": None}
 def set_host_limiter(limiter: HostLimiter | None) -> None:
     _LIMITER_REF["limiter"] = limiter
 
+
+def get_host_limiter() -> HostLimiter | None:
+    """Return the process-wide host rate limiter, or None if it hasn't been
+    installed yet. Used by callers outside the APScheduler tick path
+    (e.g. /feeds/{id}/fire?dry_run=true) so they can reuse the same
+    per-host concurrency budget."""
+    return _LIMITER_REF.get("limiter")
+
 logger = logging.getLogger(__name__)
 
 SOURCE_REGISTRY: dict[str, type[BaseSource]] = {

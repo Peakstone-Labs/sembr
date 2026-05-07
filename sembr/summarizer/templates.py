@@ -40,7 +40,14 @@ def _validate_name(name: str) -> None:
         )
 
 
-def _safe_path(prompts_dir: Path, kind: str, name: str) -> Path:
+def template_path(prompts_dir: Path, kind: str, name: str) -> Path:
+    """Resolve and validate the on-disk path for ``prompts_dir/kind/name.md``.
+
+    Raises ``ValueError`` if *name* fails identifier validation or the resolved
+    path escapes *prompts_dir*. Callers that need both the bytes and the path
+    (e.g. for ``stat()``) should use this helper to keep validation in lockstep
+    with file access — never rebuild the path manually.
+    """
     _validate_name(name)
     candidate = (prompts_dir / kind / f"{name}.md").resolve()
     if not candidate.is_relative_to(prompts_dir.resolve()):
@@ -53,7 +60,7 @@ def _safe_path(prompts_dir: Path, kind: str, name: str) -> Path:
 def template_exists(prompts_dir: Path, kind: str, name: str) -> bool:
     """Return True if ``prompts_dir/kind/name.md`` exists and is a file."""
     try:
-        return _safe_path(prompts_dir, kind, name).is_file()
+        return template_path(prompts_dir, kind, name).is_file()
     except ValueError:
         return False
 
@@ -73,7 +80,7 @@ def load_template(prompts_dir: Path, kind: str, name: str) -> str:
         ValueError: if *name* fails identifier validation or escapes prompts_dir.
         TemplateNotFoundError: if the file does not exist.
     """
-    path = _safe_path(prompts_dir, kind, name)
+    path = template_path(prompts_dir, kind, name)
     if not path.is_file():
         raise TemplateNotFoundError(
             f"Template '{kind}/{name}' not found at {path}"
