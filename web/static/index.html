@@ -1392,9 +1392,13 @@
 </div><!-- /intents-view -->
 
 <!-- ═══════════════════════════════════════════════════════
-     Logs view
+     Logs view — wrapped in <template x-if> so logsTab() (and the SSE
+     stream it opens on init) only mounts when the user actually clicks
+     the Logs tab. With plain x-show the component initialises on first
+     paint and the 1000-entry history burst can freeze the main thread.
      ══════════════════════════════════════════════════════ -->
-<div x-show="currentTab==='logs'" x-data="logsTab()" x-init="init()" class="logs-view">
+<template x-if="currentTab==='logs'">
+<div x-data="logsTab()" x-init="init()" class="logs-view">
 
   <!-- Toolbar: sub-tabs + level dropdown -->
   <div class="logs-toolbar">
@@ -1434,7 +1438,7 @@
         </tr>
       </thead>
       <tbody>
-        <template x-for="(row, idx) in rows" :key="idx">
+        <template x-for="row in rows" :key="row.ts + '|' + row.logger + '|' + row.message">
           <tr class="log-row" :class="levelClass(row.level)">
             <td class="col-ts mono" x-text="fmtTs(row.ts)"></td>
             <td class="col-level">
@@ -1454,7 +1458,8 @@
     </div>
   </div>
 
-</div><!-- /logs-view -->
+</div>
+</template><!-- /logs-view -->
 
 <!-- ═══════════════════════════════════════════════════════
      Settings view

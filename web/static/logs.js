@@ -17,6 +17,8 @@ function logsTab() {
     _rowsMap: {},      // tag → row array  (ring buffer per tag, maxlen _MAX_ROWS)
     _es: null,         // active EventSource
     _seenIds: new Set(), // dedup by ts+logger+message key
+    _inHistory: true,    // true while server is replaying buffered history; flipped on history-end
+    _flushScheduled: false, // rAF coalesce flag for live phase
     loading: true,
     error: null,
 
@@ -55,8 +57,22 @@ function logsTab() {
       this._connect(tag);
     },
 
+    // Coalesce live-phase row reassignments into one per animation frame.
+    // Per-event reassignment is what froze the main thread on first connect:
+    // the history burst (~1000 events for the scheduler tag) used to retrigger
+    // Alpine reactivity 1000× — see dashboard_performance/context.md §0.4.
+    _scheduleFlush() {
+      if (this._flushScheduled) return;
+      this._flushScheduled = true;
+      requestAnimationFrame(() => {
+        this._flushScheduled = false;
+        this.rows = this._display(this.subTab);
+      });
+    },
+
     _connect(tag) {
       try {
+        this._inHistory = true;
         const url = `/api/dashboard/logs/stream?tag=${encodeURIComponent(tag)}`;
         const es = new EventSource(url, { withCredentials: true });
         this._es = es;
@@ -71,8 +87,10 @@ function logsTab() {
             if (!arr) return;
             arr.push(entry);
             if (arr.length > _MAX_ROWS) arr.splice(0, arr.length - _MAX_ROWS);
-            if (entry.tag === this.subTab) {
-              this.rows = this._display(entry.tag);
+            // History phase: just buffer; rows is set once on history-end.
+            // Live phase: coalesce updates per frame instead of per event.
+            if (!this._inHistory && entry.tag === this.subTab) {
+              this._scheduleFlush();
             }
           } catch (err) {
             console.warn('[logs] parse error', err);
@@ -80,6 +98,7 @@ function logsTab() {
         });
 
         es.addEventListener('history-end', () => {
+          this._inHistory = false;
           this.loading = false;
           this.rows = this._display(this.subTab);
         });
