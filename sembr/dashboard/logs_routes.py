@@ -18,7 +18,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from sembr.logbus.bus import get_bus
-from sembr.logbus.router import ALL_TAGS
+from sembr.logbus.router import ALL_TAGS, THIRD_PARTY_LOGGERS_BY_TAG
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +32,6 @@ _LEVEL_MAP: dict[str, int] = {
 }
 
 _LEVEL_NAMES = list(_LEVEL_MAP.keys())
-
-# Tags that have associated stdlib loggers whose level must be kept in sync
-# (see design L7 / R7).
-_THIRD_PARTY_LOGGER_TAGS: dict[str, list[str]] = {
-    "http": ["httpx", "httpcore", "uvicorn.access"],
-}
 
 
 class LevelEnum(str, Enum):
@@ -85,8 +79,10 @@ async def put_level(body: LevelRequest) -> Response:
     bus = get_bus()
     bus.set_tag_level(tag, level_int)
 
-    # Sync third-party loggers whose records map to this tag (design L7 / R7).
-    for logger_name in _THIRD_PARTY_LOGGER_TAGS.get(tag, []):
+    # Sync third-party stdlib loggers whose records map to this tag — they
+    # were silenced at WARNING by install_logbus, so without this resync the
+    # bus tag would be at e.g. DEBUG while the underlying logger still drops.
+    for logger_name in THIRD_PARTY_LOGGERS_BY_TAG.get(tag, ()):
         logging.getLogger(logger_name).setLevel(level_int)
 
     return Response(status_code=204)
@@ -120,12 +116,13 @@ async def _log_generator(tag: str, request: Request) -> AsyncGenerator[str, None
     bus = get_bus()
     q: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue(maxsize=2000)
 
-    snapshot = bus.subscribe(q)
+    # Subscribe with a tag filter — both the snapshot and the live queue only
+    # see entries for *tag*, so this generator never has to discard mismatched
+    # records and emit() does not pay to fan out unwanted entries to it.
+    snapshot = bus.subscribe(q, tag=tag)
     try:
-        # Emit buffered history for the requested tag only.
         for entry in snapshot:
-            if entry["tag"] == tag:
-                yield f"event: log\ndata: {json.dumps(entry)}\n\n"
+            yield f"event: log\ndata: {json.dumps(entry)}\n\n"
 
         yield "event: history-end\ndata: {}\n\n"
 
@@ -137,7 +134,7 @@ async def _log_generator(tag: str, request: Request) -> AsyncGenerator[str, None
                 break
             try:
                 entry = await asyncio.wait_for(q.get(), timeout=_POLL_INTERVAL)
-                if entry is not None and entry["tag"] == tag:
+                if entry is not None:
                     yield f"event: log\ndata: {json.dumps(entry)}\n\n"
                     ping_deadline = asyncio.get_running_loop().time() + _PING_INTERVAL
             except asyncio.TimeoutError:

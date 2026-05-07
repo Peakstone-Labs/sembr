@@ -6,6 +6,7 @@ import logging
 
 from sembr.logbus.bus import get_bus
 from sembr.logbus.handler import RingBufferHandler
+from sembr.logbus.router import ALL_TAGS, THIRD_PARTY_LOGGERS_BY_TAG
 
 
 def install_logbus(
@@ -29,18 +30,17 @@ def install_logbus(
     bus.set_buffer_size(buffer_per_tag)
 
     # Apply default level to all tags.
-    from sembr.logbus.router import ALL_TAGS  # noqa: PLC0415
     for tag in ALL_TAGS:
         bus.set_tag_level(tag, default_level)
 
-    # Suppress noisy third-party loggers at WARNING by default; UI can relax them.
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    # Suppress noisy third-party loggers at WARNING by default; the dashboard's
+    # PUT /level endpoint can relax them by reading the same map.
+    for names in THIRD_PARTY_LOGGERS_BY_TAG.values():
+        for name in names:
+            logging.getLogger(name).setLevel(logging.WARNING)
 
-    # Attach handler to root logger (addHandler is idempotent on duplicates via
-    # the internal handler list; we guard with a type check to avoid double-add
-    # in test scenarios that call install_logbus() multiple times).
+    # Attach handler to root logger; guard against double-add when
+    # install_logbus() runs more than once in the same process (tests).
     root = logging.getLogger()
     for h in root.handlers:
         if isinstance(h, RingBufferHandler):
@@ -48,11 +48,10 @@ def install_logbus(
 
     # Pin existing StreamHandlers (installed by basicConfig) at INFO before we
     # lower root to DEBUG, so docker logs / stderr are not flooded with
-    # third-party DEBUG records (🟡-2 / R4).
+    # third-party DEBUG records.
     for h in root.handlers:
-        if isinstance(h, logging.StreamHandler) and not isinstance(h, RingBufferHandler):
-            if h.level == logging.NOTSET:
-                h.setLevel(logging.INFO)
+        if isinstance(h, logging.StreamHandler) and h.level == logging.NOTSET:
+            h.setLevel(logging.INFO)
 
     handler = RingBufferHandler()
     root.addHandler(handler)

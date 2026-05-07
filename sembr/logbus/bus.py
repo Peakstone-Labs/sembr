@@ -15,11 +15,11 @@ from sembr.logbus.router import ALL_TAGS
 
 
 def _put_drop_oldest(q: asyncio.Queue, entry: dict[str, Any]) -> None:
-    """Enqueue *entry*; if the queue is full, evict the oldest item first (R1).
+    """Enqueue *entry*; if the queue is full, evict the oldest item first.
 
     Must only be called from within the asyncio event loop (e.g. via
     call_soon_threadsafe).  Never raises — swallows QueueFull silently so
-    the asyncio default exception handler is not triggered (🟡-1).
+    the asyncio default exception handler is not triggered.
     """
     try:
         q.put_nowait(entry)
@@ -42,7 +42,9 @@ class LogBus:
         self._deques: dict[str, deque[dict[str, Any]]] = {
             tag: deque(maxlen=buffer_per_tag) for tag in ALL_TAGS
         }
-        self._subscribers: set[asyncio.Queue[dict[str, Any] | None]] = set()
+        # Each subscriber records the tag it cares about (None = all tags).
+        # emit() schedules a fan-out only for subscribers whose filter matches.
+        self._subscribers: dict[asyncio.Queue[dict[str, Any] | None], str | None] = {}
         self._tag_levels: dict[str, int] = {tag: 20 for tag in ALL_TAGS}  # INFO=20
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -81,9 +83,10 @@ class LogBus:
         """Append *entry* to the ring buffer and fan-out to active subscribers.
 
         Drops silently when no event loop is available (pre-lifespan start).
-        Fan-out scheduling (call_soon_threadsafe) happens inside the lock so
-        delivery order to subscribers matches deque insertion order (🟡-3).
-        Overflow uses drop-oldest semantics (🟡-1 / design R1).
+        Fan-out only schedules a put for subscribers whose tag filter is None
+        (all tags) or matches *tag* exactly — a single SSE consumer streaming
+        ``embedder`` no longer pays for traffic on the other six tags.
+        Overflow inside each subscriber queue uses drop-oldest semantics.
         """
         loop = self._loop
         if loop is None or loop.is_closed():
@@ -93,7 +96,9 @@ class LogBus:
             if entry["level_no"] < self._tag_levels[tag]:
                 return
             self._deques[tag].append(entry)
-            for q in self._subscribers:
+            for q, want_tag in self._subscribers.items():
+                if want_tag is not None and want_tag != tag:
+                    continue
                 try:
                     loop.call_soon_threadsafe(_put_drop_oldest, q, entry)
                 except Exception:
@@ -103,25 +108,39 @@ class LogBus:
     # Subscribe / unsubscribe (called from asyncio context)
     # ------------------------------------------------------------------
 
-    def subscribe(self, q: asyncio.Queue[dict[str, Any] | None]) -> list[dict[str, Any]]:
-        """Atomically snapshot all deques and register *q* as a subscriber.
+    def subscribe(
+        self,
+        q: asyncio.Queue[dict[str, Any] | None],
+        *,
+        tag: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Atomically snapshot the relevant deque(s) and register *q* as a subscriber.
 
-        Returns a flat list of all buffered entries (history snapshot) in
-        insertion order across all tags.  The caller must not yield between
-        ``subscribe()`` and draining the returned snapshot — otherwise it
-        risks missing or duplicating entries.
+        When *tag* is given the snapshot is just that tag's deque (already in
+        insertion order — no sort needed). When *tag* is None the snapshot
+        flattens all tag deques and is sorted by timestamp; the sort runs
+        outside the lock so emitters are not blocked by it.
+
+        The caller must not yield between ``subscribe()`` and draining the
+        returned snapshot — otherwise it risks missing or duplicating entries.
         """
         with self._lock:
-            snapshot: list[dict[str, Any]] = []
-            for tag_deque in self._deques.values():
-                snapshot.extend(tag_deque)
+            if tag is not None:
+                snapshot: list[dict[str, Any]] = list(self._deques[tag])
+                needs_sort = False
+            else:
+                snapshot = []
+                for tag_deque in self._deques.values():
+                    snapshot.extend(tag_deque)
+                needs_sort = True
+            self._subscribers[q] = tag
+        if needs_sort:
             snapshot.sort(key=lambda e: e["ts"])
-            self._subscribers.add(q)
         return snapshot
 
     def unsubscribe(self, q: asyncio.Queue[dict[str, Any] | None]) -> None:
         with self._lock:
-            self._subscribers.discard(q)
+            self._subscribers.pop(q, None)
 
     # ------------------------------------------------------------------
     # Snapshot for GET /tags (tag + current level)

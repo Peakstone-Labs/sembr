@@ -12,7 +12,7 @@ import pytest
 from sembr.logbus.bus import _reset_for_test
 
 
-def _entry(tag: str = "api", level: int = logging.INFO, ts: int = 0) -> dict[str, Any]:
+def _entry(*, tag: str = "api", level: int = logging.INFO, ts: int = 0) -> dict[str, Any]:
     return {
         "ts": ts,
         "level": "INFO",
@@ -205,3 +205,83 @@ def test_tag_info(fresh_bus) -> None:
     assert names == {"collector", "embedder", "matcher", "notifier", "api", "scheduler", "http"}
     http_info = next(i for i in info if i["name"] == "http")
     assert http_info["level"] == logging.DEBUG
+
+
+# ---------------------------------------------------------------------------
+# (f) subscribe(tag=...) — per-subscriber tag filter
+# ---------------------------------------------------------------------------
+
+def test_subscribe_tag_filters_snapshot_and_live(fresh_bus) -> None:
+    """A subscriber that asks for tag=embedder must not receive other tags."""
+    bus = fresh_bus
+    loop = asyncio.new_event_loop()
+    bus.set_loop(loop)
+
+    # Pre-populate two tags before subscribing.
+    bus.emit("api", _entry(tag="api", ts=1))
+    bus.emit("embedder", _entry(tag="embedder", ts=2))
+    bus.emit("api", _entry(tag="api", ts=3))
+
+    q: asyncio.Queue = asyncio.Queue()
+    snapshot = bus.subscribe(q, tag="embedder")
+
+    # Snapshot must contain only the embedder entry.
+    assert [e["tag"] for e in snapshot] == ["embedder"]
+
+    # Live: emit one of each tag; queue should only see embedder.
+    bus.emit("api", _entry(tag="api", ts=4))
+    bus.emit("embedder", _entry(tag="embedder", ts=5))
+    loop.run_until_complete(asyncio.sleep(0))
+
+    drained: list[dict[str, Any]] = []
+    while not q.empty():
+        drained.append(loop.run_until_complete(q.get()))
+
+    bus.unsubscribe(q)
+    loop.close()
+
+    assert all(e["tag"] == "embedder" for e in drained)
+    assert {e["ts"] for e in drained} == {5}
+
+
+def test_subscribe_no_tag_returns_all(fresh_bus) -> None:
+    """tag=None (default) preserves the existing all-tags behaviour."""
+    bus = fresh_bus
+    loop = asyncio.new_event_loop()
+    bus.set_loop(loop)
+
+    bus.emit("api", _entry(tag="api", ts=1))
+    bus.emit("embedder", _entry(tag="embedder", ts=2))
+
+    q: asyncio.Queue = asyncio.Queue()
+    snapshot = bus.subscribe(q)
+
+    assert {e["tag"] for e in snapshot} == {"api", "embedder"}
+
+    bus.emit("collector", _entry(tag="collector", ts=3))
+    loop.run_until_complete(asyncio.sleep(0))
+
+    drained: list[dict[str, Any]] = []
+    while not q.empty():
+        drained.append(loop.run_until_complete(q.get()))
+
+    bus.unsubscribe(q)
+    loop.close()
+
+    assert any(e["tag"] == "collector" for e in drained)
+
+
+def test_unsubscribe_stops_delivery(fresh_bus) -> None:
+    bus = fresh_bus
+    loop = asyncio.new_event_loop()
+    bus.set_loop(loop)
+
+    q: asyncio.Queue = asyncio.Queue()
+    bus.subscribe(q, tag="api")
+    bus.unsubscribe(q)
+
+    bus.emit("api", _entry(tag="api", ts=1))
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert q.empty()
+    loop.close()

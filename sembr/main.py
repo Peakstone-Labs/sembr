@@ -131,7 +131,7 @@ async def lifespan(app: FastAPI):
     install_logbus(
         asyncio.get_running_loop(),
         buffer_per_tag=settings.dashboard_log_buffer_per_tag,
-        default_level={"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40}[settings.dashboard_log_level],
+        default_level=getattr(logging, settings.dashboard_log_level),
     )
     # Validate embedder config before any I/O — raises ValueError if EMBEDDER_API_KEY unset.
     embedder = build_embedder(settings)

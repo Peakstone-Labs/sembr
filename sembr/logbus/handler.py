@@ -17,7 +17,6 @@ class RingBufferHandler(logging.Handler):
 
     def __init__(self) -> None:
         super().__init__(level=logging.DEBUG)
-        self._fmt = logging.Formatter("%(message)s")
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
