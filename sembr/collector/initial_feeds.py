@@ -2,36 +2,54 @@
 
 RSSHub routes use the internal docker-compose service name ``rsshub:1200``.
 For local dev outside Docker, replace with ``localhost:1200``.
+
+Selection criteria: feeds either deliver substantive body text OR carry
+information-dense headlines (newsflash style where the title is the fact).
+Headline-only paywall feeds (NYT, BBC, FT, AP, WSJ, Economist, Nikkei,
+MarketWatch, Seeking Alpha, Investing.com, Al Jazeera, CNN) are excluded —
+they leave embeddings with nothing to anchor on beyond the title.
 """
 from __future__ import annotations
 
 INITIAL_FEEDS: list[dict] = [
     # --- International General ---
-    # Reuters: feeds.reuters.com TLS dead, all RSSHub /reuters/* routes 503 — dropped
-    {"name": "AP News",            "url": "http://rsshub:1200/apnews/topics/apf-topnews",             "poll_interval_minutes": 30},
-    {"name": "The Guardian World", "url": "https://www.theguardian.com/world/rss",                    "poll_interval_minutes": 30},
-    {"name": "SCMP",               "url": "https://www.scmp.com/rss/91/feed",                         "poll_interval_minutes": 30},
-    {"name": "NYT World",          "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",   "poll_interval_minutes": 60},
-    {"name": "BBC News",           "url": "http://feeds.bbci.co.uk/news/rss.xml",                     "poll_interval_minutes": 30},
-    {"name": "CNN Edition",        "url": "http://rss.cnn.com/rss/edition.rss",                       "poll_interval_minutes": 30},
-    {"name": "Al Jazeera",         "url": "https://www.aljazeera.com/xml/rss/all.xml",                "poll_interval_minutes": 60},
-    {"name": "NPR News",           "url": "https://feeds.npr.org/1001/rss.xml",                       "poll_interval_minutes": 30},
-    {"name": "Washington Post",    "url": "https://feeds.washingtonpost.com/rss/world",               "poll_interval_minutes": 60},
-    # --- International Finance (native RSS, no RSSHub needed) ---
-    {"name": "Bloomberg Markets",  "url": "https://feeds.bloomberg.com/markets/news.rss",             "poll_interval_minutes": 60},
-    {"name": "Financial Times",    "url": "https://www.ft.com/?format=rss",                           "poll_interval_minutes": 60},
-    {"name": "The Economist",      "url": "https://www.economist.com/latest/rss.xml",                 "poll_interval_minutes": 1440},
-    {"name": "WSJ World",          "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",              "poll_interval_minutes": 60},
-    {"name": "Nikkei Asia",        "url": "https://asia.nikkei.com/rss/feed/nar",                     "poll_interval_minutes": 60},
-    {"name": "MarketWatch",        "url": "https://www.marketwatch.com/rss/topstories",               "poll_interval_minutes": 30},
-    {"name": "Seeking Alpha",      "url": "https://seekingalpha.com/feed.xml",                        "poll_interval_minutes": 30},
-    {"name": "Investing.com",      "url": "https://www.investing.com/rss/news.rss",                   "poll_interval_minutes": 15},
-    # --- Chinese Finance (requires RSSHub sidecar at http://rsshub:1200) ---
-    {"name": "华尔街见闻",           "url": "http://rsshub:1200/wallstreetcn/news/global",              "poll_interval_minutes": 30},
-    {"name": "财联社电报",           "url": "http://rsshub:1200/cls/telegraph",                         "poll_interval_minutes": 30},
-    {"name": "第一财经",             "url": "http://rsshub:1200/yicai/news",                            "poll_interval_minutes": 60},
-    {"name": "36氪",                "url": "http://rsshub:1200/36kr/news/latest",                      "poll_interval_minutes": 30},
-    {"name": "虎嗅",                "url": "http://rsshub:1200/huxiu/article",                         "poll_interval_minutes": 30},
-    # --- Chinese General (requires RSSHub sidecar) ---
-    {"name": "澎湃新闻",             "url": "http://rsshub:1200/thepaper/featured",                     "poll_interval_minutes": 30},
+    {"name": "The Guardian World", "url": "https://www.theguardian.com/world/rss",                       "poll_interval_minutes": 30},
+    {"name": "SCMP",               "url": "https://www.scmp.com/rss/91/feed",                            "poll_interval_minutes": 30},
+    {"name": "NPR News",           "url": "https://feeds.npr.org/1001/rss.xml",                          "poll_interval_minutes": 30},
+    {"name": "Washington Post",    "url": "https://feeds.washingtonpost.com/rss/world",                  "poll_interval_minutes": 60},
+    {"name": "New Yorker",         "url": "http://rsshub:1200/newyorker/latest",                         "poll_interval_minutes": 360},
+
+    # --- International Finance ---
+    {"name": "Bloomberg Markets",  "url": "https://feeds.bloomberg.com/markets/news.rss",                "poll_interval_minutes": 60},
+
+    # --- Chinese Finance (long-form) ---
+    {"name": "华尔街见闻",          "url": "http://rsshub:1200/wallstreetcn/news/global",                  "poll_interval_minutes": 30},
+    {"name": "第一财经",            "url": "http://rsshub:1200/yicai/news",                                "poll_interval_minutes": 60},
+    {"name": "第一财经-头条",        "url": "http://rsshub:1200/yicai/headline",                            "poll_interval_minutes": 60},
+    {"name": "36氪",               "url": "http://rsshub:1200/36kr/news/latest",                          "poll_interval_minutes": 30},
+    {"name": "虎嗅",               "url": "http://rsshub:1200/huxiu/article",                             "poll_interval_minutes": 30},
+    {"name": "格隆汇热门文章",       "url": "http://rsshub:1200/gelonghui/hot-article",                      "poll_interval_minutes": 60},
+    {"name": "东财-策略报告",        "url": "http://rsshub:1200/eastmoney/report/strategyreport",            "poll_interval_minutes": 360},
+
+    # --- Chinese Finance (newsflash; title carries the fact) ---
+    {"name": "财联社电报",          "url": "http://rsshub:1200/cls/telegraph",                             "poll_interval_minutes": 30},
+    {"name": "格隆汇快讯",          "url": "http://rsshub:1200/gelonghui/live",                            "poll_interval_minutes": 30},
+    {"name": "金十-快讯",           "url": "http://rsshub:1200/jin10",                                     "poll_interval_minutes": 30},
+
+    # --- Chinese General ---
+    {"name": "澎湃新闻",            "url": "http://rsshub:1200/thepaper/featured",                         "poll_interval_minutes": 30},
+
+    # --- Government / Statistics ---
+    {"name": "国家统计局",          "url": "http://rsshub:1200/gov/stats/sj/zxfb",                          "poll_interval_minutes": 1440},
+
+    # --- Academic ---
+    {"name": "Nature",              "url": "http://rsshub:1200/nature/research/nature",                  "poll_interval_minutes": 1440},
+    {"name": "Nature Biotechnology","url": "http://rsshub:1200/nature/research/nbt",                     "poll_interval_minutes": 1440},
+    {"name": "Nature Neuroscience", "url": "http://rsshub:1200/nature/research/neuro",                   "poll_interval_minutes": 1440},
+
+    # --- Tools / Open Source ---
+    {"name": "HelloGitHub",         "url": "http://rsshub:1200/hellogithub/home/all",                    "poll_interval_minutes": 1440},
+
+    # --- Twitter ---
+    {"name": "Elon Musk",           "url": "http://rsshub:1200/twitter/user/elonmusk",                   "poll_interval_minutes": 60},
 ]

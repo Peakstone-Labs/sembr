@@ -71,19 +71,25 @@ tab: comment out the two volume mounts above; `/api/settings/save` will return
 
 ## RSS Feeds
 
-sembr comes with 23 pre-loaded free RSS sources. They start collecting on first launch — no configuration needed.
+sembr comes with 23 pre-loaded free RSS sources, curated for substantive body text or information-dense headlines. They start collecting on first launch — no configuration needed.
 
 ### Pre-loaded sources
 
 | Category | Sources |
 | -------- | ------- |
-| International news | AP News, BBC, CNN, The Guardian, Al Jazeera, NPR, Washington Post |
-| International finance | Bloomberg Markets, Financial Times, The Economist, WSJ, Nikkei Asia, MarketWatch, Seeking Alpha, Investing.com |
-| Asia-Pacific | NYT World, SCMP |
-| Chinese finance (via RSSHub) | 华尔街见闻, 财联社电报, 第一财经, 36氪, 虎嗅 |
+| International news | The Guardian World, SCMP, NPR News, Washington Post, New Yorker |
+| International finance | Bloomberg Markets |
+| Chinese finance (long-form, via RSSHub) | 华尔街见闻, 第一财经, 第一财经-头条, 36氪, 虎嗅, 格隆汇热门文章, 东财-策略报告 |
+| Chinese finance (newsflash, via RSSHub) | 财联社电报, 格隆汇快讯, 金十-快讯 |
 | Chinese general (via RSSHub) | 澎湃新闻 |
+| Government / Statistics (via RSSHub) | 国家统计局 |
+| Academic (via RSSHub) | Nature, Nature Biotechnology, Nature Neuroscience |
+| Tools / Open Source (via RSSHub) | HelloGitHub |
+| Twitter (via RSSHub) | Elon Musk |
 
-Chinese sources route through the bundled [RSSHub](https://rsshub.app/) sidecar (`rsshub:1200`), which starts automatically alongside the API.
+Headline-only paywall feeds (NYT, BBC, FT, AP, WSJ, Economist, Nikkei, MarketWatch, Seeking Alpha, Investing.com, Al Jazeera, CNN) are intentionally excluded — their RSS bodies are empty, leaving embeddings with nothing to anchor on beyond the title.
+
+Sources marked "via RSSHub" route through the bundled [RSSHub](https://rsshub.app/) sidecar (`rsshub:1200`), which starts automatically alongside the API.
 
 ### Add a feed
 
