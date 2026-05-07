@@ -87,9 +87,9 @@ sembr comes with 23 pre-loaded free RSS sources, curated for substantive body te
 | Tools / Open Source (via RSSHub) | HelloGitHub |
 | Twitter (via RSSHub) | Elon Musk |
 
-Headline-only paywall feeds (NYT, BBC, FT, AP, WSJ, Economist, Nikkei, MarketWatch, Seeking Alpha, Investing.com, Al Jazeera, CNN) are intentionally excluded — their RSS bodies are empty, leaving embeddings with nothing to anchor on beyond the title.
-
 Sources marked "via RSSHub" route through the bundled [RSSHub](https://rsshub.app/) sidecar (`rsshub:1200`), which starts automatically alongside the API.
+
+Twitter feeds additionally require a `TWITTER_AUTH_TOKEN` cookie value in `.env` — without it the route returns empty. Get the token from `x.com` DevTools → Application → Cookies → `auth_token` (40-char hex). See `.env.example` for details. The pre-loaded Elon Musk feed will sit idle until the token is set; you can also delete it via `DELETE /feeds/{id}` if you don't need Twitter sources.
 
 ### Add a feed
 

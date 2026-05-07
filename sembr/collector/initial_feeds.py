@@ -5,9 +5,6 @@ For local dev outside Docker, replace with ``localhost:1200``.
 
 Selection criteria: feeds either deliver substantive body text OR carry
 information-dense headlines (newsflash style where the title is the fact).
-Headline-only paywall feeds (NYT, BBC, FT, AP, WSJ, Economist, Nikkei,
-MarketWatch, Seeking Alpha, Investing.com, Al Jazeera, CNN) are excluded —
-they leave embeddings with nothing to anchor on beyond the title.
 """
 from __future__ import annotations
 
