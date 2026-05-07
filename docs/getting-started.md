@@ -47,7 +47,21 @@ Once the probe succeeds:
 HTTP/1.1 200 {"status":"ok","components":{"embedder":"ok",...}}
 ```
 
-## 4. Create your first intent
+## 4. Configure email delivery
+
+Email is the only built-in channel today. Set the SMTP fields in `.env`:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=you@example.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=you@example.com
+```
+
+Leaving `SMTP_HOST` empty disables email — the rest of the app still runs.
+
+## 5. Create your first intent
 
 ```bash
 curl -X POST http://localhost:8000/intents \
@@ -55,11 +69,13 @@ curl -X POST http://localhost:8000/intents \
   -d '{
     "name": "fed-em-fx",
     "text": "Fed policy impact on emerging market currencies",
-    "channels": [{"type": "telegram", "chat_id": "@yourchannel"}]
+    "timezone": "America/New_York",
+    "schedule": {"mode": "cron", "preset": "daily", "hour": 8, "minute": 0},
+    "channels": [{"type": "email", "to": ["you@example.com"]}]
   }'
 ```
 
-The matcher runs every 5 minutes. Matched articles arrive as push notifications.
+This intent fires every day at 08:00 in `America/New_York`. The digest renders timestamps in that same timezone. For event-mode delivery (fire after N matching articles, or T seconds since the first buffered match), use `"schedule": {"mode": "event", "trigger_count": 3, "max_wait_seconds": 1800}` instead.
 
 ## Dashboard
 

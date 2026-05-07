@@ -47,7 +47,21 @@ HTTP/1.1 503 {"status":"degraded","components":{"embedder":"loading",...}}
 HTTP/1.1 200 {"status":"ok","components":{"embedder":"ok",...}}
 ```
 
-## 创建第一个意图
+## 第四步：配置邮件投递
+
+邮件是当前唯一的内置渠道。在 `.env` 中填好 SMTP：
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=you@example.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=you@example.com
+```
+
+`SMTP_HOST` 留空即关闭邮件投递，应用其余部分仍可运行。
+
+## 第五步：创建第一个意图
 
 ```bash
 curl -X POST http://localhost:8000/intents \
@@ -55,11 +69,13 @@ curl -X POST http://localhost:8000/intents \
   -d '{
     "name": "fed-em-fx",
     "text": "美联储政策对新兴市场汇率的影响",
-    "channels": [{"type": "telegram", "chat_id": "@yourchannel"}]
+    "timezone": "America/New_York",
+    "schedule": {"mode": "cron", "preset": "daily", "hour": 8, "minute": 0},
+    "channels": [{"type": "email", "to": ["you@example.com"]}]
   }'
 ```
 
-匹配任务每 5 分钟运行一次，匹配到的文章会以推送通知形式送达。
+这条意图会在每天纽约时间 08:00 触发，邮件中的时间戳也按该时区渲染。如需事件驱动模式（攒到 N 篇匹配文章 / 等待 T 秒后发送），将 schedule 换为 `{"mode": "event", "trigger_count": 3, "max_wait_seconds": 1800}` 即可。
 
 ## 监控面板
 

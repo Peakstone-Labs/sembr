@@ -4,7 +4,7 @@
 
 > Semantic news monitoring via reverse RAG.
 
-**sembr** lets you write a natural-language intent once — _"monitor Fed policy impact on emerging-market currencies"_ — and receive matching news pushed to Telegram, Discord, or Slack as it arrives. No keyword lists, no hand-tuned filters.
+**sembr** lets you write a natural-language intent once — _"monitor Fed policy impact on emerging-market currencies"_ — and receive matching news as a digest email. No keyword lists, no hand-tuned filters. Telegram / Discord / Slack channels are scaffolded by the marker-ABC plugin point and are on the post-1.0 roadmap.
 
 ## How it differs from traditional RAG
 
@@ -47,7 +47,7 @@ that, `docker-compose.yml` mounts two host paths into the API container:
 | Mount | Purpose | Risk |
 | ----- | ------- | ---- |
 | `./.env:/app/.env` | settings editor reads/writes the real `.env` | API can rewrite host config |
-| `/var/run/docker.sock:/var/run/docker.sock` | RestartController drives `docker restart sembr-rsshub` | **API container is effectively docker-root on the host** |
+| `/var/run/docker.sock:/var/run/docker.sock` | RestartController drives `docker compose up -d --force-recreate --no-deps rsshub` so passthrough env changes take effect | **API container is effectively docker-root on the host** |
 
 Mounting the docker socket is a deliberate single-tenant trade-off (same model
 as Watchtower / Portainer). Anyone with API access — or any RCE in the API
@@ -183,13 +183,16 @@ The bundled UI is plain HTML + Alpine.js + Chart.js with no Node toolchain. Disa
 
 ## Status
 
-🚧 Pre-release — under active development. The 0.1.0 MVP targets:
+**1.0** — first stable release. Ships with:
 
 - RSS ingestion + BGE-M3 embeddings via SiliconFlow API + Qdrant vector store
-- Intent CRUD via REST API
-- 5-minute scheduled semantic matching with configurable threshold
-- LLM-generated summaries (OpenAI / DeepSeek / local)
-- Telegram push delivery
+- Intent CRUD via REST API, with both cron-mode (preset + per-intent timezone) and event-mode (trigger after N matching articles or T seconds) schedules
+- LLM-generated summaries via any OpenAI-compatible chat-completions endpoint (default: DeepSeek-V4-Flash on SiliconFlow)
+- Email digest delivery via SMTP (per-intent timezone + matcher score badges)
+- Read-only monitoring dashboard with live log SSE
+- Runtime settings editor that writes the host `.env` and recreates the affected containers in place
+
+Telegram / Discord / Slack channels and a local LLM backend are post-1.0 work — the [notifier](docs/modules/notifier.md) and [summarizer](docs/modules/summarizer.md) module docs explain the seams that make adding them additive rather than invasive.
 
 ## License
 

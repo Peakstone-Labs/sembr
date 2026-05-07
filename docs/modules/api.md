@@ -17,7 +17,7 @@ Interactive API docs are auto-generated at **`/docs`** (Swagger UI) and **`/redo
 - Any HTML rendering — `dashboard` owns that
 - Per-job business logic — the routers call into `collector` / `matcher` / `summarizer` / `notifier` and only orchestrate
 - Background work — fire endpoints kick off `asyncio.create_task` and return a polling URL; `dashboard.routes` and `logs_routes` own anything that needs SSE
-- Authentication beyond the simple `DASHBOARD_TOKEN` shared secret — multi-user auth is out of scope for the MVP
+- Authentication beyond the simple `DASHBOARD_TOKEN` shared secret — multi-user auth is out of scope for 1.0
 
 ## Routers and prefixes
 
@@ -70,7 +70,7 @@ Both `/intents/{id}/fire` and `/feeds/{id}/fire` follow the same shape:
 4. Dispatch the work via `asyncio.create_task`; the task is held in a module-level `set` to keep it alive against the GC, with `add_done_callback(set.discard)` removing it on completion
 5. Return `202 Accepted` with `task_id` and `status_url`
 
-The status endpoint reads the same in-memory task. Because the storage is per-process, a multi-worker uvicorn deployment would route the GET to a worker that may not own the task. The MVP topology is single-worker.
+The status endpoint reads the same in-memory task. Because the storage is per-process, a multi-worker uvicorn deployment would route the GET to a worker that may not own the task. The 1.0 topology is single-worker.
 
 `POST /feeds/{id}/fire?dry_run=true` reuses the same host rate limiter that the scheduler uses (`get_host_limiter()` from `collector.scheduler`) so a dry-run cannot bypass the per-host concurrency ceiling.
 
@@ -134,7 +134,7 @@ The api router itself reads no configuration directly — all settings come thro
 
 ## Known constraints
 
-- **Single-process state**: fire-task storage, throttle counters, and the event-mode intent cache all live in module-level Python state. A multi-worker uvicorn deployment would route `GET /fire/{task_id}` to a worker that may not have created the task. The MVP topology is single-worker; a multi-worker deployment requires moving these to Redis or another shared store
+- **Single-process state**: fire-task storage, throttle counters, and the event-mode intent cache all live in module-level Python state. A multi-worker uvicorn deployment would route `GET /fire/{task_id}` to a worker that may not have created the task. The 1.0 topology is single-worker; a multi-worker deployment requires moving these to Redis or another shared store
 - **PUT failure with text-change is destructive on Qdrant**: when the new vector has been written but a downstream step fails, the rollback path deletes the new Qdrant point — the original vector is already gone. The SQLite row is rolled back, but the operator must re-PUT to re-embed before the matcher can find the intent again. The `500` response and the `ERROR`-level log explain this; a fully-symmetric rollback would require capturing the prior vector from Qdrant before the upsert, which is structural work for a follow-up
 - **No upper bound on body size for feeds**: the api does not cap `FeedCreate.config` size or `IntentCreate.text` length beyond Pydantic's per-field validators. Misuse could fill a SQLite row with a megabyte of payload. In practice the dashboard caps these client-side; a hostile direct call would be limited only by FastAPI's default body size limit
 - **Settings save runs no Pydantic round-trip**: a value that fails `Settings(**values)` validation (e.g. `MATCHER_DEFAULT_THRESHOLD=not-a-number`) is written to disk anyway. The api self-restart then crashes during `Settings()` instantiation and `restart: unless-stopped` puts the container into a crash loop. The dashboard form mirrors the schema constraints, so this is reachable only by hand-crafting the POST body, but a future Pydantic dry-run would close the gap

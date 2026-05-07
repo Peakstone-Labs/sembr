@@ -15,7 +15,7 @@ User-facing feed registry. One row per RSS source.
 | `id` | `INTEGER` | autoincrement | `PRIMARY KEY` | Surrogate key |
 | `name` | `TEXT` | — | `NOT NULL` | Display name |
 | `url` | `TEXT` | — | `NOT NULL UNIQUE` | Feed URL — unique key for dedup at create time |
-| `source_type` | `TEXT` | `'rss'` | `NOT NULL` | Source plugin name; only `rss` shipped in 0.1.0 |
+| `source_type` | `TEXT` | `'rss'` | `NOT NULL` | Source plugin name; only `rss` ships in 1.0 |
 | `config` | `TEXT` | `'{}'` | `NOT NULL` | JSON-encoded source-specific config |
 | `poll_interval_minutes` | `INTEGER` | `30` | `NOT NULL` | APScheduler interval (5–1440) |
 | `last_collected_at` | `TEXT` | `NULL` | — | Last successful fetch (UTC ISO-8601) |
@@ -128,7 +128,7 @@ User-defined monitoring intents.
 | `text` | `TEXT` | — | `NOT NULL` | Natural-language intent — embedded into Qdrant `intents` collection |
 | `threshold` | `REAL` | `0.75` | `NOT NULL` | Cosine similarity cutoff (0.20–0.95) |
 | `enabled` | `INTEGER` | `1` | `NOT NULL` | 0 = paused; matcher skips |
-| `channels` | `TEXT` | `'[]'` | `NOT NULL` | JSON array of `ChannelConfig` (Telegram / Discord / Slack / email) |
+| `channels` | `TEXT` | `'[]'` | `NOT NULL` | JSON array of `ChannelConfig` — discriminated union; `email` is the only built-in `type` today |
 | `tags` | `TEXT` | `'[]'` | `NOT NULL` | JSON array of free-form tag strings |
 | `system_template` | `TEXT` | `'default'` | `NOT NULL` | Filename (no `.md`) under `prompts/system/` |
 | `instruction_template` | `TEXT` | `'default'` | `NOT NULL` | Filename (no `.md`) under `prompts/instruction/` |

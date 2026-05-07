@@ -264,7 +264,7 @@ async def lifespan(app: FastAPI):
                 settings_restart._force_exit(0)
 
 
-app = FastAPI(title="sembr", version="0.1.0.dev0", lifespan=lifespan)
+app = FastAPI(title="sembr", version="1.0.0", lifespan=lifespan)
 # Auth gate sits in front of every /dashboard and /api/dashboard request.
 # When DASHBOARD_TOKEN is empty (default), the middleware is a pass-through.
 app.add_middleware(DashboardTokenMiddleware)

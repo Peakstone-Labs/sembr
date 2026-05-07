@@ -1,8 +1,9 @@
 """Intents collection bootstrap and CRUD.
 
 Idempotent: checks existence before creating collection and alias.
-No quantization: intent vectors are query-side in `search_batch`; precision matters
-more than memory savings at < 1000 entries / ~4 MB raw at MVP scale.
+No quantization: intent vectors are query-side in the matcher's `query_points`
+calls; precision matters more than memory savings at < 1000 entries
+(~4 MB raw at 1024-dim).
 """
 from __future__ import annotations
 

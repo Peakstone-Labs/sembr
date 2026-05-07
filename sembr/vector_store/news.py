@@ -1,8 +1,8 @@
 """News collection bootstrap + write helpers.
 
 Idempotent: checks existence before creating collection and alias.
-Alias switching for model upgrades is out of scope for the MVP and is owned
-by a future model-upgrade flow, not bootstrap.
+Alias switching for model upgrades is out of scope here — owned by a future
+model-upgrade flow, not bootstrap.
 """
 from __future__ import annotations
 

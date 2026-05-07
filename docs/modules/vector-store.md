@@ -45,7 +45,7 @@ async def update_intent_payload(client, intent_id: int, payload) -> None
 async def delete_intent_point(client, intent_id: int) -> None
 ```
 
-Collection config: `size=embedder.dim`, `distance=COSINE`, `on_disk=False`, **no quantization**. Intent vectors are query-side in the matcher's `search_batch`, so precision matters more than memory savings at the MVP scale (< 1000 intents, ~4 MB raw at 1024-dim).
+Collection config: `size=embedder.dim`, `distance=COSINE`, `on_disk=False`, **no quantization**. Intent vectors are query-side in the matcher's `query_points` calls, so precision matters more than memory savings at the 1.0 scale (< 1000 intents, ~4 MB raw at 1024-dim).
 
 `update_intent_payload` uses `overwrite_payload` (replace), not `set_payload` (merge), so a payload key that future code stops emitting cannot silently persist in Qdrant — the matcher reads `enabled` and `threshold` from this payload, where stale keys would be a correctness hazard.
 
@@ -99,4 +99,4 @@ The 30 s operation timeout is currently a module constant (`_DEFAULT_TIMEOUT_SEC
 - **Alias migration is out of band**: when `intents_current` / `news_current` already points to a different collection at startup, bootstrap logs a warning and leaves it alone. Switching the alias for a model upgrade is the upgrade flow's job, not bootstrap's.
 - **Lockstep with embedder model identity**: collection names and vector dimensionality are derived from `embedder.model_version` / `embedder.dim`. Subclass the embedder rather than monkey-patching either property — the rest of the stack assumes both stay stable for the lifetime of a process.
 - **`PointStruct` construction stays at call sites**: write helpers do not synthesize point payloads because the worker / API layer owns the payload schema (notably `embedding_model_version`, `ingested_at_ts`, intent metadata). The helpers only own the alias and the wait/timeout policy.
-- **Quantization asymmetry**: the news collection is quantized; the intents collection is not. Search-time precision was prioritized over memory on the query-side; a future intents collection that grows past ~10× the MVP target should reconsider this.
+- **Quantization asymmetry**: the news collection is quantized; the intents collection is not. Search-time precision was prioritized over memory on the query-side; a future intents collection that grows past ~10× the 1.0 target should reconsider this.
