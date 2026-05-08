@@ -767,8 +767,14 @@
             <div class="form-field form-grid-full">
               <label class="field-label">URL <span class="req">*</span></label>
               <input type="text" x-model="create.form.url" maxlength="2048"
-                     placeholder="https://example.com/rss.xml"
+                     :placeholder="create.form.source_type === 'newsapi' ? 'reuters.com' : 'https://example.com/rss.xml'"
+                     :list="create.form.source_type === 'newsapi' ? 'newsapi-sources-datalist' : null"
                      :class="create.errors.url ? 'field-err' : ''">
+              <datalist id="newsapi-sources-datalist">
+                <template x-for="src in recommendedSources" :key="src.uri">
+                  <option :value="src.uri" :label="src.title + (src.paywalled ? ' (paywalled)' : '')"></option>
+                </template>
+              </datalist>
               <span class="field-err-msg" x-show="create.errors.url" x-text="create.errors.url"></span>
             </div>
             <div class="form-field">
@@ -784,7 +790,12 @@
             </div>
             <div class="form-field">
               <label class="field-label">Poll interval (min) <span class="req">*</span></label>
-              <input type="number" x-model.number="create.form.poll_interval_minutes" min="5" max="1440">
+              <input type="number" x-model.number="create.form.poll_interval_minutes" min="5" max="1440"
+                     :disabled="create.form.source_type === 'newsapi'">
+              <span class="field-hint" style="text-transform:none; letter-spacing:0;"
+                    x-show="create.form.source_type === 'newsapi'">
+                Shared by all newsapi feeds — change in Settings (NEWSAPI_POLL_INTERVAL_MINUTES)
+              </span>
             </div>
             <div class="form-field form-grid-full">
               <label class="field-label">Tags <span class="field-hint" style="text-transform:none; letter-spacing:0;">(max 10, lowercase kebab-case)</span></label>
@@ -902,7 +913,12 @@
             </div>
             <div class="form-field">
               <label class="field-label">Poll interval (min)</label>
-              <input type="number" x-model.number="edit.form.poll_interval_minutes" min="5" max="1440">
+              <input type="number" x-model.number="edit.form.poll_interval_minutes" min="5" max="1440"
+                     :disabled="edit.feed?.source_type === 'newsapi'">
+              <span class="field-hint" style="text-transform:none; letter-spacing:0;"
+                    x-show="edit.feed?.source_type === 'newsapi'">
+                Shared by all newsapi feeds — change in Settings
+              </span>
             </div>
             <div class="form-field form-grid-full">
               <label class="field-label">Tags <span class="field-hint" style="text-transform:none; letter-spacing:0;">(max 10)</span></label>
@@ -2153,6 +2169,18 @@
                           <option :value="opt" x-text="opt"></option>
                         </template>
                       </select>
+                    </template>
+                    <template x-if="field.type === 'multiselect'">
+                      <div class="multiselect-wrap">
+                        <template x-for="opt in (field.enum || [])" :key="opt">
+                          <label class="multiselect-option" style="display:inline-flex; align-items:center; gap:0.4rem; margin-right:1rem;">
+                            <input type="checkbox"
+                                   :checked="isMultiselectChecked(field.key, opt)"
+                                   @change="toggleMultiselect(field.key, opt, $event.target.checked)">
+                            <span x-text="opt"></span>
+                          </label>
+                        </template>
+                      </div>
                     </template>
                     <template x-if="field.type === 'bool'">
                       <label class="toggle-wrap">

@@ -180,6 +180,27 @@ function settingsTab() {
       return /(TOKEN|COOKIE|SECRET|KEY|PASSWORD|SESSION)/.test(upper);
     },
 
+    // D13: helpers for the multiselect renderer. CSV ↔ array conversion
+    // matches the Settings.newsapi_categories backend pattern (csv-with-comma
+    // separator), so the field stays compatible with .env / shell-env input.
+    multiselectValues(key) {
+      const csv = this.form[key];
+      if (csv === undefined || csv === null || csv === '') return [];
+      return String(csv).split(',').map(s => s.trim()).filter(Boolean);
+    },
+    isMultiselectChecked(key, option) {
+      return this.multiselectValues(key).includes(option);
+    },
+    toggleMultiselect(key, option, checked) {
+      const set = new Set(this.multiselectValues(key));
+      if (checked) set.add(option); else set.delete(option);
+      // Preserve enum order rather than insertion order so the saved CSV is
+      // deterministic across reloads.
+      const enumOrder = ((this.schema.sembr_fields || []).find(f => f.key === key)?.enum) || [];
+      const ordered = enumOrder.filter(o => set.has(o));
+      this.form[key] = ordered.join(',');
+    },
+
     passthroughKeysPresent() {
       const sembrKeys = new Set(this.schema.sembr_fields.map(f => f.key));
       // Include keys actually in .env AND recommended starter keys.

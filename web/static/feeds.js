@@ -34,6 +34,7 @@ function feedsTab() {
 
     // create modal
     schemas: {},             // {source_type: json-schema}
+    recommendedSources: [],  // [{uri, title, paywalled}, ...] — datalist for newsapi (D14/D15)
     create: {
       open: false, submitting: false,
       form: { name: '', url: '', source_type: 'rss',
@@ -50,6 +51,13 @@ function feedsTab() {
         const res = await this._api('/api/dashboard/sources/schemas');
         this.schemas = res.schemas || {};
       } catch (e) { /* render with empty schema map; create form falls back */ }
+      // Pre-fetch the newsapi datalist once so the combobox is populated when
+      // the modal opens. Failure is non-fatal — datalist just stays empty and
+      // user can still type a hostname manually.
+      try {
+        const list = await this._api('/api/dashboard/sources/newsapi/recommended_sources');
+        this.recommendedSources = Array.isArray(list) ? list : [];
+      } catch (e) { this.recommendedSources = []; }
       await this.refresh();
     },
 
@@ -274,19 +282,38 @@ function feedsTab() {
     handleCreateTagKey(e) {
       if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); this.addCreateTag(); }
     },
+    // D16: client-side mirror of sembr/collector/newsapi.normalize_source_uri.
+    // Sent in submitCreate() so the UNIQUE conflict on feeds.url surfaces
+    // before round-tripping to the backend; backend re-normalizes anyway.
+    normalizeSourceUri(s) {
+      let out = (s || '').trim().toLowerCase();
+      if (out.startsWith('https://')) out = out.slice(8);
+      else if (out.startsWith('http://')) out = out.slice(7);
+      if (out.startsWith('www.')) out = out.slice(4);
+      return out.replace(/\/+$/, '');
+    },
     async submitCreate() {
       this.create.errors = {};
       if (!this.create.form.name.trim()) {
         this.create.errors.name = 'required'; return;
       }
-      if (!/^https?:\/\//i.test(this.create.form.url.trim())) {
+      const sourceType = this.create.form.source_type;
+      let url = this.create.form.url.trim();
+      if (sourceType === 'newsapi') {
+        // D11/D16: hostname-only. Normalize first, then validate.
+        url = this.normalizeSourceUri(url);
+        if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(url)) {
+          this.create.errors.url = 'must be a hostname like reuters.com';
+          return;
+        }
+      } else if (!/^https?:\/\//i.test(url)) {
         this.create.errors.url = 'must start with http:// or https://'; return;
       }
       this.create.submitting = true;
       const body = {
         name: this.create.form.name.trim(),
-        url: this.create.form.url.trim(),
-        source_type: this.create.form.source_type,
+        url,
+        source_type: sourceType,
         poll_interval_minutes: parseInt(this.create.form.poll_interval_minutes, 10) || 30,
         config: this.create.form.config || {},
         tags: this.create.form.tags,
