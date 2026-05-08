@@ -6,10 +6,11 @@ The static HTML + Alpine.js + Chart.js frontend lives in `web/static/` and is se
 
 ## Responsibility
 
-- Build the dashboard's polling snapshot — feeds + last-24h fetch stats per feed + embedder call stats + Qdrant point count + component health, in a single response
-- Serve drill-down endpoints for the per-feed event log, embedder event log, articles in each pipeline bucket (pending / dead / qdrant), and the source-type → JSON-Schema map used by the create-feed form
+- Build the dashboard's polling snapshot — feeds + last-24h fetch stats per feed + embedder call stats + Qdrant point count + component health + per-container CPU/Mem/uptime samples, in a single response
+- Serve drill-down endpoints for the per-feed event log, embedder event log, articles in each pipeline bucket (pending / dead / qdrant — qdrant accepts `ingested_from` / `ingested_to` / `feed_id` / `title_q` filter), and the source-type → JSON-Schema map used by the create-feed form
 - Define the two append-only event tables (`feed_fetch_log`, `embed_call_log`) and expose `log_*_event` helpers that the collector and embedder call after every batch
 - Run the hourly retention prune that keeps the event tables bounded by both age and per-feed cap
+- Run the lifespan-managed system-metrics sampler that polls `docker stats` for the compose stack at the snapshot poll cadence and feeds a 60-point in-memory rolling buffer
 - Gate every authenticated route via `DashboardTokenMiddleware` — checked once per request against `Settings.dashboard_token`
 - Stream live log records over SSE via `logs_routes.py` (the bus itself lives in [logbus](logbus.md))
 
@@ -60,15 +61,21 @@ embed_call_log
 All under `/api/dashboard`. Every route takes its dependencies from `request.app.state` rather than importing them — keeps tests trivial.
 
 ```
-GET /config                                  poll_interval, auth_required, display_timezone (auth-free)
-GET /snapshot                                top-level dashboard read; one round-trip
-GET /feeds                                   paginated feeds list with tags/group/next-run
-GET /feeds/{feed_id}/events?limit=&offset=   per-feed fetch event drill-down
-GET /feeds/{feed_id}/articles?limit=&offset= articles ingested under one feed (Qdrant scroll)
-GET /sources/schemas                         source_type → JSON-Schema map (form metadata)
-GET /embedder/events?limit=                  embedder call drill-down
-GET /articles?bucket=&limit=&offset=         pending / dead / qdrant article list
-GET /articles/{md5}?bucket=                  single article detail
+GET  /config                                       poll_interval, auth_required, display_timezone (auth-free)
+GET  /snapshot                                     top-level dashboard read; one round-trip; includes system_metrics
+GET  /feeds                                        paginated feeds list with tags/group/next-run
+GET  /feeds/{feed_id}/events?limit=&offset=        per-feed fetch event drill-down
+GET  /feeds/{feed_id}/articles?limit=&offset=      articles ingested under one feed (Qdrant scroll)
+GET  /sources/schemas                              source_type → JSON-Schema map (form metadata)
+GET  /embedder/events?limit=                       embedder call drill-down
+GET  /articles?bucket=&limit=&offset=&...          pending / dead / qdrant article list
+                                                   bucket=qdrant additionally accepts
+                                                     ingested_from=YYYY-MM-DD (UTC, inclusive)
+                                                     ingested_to=YYYY-MM-DD   (UTC, exclusive +1d)
+                                                     feed_id=<int>
+                                                     title_q=<MatchText>      (uses the title text-index)
+GET  /articles/{md5}?bucket=                       single article detail
+POST /restart                                      api + rsshub double-restart trigger (header-token)
 ```
 
 `/api/dashboard/config` is the only auth-free endpoint — the login page calls it before bootstrap so it knows whether a token is required. Everything else is gated by `DashboardTokenMiddleware`.
@@ -86,20 +93,44 @@ Tag-level changes are process-memory only and do not persist across restart. The
 ### Read-model helpers (`read_model.py`)
 
 ```python
-build_snapshot(conn, qdrant_handle, embedder) -> SnapshotResponse
+build_snapshot(conn, qdrant_handle, embedder, metrics_collector=None) -> SnapshotResponse
 list_feeds_with_meta(conn, *, limit, offset, tag, q, proxy_hosts, scheduler, now=None) -> FeedListResponse
 list_feed_events(conn, feed_id, limit, offset=0) -> list[FeedFetchEvent]
 list_embed_events(conn, limit) -> list[EmbedCallEvent]
 list_articles_pending(conn, limit, offset) -> list[ArticleListItem]
 list_articles_dead(conn, limit, offset) -> list[ArticleListItem]
-list_articles_qdrant(qdrant_client, limit, offset) -> list[ArticleListItem]
+list_articles_qdrant(qdrant_client, limit, offset, *, ingested_from=None,
+                     ingested_to=None, feed_id=None, title_q=None) -> list[ArticleListItem]
 list_feed_articles_qdrant(qdrant_client, feed_id, *, limit, offset) -> list[ArticleListItem]
 get_article_detail(conn, qdrant_client, md5, bucket) -> ArticleDetail | None
 ```
 
 `build_snapshot` is the hot path — the dashboard polls it every `dashboard_poll_interval_seconds`. It dispatches the two Qdrant network calls (`ping` inside `_component_status`, and `count`) as `asyncio.create_task`s up front so they overlap with the SQLite work. The two SQLite scans that aggregate `feed_fetch_log` use a window function (`ROW_NUMBER() OVER (PARTITION BY feed_id ORDER BY id DESC)`) to read the last 50 rows per feed in a single index scan rather than a per-feed correlated subquery.
 
+`metrics_collector` is the lifespan-owned `SystemMetricsCollector` (see [System metrics sampler](#system-metrics-sampler-system_metricspy)). It is injected as a function argument rather than read from `app.state` so this module never imports FastAPI types — the route handler in `routes.py` is the single boundary that touches `request.app.state.metrics_collector`. When the collector is `None` (no docker socket / dev box) or has flipped to `available=False` (docker daemon unreachable), `system_metrics` is `null` in the response and the dashboard renders a "—" placeholder.
+
 The Qdrant article-list helpers (`list_articles_qdrant`, `list_feed_articles_qdrant`) share a `_scroll_articles_qdrant` helper because Qdrant's scroll API takes an opaque `next_page_offset` cursor rather than a numeric offset — the helper walks forward `limit + offset` items and drops the first `offset`. That makes deep pagination linear in `offset`; the UI default of 50/page keeps it cheap.
+
+`list_articles_qdrant` accepts four keyword-only filter args. The route layer parses `ingested_from` / `ingested_to` from `YYYY-MM-DD` UTC dates and shifts the upper bound by +1 day so the underlying ts comparison is half-open `[from, to)` while the UI presents it as inclusive. All three filterable fields (`ingested_at_ts`, `feed_id`, `title`) have payload indexes — `MatchText` against `title` requires the text-index added in `vector_store.news.ensure_news_collection` (lifespan-startup idempotent), without which Qdrant silently degrades to a full collection scan.
+
+### System metrics sampler (`system_metrics.py`)
+
+```python
+class SystemMetricsCollector:
+    """Module-level rolling buffer (deque maxlen=60) of docker stats samples."""
+    def append(self, sample) -> None
+    def read(self) -> SystemMetricsBlock | None  # None when unavailable / empty
+    def mark_unavailable(self) -> None
+    def mark_available(self) -> None
+
+add_system_metrics_job(scheduler, collector, interval_seconds) -> None
+```
+
+An APScheduler `IntervalTrigger` job ticks every `dashboard_poll_interval_seconds`, calls `_take_docker_sample` in a thread (5 s `asyncio.wait_for` cap), and appends the result to the collector. Containers are auto-discovered by docker compose's `com.docker.compose.project=<project>` label so adding/renaming a service in `docker-compose.yml` shows up automatically.
+
+The standard docker-stats CPU% formula is used: `(cpu_delta / sys_delta) * online_cpus * 100`. The very first sample after lifespan startup has no `precpu_stats` baseline, so CPU% returns `None` for that sample only — the dashboard renders "—" while uptime and memory are already valid. Subsequent samples are real percentages.
+
+The `add_job` call passes `coalesce=True, replace_existing=True` and **never** passes `next_run_time=None` — the latter is APScheduler's pause sentinel and would silently leave the sampler dormant.
 
 ### Event log helpers (`events.py`)
 

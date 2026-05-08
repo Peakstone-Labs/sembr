@@ -52,10 +52,24 @@ function settingsTab() {
     diff: { changes: [], additions: [], deletions: [], touchesPassthrough: false },
     overriddenSubmittedFields: [],
     secretsBeingCleared: [],
-    restart: { active: false, message: '', startedAt: 0, elapsedMs: 0, timer: null },
+    restart: { active: false, message: '', startedAt: 0, elapsedMs: 0, timer: null, _inFlight: false },
     toasts: [],
 
     async init() {
+      // Cross-tab restart lock (D10): when the dashboard tab POSTs
+      // /api/dashboard/restart, this tab needs to disable its save/restart
+      // button — the 'storage' event fires here because we're a different tab.
+      window.addEventListener('storage', (e) => {
+        if (e.key !== 'sembr_restart_in_flight') return;
+        if (e.newValue === '1' && !this.restart.active) {
+          this._beginRestartShared('restart in progress (other tab)');
+        }
+      });
+      try {
+        if (localStorage.getItem('sembr_restart_in_flight') === '1' && !this.restart.active) {
+          this._beginRestartShared('restart in progress (other tab)');
+        }
+      } catch (e) {}
       await this._reload();
     },
 
@@ -335,10 +349,18 @@ function settingsTab() {
     },
 
     _beginRestart(targets) {
+      // D10 cross-tab lock: writer-side update is explicit because the
+      // 'storage' event does NOT fire in the tab that called setItem.
+      try { localStorage.setItem('sembr_restart_in_flight', '1'); } catch (e) {}
+      this._beginRestartShared(`restarting ${targets.join(' + ')}…`);
+    },
+
+    _beginRestartShared(message) {
+      if (this.restart.active) return;
       this.restart.active = true;
       this.restart.startedAt = Date.now();
       this.restart.elapsedMs = 0;
-      this.restart.message = `restarting ${targets.join(' + ')}…`;
+      this.restart.message = message;
       // Polling loop. Wait for /health to respond 200 again.
       this.restart.timer = setInterval(() => this._pollRestart(), 1000);
     },
@@ -347,8 +369,7 @@ function settingsTab() {
       if (this.restart._inFlight) return;
       this.restart.elapsedMs = Date.now() - this.restart.startedAt;
       if (this.restart.elapsedMs > 60000) {
-        clearInterval(this.restart.timer);
-        this.restart.active = false;
+        this._endRestart();
         this._toast('error', 'restart timed out (60s) — check container logs');
         return;
       }
@@ -356,8 +377,7 @@ function settingsTab() {
       try {
         const res = await fetch('/health', { cache: 'no-store' });
         if (res.status === 200) {
-          clearInterval(this.restart.timer);
-          this.restart.active = false;
+          this._endRestart();
           this._toast('ok', 'restart complete');
           await this._reload();
         }
@@ -366,6 +386,13 @@ function settingsTab() {
       } finally {
         this.restart._inFlight = false;
       }
+    },
+
+    _endRestart() {
+      if (this.restart.timer) clearInterval(this.restart.timer);
+      this.restart.timer = null;
+      this.restart.active = false;
+      try { localStorage.removeItem('sembr_restart_in_flight'); } catch (e) {}
     },
 
     waitForRestart() {

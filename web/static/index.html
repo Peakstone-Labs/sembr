@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=4">
+<link rel="stylesheet" href="/dashboard/style.css?v=5">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 </head>
@@ -104,14 +104,81 @@
     </div>
   </section>
 
-  <!-- Feeds (D14: dashboard table moved to dedicated tab) -->
-  <section class="panel feeds-hint-card" style="grid-column: 1 / -1;">
-    <h2>feeds</h2>
-    <p class="muted" style="font-size:0.85rem;">
-      Feed list, tags, scheduling, and per-feed drill-down moved to the
-      <a href="#feeds" @click.prevent="setTab('feeds')"
-         style="color:var(--gold); text-decoration:underline;">Feeds tab</a>.
+  <!-- Containers (dashboard-enhancement D1+D2): per-container uptime/CPU/Mem
+       + sparkline; restart button drives api+rsshub double-restart -->
+  <section class="panel" style="grid-column: 1 / -1;">
+    <h2>containers</h2>
+    <p x-show="!snapshot.system_metrics" class="muted" style="font-size:0.85rem;">
+      docker socket unavailable or sampler still warming up — first values appear within ~20s of startup.
     </p>
+    <table x-show="snapshot.system_metrics" class="containers-table">
+      <thead>
+        <tr><th>container</th><th>uptime</th><th>CPU</th><th>memory</th><th>cpu · 10min</th><th>mem · 10min</th></tr>
+      </thead>
+      <tbody>
+        <template x-for="c in (snapshot.system_metrics?.containers || [])" :key="c.name">
+          <tr>
+            <td class="mono" x-text="c.name"></td>
+            <td class="mono" x-text="window.fmtUptime(c.uptime_seconds)"></td>
+            <td class="mono" x-text="(c.cpu_percent === null || c.cpu_percent === undefined) ? '—' : c.cpu_percent.toFixed(1) + '%'"></td>
+            <td class="mono">
+              <span x-text="window.fmtBytes(c.mem_used_bytes)"></span>
+              <span class="muted" x-show="c.mem_limit_bytes" x-text="' / ' + window.fmtBytes(c.mem_limit_bytes)"></span>
+            </td>
+            <td class="sparkline-cell">
+              <canvas :id="'cpu-spark-' + c.name" height="28"></canvas>
+            </td>
+            <td class="sparkline-cell">
+              <canvas :id="'mem-spark-' + c.name" height="28"></canvas>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div style="margin-top:8px;">
+      <button @click="openRestartConfirm()" :disabled="restart.active">
+        <span x-show="!restart.active">Restart api + rsshub…</span>
+        <span x-show="restart.active">Restarting…</span>
+      </button>
+    </div>
+
+    <!-- Restart confirm modal (D13). Lifted out of <main> via teleport so the
+         overlay's z-index isn't trapped by main's stacking context. -->
+    <template x-teleport="body">
+      <div class="modal-overlay" x-show="restartConfirm.open" @click.self="closeRestartConfirm()"
+           @keydown.escape.window="closeRestartConfirm()" style="display:none;" x-cloak>
+        <div class="modal-panel" style="max-width:520px;">
+          <div class="modal-header">
+            <span class="modal-title">Confirm restart</span>
+            <button class="modal-close" @click="closeRestartConfirm()">✕</button>
+          </div>
+          <div style="font-size:0.85rem; color:var(--text-secondary); padding:8px 0;">
+            <p>
+              ⚠ <strong>API + RSSHub will restart.</strong> The dashboard will be unreachable
+              for ~10–30 seconds. The page will refresh once <code>/health</code> returns 200.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button @click="closeRestartConfirm()">Cancel</button>
+            <button class="danger" @click="confirmRestart()" :disabled="restart.active">
+              Confirm restart
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Restart overlay — same UX as settings save restart -->
+    <div class="restart-overlay" x-show="restart.active" x-cloak>
+      <div class="restart-panel">
+        <span class="spinner spinner-lg"></span>
+        <h3>Restarting…</h3>
+        <p class="muted" x-text="restart.message"></p>
+        <p class="muted mono" style="font-size:0.75rem;"
+           x-show="restart.elapsedMs > 0"
+           x-text="(restart.elapsedMs / 1000).toFixed(0) + 's elapsed'"></p>
+      </div>
+    </div>
   </section>
 
   <!-- Maintenance (reconcile design D6: nested x-data island) -->
@@ -297,81 +364,169 @@
     </template><!-- /x-teleport=body -->
   </section>
 
-  <!-- Drawer -->
-  <section class="panel" x-show="drawer.kind" style="grid-column: 1 / -1;">
-    <h2 x-text="drawer.title"></h2>
-    <p x-show="drawer.loading" class="muted">loading…</p>
+  <!-- Drawer-replacement modals (dashboard-enhancement D4/D11/D12).
+       One shared modal-overlay with three x-show panes for articles /
+       feed-events / embedder-events. Closing resets drawer + filter +
+       page state explicitly (fresh-state: x-show keeps DOM mounted so
+       Alpine wouldn't reset reactive state on its own). -->
+  <template x-teleport="body">
+    <div class="modal-overlay" x-show="drawer.kind" @click.self="closeDrawer()"
+         @keydown.escape.window="closeDrawer()" style="display:none;" x-cloak>
+      <div class="modal-panel modal-panel-wide">
+        <div class="modal-header">
+          <span class="modal-title" x-text="drawer.title"></span>
+          <button class="modal-close" @click="closeDrawer()">✕</button>
+        </div>
 
-    <table x-show="drawer.kind === 'embedder-events' && !drawer.loading">
-      <thead>
-        <tr>
-          <th>started</th><th>elapsed</th><th>ok</th>
-          <th>batch</th><th>chars</th><th>timeout</th><th>error</th>
-        </tr>
-      </thead>
-      <tbody>
-        <template x-for="e in drawer.rows" :key="e.id">
-          <tr :class="e.ok ? '' : 'row-fail'">
-            <td class="mono" x-text="window.fmtDateTime(e.started_at)"></td>
-            <td class="mono" x-text="e.elapsed_ms + ' ms'"></td>
-            <td>
-              <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
-                    x-text="e.ok ? 'ok' : 'fail'"></span>
-            </td>
-            <td class="mono" x-text="e.batch_size"></td>
-            <td class="mono" x-text="e.total_chars"></td>
-            <td class="mono" x-text="e.timeout_seconds + ' s'"></td>
-            <td>
-              <span class="muted" x-text="e.error_class || ''"></span>
-              <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
+        <!-- Articles filter bar (qdrant bucket only — pending/dead don't accept filter params) -->
+        <div x-show="drawer.kind === 'articles' && drawer.bucket === 'qdrant'"
+             class="filter-bar">
+          <label>from
+            <input type="date" x-model="filter.ingested_from"
+                   class="filter-input">
+          </label>
+          <label>to
+            <input type="date" x-model="filter.ingested_to"
+                   class="filter-input">
+          </label>
+          <label>source
+            <select x-model="filter.feed_id" class="filter-input">
+              <option value="">(any)</option>
+              <template x-for="f in filter.feedOptions" :key="'f-' + f.id">
+                <option :value="f.id" x-text="f.label"></option>
+              </template>
+            </select>
+          </label>
+          <label>title contains
+            <input type="text" x-model="filter.title_q" placeholder="word(s)"
+                   class="filter-input"
+                   @keydown.enter.prevent="applyFilter()">
+          </label>
+          <button @click="applyFilter()">Apply</button>
+          <button @click="clearFilter()">Clear</button>
+          <span class="muted" x-show="drawer.rows.length"
+                x-text="'page ' + (drawer.page + 1) + ' · ' + drawer.rows.length + ' rows'"
+                style="font-size:0.75rem; margin-left:auto;"></span>
+        </div>
 
-    <table x-show="drawer.kind === 'articles' && !drawer.loading">
-      <thead>
-        <tr><th>title</th><th>feed</th><th>published</th><th>info</th><th></th></tr>
-      </thead>
-      <tbody>
-        <template x-for="a in drawer.rows" :key="a.md5">
-          <tr>
-            <td>
-              <div x-text="a.title"></div>
-              <a :href="/^https?:\/\//i.test(a.url) ? a.url : '#'"
-                 target="_blank" rel="noopener noreferrer" class="muted mono"
-                 x-text="a.url" style="font-size:11px;"></a>
-            </td>
-            <td class="mono" x-text="a.feed_id ?? '—'"></td>
-            <td class="mono" x-text="window.fmtDateTime(a.published_at)"></td>
-            <td>
-              <span x-show="a.bucket==='pending'" class="mono muted"
-                    x-text="'retries=' + (a.retry_count ?? 0)"></span>
-              <span x-show="a.bucket==='dead'" class="error-text"
-                    x-text="a.error_message || ''"></span>
-              <span x-show="a.bucket==='qdrant'" class="mono muted"
-                    x-text="window.fmtDateTime(a.ingested_at_ts)"></span>
-            </td>
-            <td>
-              <button @click="openArticleDetail(a.md5, a.bucket)">view</button>
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
+        <p x-show="drawer.loading" class="muted">loading…</p>
+        <p x-show="!drawer.loading && drawer.rows.length === 0 && !drawer.detail"
+           class="muted" style="margin-top:8px;">no rows</p>
 
-    <div x-show="drawer.detail" style="margin-top:16px;">
-      <div style="font-weight:600; margin-bottom:4px;" x-text="drawer.detail?.title"></div>
-      <div class="muted mono" style="font-size:12px; margin-bottom:8px;"
-           x-text="drawer.detail?.url"></div>
-      <div class="detail" x-text="drawer.detail?.body"></div>
+        <!-- embedder-events table -->
+        <table x-show="drawer.kind === 'embedder-events' && !drawer.loading && drawer.rows.length">
+          <thead>
+            <tr>
+              <th>started</th><th>elapsed</th><th>ok</th>
+              <th>batch</th><th>chars</th><th>timeout</th><th>error</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="e in drawer.rows" :key="e.id">
+              <tr :class="e.ok ? '' : 'row-fail'">
+                <td class="mono" x-text="window.fmtDateTime(e.started_at)"></td>
+                <td class="mono" x-text="e.elapsed_ms + ' ms'"></td>
+                <td>
+                  <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
+                        x-text="e.ok ? 'ok' : 'fail'"></span>
+                </td>
+                <td class="mono" x-text="e.batch_size"></td>
+                <td class="mono" x-text="e.total_chars"></td>
+                <td class="mono" x-text="e.timeout_seconds + ' s'"></td>
+                <td>
+                  <span class="muted" x-text="e.error_class || ''"></span>
+                  <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+
+        <!-- feed-events table -->
+        <table x-show="drawer.kind === 'feed-events' && !drawer.loading && drawer.rows.length">
+          <thead>
+            <tr>
+              <th>started</th><th>elapsed</th><th>ok</th>
+              <th>fetched</th><th>new</th><th>error</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="e in drawer.rows" :key="e.id">
+              <tr :class="e.ok ? '' : 'row-fail'">
+                <td class="mono" x-text="window.fmtDateTime(e.started_at)"></td>
+                <td class="mono" x-text="e.elapsed_ms + ' ms'"></td>
+                <td>
+                  <span class="status-pill" :class="e.ok ? 'status-ok' : 'status-error'"
+                        x-text="e.ok ? 'ok' : 'fail'"></span>
+                </td>
+                <td class="mono" x-text="e.items_fetched ?? 0"></td>
+                <td class="mono" x-text="e.items_new ?? 0"></td>
+                <td>
+                  <span class="muted" x-text="e.error_class || ''"></span>
+                  <div class="detail" x-show="e.error_message" x-text="e.error_message"></div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+
+        <!-- articles table -->
+        <table x-show="drawer.kind === 'articles' && !drawer.loading && drawer.rows.length">
+          <thead>
+            <tr><th>title</th><th>feed</th><th>published</th><th>info</th><th></th></tr>
+          </thead>
+          <tbody>
+            <template x-for="a in drawer.rows" :key="a.md5">
+              <tr>
+                <td>
+                  <div x-text="a.title"></div>
+                  <a :href="/^https?:\/\//i.test(a.url) ? a.url : '#'"
+                     target="_blank" rel="noopener noreferrer" class="muted mono"
+                     x-text="a.url" style="font-size:11px;"></a>
+                </td>
+                <td class="mono" x-text="a.feed_id ?? '—'"></td>
+                <td class="mono" x-text="window.fmtDateTime(a.published_at)"></td>
+                <td>
+                  <span x-show="a.bucket==='pending'" class="mono muted"
+                        x-text="'retries=' + (a.retry_count ?? 0)"></span>
+                  <span x-show="a.bucket==='dead'" class="error-text"
+                        x-text="a.error_message || ''"></span>
+                  <span x-show="a.bucket==='qdrant'" class="mono muted"
+                        x-text="window.fmtDateTime(a.ingested_at_ts)"></span>
+                </td>
+                <td>
+                  <button @click="openArticleDetail(a.md5, a.bucket)">view</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+
+        <!-- pagination for articles modal -->
+        <div x-show="drawer.kind === 'articles' && !drawer.loading && drawer.rows.length"
+             style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <button @click="prevPage()" :disabled="drawer.page === 0">‹ prev</button>
+          <button @click="nextPage()" :disabled="drawer.rows.length < drawer.pageSize">next ›</button>
+          <span class="muted" style="font-size:0.75rem;"
+                x-text="'page ' + (drawer.page + 1)"></span>
+        </div>
+
+        <div x-show="drawer.detail" style="margin-top:16px;">
+          <div style="font-weight:600; margin-bottom:4px;" x-text="drawer.detail?.title"></div>
+          <div class="muted mono" style="font-size:12px; margin-bottom:8px;"
+               x-text="drawer.detail?.url"></div>
+          <div class="detail" x-text="drawer.detail?.body"></div>
+          <div style="margin-top:8px;">
+            <button @click="drawer.detail = null">‹ back to list</button>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button @click="closeDrawer()">close</button>
+        </div>
+      </div>
     </div>
-
-    <div class="drawer-footer">
-      <button @click="closeDrawer()">close</button>
-    </div>
-  </section>
+  </template>
 
 </main>
 
@@ -2125,8 +2280,8 @@
 <script src="/dashboard/intents.js?v=3"></script>
 <script src="/dashboard/templates.js?v=3"></script>
 <script src="/dashboard/logs.js?v=2"></script>
-<script src="/dashboard/settings.js?v=7"></script>
+<script src="/dashboard/settings.js?v=8"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>
-<script src="/dashboard/app.js?v=4"></script>
+<script src="/dashboard/app.js?v=5"></script>
 </body>
 </html>

@@ -195,7 +195,7 @@ The backend speaks the OpenAI-compatible `/v1/embeddings` protocol via [SiliconF
 
 ## Dashboard
 
-Once `docker compose up --build` is healthy, browse to **[http://localhost:8000/dashboard](http://localhost:8000/dashboard)** for a read-only monitoring view: per-feed fetch outcomes (with 24h sparkline), embedder latency / failure counts, and pending / dead / Qdrant article counts with drill-down detail.
+Once `docker compose up --build` is healthy, browse to **[http://localhost:8000/dashboard](http://localhost:8000/dashboard)** for a monitoring view: per-feed fetch outcomes (with 24h sparkline), embedder latency / failure counts, pending / dead / Qdrant article counts with drill-down detail (the qdrant view supports filter by ingest-date range, feed source, and title fuzzy-match), and per-container CPU / memory / uptime with a live 10-minute sparkline plus a one-click api+rsshub restart button.
 
 Set `DASHBOARD_TOKEN` in `.env` whenever the host is reachable beyond `localhost` — feed URLs and dead-article error messages are otherwise public. With a token set, the UI prompts for it once and then persists in the browser's `localStorage` + a path-scoped cookie. The JSON API at `/api/dashboard/*` accepts the same token via the `X-Dashboard-Token` header for scripting.
 
@@ -211,7 +211,7 @@ The bundled UI is plain HTML + Alpine.js + Chart.js with no Node toolchain. Disa
 - Intent CRUD via REST API, with both cron-mode (preset + per-intent timezone) and event-mode (trigger after N matching articles or T seconds) schedules
 - LLM-generated summaries via any OpenAI-compatible chat-completions endpoint (default: DeepSeek-V4-Flash on SiliconFlow)
 - Email digest delivery via SMTP (per-intent timezone + matcher score badges)
-- Read-only monitoring dashboard with live log SSE
+- Monitoring dashboard with live log SSE, per-container CPU / memory / uptime sparklines, qdrant article filter (date / source / title), and a token-gated api+rsshub restart trigger
 - Runtime settings editor that writes the host `.env` and recreates the affected containers in place
 
 Telegram / Discord / Slack channels and a local LLM backend are post-1.0 work — the [notifier](docs/modules/notifier.md) and [summarizer](docs/modules/summarizer.md) module docs explain the seams that make adding them additive rather than invasive.

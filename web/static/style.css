@@ -1256,7 +1256,36 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--text-primary); padding: 6px 10px; font-size: 0.85rem;
   border-radius: 4px; min-width: 180px;
 }
-.feeds-hint-card { text-align: left; }
+/* ── dashboard-enhancement: containers panel ── */
+.containers-table { width: 100%; }
+.containers-table th, .containers-table td {
+  padding: 6px 8px; vertical-align: middle;
+}
+.sparkline-cell {
+  width: 120px; min-width: 100px;
+  position: relative;
+}
+.sparkline-cell canvas {
+  width: 100% !important;
+  height: 28px !important;
+  display: block;
+}
+
+/* ── dashboard-enhancement: articles modal filter bar (D12) ── */
+.filter-bar {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 10px; padding: 8px 0 12px;
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 12px;
+}
+.filter-bar label { display: flex; flex-direction: column; font-size: 0.7rem; color: var(--text-secondary); gap: 2px; }
+.filter-input {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-primary); padding: 4px 8px; font-size: 0.85rem;
+  border-radius: 4px; min-width: 140px;
+}
+.modal-panel-wide { max-width: 1100px; }
+
 .feed-expand-row td {
   background: rgba(15,25,40,0.45);
   border-top: 1px dashed var(--border);

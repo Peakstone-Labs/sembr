@@ -32,14 +32,52 @@ window.fmtDateTime = function (value) {
   return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
 };
 
+// Human-friendly uptime. ContainerMetric.uptime_seconds → "3d 4h" / "12m 8s".
+window.fmtUptime = function (seconds) {
+  if (seconds === null || seconds === undefined) return '—';
+  const s = Math.max(0, Math.floor(seconds));
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ' + (s % 60) + 's';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ' + (m % 60) + 'm';
+  const d = Math.floor(h / 24);
+  return d + 'd ' + (h % 24) + 'h';
+};
+
+// Decimal byte formatter — 1 KB = 1000 bytes (matches `docker stats` columns).
+window.fmtBytes = function (bytes) {
+  if (bytes === null || bytes === undefined) return '—';
+  const n = Number(bytes);
+  if (!isFinite(n)) return '—';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0; let v = n;
+  while (v >= 1000 && i < units.length - 1) { v /= 1000; i += 1; }
+  return (i === 0 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[i];
+};
+
+const _RESTART_LOCK_KEY = 'sembr_restart_in_flight';
+
 function dashboard() {
   return {
     snapshot: {},
     pollInterval: 10000,
     authRequired: false,
     lastUpdated: '',
-    drawer: { kind: null, title: '', rows: [], detail: null, loading: false },
+    drawer: {
+      kind: null, title: '', rows: [], detail: null, loading: false,
+      bucket: null, page: 0, pageSize: 50,
+    },
+    filter: {
+      ingested_from: '', ingested_to: '',
+      feed_id: '', title_q: '',
+      feedOptions: [],
+    },
+    restart: { active: false, message: '', startedAt: 0, elapsedMs: 0,
+               timer: null, _inFlight: false },
+    restartConfirm: { open: false },
     _embedChart: null,
+    _containerCharts: {},  // { 'cpu-spark-<name>': Chart, 'mem-spark-<name>': Chart }
     _timer: null,
     _refreshing: false,
 
@@ -49,6 +87,26 @@ function dashboard() {
     async init() {
       this._syncFromHash();
       window.addEventListener('hashchange', () => this._syncFromHash());
+
+      // Cross-tab restart lock (D10): listen for other tabs' state.
+      // The 'storage' event does NOT fire on the writer tab, so the writer
+      // updates this.restart.active itself (see _setRestartLockShared).
+      window.addEventListener('storage', (e) => {
+        if (e.key !== _RESTART_LOCK_KEY) return;
+        if (e.newValue === '1' && !this.restart.active) {
+          // Another tab kicked off a restart — sync state without re-POSTing.
+          this._beginRestartUI('restart in progress (other tab)');
+        } else if (!e.newValue) {
+          // Another tab finished or cleared the lock; nothing to do — our
+          // own _pollRestart loop also clears state when /health returns.
+        }
+      });
+      // On load, if another tab already set the lock, reflect it.
+      try {
+        if (localStorage.getItem(_RESTART_LOCK_KEY) === '1') {
+          this._beginRestartUI('restart in progress (other tab)');
+        }
+      } catch (e) {}
 
       try {
         const cfgRes = await fetch('/api/dashboard/config');
@@ -102,18 +160,22 @@ function dashboard() {
       catch (e) { return ''; }
     },
 
-    async _api(path) {
-      const headers = {};
+    async _api(path, init) {
+      const headers = (init && init.headers) ? { ...init.headers } : {};
       const t = this._token();
       if (t) headers['X-Dashboard-Token'] = t;
-      const res = await fetch(path, { headers });
+      const res = await fetch(path, { ...(init || {}), headers });
       if (res.status === 401) {
         // Token expired or wrong — bounce to login.
         window.location.href = '/dashboard/login.html';
         throw new Error('unauthorized');
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${body}`);
+      }
+      const ct = res.headers.get('content-type') || '';
+      return ct.includes('application/json') ? await res.json() : null;
     },
 
     async refresh() {
@@ -123,6 +185,7 @@ function dashboard() {
         this.snapshot = await this._api('/api/dashboard/snapshot');
         this.lastUpdated = new Date().toLocaleTimeString();
         this._renderEmbedChart();
+        this._renderContainerSparklines();
       } catch (e) {
         console.error('refresh failed', e);
       } finally {
@@ -175,34 +238,168 @@ function dashboard() {
       });
     },
 
+    _renderContainerSparklines() {
+      const containers = this.snapshot.system_metrics?.containers;
+      if (!containers || !containers.length) return;
+      // $nextTick so the canvases for newly-rendered <tr> rows exist.
+      this.$nextTick(() => {
+        for (const c of containers) {
+          this._renderOneSparkline('cpu-spark-' + c.name, c.cpu_history, 'rgba(160,180,90,0.7)');
+          this._renderOneSparkline('mem-spark-' + c.name, c.mem_history, 'rgba(59,138,138,0.7)');
+        }
+      });
+    },
+
+    _renderOneSparkline(canvasId, series, color) {
+      const ctx = document.getElementById(canvasId);
+      if (!ctx) return;
+      // Replace null with NaN so Chart.js draws a gap rather than 0.
+      const data = (series || []).map(v => (v === null || v === undefined) ? NaN : v);
+      const existing = this._containerCharts[canvasId];
+      if (existing) {
+        existing.data.labels = data.map((_, i) => i);
+        existing.data.datasets[0].data = data;
+        existing.update('none');
+        return;
+      }
+      this._containerCharts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.map((_, i) => i),
+          datasets: [{
+            data, borderColor: color, borderWidth: 1.2,
+            pointRadius: 0, tension: 0.25, spanGaps: false,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: { x: { display: false }, y: { display: false, beginAtZero: true } },
+        },
+      });
+    },
+
+    // ── drawer + filter helpers (D11/D12) ─────────────────────────────────
     closeDrawer() {
-      this.drawer = { kind: null, title: '', rows: [], detail: null, loading: false };
+      // Fresh-state on close (D11): x-show keeps the DOM mounted so Alpine
+      // does NOT reset reactive state automatically — without this reset,
+      // re-opening the modal would land on the previous filter / page.
+      this.drawer = {
+        kind: null, title: '', rows: [], detail: null, loading: false,
+        bucket: null, page: 0, pageSize: 50,
+      };
+      this.filter = {
+        ingested_from: '', ingested_to: '',
+        feed_id: '', title_q: '',
+        feedOptions: this.filter.feedOptions,  // keep cached source list
+      };
     },
 
     async openFeedEvents(feedId, feedName) {
-      this.drawer = { kind: 'feed-events', title: `events · ${feedName}`,
-                      rows: [], detail: null, loading: true };
+      this.drawer = {
+        kind: 'feed-events', title: `events · ${feedName}`,
+        rows: [], detail: null, loading: true,
+        bucket: null, page: 0, pageSize: 100,
+      };
       try {
         this.drawer.rows = await this._api(`/api/dashboard/feeds/${feedId}/events?limit=100`);
       } finally { this.drawer.loading = false; }
     },
 
     async openEmbedderEvents() {
-      this.drawer = { kind: 'embedder-events', title: 'embedder · recent calls',
-                      rows: [], detail: null, loading: true };
+      this.drawer = {
+        kind: 'embedder-events', title: 'embedder · recent calls',
+        rows: [], detail: null, loading: true,
+        bucket: null, page: 0, pageSize: 100,
+      };
       try {
         this.drawer.rows = await this._api(`/api/dashboard/embedder/events?limit=100`);
       } finally { this.drawer.loading = false; }
     },
 
     async openArticles(bucket) {
-      this.drawer = { kind: 'articles', title: `articles · ${bucket}`,
-                      rows: [], detail: null, loading: true };
+      this.drawer = {
+        kind: 'articles', title: `articles · ${bucket}`,
+        rows: [], detail: null, loading: true,
+        bucket, page: 0, pageSize: 50,
+      };
+      // Reset filter on a fresh open; only qdrant bucket actually uses it.
+      this.filter = {
+        ingested_from: '', ingested_to: '',
+        feed_id: '', title_q: '',
+        feedOptions: this.filter.feedOptions,
+      };
       try {
-        this.drawer.rows = await this._api(
-          `/api/dashboard/articles?bucket=${bucket}&limit=50`
-        );
+        if (bucket === 'qdrant') {
+          await this._loadFeedUniverse();
+        }
+        this.drawer.rows = await this._fetchArticles();
       } finally { this.drawer.loading = false; }
+    },
+
+    async _loadFeedUniverse() {
+      // D9: source dropdown reuses /api/dashboard/maintenance/feed_universe.
+      // alive items have a name; deleted items have name=null → fallback label.
+      try {
+        const res = await this._api('/api/dashboard/maintenance/feed_universe');
+        const opts = [];
+        for (const f of (res?.alive || [])) opts.push({ id: f.id, label: `${f.name} (id=${f.id})` });
+        for (const f of (res?.deleted || [])) opts.push({ id: f.id, label: `Feed #${f.id} (deleted)` });
+        this.filter.feedOptions = opts;
+      } catch (e) {
+        // Non-fatal: filter still works without the dropdown.
+        console.warn('feed_universe load failed:', e);
+      }
+    },
+
+    async _fetchArticles() {
+      const params = new URLSearchParams();
+      params.set('bucket', this.drawer.bucket);
+      params.set('limit', String(this.drawer.pageSize));
+      params.set('offset', String(this.drawer.page * this.drawer.pageSize));
+      if (this.drawer.bucket === 'qdrant') {
+        if (this.filter.ingested_from) params.set('ingested_from', this.filter.ingested_from);
+        if (this.filter.ingested_to)   params.set('ingested_to',   this.filter.ingested_to);
+        if (this.filter.feed_id !== '' && this.filter.feed_id !== null && this.filter.feed_id !== undefined) {
+          params.set('feed_id', String(this.filter.feed_id));
+        }
+        if (this.filter.title_q && this.filter.title_q.trim()) {
+          params.set('title_q', this.filter.title_q.trim());
+        }
+      }
+      return await this._api('/api/dashboard/articles?' + params.toString());
+    },
+
+    async applyFilter() {
+      this.drawer.page = 0;
+      this.drawer.loading = true;
+      try { this.drawer.rows = await this._fetchArticles(); }
+      finally { this.drawer.loading = false; }
+    },
+
+    async clearFilter() {
+      this.filter.ingested_from = '';
+      this.filter.ingested_to = '';
+      this.filter.feed_id = '';
+      this.filter.title_q = '';
+      await this.applyFilter();
+    },
+
+    async prevPage() {
+      if (this.drawer.page === 0) return;
+      this.drawer.page -= 1;
+      this.drawer.loading = true;
+      try { this.drawer.rows = await this._fetchArticles(); }
+      finally { this.drawer.loading = false; }
+    },
+
+    async nextPage() {
+      // No total count — paginate optimistically; "next" is disabled when the
+      // last page returned fewer rows than pageSize (template).
+      this.drawer.page += 1;
+      this.drawer.loading = true;
+      try { this.drawer.rows = await this._fetchArticles(); }
+      finally { this.drawer.loading = false; }
     },
 
     async openArticleDetail(md5, bucket) {
@@ -212,6 +409,83 @@ function dashboard() {
           `/api/dashboard/articles/${md5}?bucket=${bucket}`
         );
       } catch (e) { console.error(e); }
+    },
+
+    // ── restart (D1 + D10 + D13) ─────────────────────────────────────────
+    openRestartConfirm() {
+      this.restartConfirm.open = true;
+    },
+
+    closeRestartConfirm() {
+      this.restartConfirm.open = false;
+    },
+
+    async confirmRestart() {
+      this.restartConfirm.open = false;
+      this._setRestartLockShared(true);
+      this._beginRestartUI('triggering restart…');
+      try {
+        const res = await this._api('/api/dashboard/restart', { method: 'POST' });
+        if (res && res.rsshub_restart_failed) {
+          this.restart.message = `RSSHub failed: ${res.rsshub_error || 'unknown'} — api still restarting`;
+        } else {
+          this.restart.message = 'restart in progress…';
+        }
+      } catch (e) {
+        // Even on POST failure we keep the overlay until /health recovers
+        // (the SIGTERM might already have fired before the response was
+        // serialised; better to wait than to reset prematurely).
+        this.restart.message = `POST failed: ${e.message}`;
+      }
+    },
+
+    _beginRestartUI(message) {
+      if (this.restart.active) return;
+      this.restart.active = true;
+      this.restart.startedAt = Date.now();
+      this.restart.elapsedMs = 0;
+      this.restart.message = message;
+      this.restart.timer = setInterval(() => this._pollRestart(), 1000);
+    },
+
+    async _pollRestart() {
+      if (this.restart._inFlight) return;
+      this.restart.elapsedMs = Date.now() - this.restart.startedAt;
+      if (this.restart.elapsedMs > 60000) {
+        this._endRestartUI();
+        console.warn('restart timed out (60s) — check container logs');
+        return;
+      }
+      this.restart._inFlight = true;
+      try {
+        const res = await fetch('/health', { cache: 'no-store' });
+        if (res.status === 200) {
+          this._endRestartUI();
+          // Re-fetch snapshot once healthy so dashboard repaints with fresh data.
+          await this.refresh();
+        }
+      } catch (e) {
+        // expected during the restart window
+      } finally {
+        this.restart._inFlight = false;
+      }
+    },
+
+    _endRestartUI() {
+      if (this.restart.timer) clearInterval(this.restart.timer);
+      this.restart.timer = null;
+      this.restart.active = false;
+      this._setRestartLockShared(false);
+    },
+
+    _setRestartLockShared(active) {
+      // localStorage 'storage' event fires only in OTHER tabs; the writer
+      // tab must update its own state explicitly — D10 absorbing review #6.
+      try {
+        if (active) localStorage.setItem(_RESTART_LOCK_KEY, '1');
+        else localStorage.removeItem(_RESTART_LOCK_KEY);
+      } catch (e) {}
+      this.restart.active = active;
     },
 
     logout() {
