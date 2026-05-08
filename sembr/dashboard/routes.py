@@ -15,6 +15,7 @@ from datetime import datetime, time as dtime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
+from sembr.collector.newsapi import RECOMMENDED_SOURCES as _NEWSAPI_RECOMMENDED
 from sembr.collector.scheduler import SOURCE_REGISTRY
 from sembr.config import get_settings
 from sembr.dashboard import read_model
@@ -105,6 +106,13 @@ async def get_feed_articles(
     return await read_model.list_feed_articles_qdrant(
         qclient, feed_id, limit=limit, offset=offset
     )
+
+
+@router.get("/sources/newsapi/recommended_sources")
+async def get_newsapi_recommended_sources() -> list[dict]:
+    """D14: combobox datalist source for the create-feed modal. Static list
+    is cheap to return on every modal open; frontend caches client-side."""
+    return list(_NEWSAPI_RECOMMENDED)
 
 
 @router.get("/sources/schemas", response_model=SourceSchemaResponse)

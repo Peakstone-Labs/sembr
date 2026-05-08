@@ -15,8 +15,10 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from sembr.collector.base import BaseSource
 from sembr.collector.host_limiter import HostLimiter
+from sembr.collector.newsapi import NewsApiSource, newsapi_master_tick
 from sembr.collector.phase import derive_jitter_seconds, derive_phase_seconds
 from sembr.collector.rss import FetchError, RSSSource
+from sembr.config import Settings, get_settings
 from sembr.dashboard.events import log_fetch_event
 from sembr.db.articles import insert_article_pending
 from sembr.db.feeds import fingerprint_exists, insert_fingerprint, update_last_collected
@@ -44,7 +46,10 @@ logger = logging.getLogger(__name__)
 
 SOURCE_REGISTRY: dict[str, type[BaseSource]] = {
     "rss": RSSSource,
+    "newsapi": NewsApiSource,
 }
+
+NEWSAPI_MASTER_JOB_ID = "source_newsapi_master"
 
 
 def register_source(source_type: str, cls: type[BaseSource]) -> None:
@@ -189,6 +194,13 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
 
 
 async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
+    # D10: newsapi feeds collapse onto a singleton master job — register that
+    # instead of a per-feed IntervalTrigger so all enabled newsapi feeds share
+    # one tick (1 token / cycle, requirements hard constraint).
+    if feed.source_type == "newsapi":
+        await ensure_newsapi_master_job(scheduler, get_settings())
+        return
+
     period_s = feed.poll_interval_minutes * 60
     phase_s = derive_phase_seconds(feed.id, period_s)
     jitter_s = derive_jitter_seconds(period_s)
@@ -206,10 +218,53 @@ async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
     )
 
 
-def remove_feed_job(scheduler: AsyncIOScheduler, feed_id: int) -> None:
+async def remove_feed_job(scheduler: AsyncIOScheduler, feed_id: int) -> None:
+    # D10/R1: try the per-feed job first (no-op for newsapi feeds since they
+    # collapse onto the master job; JobLookupError is the expected path), then
+    # call maybe_drop_newsapi_master_job so the last-newsapi-feed deletion
+    # tears down the master job.
     try:
         scheduler.remove_job(f"feed_{feed_id}")
     except JobLookupError:
-        # Job may not exist if the service restarted after the row was deleted —
-        # treat as no-op rather than an error.
+        # Job may not exist if the service restarted after the row was deleted,
+        # OR if the feed was source_type='newsapi' and never had its own
+        # per-feed job — treat as no-op either way.
         logger.debug("remove_feed_job: feed_%d already absent", feed_id)
+    await maybe_drop_newsapi_master_job(scheduler, get_conn())
+
+
+async def ensure_newsapi_master_job(scheduler: AsyncIOScheduler, settings: Settings) -> None:
+    """D6/D9: register the singleton master job. Idempotent (replace_existing).
+
+    No `next_run_time` argument — feedback_apscheduler_next_run_time.md flags
+    that explicit `next_run_time=None` is a paused state; the trigger computes
+    the first run instead. Jitter spreads ticks across runs so multiple sembr
+    instances behind the same NEWSAPI_API_KEY don't collide.
+    """
+    period_s = settings.newsapi_poll_interval_minutes * 60
+    jitter_s = derive_jitter_seconds(period_s)
+    scheduler.add_job(
+        newsapi_master_tick,
+        trigger=IntervalTrigger(minutes=settings.newsapi_poll_interval_minutes, jitter=jitter_s),
+        id=NEWSAPI_MASTER_JOB_ID,
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+
+
+async def maybe_drop_newsapi_master_job(scheduler: AsyncIOScheduler, conn) -> None:
+    """D10: drop the master job when the last enabled newsapi feed disappears
+    so the scheduler doesn't keep firing API calls (and burning tokens) for an
+    empty source set."""
+    async with conn.execute(
+        "SELECT 1 FROM feeds WHERE source_type='newsapi' AND enabled=1 LIMIT 1"
+    ) as cur:
+        if await cur.fetchone() is not None:
+            return
+    try:
+        scheduler.remove_job(NEWSAPI_MASTER_JOB_ID)
+    except JobLookupError:
+        # Already absent (e.g. master never registered because the feed was
+        # added while disabled) — no-op.
+        return

@@ -107,13 +107,31 @@ def require_header_token(
 
 class SembrFieldMeta(BaseModel):
     key: str
-    type: Literal["str", "int", "float", "bool", "secret", "enum", "path"]
+    type: Literal["str", "int", "float", "bool", "secret", "enum", "multiselect", "path"]
     sensitive: bool
     description: str = ""
     enum: list[str] | None = None
     ge: float | None = None
     le: float | None = None
     default: Any | None = None
+
+
+# D13/O3-A: fields rendered as multi-select checkboxes in the dashboard. Key
+# is the lower-case Settings field name; value is the candidate list. The
+# field is still stored as a CSV string in .env (see Settings.newsapi_categories
+# / proxy_hosts pattern), and the frontend joins selections with ',' on submit.
+_MULTISELECT_FIELDS: dict[str, list[str]] = {
+    "newsapi_categories": [
+        "Business",
+        "Politics",
+        "Technology",
+        "Science",
+        "Health",
+        "Environment",
+        "Sports",
+        "Arts and Entertainment",
+    ],
+}
 
 
 class PassthroughRecommended(BaseModel):
@@ -182,12 +200,20 @@ def _build_field_meta(name: str, field_info: FieldInfo) -> SembrFieldMeta:
         default = ""
     elif isinstance(default, Path):
         default = str(default)
+    field_type: str = _field_type(field_info)
+    enum_values = _enum_values(field_info)
+    # D13: multiselect overrides the inferred 'str' type. Sourced from a
+    # backend-side dict so the candidate list stays in one place — the
+    # frontend renders checkboxes from `enum`, posts back a CSV.
+    if name in _MULTISELECT_FIELDS:
+        field_type = "multiselect"
+        enum_values = list(_MULTISELECT_FIELDS[name])
     return SembrFieldMeta(
         key=name.upper(),
-        type=_field_type(field_info),  # type: ignore[arg-type]
+        type=field_type,  # type: ignore[arg-type]
         sensitive=_is_sensitive(field_info),
         description=field_info.description or "",
-        enum=_enum_values(field_info),
+        enum=enum_values,
         ge=ge,
         le=le,
         default=default,

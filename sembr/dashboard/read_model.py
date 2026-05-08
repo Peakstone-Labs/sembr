@@ -675,7 +675,14 @@ async def list_feeds_with_meta(
         next_run_iso: str | None = None
         if scheduler is not None:
             try:
-                job = scheduler.get_job(f"feed_{fid}")
+                # D17: newsapi feeds collapse onto a singleton master job, so
+                # all of them share the same next_run_iso (the master tick's
+                # next firing). RSS keeps the per-feed lookup.
+                job_id = (
+                    "source_newsapi_master" if source_type == "newsapi"
+                    else f"feed_{fid}"
+                )
+                job = scheduler.get_job(job_id)
                 if job is not None and job.next_run_time is not None:
                     next_run_iso = job.next_run_time.astimezone(timezone.utc).isoformat()
             except Exception:

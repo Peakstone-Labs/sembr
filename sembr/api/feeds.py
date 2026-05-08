@@ -95,7 +95,7 @@ async def patch_feed(feed_id: int, body: FeedUpdate, request: Request) -> Feed:
 
     if was_enabled and not now_enabled:
         # true→false: remove job immediately (in-flight collect_feed not interrupted)
-        remove_feed_job(scheduler, feed_id)
+        await remove_feed_job(scheduler, feed_id)
     elif not was_enabled and now_enabled:
         # false→true: add job (phase re-randomised for spread)
         await add_feed_job(scheduler, updated)
@@ -134,7 +134,7 @@ async def remove_feed(feed_id: int, request: Request) -> Response:
     # delete_feed issues conn.commit(), committing both the cascade UPDATE and the DELETE atomically
     await delete_feed(conn, feed_id)
 
-    remove_feed_job(request.app.state.scheduler, feed_id)
+    await remove_feed_job(request.app.state.scheduler, feed_id)
 
     # Reregister affected intent jobs so updated scan filter takes effect immediately
     scheduler = request.app.state.scheduler

@@ -34,7 +34,7 @@ def client():
     app.state.scheduler = MagicMock()
 
     mock_add = AsyncMock()
-    mock_remove = MagicMock()
+    mock_remove = AsyncMock()
     with patch("sembr.api.feeds.add_feed_job", new=mock_add):
         with patch("sembr.api.feeds.remove_feed_job", new=mock_remove):
             with TestClient(app) as c:
