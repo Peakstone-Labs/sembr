@@ -412,6 +412,21 @@ input::placeholder { color: var(--text-dim); }
 /* ── x-cloak: hide until Alpine initialises ── */
 [x-cloak] { display: none !important; }
 
+/* ── Templates tab: tree items (left pane) ── */
+.tree-item {
+  transition: background 0.08s ease;
+  user-select: none;
+}
+.tree-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.tree-item-active,
+.tree-item-active:hover {
+  background: rgba(196, 167, 100, 0.15);  /* var(--gold) at low opacity */
+  border-left: 2px solid var(--gold);
+  padding-left: 6px !important;  /* compensate for 2px border so text doesn't shift */
+}
+
 /* ── Top-level Tab nav ── */
 .tab-nav {
   position: sticky;

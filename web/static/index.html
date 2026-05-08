@@ -1580,125 +1580,131 @@
      Two columns (system / instruction) listing TemplateInfo rows with
      inline editor + create/rename/duplicate/delete dialogs.
      ══════════════════════════════════════════════════════ -->
-<div x-show="currentTab==='templates'" x-data="templatesTab()" x-init="init()" class="templates-view">
+<div x-show="currentTab==='templates'" x-data="templatesTab()" x-init="init()" class="templates-view"
+     style="display:grid; grid-template-columns:280px 1fr; gap:16px; min-height:calc(100vh - 200px); align-items:stretch;">
 
-  <div class="muted" style="margin:8px 0 12px; font-size:0.78rem;">
-    Templates are read on every digest tick — edits take effect on the next match. Built-in
-    templates (e.g. <code>default</code>) are read-only; use Duplicate to start from one.
-  </div>
+  <!-- ── Left: file tree ─────────────────────────────────── -->
+  <aside class="panel" style="display:flex; flex-direction:column; min-height:0; padding:16px; overflow:auto;">
+    <header style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:0.78rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-dim);">Templates</h3>
+      <button class="btn" @click="loadList()" title="Reload templates" style="padding:2px 8px; font-size:0.72rem;">↻</button>
+    </header>
 
-  <template x-if="loading">
-    <div class="muted">Loading templates…</div>
-  </template>
+    <template x-if="loading && system.length === 0 && instruction.length === 0">
+      <div class="muted" style="font-size:0.78rem;">Loading…</div>
+    </template>
 
-  <div class="templates-columns" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-
-    <!-- System column -->
-    <section class="panel">
-      <header style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
-        <h3 style="margin:0; font-size:0.9rem;">System Templates</h3>
-        <button class="btn" @click="openCreate('system')">+ New System Template</button>
-      </header>
+    <!-- system/ group -->
+    <div style="margin-bottom:12px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:rgba(255,255,255,0.04); border-radius:3px; margin-bottom:4px;">
+        <span style="font-size:0.7rem; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim);">system/</span>
+        <button class="btn" @click="openCreate('system')" title="+ New system template" style="padding:0 6px; font-size:0.85rem; line-height:1;">+</button>
+      </div>
       <template x-if="system.length === 0 && !loading">
-        <div class="muted">No templates.</div>
+        <div class="muted" style="padding:4px 8px; font-size:0.72rem;">No templates.</div>
       </template>
       <template x-for="row in system" :key="'system/' + row.name">
-        <div class="template-row" style="display:flex; flex-direction:column; gap:4px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
-          <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
-            <strong x-text="row.name"></strong>
-            <span x-show="row.is_builtin" class="muted" style="font-size:0.7rem; padding:1px 6px; border:1px solid rgba(255,255,255,0.15); border-radius:3px;">built-in</span>
-            <span class="muted" style="font-size:0.72rem;">
-              <span x-text="fmtSize(row.size_bytes)"></span> · modified <span x-text="fmtMtime(row.mtime)"></span>
-              · <span x-text="row.ref_count"></span> intent<span x-show="row.ref_count !== 1">s</span>
-            </span>
-          </div>
-          <div style="display:flex; gap:6px; flex-wrap:wrap;">
-            <button class="btn" @click="openEditor(row)" x-text="row.is_builtin ? 'View' : 'Edit'"></button>
-            <button class="btn" @click="duplicate(row)">Duplicate</button>
-            <button class="btn" :disabled="row.is_builtin" @click="!row.is_builtin && openRename(row)">Rename</button>
-            <button class="btn btn-danger" :disabled="row.is_builtin" @click="!row.is_builtin && openDelete(row)">Delete</button>
-          </div>
-          <template x-if="row.ref_count > 0">
-            <div class="muted" style="font-size:0.72rem;">
-              Used by:
-              <template x-for="ref in row.ref_intents" :key="ref.id">
-                <span style="margin-right:6px;" x-text="'#' + ref.id + ' ' + ref.name"></span>
-              </template>
-            </div>
-          </template>
+        <div class="tree-item"
+             :class="{'tree-item-active': isActive('system', row.name)}"
+             @click="select(row)"
+             style="display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:3px; cursor:pointer; font-size:0.82rem;">
+          <span x-text="row.name" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+          <span x-show="row.is_builtin" class="muted" style="font-size:0.62rem;" title="built-in (read-only)">🔒</span>
+          <span x-show="row.ref_count > 0" class="muted" style="font-size:0.65rem; padding:0 5px; border:1px solid rgba(255,255,255,0.15); border-radius:8px;" :title="'Used by ' + row.ref_count + ' intent(s)'" x-text="row.ref_count"></span>
         </div>
       </template>
-    </section>
+    </div>
 
-    <!-- Instruction column -->
-    <section class="panel">
-      <header style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
-        <h3 style="margin:0; font-size:0.9rem;">Instruction Templates</h3>
-        <button class="btn" @click="openCreate('instruction')">+ New Instruction Template</button>
-      </header>
+    <!-- instruction/ group -->
+    <div>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:rgba(255,255,255,0.04); border-radius:3px; margin-bottom:4px;">
+        <span style="font-size:0.7rem; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim);">instruction/</span>
+        <button class="btn" @click="openCreate('instruction')" title="+ New instruction template" style="padding:0 6px; font-size:0.85rem; line-height:1;">+</button>
+      </div>
       <template x-if="instruction.length === 0 && !loading">
-        <div class="muted">No templates.</div>
+        <div class="muted" style="padding:4px 8px; font-size:0.72rem;">No templates.</div>
       </template>
       <template x-for="row in instruction" :key="'instruction/' + row.name">
-        <div class="template-row" style="display:flex; flex-direction:column; gap:4px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
-          <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
-            <strong x-text="row.name"></strong>
-            <span x-show="row.is_builtin" class="muted" style="font-size:0.7rem; padding:1px 6px; border:1px solid rgba(255,255,255,0.15); border-radius:3px;">built-in</span>
-            <span class="muted" style="font-size:0.72rem;">
-              <span x-text="fmtSize(row.size_bytes)"></span> · modified <span x-text="fmtMtime(row.mtime)"></span>
-              · <span x-text="row.ref_count"></span> intent<span x-show="row.ref_count !== 1">s</span>
-            </span>
-          </div>
-          <div style="display:flex; gap:6px; flex-wrap:wrap;">
-            <button class="btn" @click="openEditor(row)" x-text="row.is_builtin ? 'View' : 'Edit'"></button>
-            <button class="btn" @click="duplicate(row)">Duplicate</button>
-            <button class="btn" :disabled="row.is_builtin" @click="!row.is_builtin && openRename(row)">Rename</button>
-            <button class="btn btn-danger" :disabled="row.is_builtin" @click="!row.is_builtin && openDelete(row)">Delete</button>
-          </div>
-          <template x-if="row.ref_count > 0">
-            <div class="muted" style="font-size:0.72rem;">
-              Used by:
-              <template x-for="ref in row.ref_intents" :key="ref.id">
-                <span style="margin-right:6px;" x-text="'#' + ref.id + ' ' + ref.name"></span>
-              </template>
-            </div>
-          </template>
+        <div class="tree-item"
+             :class="{'tree-item-active': isActive('instruction', row.name)}"
+             @click="select(row)"
+             style="display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:3px; cursor:pointer; font-size:0.82rem;">
+          <span x-text="row.name" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+          <span x-show="row.is_builtin" class="muted" style="font-size:0.62rem;" title="built-in (read-only)">🔒</span>
+          <span x-show="row.ref_count > 0" class="muted" style="font-size:0.65rem; padding:0 5px; border:1px solid rgba(255,255,255,0.15); border-radius:8px;" :title="'Used by ' + row.ref_count + ' intent(s)'" x-text="row.ref_count"></span>
         </div>
       </template>
-    </section>
+    </div>
+  </aside>
 
-  </div>
+  <!-- ── Right: editor pane ──────────────────────────────── -->
+  <section class="panel" style="display:flex; flex-direction:column; min-height:0; padding:20px;">
 
-  <!-- Editor modal (Edit content). x-teleport MUST be on the <template>, not on
-       the inner div — when on a div, Alpine silently no-ops the teleport and
-       the modal stays inside <main>'s z-index:1 stacking context, hiding under
-       the tab nav. Mirrors the maintenance-tab pattern at index.html:135. -->
-  <template x-teleport="body">
-  <div class="modal-overlay" x-show="editor.open" x-cloak @click.self="closeEditor()" style="display:none;">
-    <div class="modal-panel" style="max-width:900px; display:flex; flex-direction:column; max-height:85vh;">
-        <header style="display:flex; align-items:baseline; gap:8px; margin-bottom:8px;">
-          <h3 style="margin:0; font-size:0.95rem;" x-text="(isEditorBuiltin ? 'View ' : 'Edit ') + editor.kind + '/' + editor.name"></h3>
-          <span x-show="isEditorBuiltin" class="muted" style="font-size:0.72rem;">read-only</span>
-        </header>
-        <div class="muted" style="font-size:0.72rem; margin-bottom:6px;">
-          Allowed placeholders:
-          <code x-text="editor.kind === 'system' ? '{language}' : '{intent_text}, {articles}'"></code>
+    <!-- Empty state when nothing selected -->
+    <template x-if="!isSelected">
+      <div class="muted" style="display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; gap:8px; padding:40px 20px; text-align:center;">
+        <div style="font-size:0.9rem;">Select a template from the tree to view or edit it.</div>
+        <div style="font-size:0.75rem;">
+          Templates are read on every digest tick — edits take effect on the next match.
+          Built-ins (<code>default</code>) are read-only; use <strong>Duplicate</strong> to start from one.
         </div>
+      </div>
+    </template>
+
+    <!-- Loaded editor -->
+    <template x-if="isSelected">
+      <div style="display:flex; flex-direction:column; flex:1; min-height:0;">
+
+        <header style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px;">
+          <div style="min-width:0; flex:1;">
+            <h3 style="margin:0; font-size:1rem; font-family:monospace;">
+              <span x-text="editor.kind"></span><span style="opacity:0.5;">/</span><span x-text="editor.name"></span>
+              <span x-show="isEditorBuiltin" class="muted" style="font-size:0.65rem; padding:1px 6px; border:1px solid rgba(255,255,255,0.15); border-radius:3px; margin-left:6px; vertical-align:middle;">built-in</span>
+              <span x-show="editorDirty" style="color:var(--gold); font-size:0.78rem; margin-left:6px;" title="Unsaved changes">●</span>
+            </h3>
+            <div class="muted" style="font-size:0.72rem; margin-top:4px;">
+              <span x-text="fmtSize(currentRow?.size_bytes)"></span>
+              · modified <span x-text="fmtMtime(currentRow?.mtime)"></span>
+              · <span x-text="currentRow?.ref_count || 0"></span> intent<span x-show="(currentRow?.ref_count || 0) !== 1">s</span>
+              · placeholders <code x-text="editor.kind === 'system' ? '{language}' : '{intent_text}, {articles}'"></code>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button class="btn" @click="duplicateCurrent()" title="Duplicate">Duplicate</button>
+            <button class="btn" :disabled="isEditorBuiltin" @click="!isEditorBuiltin && openRenameCurrent()" title="Rename">Rename</button>
+            <button class="btn btn-danger" :disabled="isEditorBuiltin" @click="!isEditorBuiltin && openDeleteCurrent()" title="Delete">Delete</button>
+          </div>
+        </header>
+
         <textarea x-model="editor.content"
                   :readonly="isEditorBuiltin"
                   spellcheck="false"
-                  style="flex:1 1 auto; min-height:240px; font-family:monospace; font-size:0.85rem; padding:8px; background:#0d1726; color:#dde3ec; border:1px solid rgba(255,255,255,0.12); border-radius:4px;"></textarea>
+                  style="flex:1 1 auto; min-height:300px; font-family:monospace; font-size:0.85rem; padding:10px; background:#0d1726; color:#dde3ec; border:1px solid rgba(255,255,255,0.12); border-radius:4px; resize:vertical;"></textarea>
+
         <div x-show="editor.error" class="muted" style="color:#e08585; font-size:0.78rem; margin-top:6px;" x-text="editor.error"></div>
-        <footer style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
-          <button class="btn" @click="closeEditor()">Cancel</button>
-          <button class="btn"
-                  :disabled="isEditorBuiltin || editor.submitting || !editorDirty"
-                  @click="!isEditorBuiltin && saveEditor()"
-                  x-text="editor.submitting ? 'Saving…' : 'Save'"></button>
+
+        <footer style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px;">
+          <div class="muted" style="font-size:0.72rem; flex:1; min-width:0; overflow:hidden;">
+            <template x-if="(currentRow?.ref_count || 0) > 0">
+              <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                Used by:
+                <template x-for="ref in currentRow.ref_intents" :key="ref.id">
+                  <span style="margin-right:8px;" x-text="'#' + ref.id + ' ' + ref.name"></span>
+                </template>
+              </div>
+            </template>
+          </div>
+          <div style="display:flex; gap:8px; flex-shrink:0;">
+            <button class="btn" :disabled="!editorDirty" @click="revertEditor()">Cancel</button>
+            <button class="btn"
+                    :disabled="isEditorBuiltin || editor.submitting || !editorDirty"
+                    @click="!isEditorBuiltin && saveEditor()"
+                    x-text="editor.submitting ? 'Saving…' : 'Save'"></button>
+          </div>
         </footer>
       </div>
-    </div>
-  </template>
+    </template>
+  </section>
 
   <!-- Create modal -->
   <template x-teleport="body">
@@ -2118,7 +2124,7 @@
 
 <script src="/dashboard/feeds.js?v=4"></script>
 <script src="/dashboard/intents.js?v=3"></script>
-<script src="/dashboard/templates.js?v=2"></script>
+<script src="/dashboard/templates.js?v=3"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=7"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>

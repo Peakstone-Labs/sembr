@@ -1,5 +1,10 @@
 /* templatesTab() — Alpine 3 component for the Templates management view.
  *
+ * Layout: left tree of templates (system / instruction groups) + right inline editor.
+ * Selection: `editor.kind` + `editor.name` together identify the loaded file; both
+ * empty means "nothing selected, show empty-state". Create / Rename / Delete remain
+ * as small modal forms triggered from the right-pane action row.
+ *
  * Consumes: GET / POST / PUT / DELETE / POST-rename on /api/prompts/templates
  * Auth: X-Dashboard-Token header (localStorage); cookie path does not cover /api/.
  * Design: see sembr-dev-docs/development/template-mgmt/design.md (D2/D6/D9/D14/D20)
@@ -13,9 +18,10 @@ function templatesTab() {
     loading: false,
     _initialized: false,
 
+    // editor === null kind/name means nothing selected → right pane shows the
+    // empty-state placeholder. submitting/error are scoped to the active save.
     editor: {
-      open: false,
-      kind: null,        // 'system' | 'instruction'
+      kind: null,        // 'system' | 'instruction' | null
       name: '',
       content: '',
       originalContent: '',
@@ -45,7 +51,7 @@ function templatesTab() {
       open: false,
       kind: null,
       name: '',
-      refIntents: [],    // populated only when server returns 409
+      refIntents: [],    // populated from row's ref_intents on open OR from server 409
       submitting: false,
       error: '',
     },
@@ -106,6 +112,10 @@ function templatesTab() {
         const data = await res.json();
         this.system      = data.system      || [];
         this.instruction = data.instruction || [];
+        // Drop selection if the previously-selected file no longer exists.
+        if (this.editor.kind && this.editor.name && !this.currentRow) {
+          this.clearEditor();
+        }
       } catch (e) {
         this.showToast('Failed to load templates: ' + e.message, 'error');
       } finally {
@@ -117,12 +127,48 @@ function templatesTab() {
       return kind === 'system' ? this.system : this.instruction;
     },
 
-    // ── Editor (Edit existing template content) ────────────
-    async openEditor(row) {
-      // Builtin (e.g. `default`) is loaded read-only — server enforces, but we
-      // also surface the read-only state in the UI to avoid noisy 403s.
+    // ── Selection / Editor ─────────────────────────────────
+    get currentRow() {
+      if (!this.editor.kind || !this.editor.name) return null;
+      return this.rowsFor(this.editor.kind).find(r => r.name === this.editor.name) || null;
+    },
+
+    get isSelected() {
+      return !!(this.editor.kind && this.editor.name && this.currentRow);
+    },
+
+    get isEditorBuiltin() {
+      return !!this.currentRow?.is_builtin;
+    },
+
+    get editorDirty() {
+      return this.editor.content !== this.editor.originalContent;
+    },
+
+    isActive(kind, name) {
+      return this.editor.kind === kind && this.editor.name === name;
+    },
+
+    clearEditor() {
       this.editor = {
-        open: true,
+        kind: null,
+        name: '',
+        content: '',
+        originalContent: '',
+        submitting: false,
+        error: '',
+      };
+    },
+
+    revertEditor() {
+      this.editor.content = this.editor.originalContent;
+      this.editor.error = '';
+    },
+
+    async select(row) {
+      // Bail-out guard for unsaved edits when switching files.
+      if (this.editorDirty && !confirm('Discard unsaved changes?')) return;
+      this.editor = {
         kind: row.kind,
         name: row.name,
         content: '',
@@ -143,25 +189,8 @@ function templatesTab() {
       }
     },
 
-    closeEditor() {
-      // Bail-out guard for unsaved edits — read the top-level getter
-      // (`editorDirty`), not a phantom `editor.dirty` field that doesn't exist.
-      if (this.editorDirty && !confirm('Discard unsaved changes?')) return;
-      this.editor.open = false;
-    },
-
-    get isEditorBuiltin() {
-      const list = this.rowsFor(this.editor.kind);
-      const row = list.find(r => r.name === this.editor.name);
-      return !!row?.is_builtin;
-    },
-
-    get editorDirty() {
-      return this.editor.content !== this.editor.originalContent;
-    },
-
     async saveEditor() {
-      if (this.editor.submitting) return;
+      if (this.editor.submitting || this.isEditorBuiltin || !this.editorDirty) return;
       this.editor.submitting = true;
       this.editor.error = '';
       try {
@@ -180,7 +209,6 @@ function templatesTab() {
         this._mergeRow(updated);
         this.editor.originalContent = this.editor.content;
         this.showToast('Template saved', 'success');
-        this.editor.open = false;
       } catch (e) {
         this.editor.error = e.message;
         this.showToast('Network error: ' + e.message, 'error');
@@ -225,6 +253,8 @@ function templatesTab() {
         this._mergeRow(row);
         this.showToast(`Template '${row.name}' created`, 'success');
         this.create.open = false;
+        // Auto-select the newly created file in the right pane.
+        await this.select(row);
       } catch (e) {
         this.create.error = e.message;
         this.showToast('Network error: ' + e.message, 'error');
@@ -233,16 +263,18 @@ function templatesTab() {
       }
     },
 
-    duplicate(row) {
-      this.openCreate(row.kind, row.name);
+    duplicateCurrent() {
+      if (!this.currentRow) return;
+      this.openCreate(this.currentRow.kind, this.currentRow.name);
     },
 
     // ── Rename ─────────────────────────────────────────────
-    openRename(row) {
+    openRenameCurrent() {
+      if (!this.currentRow || this.currentRow.is_builtin) return;
       this.rename = {
         open: true,
-        kind: row.kind,
-        oldName: row.name,
+        kind: this.currentRow.kind,
+        oldName: this.currentRow.name,
         newName: '',
         submitting: false,
         error: '',
@@ -274,13 +306,21 @@ function templatesTab() {
           return;
         }
         const row = await res.json();
+        const renamingActive = (
+          this.editor.kind === this.rename.kind &&
+          this.editor.name === this.rename.oldName
+        );
         this._removeRow(this.rename.kind, this.rename.oldName);
         this._mergeRow(row);
         this.showToast(`Renamed to '${row.name}'`, 'success');
         this.rename.open = false;
-        // Cascade may have changed intent rows' template references; ask for a full refresh
-        // so ref_count / ref_intents stay in sync. R5 (frontend optimistic update + 409 race).
+        // Cascade may have changed intent rows' template references; refresh so
+        // ref_count / ref_intents stay in sync with reality (R5 for the read view).
         await this.loadList();
+        // Re-point the editor selection so the right pane keeps showing the file.
+        if (renamingActive) {
+          this.editor.name = row.name;
+        }
       } catch (e) {
         this.rename.error = e.message;
         this.showToast('Network error: ' + e.message, 'error');
@@ -290,12 +330,13 @@ function templatesTab() {
     },
 
     // ── Delete ─────────────────────────────────────────────
-    openDelete(row) {
+    openDeleteCurrent() {
+      if (!this.currentRow || this.currentRow.is_builtin) return;
       this.del = {
         open: true,
-        kind: row.kind,
-        name: row.name,
-        refIntents: row.ref_intents || [],
+        kind: this.currentRow.kind,
+        name: this.currentRow.name,
+        refIntents: this.currentRow.ref_intents || [],
         submitting: false,
         error: '',
       };
@@ -313,14 +354,18 @@ function templatesTab() {
           `/api/prompts/templates/${this.del.kind}/${encodeURIComponent(this.del.name)}`,
         );
         if (res.status === 204) {
+          const wasActive = (
+            this.editor.kind === this.del.kind &&
+            this.editor.name === this.del.name
+          );
           this._removeRow(this.del.kind, this.del.name);
           this.showToast(`Template '${this.del.name}' deleted`, 'success');
           this.del.open = false;
+          if (wasActive) this.clearEditor();
           return;
         }
         const data = await res.json().catch(() => ({}));
         if (res.status === 409) {
-          // Race against an intent grabbing the template after our cached list.
           this.del.refIntents = data?.detail?.ref_intents || [];
           this.del.error = `This template is now referenced by ${this.del.refIntents.length} intent(s) — refresh to see them.`;
           this.showToast(this.del.error, 'error');
@@ -360,7 +405,6 @@ function templatesTab() {
     },
 
     fmtMtime(mtime) {
-      // mtime is a UNIX epoch float (seconds).
       if (typeof window.fmtDateTime === 'function') return window.fmtDateTime(mtime);
       const d = new Date(mtime * 1000);
       return isNaN(d.getTime()) ? '—' : d.toISOString();
