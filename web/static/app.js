@@ -41,6 +41,7 @@ function dashboard() {
     drawer: { kind: null, title: '', rows: [], detail: null, loading: false },
     _embedChart: null,
     _timer: null,
+    _refreshing: false,
 
     // Tab routing
     currentTab: 'dashboard',
@@ -59,7 +60,10 @@ function dashboard() {
         }
       } catch (e) {}
       await this.refresh();
-      this._timer = setInterval(() => this.refresh(), this.pollInterval);
+      this._timer = setInterval(() => {
+        if (this._refreshing) return;
+        this.refresh();
+      }, this.pollInterval);
     },
 
     _syncFromHash() {
@@ -110,12 +114,16 @@ function dashboard() {
     },
 
     async refresh() {
+      if (this._refreshing) return;
+      this._refreshing = true;
       try {
         this.snapshot = await this._api('/api/dashboard/snapshot');
         this.lastUpdated = new Date().toLocaleTimeString();
         this._renderEmbedChart();
       } catch (e) {
         console.error('refresh failed', e);
+      } finally {
+        this._refreshing = false;
       }
     },
 

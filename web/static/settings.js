@@ -340,6 +340,7 @@ function settingsTab() {
     },
 
     async _pollRestart() {
+      if (this.restart._inFlight) return;
       this.restart.elapsedMs = Date.now() - this.restart.startedAt;
       if (this.restart.elapsedMs > 60000) {
         clearInterval(this.restart.timer);
@@ -347,6 +348,7 @@ function settingsTab() {
         this._toast('error', 'restart timed out (60s) — check container logs');
         return;
       }
+      this.restart._inFlight = true;
       try {
         const res = await fetch('/health', { cache: 'no-store' });
         if (res.status === 200) {
@@ -357,6 +359,8 @@ function settingsTab() {
         }
       } catch (e) {
         // expected during the restart window
+      } finally {
+        this.restart._inFlight = false;
       }
     },
 
