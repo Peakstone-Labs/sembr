@@ -19,8 +19,11 @@ import pytest
 
 
 class _Range:
-    def __init__(self, *, gte=None, lte=None):
+    def __init__(self, *, gte=None, lte=None, gt=None, lt=None):
         self.gte = gte
+        self.lte = lte
+        self.gt = gt
+        self.lt = lt
 
 
 class _MatchAny:
@@ -40,6 +43,11 @@ class _Filter:
         self.must = must or []
 
 
+class _PointIdsList:
+    def __init__(self, *, points=None):
+        self.points = points or []
+
+
 def _install_qdrant_stub() -> None:
     """Register a minimal qdrant_client.models stub so scan_once imports succeed."""
     if "qdrant_client" not in sys.modules:
@@ -53,6 +61,7 @@ def _install_qdrant_stub() -> None:
     qc_models.MatchAny = _MatchAny  # type: ignore[attr-defined]
     qc_models.FieldCondition = _FieldCondition  # type: ignore[attr-defined]
     qc_models.Filter = _Filter  # type: ignore[attr-defined]
+    qc_models.PointIdsList = _PointIdsList  # type: ignore[attr-defined]
 
 
 _install_qdrant_stub()
