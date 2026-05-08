@@ -80,6 +80,14 @@ async def transaction():
     Use for every multi-statement write path. Single-statement writes that follow
     `await conn.execute(...); await conn.commit()` should also wrap in this so they
     can't interleave with a multi-statement transaction in another coroutine.
+
+    Self-heals on COMMIT/ROLLBACK failure: if the cleanup statement itself raises
+    (e.g. SQLite reports "SQL statements in progress" because a concurrent SELECT
+    cursor on the shared connection is mid-step), we still attempt to clear the
+    transaction state with a best-effort ROLLBACK so the next caller's BEGIN
+    isn't rejected with "cannot start a transaction within a transaction".
+    Catches BaseException so an asyncio CancelledError mid-yield doesn't leak a
+    half-open transaction either.
     """
     if _conn is None or _WRITE_LOCK is None:
         raise RuntimeError("SQLite not initialised; call init_sqlite() first")
@@ -87,11 +95,21 @@ async def transaction():
         await _conn.execute("BEGIN")
         try:
             yield _conn
-        except Exception:
-            await _conn.execute("ROLLBACK")
+        except BaseException:
+            try:
+                await _conn.execute("ROLLBACK")
+            except Exception:
+                pass
             raise
         else:
-            await _conn.execute("COMMIT")
+            try:
+                await _conn.execute("COMMIT")
+            except Exception:
+                try:
+                    await _conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
 
 
 async def sqlite_ok() -> bool:
