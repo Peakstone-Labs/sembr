@@ -38,6 +38,7 @@ from sembr.api.health import router as health_router
 from sembr.api.intents import router as intents_router
 from sembr.api.maintenance import router as maintenance_router
 from sembr.api.prompts import router as prompts_router
+from sembr.api.restart import router as restart_router
 from sembr.api.settings import router as settings_router
 from sembr.collector.host_limiter import HostLimiter
 from sembr.collector.scheduler import add_feed_job, make_scheduler, set_host_limiter
@@ -47,6 +48,10 @@ from sembr.dashboard.events import init_event_log_tables
 from sembr.dashboard.logs_routes import router as logs_router
 from sembr.dashboard.retention import add_log_retention_job
 from sembr.dashboard.routes import router as dashboard_router
+from sembr.dashboard.system_metrics import (
+    SystemMetricsCollector,
+    add_system_metrics_job,
+)
 from sembr.logbus.install import install_logbus
 from sembr.db.articles import init_article_tables
 from sembr.db.feeds import get_feed_names, init_feed_tables, list_feeds, seed_initial_feeds
@@ -168,6 +173,17 @@ async def lifespan(app: FastAPI):
             await add_feed_job(scheduler, feed)
     add_embedder_worker_job(scheduler, embedder, qdrant, app)
     add_log_retention_job(scheduler, settings)  # dashboard D9: hourly log prune
+    # dashboard-enhancement D2: per-container metrics sampler. Registered before
+    # scheduler.start() so the first tick is computed by the trigger (NOT by
+    # passing next_run_time=None — that would silently pause the job).
+    metrics_collector = SystemMetricsCollector(
+        interval_seconds=settings.dashboard_poll_interval_seconds
+    )
+    add_system_metrics_job(
+        scheduler,
+        metrics_collector,
+        interval_seconds=settings.dashboard_poll_interval_seconds,
+    )
     # reconcile design D1: three maintenance jobs share `maintenance_interval_hours`
     # but stagger their first fire by 5 / 15 / 25 min so they never hit Qdrant
     # at the same instant.
@@ -233,6 +249,7 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.embedder = embedder
     app.state.event_intent_cache = event_intent_cache
+    app.state.metrics_collector = metrics_collector
     scheduler.start()
     # Log actual next_run_time for matcher jobs after scheduler.start() computes them.
     for job in scheduler.get_jobs():
@@ -298,6 +315,7 @@ app.include_router(fire_router)
 app.include_router(prompts_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)
+app.include_router(restart_router)
 app.include_router(maintenance_router)
 app.include_router(logs_router)
 

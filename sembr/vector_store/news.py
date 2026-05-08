@@ -67,6 +67,8 @@ async def ensure_news_collection(
         ScalarQuantization,
         ScalarQuantizationConfig,
         ScalarType,
+        TextIndexParams,
+        TokenizerType,
         VectorParams,
     )
 
@@ -109,6 +111,27 @@ async def ensure_news_collection(
         collection_name=name,
         field_name="feed_id",
         field_schema=PayloadSchemaType.INTEGER,
+    )
+
+    # Text payload index on title: required for the dashboard's qdrant-articles
+    # filter `title_q` (D7/D8). Qdrant's MatchText condition silently scans the
+    # whole collection without a text index — D7's query plan needs this in
+    # place before the first filtered scroll. Idempotent: create_payload_index
+    # is a no-op when the index already exists.
+    #
+    # WORD tokenizer + lowercase = case-insensitive whole-token match.
+    # CJK input gets char-level tokenization under WORD; this is an accepted
+    # v1 trade-off (design D / R9). MULTILINGUAL is the post-1.0 candidate.
+    await client.create_payload_index(
+        collection_name=name,
+        field_name="title",
+        field_schema=TextIndexParams(
+            type="text",
+            tokenizer=TokenizerType.WORD,
+            lowercase=True,
+            min_token_len=1,
+            max_token_len=20,
+        ),
     )
 
     all_aliases = await client.get_aliases()

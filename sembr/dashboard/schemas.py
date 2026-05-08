@@ -57,6 +57,25 @@ class ArticlesBlock(BaseModel):
     qdrant_count: int
 
 
+class ContainerMetric(BaseModel):
+    name: str
+    uptime_seconds: int | None = None
+    cpu_percent: float | None = None
+    mem_used_bytes: int | None = None
+    mem_limit_bytes: int | None = None
+    # Per-container sparkline series, oldest → newest, length up to maxlen
+    # (60 points by default). None entries represent samples where the value
+    # was unavailable (e.g. first CPU% sample with no precpu baseline).
+    cpu_history: list[float | None] = Field(default_factory=list)
+    mem_history: list[int | None] = Field(default_factory=list)
+
+
+class SystemMetricsBlock(BaseModel):
+    sampled_at: str
+    interval_seconds: int
+    containers: list[ContainerMetric] = Field(default_factory=list)
+
+
 class SnapshotResponse(BaseModel):
     schema_version: int = 1
     generated_at: str
@@ -64,6 +83,7 @@ class SnapshotResponse(BaseModel):
     feeds: list[FeedRow]
     embedder: EmbedderBlock
     articles: ArticlesBlock
+    system_metrics: SystemMetricsBlock | None = None
 
 
 class FeedFetchEvent(BaseModel):
