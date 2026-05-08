@@ -31,11 +31,10 @@ from sembr.db.feeds import init_feed_tables
 from sembr.embedder.scheduler import (
     BATCH_SIZE,
     MAX_ATTEMPTS,
-    _md5_to_uuid,
     add_embedder_worker_job,
     embedder_worker,
 )
-from sembr.vector_store.news import ALIAS_NAME
+from sembr.vector_store.news import ALIAS_NAME, md5_to_uuid
 
 
 # ---------------------------------------------------------------------------
@@ -272,11 +271,11 @@ async def test_demote_md5s_preserves_error_attribution():
 
 def test_uuid_from_md5_deterministic():
     md5 = "a" * 32
-    uid1 = _md5_to_uuid(md5)
-    uid2 = _md5_to_uuid(md5)
+    uid1 = md5_to_uuid(md5)
+    uid2 = md5_to_uuid(md5)
     assert uid1 == uid2
     uuid.UUID(uid1)
-    assert _md5_to_uuid("b" * 32) != uid1
+    assert md5_to_uuid("b" * 32) != uid1
 
 
 # ---------------------------------------------------------------------------

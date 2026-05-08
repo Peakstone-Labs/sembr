@@ -7,6 +7,7 @@ model-upgrade flow, not bootstrap.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -17,6 +18,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 ALIAS_NAME = "news_current"
+
+
+def md5_to_uuid(md5: str) -> str:
+    """Deterministic md5 → Qdrant point UUID mapping.
+
+    `feed_items.md5` is 32-char lowercase hex; `uuid.UUID(hex=md5)` produces a
+    well-formed UUID string we use as the news Qdrant point ID. Idempotent:
+    `uuid_to_md5(md5_to_uuid(m)) == m`.
+    """
+    return str(uuid.UUID(hex=md5))
+
+
+def uuid_to_md5(uuid_str: str) -> str:
+    """Inverse of `md5_to_uuid`; used by reconcile / TTL paths to map Qdrant
+    point IDs back to the SQLite ``feed_items.md5`` column for cascade-delete.
+    """
+    return uuid.UUID(uuid_str).hex
 
 
 def collection_name(model_version: str) -> str:

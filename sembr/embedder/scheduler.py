@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -37,7 +36,7 @@ from sembr.db.articles import (
     pull_pending_batch,
 )
 from sembr.db.sqlite import get_conn
-from sembr.vector_store.news import upsert_news_points
+from sembr.vector_store.news import md5_to_uuid, upsert_news_points
 
 if TYPE_CHECKING:
     from sembr.embedder.base import BaseEmbedder
@@ -57,13 +56,9 @@ MAX_ATTEMPTS = 3  # total embed+upsert attempts before a row is demoted to dead_
 POLL_INTERVAL_SECONDS = 30
 
 
-def _md5_to_uuid(md5: str) -> str:
-    return str(uuid.UUID(hex=md5))
-
-
 def _to_point(row: PendingRow, vector: list[float], model_version: str) -> PointStruct:
     return PointStruct(
-        id=_md5_to_uuid(row.md5),
+        id=md5_to_uuid(row.md5),
         vector=vector,
         payload={
             "url": row.url,

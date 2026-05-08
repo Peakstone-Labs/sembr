@@ -157,6 +157,36 @@ class Settings(BaseSettings):
         description="Ring buffer capacity per log tag (number of log entries retained in memory).",
     )
 
+    qdrant_news_retention_days: int = Field(
+        default=35, ge=30, le=365,
+        description=(
+            "TTL for Qdrant news_current points. Default 35 = matcher lookback hard "
+            "ceiling (30d, see sembr/models.py IntentSchedule.lookback_seconds le=2592000) "
+            "+ 5d buffer. The lower bound (ge=30) MUST stay >= the matcher lookback "
+            "hard ceiling: setting it lower would silently expire articles a still-active "
+            "intent could legitimately want to scan, producing empty digests. Setting "
+            "this also controls the cascade pruning of feed_items.md5 + "
+            "match_seen.article_id rows whose Qdrant point has been removed."
+        ),
+    )
+    dead_articles_retention_days: int = Field(
+        default=14, ge=1, le=180,
+        description=(
+            "TTL for dead_articles forensic rows. Independent of Qdrant retention. "
+            "Default 14d balances forensic value (post-mortem of embedder failures) "
+            "against disk growth from the 1MB body cap."
+        ),
+    )
+    maintenance_interval_hours: int = Field(
+        default=24, ge=1, le=168,
+        description=(
+            "Cadence for the three background maintenance jobs (reconcile, "
+            "qdrant_news TTL, dead_articles TTL). All three share this single "
+            "interval to keep the runtime profile predictable; per-job cadence "
+            "is intentionally not exposed."
+        ),
+    )
+
     lifespan_shutdown_timeout: float = Field(
         default=8.0,
         description=(

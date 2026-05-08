@@ -19,9 +19,20 @@ CREATE TABLE IF NOT EXISTS match_seen (
 )
 """
 
+# Reconcile/TTL/manual-prune all DELETE WHERE article_id IN (...) without an
+# intent_id predicate; the composite PK leads with intent_id so without this
+# helper index the planner falls back to a full scan and a 500-row chunk takes
+# seconds, monopolising _WRITE_LOCK and stalling the ingest pipeline. See
+# reconcile design D11.
+_CREATE_IDX_MATCH_SEEN_ARTICLE = (
+    "CREATE INDEX IF NOT EXISTS idx_match_seen_article_id "
+    "ON match_seen(article_id)"
+)
+
 
 async def init_match_seen_tables(conn: aiosqlite.Connection) -> None:
     await conn.execute(_CREATE_MATCH_SEEN)
+    await conn.execute(_CREATE_IDX_MATCH_SEEN_ARTICLE)
     await conn.commit()
 
 
