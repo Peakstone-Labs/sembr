@@ -42,6 +42,11 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# One-time probe scripts
+scripts/probe_newsapi*
+scripts/probe_v2*
+scripts/probe_results*
+
 # Project runtime data
 data/
 models/
