@@ -113,6 +113,184 @@
     </p>
   </section>
 
+  <!-- Maintenance (reconcile design D6: nested x-data island) -->
+  <section class="panel" style="grid-column: 1 / -1;"
+           x-data="maintenanceTab()" x-init="initMaint()">
+    <h2>maintenance</h2>
+    <p class="muted" style="font-size:0.85rem;">
+      Manually prune Qdrant news points or dead-articles forensic rows.
+      Background TTL jobs run every
+      <code x-text="snapshot.config?.maintenance_interval_hours || 24"></code> hours;
+      this button is for one-off cleanup beyond the schedule.
+    </p>
+    <div style="margin-top:8px;">
+      <button @click="openPrune()">Manual prune…</button>
+    </div>
+
+    <!-- Modal: D6 wireframe — radio + checkbox list + days input + action row -->
+    <div class="modal-overlay" x-show="prune.open" @click.self="closePrune()"
+         style="display:none;" x-cloak>
+      <div class="modal-panel" style="max-width: 640px;">
+        <h3 style="margin-top:0;">Manual prune</h3>
+
+        <div x-show="prune.error" class="banner-warn"
+             x-text="prune.error" style="display:block; margin-bottom:8px;"></div>
+
+        <!-- Picker view: shown until a task_id is created -->
+        <template x-if="!prune.taskId">
+          <div>
+            <p x-show="prune.loading" class="muted">loading feed list…</p>
+
+            <fieldset style="border:1px solid var(--border, #333); padding:8px; margin-bottom:8px;">
+              <legend style="font-weight:600;">Target</legend>
+              <label style="margin-right:12px;">
+                <input type="radio" value="news" x-model="prune.target"
+                       @change="onTargetChange()"> News articles
+              </label>
+              <label>
+                <input type="radio" value="dead" x-model="prune.target"
+                       @change="onTargetChange()"> Dead articles
+              </label>
+            </fieldset>
+
+            <fieldset style="border:1px solid var(--border, #333); padding:8px; margin-bottom:8px;">
+              <legend style="font-weight:600;">
+                Feeds
+                <button @click="selectAll()" style="margin-left:8px;">all</button>
+                <button @click="selectNone()">none</button>
+              </legend>
+              <div x-show="prune.universe.alive.length" style="margin-bottom:6px;">
+                <div class="muted" style="font-size:11px;">Active feeds</div>
+                <template x-for="f in prune.universe.alive" :key="'a-' + f.id">
+                  <label style="display:block;">
+                    <input type="checkbox" :checked="prune.selected.has(f.id)"
+                           @change="toggleFeed(f.id)">
+                    <span x-text="f.name + ' (id=' + f.id + ')'"></span>
+                  </label>
+                </template>
+              </div>
+              <div x-show="prune.universe.deleted.length">
+                <div class="muted" style="font-size:11px;">Deleted feeds (Qdrant only)</div>
+                <template x-for="f in prune.universe.deleted" :key="'d-' + f.id">
+                  <label style="display:block;">
+                    <input type="checkbox" :checked="prune.selected.has(f.id)"
+                           @change="toggleFeed(f.id)">
+                    <span class="muted" x-text="'feed_id=' + f.id + ' (deleted)'"></span>
+                  </label>
+                </template>
+              </div>
+              <p x-show="!prune.loading && !prune.universe.alive.length && !prune.universe.deleted.length"
+                 class="muted">no feeds visible to Qdrant</p>
+            </fieldset>
+
+            <label>
+              older than
+              <input type="number" min="1" max="3650" x-model.number="prune.olderThanDays"
+                     style="width:80px;"> days
+            </label>
+
+            <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+              <button @click="closePrune()">Cancel</button>
+              <button @click="runDryRun()" :disabled="prune.status==='planning'">
+                <span x-show="prune.status==='planning'">Running dry-run…</span>
+                <span x-show="prune.status!=='planning'">Run dry-run</span>
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Plan summary view: planned (with table) → confirm or back -->
+        <template x-if="prune.taskId && prune.status==='planned' && prune.planSummary">
+          <div>
+            <h4>Dry-run summary</h4>
+            <p class="muted" style="font-size:11px;">
+              target=<span x-text="prune.planSummary.target"></span>,
+              older than <span x-text="prune.planSummary.older_than_days"></span> days
+            </p>
+            <table style="width:100%;">
+              <thead>
+                <tr><th>feed</th><th>id</th><th class="mono">would_delete</th></tr>
+              </thead>
+              <tbody>
+                <template x-for="f in prune.planSummary.feeds" :key="f.feed_id">
+                  <tr>
+                    <td>
+                      <span x-show="!f.deleted" x-text="f.feed_name"></span>
+                      <span x-show="f.deleted" class="muted">(deleted)</span>
+                    </td>
+                    <td class="mono" x-text="f.feed_id"></td>
+                    <td class="mono" x-text="f.would_delete"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <p style="margin-top:8px;">
+              total <strong x-text="prune.planSummary.total_would_delete"></strong> rows will be deleted.
+            </p>
+            <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+              <button @click="backToPicker()">Back</button>
+              <button @click="confirmDelete()"
+                      :disabled="prune.planSummary.total_would_delete === 0">
+                Confirm delete
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Applying view: spinner + status -->
+        <template x-if="prune.status==='applying' || prune.status==='planning' && prune.taskId">
+          <div>
+            <p>
+              <span class="spinner"></span>
+              <span x-show="prune.status==='planning'">Computing dry-run plan…</span>
+              <span x-show="prune.status==='applying'">Deleting…</span>
+            </p>
+          </div>
+        </template>
+
+        <!-- Done view: result summary -->
+        <template x-if="prune.status==='done' && prune.resultSummary">
+          <div>
+            <h4>Done</h4>
+            <template x-if="prune.resultSummary.target==='news'">
+              <ul>
+                <li>Qdrant deleted: <span class="mono"
+                    x-text="prune.resultSummary.deleted_qdrant"></span></li>
+                <li>feed_items deleted: <span class="mono"
+                    x-text="prune.resultSummary.deleted_feed_items"></span></li>
+                <li>match_seen deleted: <span class="mono"
+                    x-text="prune.resultSummary.deleted_match_seen"></span></li>
+              </ul>
+            </template>
+            <template x-if="prune.resultSummary.target==='dead'">
+              <ul>
+                <li>dead_articles deleted: <span class="mono"
+                    x-text="prune.resultSummary.deleted_dead_articles"></span></li>
+              </ul>
+            </template>
+            <p class="muted" style="font-size:11px;">
+              elapsed <span x-text="prune.resultSummary.elapsed_ms"></span> ms
+            </p>
+            <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+              <button @click="closePrune()">Close</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Error view -->
+        <template x-if="prune.status==='error'">
+          <div>
+            <h4 class="error-text">Error</h4>
+            <p class="error-text" x-text="prune.error"></p>
+            <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+              <button @click="closePrune()">Close</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </section>
+
   <!-- Drawer -->
   <section class="panel" x-show="drawer.kind" style="grid-column: 1 / -1;">
     <h2 x-text="drawer.title"></h2>
@@ -1721,6 +1899,7 @@
 <script src="/dashboard/intents.js?v=2"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=6"></script>
+<script src="/dashboard/maintenance.js?v=1"></script>
 <script src="/dashboard/app.js?v=3"></script>
 </body>
 </html>
