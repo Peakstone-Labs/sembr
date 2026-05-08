@@ -8,6 +8,7 @@ fire tasks. State machine: planning → planned → applying → done | error.
 from __future__ import annotations
 
 import logging
+import typing
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
@@ -43,11 +44,21 @@ class ManualPruneTask:
 
 _manual_prune_tasks: dict[str, ManualPruneTask] = {}
 
-# Status values that mean the task has stopped progressing — only these are
-# eligible for sweep. In-flight tasks (planning / applying) must survive any
-# number of TTL ticks, otherwise a user who wandered off after the dry-run
-# (or a 4-minute large apply on 140k rows) gets a phantom 404 mid-poll.
-_TERMINAL_STATUSES: frozenset[str] = frozenset({"done", "error"})
+# Status values where the task is still progressing — sweep must skip these
+# regardless of age, otherwise a user who wandered off after dry-run (or a
+# 4-minute large apply on 140k rows) gets a phantom 404 mid-poll.
+_NON_TERMINAL_STATUSES: frozenset[str] = frozenset({"planning", "applying"})
+
+# Derived from `ManualPruneStatus`: any literal not explicitly non-terminal is
+# treated as terminal (sweep-eligible). Adding a new status to the Literal
+# automatically routes through this partition, so a missed update can't leave
+# in-memory tasks orphaned forever — the assert below makes the partition
+# total. Only assert at import time; mypy alone can't catch the drift.
+_ALL_STATUSES: frozenset[str] = frozenset(typing.get_args(ManualPruneStatus))
+_TERMINAL_STATUSES: frozenset[str] = _ALL_STATUSES - _NON_TERMINAL_STATUSES
+assert _ALL_STATUSES == _TERMINAL_STATUSES | _NON_TERMINAL_STATUSES, (
+    "ManualPruneStatus literal vs sweep partition out of sync"
+)
 
 
 def create_task(

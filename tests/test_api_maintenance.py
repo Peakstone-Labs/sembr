@@ -419,3 +419,27 @@ def test_manual_prune_post_with_wrong_token_returns_401(app_with_auth_factory):
             json={"target": "news", "feed_ids": [1], "older_than_days": 35},
         )
         assert resp.status_code == 401, resp.text
+
+
+def test_manual_prune_status_get_unauthenticated_returns_401(app_with_auth_factory):
+    """GET /manual_prune/{task_id} must 401 without a token — security regression
+    guard against the router prefix being moved out of /api/dashboard/."""
+    qdrant = _make_qdrant({})
+    app = app_with_auth_factory(qdrant)
+    with TestClient(app) as c:
+        resp = c.get(
+            "/api/dashboard/maintenance/manual_prune/any-task-id"
+        )
+        assert resp.status_code == 401, resp.text
+
+
+def test_manual_prune_confirm_unauthenticated_returns_401(app_with_auth_factory):
+    """POST /manual_prune/{task_id}/confirm must 401 without a token — same
+    rationale as the status GET."""
+    qdrant = _make_qdrant({})
+    app = app_with_auth_factory(qdrant)
+    with TestClient(app) as c:
+        resp = c.post(
+            "/api/dashboard/maintenance/manual_prune/any-task-id/confirm"
+        )
+        assert resp.status_code == 401, resp.text

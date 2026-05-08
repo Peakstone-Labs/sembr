@@ -86,12 +86,21 @@ def _make_qdrant_handle(found_md5s: set[str]) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_reconcile_changes_count_not_polluted_by_concurrent_writer():
-    """A concurrent writer that lands a new feed_items row between reconcile's
-    chunk transactions must not leak its rowcount into reconcile's
-    accumulated `deleted` total — verifies SELECT changes() runs INSIDE the
-    chunk's transaction (D3).
+async def test_reconcile_changes_count_not_polluted_by_concurrent_writer(caplog):
+    """D3/D4: ``SELECT changes()`` must run INSIDE the chunk's transaction.
+
+    We verify this two ways:
+      (1) Snapshot semantics — the racer's INSERT (landed between chunk
+          commits) survives because reconcile only acts on the md5 snapshot
+          taken in step 1.
+      (2) Direct rowcount via the ``orphan_deleted=N`` INFO log — it must
+          equal the snapshot size (700), not 701/702. If a future change
+          moves ``SELECT changes()`` outside the txn, a writer that sneaks
+          in between COMMIT and the changes() read would bleed its rowcount
+          into the accumulator and flip the assertion.
     """
+    import re
+
     conn = await _make_conn()
     feed_id = await _seed_feed(conn)
     # 700 md5s = 2 chunks (500 + 200) so we can race a writer between them.
@@ -127,15 +136,12 @@ async def test_reconcile_changes_count_not_polluted_by_concurrent_writer():
     import sembr.maintenance.reconcile as recon_mod
     recon_mod.transaction = racing_transaction
     try:
-        await _run_reconcile(qdrant, Settings())
+        with caplog.at_level("INFO", logger="sembr.maintenance.reconcile"):
+            await _run_reconcile(qdrant, Settings())
     finally:
         recon_mod.transaction = original_transaction
 
-    # The 700 originally-orphan rows must all be deleted; the late-inserted
-    # row remains. If changes() had read across the COMMIT boundary it
-    # would have picked up the racer's INSERT (changes()=1 from another
-    # writer) and reported deleted=701 — but more importantly the late
-    # row would have been treated as orphan and gone too.
+    # (1) Snapshot semantics — racer survives, originally-orphan rows are gone.
     async with conn.execute(
         "SELECT md5 FROM feed_items"
     ) as cur:
@@ -143,6 +149,21 @@ async def test_reconcile_changes_count_not_polluted_by_concurrent_writer():
     assert remaining == {inserted_during_race}, (
         "the racer's INSERT must survive; reconcile must touch only the "
         "snapshot it scanned, not rows that arrived after the snapshot"
+    )
+
+    # (2) Direct guard for D3 — orphan_deleted reported by reconcile must
+    #     equal exactly the snapshot size (700). Any value > 700 means
+    #     SELECT changes() leaked a concurrent writer's rowcount.
+    log_lines = [r.getMessage() for r in caplog.records]
+    matches = [m for line in log_lines for m in re.findall(
+        r"orphan_deleted=(\d+)", line
+    )]
+    assert matches, f"no orphan_deleted= count in reconcile log; got {log_lines!r}"
+    deleted_reported = int(matches[-1])
+    assert deleted_reported == 700, (
+        f"reconcile reported orphan_deleted={deleted_reported}, expected 700. "
+        "If SELECT changes() were moved outside the txn, a writer between "
+        "COMMIT and changes() would bleed its rowcount into this counter."
     )
 
     await conn.close()
