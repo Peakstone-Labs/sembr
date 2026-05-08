@@ -44,20 +44,31 @@ class ManualPruneTask:
 
 _manual_prune_tasks: dict[str, ManualPruneTask] = {}
 
-# Status values where the task is still progressing — sweep must skip these
-# regardless of age, otherwise a user who wandered off after dry-run (or a
-# 4-minute large apply on 140k rows) gets a phantom 404 mid-poll.
-_NON_TERMINAL_STATUSES: frozenset[str] = frozenset({"planning", "applying"})
+# Statuses where the task is still in flight as far as the user is concerned
+# — sweep must skip these regardless of age:
+#   - planning : background task is computing the dry-run plan
+#   - planned  : dry-run done, user is reading the per-feed numbers and
+#                hasn't clicked Confirm yet (could be away from the screen)
+#   - applying : real delete in progress (140k apply can take minutes)
+# A user who wandered off after dry-run, or a slow apply, must NOT see a
+# phantom 404 mid-poll because sweep cleared their task entry.
+_NON_TERMINAL_STATUSES: frozenset[str] = frozenset(
+    {"planning", "planned", "applying"}
+)
 
-# Derived from `ManualPruneStatus`: any literal not explicitly non-terminal is
-# treated as terminal (sweep-eligible). Adding a new status to the Literal
-# automatically routes through this partition, so a missed update can't leave
-# in-memory tasks orphaned forever — the assert below makes the partition
-# total. Only assert at import time; mypy alone can't catch the drift.
+# Pin terminal statuses explicitly so future Literal additions can't silently
+# slide into either partition; the assert tying both sets back to ManualPruneStatus
+# fails fast at import time if anything drifts out of sync.
+_TERMINAL_STATUSES: frozenset[str] = frozenset({"done", "error"})
+
 _ALL_STATUSES: frozenset[str] = frozenset(typing.get_args(ManualPruneStatus))
-_TERMINAL_STATUSES: frozenset[str] = _ALL_STATUSES - _NON_TERMINAL_STATUSES
 assert _ALL_STATUSES == _TERMINAL_STATUSES | _NON_TERMINAL_STATUSES, (
-    "ManualPruneStatus literal vs sweep partition out of sync"
+    "ManualPruneStatus literal vs sweep partition out of sync: "
+    f"all={_ALL_STATUSES} terminal={_TERMINAL_STATUSES} "
+    f"non_terminal={_NON_TERMINAL_STATUSES}"
+)
+assert not (_TERMINAL_STATUSES & _NON_TERMINAL_STATUSES), (
+    "_TERMINAL_STATUSES and _NON_TERMINAL_STATUSES must be disjoint"
 )
 
 

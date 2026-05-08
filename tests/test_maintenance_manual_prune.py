@@ -266,6 +266,24 @@ def test_sweep_skips_in_flight_applying_task():
     assert mp_tasks.get_task(task.task_id) is not None
 
 
+def test_sweep_skips_planned_task_awaiting_user_confirm():
+    """`planned` is the state where dry-run has finished and the user is
+    reading the per-feed numbers. They may step away from the screen for
+    longer than the TTL — sweep must NOT clear the task or the next click
+    on Confirm hits 404.
+    """
+    task = mp_tasks.create_task("news", [6], 35)
+    task.status = "planned"
+    task.plan_summary = {
+        "target": "news", "older_than_days": 35,
+        "feeds": [], "total_would_delete": 0,
+    }
+    task._created_at = datetime.now(timezone.utc) - timedelta(seconds=10000)
+    n = mp_tasks.sweep_expired(ttl_seconds=300)
+    assert n == 0
+    assert mp_tasks.get_task(task.task_id) is not None
+
+
 def test_sweep_drops_done_task_using_finished_at_anchor():
     task = mp_tasks.create_task("dead", [7], 14)
     task.status = "done"
