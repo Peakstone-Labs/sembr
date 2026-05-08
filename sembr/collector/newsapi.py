@@ -36,6 +36,7 @@ import httpx
 
 from sembr.collector.base import BaseSource, RawArticle
 from sembr.collector.host_limiter import HostLimiter
+from sembr.collector.rss import FetchError
 from sembr.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -169,10 +170,10 @@ class NewsApiSource(BaseSource):
         settings = get_settings()
         api_key = settings.newsapi_api_key.get_secret_value()
         if not api_key:
-            logger.warning(
-                "newsapi fetch %r skipped: NEWSAPI_API_KEY is empty", self._url
-            )
-            return []
+            # Configuration error, not a fetch failure — raise so the
+            # collect_feed contract (FetchError → don't advance cursor) holds
+            # for newsapi feeds the same way it does for misconfigured RSS.
+            raise FetchError("NEWSAPI_API_KEY is empty; cannot fetch newsapi feed")
 
         date_start, date_end = _date_window([since])
         body = _build_request_body(
@@ -186,11 +187,23 @@ class NewsApiSource(BaseSource):
             try:
                 resp = await client.post(_NEWSAPI_BASE_URL + _GET_ARTICLES_PATH, json=body)
                 resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                # Mirror RSSSource.fetch's failure contract so collect_feed's
+                # FetchError branch fires (no cursor advance, fetch_event ok=False)
+                # for both source types — D5 / D20 / review-loop1 🔴-1.
+                raise FetchError(
+                    f"newsapi HTTP error for {self._url!r}: "
+                    f"{type(exc).__name__}: {exc!s}"
+                ) from exc
+            # 🟢-3: log token usage as soon as the response is in hand so even a
+            # JSON parse failure leaves a breadcrumb for the spent token.
+            _log_token_usage(resp.headers, where=f"fetch[{self._url}]")
+            try:
                 data = resp.json()
-            except (httpx.HTTPError, ValueError) as exc:
-                logger.warning("newsapi fetch %r failed: %s", self._url, exc)
-                return []
-        _log_token_usage(resp.headers, where=f"fetch[{self._url}]")
+            except ValueError as exc:
+                raise FetchError(
+                    f"newsapi JSON parse failed for {self._url!r}: {exc}"
+                ) from exc
         results = _extract_results(data)
         articles: list[RawArticle] = []
         for raw in results:
@@ -290,7 +303,6 @@ class NewsApiMaster:
                         _NEWSAPI_BASE_URL + _GET_ARTICLES_PATH, json=body
                     )
                     resp.raise_for_status()
-                    data = resp.json()
             except httpx.HTTPError as exc:
                 # D20: log + early-return without cursor advance; next tick uses
                 # the same since window so articles published during the outage
@@ -300,11 +312,14 @@ class NewsApiMaster:
                     len(per_feed), date_start, exc,
                 )
                 return
+            # 🟢-3: log token usage as soon as response is in hand so a JSON
+            # parse failure still leaves the spent-token breadcrumb.
+            _log_token_usage(resp.headers, where="master")
+            try:
+                data = resp.json()
             except ValueError as exc:
                 logger.warning("newsapi master tick: JSON parse failed: %s", exc)
                 return
-
-        _log_token_usage(resp.headers, where="master")
 
         articles_block = data.get("articles") if isinstance(data, dict) else None
         if not isinstance(articles_block, dict):

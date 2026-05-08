@@ -43,7 +43,10 @@ async def post_feed(body: FeedCreate, request: Request) -> Feed:
         except Exception as rollback_exc:
             logger.error("rollback failed for feed_id=%d: %s", feed.id, rollback_exc)
         try:
-            scheduler.remove_job(f"feed_{feed.id}")
+            # 💡-1 (review-loop1): use the unified entry point so newsapi
+            # rollback also calls maybe_drop_newsapi_master_job. RSS path
+            # behaves identically since the per-feed job is the only state.
+            await remove_feed_job(scheduler, feed.id)
         except Exception:
             pass
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="failed to schedule feed") from exc

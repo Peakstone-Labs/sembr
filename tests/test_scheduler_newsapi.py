@@ -237,7 +237,10 @@ async def test_remove_rss_feed_does_not_touch_master(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_ensure_master_job_idempotent(monkeypatch) -> None:
+async def test_ensure_master_job_idempotent_preserves_next_run(monkeypatch) -> None:
+    """🟢-2 fix: repeated calls must not reset next_run_time. Otherwise creating
+    multiple newsapi feeds in succession would push the master tick out by one
+    full interval per call."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "k")
     get_settings.cache_clear()
     sch = AsyncIOScheduler(timezone="UTC")
@@ -245,11 +248,14 @@ async def test_ensure_master_job_idempotent(monkeypatch) -> None:
     try:
         await ensure_newsapi_master_job(sch, get_settings())
         first = sch.get_job(NEWSAPI_MASTER_JOB_ID)
+        first_next = first.next_run_time
+        # Re-call multiple times; next_run_time must not change.
+        await ensure_newsapi_master_job(sch, get_settings())
         await ensure_newsapi_master_job(sch, get_settings())
         second = sch.get_job(NEWSAPI_MASTER_JOB_ID)
         assert second is not None
-        # Same id, no exception raised on second call
         assert second.id == first.id
+        assert second.next_run_time == first_next
         assert len([j for j in sch.get_jobs() if j.id == NEWSAPI_MASTER_JOB_ID]) == 1
     finally:
         sch.shutdown(wait=False)

@@ -16,6 +16,21 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 _YAML_PATH = Path("sembr.yaml")
 
+# D13/D25: single source of truth for the NEWSAPI_CATEGORIES candidate list.
+# Both the Settings field validator (this module) and the dashboard schema
+# (`api/settings._MULTISELECT_FIELDS`) reference this tuple; keep order
+# stable so the saved CSV stays canonical across reloads.
+NEWSAPI_VALID_CATEGORIES: tuple[str, ...] = (
+    "Business",
+    "Politics",
+    "Technology",
+    "Science",
+    "Health",
+    "Environment",
+    "Sports",
+    "Arts and Entertainment",
+)
+
 
 class _YamlSource(PydanticBaseSettingsSource):
     """Loads `sembr.yaml` from CWD; missing file → empty dict (yaml is optional)."""
@@ -219,15 +234,22 @@ class Settings(BaseSettings):
 
     @field_validator("newsapi_categories")
     @classmethod
-    def _newsapi_categories_nonempty(cls, v: str) -> str:
-        # D25: empty CSV at the API behaves as "all categories", which
-        # contradicts the user's intent of a whitelist; reject explicitly.
+    def _newsapi_categories_valid(cls, v: str) -> str:
+        # D25 + review-loop1 🟡-2: reject empty CSV AND validate every entry
+        # is in the supported 8-category set so a hand-edited .env can't
+        # silently produce categoryUri=["news/FooBar"] and 0 results.
         items = [s.strip() for s in (v or "").split(",") if s.strip()]
         if not items:
             raise ValueError(
                 "newsapi_categories must contain at least one category "
                 "(e.g. 'Business,Technology'); empty CSV would unset the "
                 "whitelist server-side"
+            )
+        invalid = [x for x in items if x not in NEWSAPI_VALID_CATEGORIES]
+        if invalid:
+            raise ValueError(
+                f"newsapi_categories has invalid entries: {invalid}. "
+                f"Valid: {sorted(NEWSAPI_VALID_CATEGORIES)}"
             )
         return v
 

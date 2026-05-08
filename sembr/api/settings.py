@@ -26,7 +26,7 @@ from pydantic.fields import FieldInfo
 
 from sembr.api.settings_envfile import KEY_PATTERN, EnvFile
 from sembr.api.settings_restart import RestartController
-from sembr.config import Settings, get_settings
+from sembr.config import NEWSAPI_VALID_CATEGORIES, Settings, get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -120,17 +120,10 @@ class SembrFieldMeta(BaseModel):
 # is the lower-case Settings field name; value is the candidate list. The
 # field is still stored as a CSV string in .env (see Settings.newsapi_categories
 # / proxy_hosts pattern), and the frontend joins selections with ',' on submit.
+# Source of truth for the candidate list lives in `sembr.config` so both this
+# module and the Settings field validator stay aligned (review-loop1 🟡-2).
 _MULTISELECT_FIELDS: dict[str, list[str]] = {
-    "newsapi_categories": [
-        "Business",
-        "Politics",
-        "Technology",
-        "Science",
-        "Health",
-        "Environment",
-        "Sports",
-        "Arts and Entertainment",
-    ],
+    "newsapi_categories": list(NEWSAPI_VALID_CATEGORIES),
 }
 
 

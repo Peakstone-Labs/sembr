@@ -27,6 +27,7 @@ from sembr.collector.newsapi import (
     _to_raw_article,
     normalize_source_uri,
 )
+from sembr.collector.rss import FetchError
 from sembr.config import Settings
 
 
@@ -231,17 +232,47 @@ async def test_news_api_source_fetch_single_source(monkeypatch) -> None:
     assert articles[0].content_quality == "full"
 
 
-@respx.mock
 @pytest.mark.asyncio
-async def test_news_api_source_fetch_no_api_key_returns_empty(monkeypatch, caplog) -> None:
+async def test_news_api_source_fetch_no_api_key_raises(monkeypatch) -> None:
+    """🔴-1 fix: missing API key is a configuration failure → FetchError so
+    collect_feed's FetchError branch fires (no cursor advance)."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "")
     from sembr.config import get_settings
     get_settings.cache_clear()
     src = NewsApiSource("reuters.com")
-    with caplog.at_level(logging.WARNING):
-        result = await src.fetch(since=None)
-    assert result == []
-    assert any("NEWSAPI_API_KEY is empty" in r.message for r in caplog.records)
+    with pytest.raises(FetchError, match="NEWSAPI_API_KEY"):
+        await src.fetch(since=None)
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_news_api_source_fetch_http_error_raises(monkeypatch) -> None:
+    """🔴-1 fix: HTTP 4xx/5xx must raise FetchError (mirrors RSSSource)."""
+    monkeypatch.setenv("NEWSAPI_API_KEY", "k")
+    from sembr.config import get_settings
+    get_settings.cache_clear()
+    respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+        return_value=httpx.Response(401, json={"error": "bad key"})
+    )
+    src = NewsApiSource("reuters.com")
+    with pytest.raises(FetchError, match="HTTP error"):
+        await src.fetch(since=None)
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_news_api_source_fetch_json_parse_error_raises(monkeypatch) -> None:
+    """🔴-1 fix: 200 + invalid JSON → FetchError (token already burned;
+    log_token_usage runs before the parse so the spend is still recorded)."""
+    monkeypatch.setenv("NEWSAPI_API_KEY", "k")
+    from sembr.config import get_settings
+    get_settings.cache_clear()
+    respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+        return_value=httpx.Response(200, content=b"not json", headers={"req-tokens": "1.000"})
+    )
+    src = NewsApiSource("reuters.com")
+    with pytest.raises(FetchError, match="JSON parse"):
+        await src.fetch(since=None)
 
 
 @pytest.mark.asyncio

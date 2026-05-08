@@ -10,21 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sembr.notifier.email import EmailChannelConfig
 
 _NEWSAPI_HOSTNAME_RE = re.compile(
-    r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$"
+    # 💡-2: TLD must contain at least one alphabetic character so bare IPs
+    # (e.g. 127.0.0.1, 8.8.8.8) don't pass — newsapi.ai source.uri values
+    # are always real domains per design §A5.
+    r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*"
+    r"\.[a-z][a-z0-9-]*[a-z0-9]?$"
 )
-
-
-def _normalize_newsapi_url(s: str) -> str:
-    # D11/O2-A: same algorithm as collector.newsapi.normalize_source_uri.
-    # Defined here too so models.py stays import-cycle-free (collector
-    # depends on models, not the other way around).
-    out = s.strip().lower()
-    for prefix in ("https://", "http://"):
-        if out.startswith(prefix):
-            out = out[len(prefix):]
-    if out.startswith("www."):
-        out = out[4:]
-    return out.rstrip("/")
 
 # Discriminated union of all known channel configs, keyed by `type`.
 # Single-element today; when a second channel ships, wrap with
@@ -98,7 +89,10 @@ class FeedCreate(BaseModel):
         # UNIQUE constraint catches case/scheme/www. duplicates client-side.
         # source_type='rss' keeps the historical http(s)://-required scheme.
         if self.source_type == "newsapi":
-            normalized = _normalize_newsapi_url(self.url)
+            # 🟢-1: lazy import the canonical normalizer from collector.newsapi
+            # (collector imports from models, not vice versa, so no cycle).
+            from sembr.collector.newsapi import normalize_source_uri  # noqa: PLC0415
+            normalized = normalize_source_uri(self.url)
             if not _NEWSAPI_HOSTNAME_RE.match(normalized):
                 raise ValueError(
                     "newsapi feed url must be a hostname (e.g. 'reuters.com'); "
@@ -134,8 +128,23 @@ class FeedTagsUpdate(BaseModel):
         return _normalize_feed_tags(v)
 
 
-class Feed(FeedCreate):
+class Feed(BaseModel):
+    """Read-side feed model.
+
+    Intentionally NOT a subclass of FeedCreate: FeedCreate's model_validator
+    has write-time side effects (URL normalization for newsapi, poll_interval
+    coercion to settings) and we don't want them firing on every DB row hydrate.
+    Rows are already normalized at write time via FeedCreate; reads return
+    whatever the DB holds. — review-loop1 🟡-1.
+    """
+
     id: int
+    name: str
+    url: str
+    source_type: str
+    config: dict = Field(default_factory=dict)
+    poll_interval_minutes: int
+    tags: list[str] = Field(default_factory=list)
     enabled: bool = True
     last_collected_at: str | None
     created_at: str

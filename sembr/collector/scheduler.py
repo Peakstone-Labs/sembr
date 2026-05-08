@@ -234,13 +234,20 @@ async def remove_feed_job(scheduler: AsyncIOScheduler, feed_id: int) -> None:
 
 
 async def ensure_newsapi_master_job(scheduler: AsyncIOScheduler, settings: Settings) -> None:
-    """D6/D9: register the singleton master job. Idempotent (replace_existing).
+    """D6/D9: register the singleton master job if absent.
 
     No `next_run_time` argument — feedback_apscheduler_next_run_time.md flags
     that explicit `next_run_time=None` is a paused state; the trigger computes
     the first run instead. Jitter spreads ticks across runs so multiple sembr
     instances behind the same NEWSAPI_API_KEY don't collide.
+
+    Skips when the job already exists so repeated calls (e.g. multiple newsapi
+    feed creations in succession) don't reset `next_run_time` and indefinitely
+    delay the next tick. — review-loop1 🟢-2. Settings-change re-registration
+    is handled separately via api self-restart (R4).
     """
+    if scheduler.get_job(NEWSAPI_MASTER_JOB_ID) is not None:
+        return
     period_s = settings.newsapi_poll_interval_minutes * 60
     jitter_s = derive_jitter_seconds(period_s)
     scheduler.add_job(
@@ -249,7 +256,6 @@ async def ensure_newsapi_master_job(scheduler: AsyncIOScheduler, settings: Setti
         id=NEWSAPI_MASTER_JOB_ID,
         coalesce=True,
         max_instances=1,
-        replace_existing=True,
     )
 
 
