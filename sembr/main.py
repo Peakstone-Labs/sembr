@@ -36,6 +36,7 @@ from sembr.api.feeds_fire import router as feeds_fire_router
 from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
 from sembr.api.intents import router as intents_router
+from sembr.api.maintenance import router as maintenance_router
 from sembr.api.prompts import router as prompts_router
 from sembr.api.settings import router as settings_router
 from sembr.collector.host_limiter import HostLimiter
@@ -58,6 +59,12 @@ from sembr.matcher.event_cache import EventIntentCache, load_event_cache
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
 from sembr.collector.fire_tasks import sweep_expired as feed_fire_sweep_expired
+from sembr.maintenance import (
+    add_dead_ttl_job,
+    add_qdrant_ttl_job,
+    add_reconcile_job,
+    manual_prune_sweep_expired,
+)
 from sembr.matcher.fire_tasks import sweep_expired
 from sembr.matcher.jobs import register_all_enabled
 from sembr.notifier.email import EmailChannel, EmailChannelConfig
@@ -160,6 +167,12 @@ async def lifespan(app: FastAPI):
             await add_feed_job(scheduler, feed)
     add_embedder_worker_job(scheduler, embedder, qdrant, app)
     add_log_retention_job(scheduler, settings)  # dashboard D9: hourly log prune
+    # reconcile design D1: three maintenance jobs share `maintenance_interval_hours`
+    # but stagger their first fire by 5 / 15 / 25 min so they never hit Qdrant
+    # at the same instant.
+    add_reconcile_job(scheduler, qdrant, settings)
+    add_qdrant_ttl_job(scheduler, qdrant, settings)
+    add_dead_ttl_job(scheduler, settings)
     # DD4: sweep expired fire tasks every 5 minutes
     from apscheduler.triggers.interval import IntervalTrigger as _IT  # noqa: PLC0415
     scheduler.add_job(
@@ -174,6 +187,14 @@ async def lifespan(app: FastAPI):
         feed_fire_sweep_expired,
         trigger=_IT(minutes=5),
         id="feed-fire-tasks-sweep",
+        coalesce=True,
+        replace_existing=True,
+    )
+    # reconcile design D5: ManualPruneTask in-memory store, swept every 5 min
+    scheduler.add_job(
+        manual_prune_sweep_expired,
+        trigger=_IT(minutes=5),
+        id="manual-prune-sweep",
         coalesce=True,
         replace_existing=True,
     )
@@ -276,6 +297,7 @@ app.include_router(fire_router)
 app.include_router(prompts_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)
+app.include_router(maintenance_router)
 app.include_router(logs_router)
 
 # Mount /dashboard only when the bundled UI exists. Missing bundle = JSON API still
