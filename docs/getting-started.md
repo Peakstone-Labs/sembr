@@ -84,6 +84,18 @@ Browse to **http://localhost:8000/dashboard** for a monitoring view: per-feed fe
 !!! warning "Security"
     Set `DASHBOARD_TOKEN` in `.env` before exposing the port beyond `localhost`. Without it, feed URLs and error messages are readable by anyone on the network.
 
+## Customising prompt templates
+
+The dashboard's **Templates** tab (between Intents and Logs) is the runtime editor for the LLM prompts the summarizer uses. You can:
+
+- **Duplicate** the bundled `default` template (read-only, in both `system/` and `instruction/`) and edit the copy
+- **Rename** a template — the rename request atomically moves the file and updates every intent that references it
+- **Delete** an unused template (a template referenced by an intent returns HTTP 409 listing the dependents)
+
+Saves run a strict-placeholder dry-render: a typo like `{intent}` in an instruction template (allowed: `{intent_text}`, `{articles}`) is rejected with HTTP 422 before the bad bytes reach disk. Edits also work directly on disk under `./prompts/{system,instruction}/` — the bundled `docker-compose.yml` mounts `./prompts` read-write so the dashboard can write through, and the summarizer reads templates on every tick (no cache invalidation needed).
+
+Per-file size cap is 64 KiB; the reserved name `default` is read-only on both kinds. See the README "Custom prompt templates" section for a complete CLI walkthrough.
+
 ## Data persistence
 
 Feed list and article fingerprints are stored in `./data/sembr.db` (SQLite, bind-mounted from the host). They survive rebuilds and restarts. Only `rm -rf ./data/` permanently deletes them.

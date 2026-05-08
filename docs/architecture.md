@@ -69,6 +69,21 @@ Two layers:
 
 `match_seen` cascades on intent delete. A PUT that changes the intent's text clears `match_seen` for that intent so the re-embedded vector can re-match articles it would otherwise have skipped.
 
+## Prompt templates
+
+Templates are flat `.md` files under `/app/prompts/{system,instruction}/`, bind-mounted **read-write** from the host's `./prompts/` so the dashboard can edit them at runtime. The summarizer reads the file on every tick (`sembr/summarizer/templates.py::load_template`) — there is no in-memory cache to invalidate, so a host-side or dashboard-driven save reaches the next digest with no restart.
+
+```
+templates layer (filesystem-only on save/delete; cross-boundary on rename):
+  POST   /api/prompts/templates/{kind}                  ──► save_template_atomic (.tmp + os.replace)
+  PUT    /api/prompts/templates/{kind}/{name}           ──► save_template_atomic
+  DELETE /api/prompts/templates/{kind}/{name}           ──► delete_template (after 409 ref-check)
+  POST   /api/prompts/templates/{kind}/{name}/rename    ──► os.rename → db.transaction() UPDATE intents
+                                                            (UPDATE failure → reverse os.rename)
+```
+
+The reserved name `default` is enforced both at the API layer (HTTP 403 on writes / 422 on reuse-as-target) and in the `BUILTIN_NAMES` frozenset in `sembr/summarizer/templates.py`. Per-file size cap is 64 KiB. Strict placeholder validation (`try_render`) runs on every save so a typo in `{intent_text}` cannot poison the next digest. Rename is the only template operation that crosses into SQLite: the file move runs first, the cascade `UPDATE intents SET {kind}_template = ?` runs inside `db.sqlite.transaction()` afterwards, and a SQLite failure triggers reverse `os.rename` so file and DB never diverge.
+
 ## Delivery
 
 Email is the only channel that ships. `EmailChannel` is a `BaseChannel` subclass with no abstract methods (the marker-ABC pattern — per-channel `send` signatures diverge enough that a common ABC would erase typing). The dispatcher in `main.py` pattern-matches on the channel config type:

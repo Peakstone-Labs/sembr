@@ -28,7 +28,7 @@ Interactive API docs are auto-generated at **`/docs`** (Swagger UI) and **`/redo
 | `feeds_fire.py` | `/feeds` | `POST /{id}/fire?dry_run=`, `GET /{id}/fire/{task_id}` |
 | `intents.py` | `/intents` | `POST /`, `GET /`, `GET /{id}`, `PUT /{id}`, `DELETE /{id}` |
 | `fire.py` | (none) | `POST /intents/{id}/fire`, `GET /intents/{id}/fire/{task_id}` |
-| `prompts.py` | `/api/prompts` | `GET /templates`, `GET /templates/{kind}/{name}` |
+| `prompts.py` | `/api/prompts` | `GET /templates` (rich), `GET /templates/{kind}/{name}`, `POST /templates/{kind}`, `PUT /templates/{kind}/{name}`, `DELETE /templates/{kind}/{name}`, `POST /templates/{kind}/{name}/rename` |
 | `settings.py` | `/api/settings` | `GET /schema`, `GET /values`, `POST /save` |
 
 `fire.py` and `feeds_fire.py` are deliberately separate from the CRUD modules because they own a different lifecycle — they create a `FireTask` in memory, dispatch a background coroutine, and expose a polling endpoint. Splitting them keeps the CRUD routers small and lets the fire-task lifecycle evolve without disturbing the create/update path.
@@ -112,7 +112,8 @@ The api router itself reads no configuration directly — all settings come thro
 | Field | Used by | Purpose |
 |---|---|---|
 | `dashboard_token` | settings router auth, dashboard middleware | Shared secret; empty disables auth |
-| `prompts_dir` | `prompts.py`, `intents.py` | Where template files live; surfaced to error messages so the operator can find a broken template |
+
+The prompts root is a module-level constant `sembr.summarizer.templates.PROMPTS_DIR` (= `Path("/app/prompts")`) — not a Settings field. The legacy `Settings.prompts_dir` was removed in the template-management refactor; both `prompts.py` and `intents.py::_validate_templates` now read the constant directly.
 
 ## Upstream dependencies
 
@@ -124,7 +125,8 @@ The api router itself reads no configuration directly — all settings come thro
 - `sembr.matcher.scan` — scan-once execution path for fire endpoints
 - `sembr.matcher.fire_tasks` / `sembr.collector.fire_tasks` — in-memory task registries with throttling
 - `sembr.collector.scheduler` — `add_feed_job`, `remove_feed_job`, `get_host_limiter()`, `SOURCE_REGISTRY`
-- `sembr.summarizer.templates` — `template_path`, `template_exists`, `list_templates`, `load_template`
+- `sembr.summarizer.templates` — `PROMPTS_DIR`, `BUILTIN_NAMES`, `MAX_TEMPLATE_BYTES`, plus the read helpers (`template_path`, `template_exists`, `list_templates`, `load_template`) and write helpers (`save_template_atomic`, `delete_template`, `rename_template`, `try_render`) consumed by `prompts.py`
+- `sembr.db.intents` — `list_template_refs`, `rename_intent_template` (the cascade UPDATE for the rename endpoint, wrapped by `prompts.py` in `db.sqlite.transaction()`)
 
 ## Downstream consumers
 

@@ -112,13 +112,15 @@ Both methods are wrapped in a top-level `try / except` that logs and swallows. T
 | `smtp_use_starttls` | `True` | Run `STARTTLS` after connecting on plain SMTP |
 | `smtp_use_ssl` | `False` | Use `SMTP_SSL` directly (port 465 style). When `True`, `smtp_use_starttls` is ignored |
 | `display_timezone` | `Asia/Shanghai` | Server-wide default timezone — surfaced to the dashboard. **Not** consulted for email rendering: the per-intent timezone is used. Kept for cross-channel UI consistency |
-| `prompts_dir` | `/app/prompts` | Used only by `send_error` to tell the operator where to find the template that failed |
+
+The path string surfaced inside the `send_error` body (`/app/prompts`) is read directly from the module-level `sembr.summarizer.templates.PROMPTS_DIR` constant — not from a Settings field. The legacy `Settings.prompts_dir` was removed in the template-management refactor.
 
 The per-intent timezone lives on the `Intent` row (`intents.timezone`, schema default `'UTC'`). The dispatcher in `main.py` reads it at send time and threads it through `EmailChannel.send(intent_timezone=...)`.
 
 ## Upstream dependencies
 
-- `config.Settings` — SMTP host / port / credentials / TLS flags, `prompts_dir`
+- `config.Settings` — SMTP host / port / credentials / TLS flags
+- `sembr.summarizer.templates.PROMPTS_DIR` — path string surfaced in the operator-facing error email
 - `summarizer.models.SummaryResult` — input to `send`; `Citation.score` and `Citation.published_at` drive the per-source line in the rendered HTML
 - `db.intents.Intent` — `name`, `channels`, `timezone` are read by the dispatcher in `main.py` and passed to `send` per call
 

@@ -124,17 +124,30 @@ Currently returns `APIBackend` unconditionally. Local backends (mlx-lm, Ollama) 
 ### Templates (`templates.py`)
 
 ```python
+PROMPTS_DIR: Final[Path] = Path("/app/prompts")
+BUILTIN_NAMES: frozenset[str] = frozenset({"default"})
+MAX_TEMPLATE_BYTES: Final[int] = 64 * 1024
+
+# Read-side
 def template_exists(prompts_dir, kind, name) -> bool
 def list_templates(prompts_dir, kind) -> list[str]
 def load_template(prompts_dir, kind, name) -> str
 def render_system(prompts_dir, name, *, language) -> str
 def render_instruction(prompts_dir, name, *, intent_text, articles) -> str
 
+# Write-side (used by sembr/api/prompts.py)
+def save_template_atomic(prompts_dir, kind, name, content) -> Path
+def delete_template(prompts_dir, kind, name) -> None
+def rename_template(prompts_dir, kind, old_name, new_name) -> Path
+def try_render(kind, content) -> None  # strict-placeholder gate
+
 class TemplateNotFoundError(FileNotFoundError): ...
 class TemplateRenderError(ValueError): ...
 ```
 
-Templates live under `prompts_dir/{system,instruction}/{name}.md`. `name` is validated to reject path separators, leading dots, and `..` segments; the resolved path is checked with `Path.is_relative_to(prompts_dir)` so a user-supplied name cannot escape the prompts root via symlinks. Files are read on every call (no in-process caching) so an operator's edit takes effect on the next tick without a restart.
+Templates live under `PROMPTS_DIR/{system,instruction}/{name}.md`. `name` is validated to reject path separators, leading dots, and `..` segments; the resolved path is checked with `Path.is_relative_to(prompts_dir)` so a user-supplied name cannot escape the prompts root via symlinks. Files are read on every call (no in-process caching) so an operator's edit takes effect on the next tick without a restart.
+
+`PROMPTS_DIR` is a module-level `Final[Path]` constant — the legacy `Settings.prompts_dir` field was removed in the template-management refactor. Tests redirect via `monkeypatch.setattr("sembr.summarizer.templates.PROMPTS_DIR", tmp_path)`. The `SummaryPipeline.__init__(prompts_dir=...)` kwarg is unchanged so unit tests can still inject a custom directory.
 
 Rendering is `str.format_map` with a strict `__missing__` that raises `KeyError` for any placeholder outside the documented whitelist:
 
@@ -144,6 +157,13 @@ Rendering is `str.format_map` with a strict `__missing__` that raises `KeyError`
 | instruction | `{intent_text}`, `{articles}` |
 
 Anything else triggers `TemplateRenderError`, which the pipeline routes to `on_template_error` so the operator gets a notification rather than a silently-broken digest.
+
+The write-side helpers are pure-filesystem and side-effect-narrow:
+
+- `save_template_atomic` writes to `{kind}/.{name}.md.tmp.<pid>.<monotonic_ns>` then `os.replace`s onto the final path. Same-directory POSIX rename is atomic; readers see either the old or the new bytes, never half-written. The hidden tmp filename is filtered out by `list_templates`'s glob.
+- `delete_template` raises `TemplateNotFoundError` instead of silently succeeding so callers can map to HTTP 404.
+- `rename_template` is the **single-step** filesystem rename (validation + `os.rename`); it does NOT pre-check existence and does NOT touch SQLite. The API layer (`sembr/api/prompts.py::rename_template_endpoint`) orchestrates the cross-boundary 2PC: pre-existence check → `os.rename` → `db.transaction(): rename_intent_template`, with reverse `os.rename` on UPDATE failure.
+- `try_render(kind, content)` runs `format_map` with empty-string-valued placeholders so the API can reject typo'd `{...}` keys at save-time before the bad bytes reach disk.
 
 ### Title grouping (`grouping.py`)
 

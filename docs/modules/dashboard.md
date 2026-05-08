@@ -167,6 +167,20 @@ The middleware's protected list is by inclusion (allowlist of namespaces, not de
 - `web/static/*` — the bundled monitoring frontend. No external integration calls these endpoints today, but they are documented under `/docs`
 - `main.py` — wires `DashboardTokenMiddleware` into the FastAPI app, includes `routes.router` and `logs_router`, and calls `add_log_retention_job` during lifespan startup
 
+## Templates tab
+
+The dashboard's Templates tab (between Intents and Logs) is the runtime editor for prompt templates that the summarizer feeds the LLM on every digest tick. State / network logic lives in `web/static/templates.js` (`templatesTab()` Alpine component), markup + modals in `web/static/index.html`, hash routing in `web/static/app.js`. The component consumes `GET/POST/PUT/DELETE/POST-rename /api/prompts/templates/*` (see `docs/modules/api.md`) and writes are auth-gated by the same `DashboardTokenMiddleware` as every other dashboard surface.
+
+UI behaviour:
+
+- Two columns (system / instruction) list every on-disk template. Each row shows `is_builtin`, `ref_count`, the list of referencing intents, file size, and mtime so the operator can see at a glance which templates are in use and which can be deleted safely.
+- Per-row actions: **Edit / View** (read-only for builtins), **Duplicate** (open the create modal pre-seeded with this row as `source`), **Rename**, **Delete** — the latter two are disabled on builtin rows; the server still enforces 403/422 if a client bypasses the UI.
+- The editor is a `<textarea>` (mtime / size badges in the header). Save sends `PUT { content }`; the server runs the strict-placeholder dry-render and rejects unknown `{...}` keys with HTTP 422. The error message names the exact placeholder that failed.
+- Delete is gated by `ref_count == 0` from the cached list. A race (an intent grabbing the template after the cache and before the request) returns HTTP 409 with `ref_intents` in the body — the UI pops a toast and refetches the list so the operator can see the new dependency.
+- Rename is the only action that crosses into SQLite. The frontend treats it as one request: file move + `UPDATE intents SET {kind}_template = ?` happens server-side, with reverse-rename rollback if the SQLite step fails. After success, the UI refetches the full list because every referencing intent's row is also affected.
+
+If the rename rollback itself fails (filesystem error during reverse `os.rename`), the server returns HTTP 500 with a manual-recovery message. The operator's recovery path is: read the LogBus entry (logs at ERROR with both old and new paths plus the SQLite error), `docker compose exec api ls /app/prompts/{kind}/`, and either move the file back manually or run a UPDATE statement to align the intents column with the actual on-disk filename.
+
 ## Known constraints
 
 - **Single-process state**: the SSE subscriber registry, the LogBus ring buffer, and the in-process tag-level overrides all live in module-level Python state. A multi-worker uvicorn deployment shows each worker its own slice of logs — a tab open against worker 1 sees nothing emitted from worker 2. The 1.0 topology is single-worker; multi-worker deployments need an external aggregator (Loki, Vector, etc.)

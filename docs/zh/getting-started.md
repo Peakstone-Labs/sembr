@@ -84,6 +84,18 @@ curl -X POST http://localhost:8000/intents \
 !!! warning "安全提示"
     只要端口暴露在 localhost 之外，务必在 `.env` 中设置 `DASHBOARD_TOKEN`。未设置时，Feed URL 和错误信息对局域网内所有人可见。
 
+## 自定义提示词模板
+
+仪表盘的 **Templates** 标签（位于 Intents 和 Logs 之间）是提示词模板的运行时编辑器：
+
+- **Duplicate** 内置只读 `default` 模板（system 和 instruction 各一个），改副本
+- **Rename** —— 单请求里完成文件移动 + 引用该模板的所有 intent 字段的级联更新
+- **Delete** 未被引用的模板（被 intent 引用的会返回 HTTP 409 并列出依赖）
+
+保存时服务端会用空字符串占位符走一次严格 dry-render：在 instruction 模板里写个 `{intent}` 这种笔误（允许的占位符是 `{intent_text}`、`{articles}`）会在落盘前以 HTTP 422 拒绝。也可以直接在宿主机的 `./prompts/{system,instruction}/` 编辑——打包的 `docker-compose.yml` 把 `./prompts` 以读写方式 mount 给容器，summarizer 每个 tick 重读盘（无缓存）。
+
+单文件上限 64 KiB；保留名 `default` 在两个子目录里都是只读。完整 CLI 操作示例见 README 的 "Custom prompt templates" 段。
+
 ## 数据持久化
 
 Feed 列表和文章指纹存储在 `./data/sembr.db`（SQLite，从宿主机挂载）。重建镜像和重启容器后数据仍然保留，只有 `rm -rf ./data/` 才会永久删除。

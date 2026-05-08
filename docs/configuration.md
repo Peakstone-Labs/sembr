@@ -91,9 +91,14 @@ The per-intent timezone (`Intent.timezone`) is what the email template uses to r
 
 ## Prompts
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PROMPTS_DIR` | `/app/prompts` | Root directory holding the LLM prompt templates the summarizer feeds to every digest. Subdirectories: `system/` (system prompts) and `instruction/` (user instruction templates with `{intent_text}` / `{articles}` placeholders). Templates are read on every tick — host-side edits take effect on the next summary, no restart needed. The bundled `docker-compose.yml` bind-mounts `./prompts` here. Override via `SEMBR_PROMPTS_DIR` for local dev |
+The prompts root is fixed at `/app/prompts` inside the container — it is **not configurable**. The bundled `docker-compose.yml` bind-mounts the host's `./prompts` directory there in **read-write** mode so the dashboard's Templates tab can create, edit, rename, and delete files via `POST/PUT/DELETE/POST-rename` against `/api/prompts/templates`. Two subdirectories live under it:
+
+- `system/` — system prompts. Allowed placeholder: `{language}`.
+- `instruction/` — user instruction templates. Allowed placeholders: `{intent_text}`, `{articles}`.
+
+Templates are read on every digest tick (no caching) — host-side edits take effect on the next summary, no restart needed. The reserved name `default` exists in both subdirectories, ships with the project, and is read-only via the API (HTTP 403 on PUT/DELETE/rename, HTTP 422 if you try to create or rename to it). Per-file size cap is **64 KiB** (HTTP 422 on oversize PUT). Empty content is also rejected (HTTP 422). For container-UID / host-permission considerations on production deployments, see the README "Production deployment" section.
+
+> The legacy `SEMBR_PROMPTS_DIR` environment variable was removed in the template-management refactor. Tests can redirect the prompts root via `monkeypatch.setattr("sembr.summarizer.templates.PROMPTS_DIR", tmp_path)` instead.
 
 ## Lifespan / shutdown
 

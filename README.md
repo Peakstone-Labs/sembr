@@ -128,7 +128,20 @@ Feed list and collected article fingerprints are stored in `./data/sembr.db` (SQ
 
 ## Custom prompt templates
 
-sembr ships with two built-in templates (`prompts/system/default.md` and `prompts/instruction/default.md`). To customise the LLM prompt for a specific intent, place your own `.md` files under `prompts/system/` or `prompts/instruction/` on the host and reference them when creating or updating an intent.
+sembr ships with two built-in templates (`prompts/system/default.md` and `prompts/instruction/default.md`). Manage them either through the **Templates tab in the dashboard** (Intents → Templates → +) or directly on disk under `./prompts/`. Both paths share the same files and validation rules.
+
+### Dashboard (recommended)
+
+Open `/dashboard`, click **Templates**. Two columns (system / instruction) list every template with a reference count showing which intents use each one. The toolbar lets you:
+
+- **+ New System / Instruction Template** — seed from `default` (or use **Duplicate** on any row to seed from that one)
+- **Edit** — inline editor with strict placeholder validation; save → `PUT /api/prompts/templates/{kind}/{name}`
+- **Rename** — atomic file move + cascade UPDATE to every referencing intent in one request
+- **Delete** — blocked (HTTP 409) if any intent references the template; click into the listed intents to detach first
+
+The reserved name `default` is read-only on every write path (HTTP 403). Per-file size cap is 64 KiB; empty content is rejected (HTTP 422). The server runs a strict-placeholder dry-render on every save so a typo like `{intent}` in an instruction template fails before it can poison the next digest.
+
+### Bare disk (CLI / scripting)
 
 ```bash
 # Write a custom instruction template (100-word crypto summary in Chinese)
@@ -158,11 +171,14 @@ curl -X POST http://localhost:8000/intents \
 **Template rules:**
 
 - File name (without `.md`) is the identifier — no path separators, no leading dot, length 1–100 chars, Unicode ok
-- `instruction` templates: placeholders `{intent_text}` and `{articles}` (both required)
-- `system` templates: placeholder `{language}`
+- `instruction` templates: allowed placeholders `{intent_text}` and `{articles}` (none are required, but unknown ones reject the save)
+- `system` templates: allowed placeholder `{language}` (also optional)
 - Edits to files on the host take effect on the **next tick** — no restart needed
-- Listing available templates: `GET /api/prompts/templates`
-- Preview a template: `GET /api/prompts/templates/instruction/crypto_zh`
+- API surface: `GET /api/prompts/templates` (rich list with `ref_intents`/`is_builtin`), `GET /api/prompts/templates/{kind}/{name}` (preview), plus `POST/PUT/DELETE/POST-rename` for write paths
+
+### Production deployment
+
+The bundled `docker-compose.yml` bind-mounts `./prompts` as **read-write** so the dashboard can write to it. The bundled image runs as root (no `USER` directive) so the container can always write the host directory. If you switch to a non-root image, ensure the host `./prompts` directory is writable by the container UID — otherwise saves return HTTP 500 with a filesystem error in the logs. Templates are configuration-as-data: snapshot `./prompts/` along with `./data/` and the `.env` file when backing up.
 
 ## Embedder
 

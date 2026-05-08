@@ -91,9 +91,14 @@ LLM 默认共享同一把 Key（SiliconFlow 同时托管 BGE-M3 和 DeepSeek-V4-
 
 ## 提示词模板
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PROMPTS_DIR` | `/app/prompts` | summarizer 喂给每次 digest 的 LLM 提示词模板根目录。两个子目录：`system/`（系统提示词）和 `instruction/`（含 `{intent_text}` / `{articles}` 占位符的用户指令模板）。每个 tick 重读盘——宿主机改模板下次出摘要立即生效，无需重启。打包的 `docker-compose.yml` 把 `./prompts` 只读 bind-mount 到此处。可通过 `SEMBR_PROMPTS_DIR` 覆盖（本地开发用） |
+提示词根目录固定为容器内的 `/app/prompts`，**不可配置**。打包的 `docker-compose.yml` 把宿主机 `./prompts` 以**读写**模式 bind-mount 到此处，仪表盘 Templates 页通过 `POST/PUT/DELETE/POST-rename /api/prompts/templates` 完成增/改/重命名/删除。两个子目录：
+
+- `system/`：系统提示词。允许占位符：`{language}`。
+- `instruction/`：用户指令模板。允许占位符：`{intent_text}`、`{articles}`。
+
+每次 digest tick 重读盘（不缓存）——宿主机直接编辑也是下一轮摘要立即生效，无需重启。保留名 `default` 在两个子目录里都存在、与项目一同发布、API 层只读（PUT/DELETE/rename 返回 403；创建或重命名为 `default` 返回 422）。单文件上限 **64 KiB**（PUT 超限返回 422），不接受空内容（422）。生产部署时容器 UID 与宿主机权限的注意事项见 README "Production deployment" 段。
+
+> 旧的 `SEMBR_PROMPTS_DIR` 环境变量在 template-management 重构里已经移除。测试如需重定向到临时目录，请用 `monkeypatch.setattr("sembr.summarizer.templates.PROMPTS_DIR", tmp_path)`。
 
 ## Lifespan / 关停
 

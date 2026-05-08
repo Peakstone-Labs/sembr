@@ -5,13 +5,20 @@ import pytest
 from pathlib import Path
 
 from sembr.summarizer.templates import (
+    BUILTIN_NAMES,
+    MAX_TEMPLATE_BYTES,
+    PROMPTS_DIR,
     TemplateNotFoundError,
     TemplateRenderError,
+    delete_template,
     list_templates,
     load_template,
     render_instruction,
     render_system,
+    rename_template,
+    save_template_atomic,
     template_exists,
+    try_render,
 )
 
 
@@ -171,3 +178,134 @@ def test_unicode_filename_loads(prompts_dir: Path) -> None:
     )
     assert "BTC" in result
     assert "news" in result
+
+
+# --- Module-level constants (D1 / D9 / D14 / D17) ----------------------------
+
+
+def test_prompts_dir_constant() -> None:
+    """D1: PROMPTS_DIR is the canonical bind-mount path."""
+    assert PROMPTS_DIR == Path("/app/prompts")
+
+
+def test_builtin_names_includes_default() -> None:
+    """D9 / D17: 'default' is reserved for both kinds via a single frozenset."""
+    assert "default" in BUILTIN_NAMES
+    assert isinstance(BUILTIN_NAMES, frozenset)
+
+
+def test_max_template_bytes_is_64kib() -> None:
+    """D14: per-write content size cap matches requirements (64 KiB)."""
+    assert MAX_TEMPLATE_BYTES == 64 * 1024
+
+
+# --- try_render (D10) --------------------------------------------------------
+
+
+def test_try_render_accepts_valid_system_placeholder() -> None:
+    try_render("system", "Lang: {language}\nNo other vars.")  # no raise = pass
+
+
+def test_try_render_accepts_valid_instruction_placeholders() -> None:
+    try_render("instruction", "T: {intent_text}\n{articles}")
+
+
+def test_try_render_accepts_no_placeholders() -> None:
+    """R6: pathologically valid content with no placeholders is accepted."""
+    try_render("instruction", "Just plain text — no curly braces.")
+
+
+def test_try_render_rejects_unknown_system_placeholder() -> None:
+    with pytest.raises(TemplateRenderError) as exc_info:
+        try_render("system", "Lang: {language}\nBad: {published_at}")
+    assert "published_at" in str(exc_info.value)
+
+
+def test_try_render_rejects_unknown_instruction_placeholder() -> None:
+    with pytest.raises(TemplateRenderError) as exc_info:
+        try_render("instruction", "T: {intent_text}\n{articles}\n{unknown}")
+    assert "unknown" in str(exc_info.value)
+
+
+def test_try_render_rejects_invalid_kind() -> None:
+    with pytest.raises(ValueError):
+        try_render("notakind", "anything")
+
+
+# --- save_template_atomic (D5) -----------------------------------------------
+
+
+def test_save_template_atomic_writes_content(prompts_dir: Path) -> None:
+    out = save_template_atomic(prompts_dir, "instruction", "crypto_zh", "Topic: {intent_text}\n{articles}")
+    assert out == prompts_dir / "instruction" / "crypto_zh.md"
+    assert out.read_text(encoding="utf-8") == "Topic: {intent_text}\n{articles}"
+
+
+def test_save_template_atomic_overwrites(prompts_dir: Path) -> None:
+    save_template_atomic(prompts_dir, "system", "default", "First version {language}")
+    save_template_atomic(prompts_dir, "system", "default", "Second version {language}")
+    assert (prompts_dir / "system" / "default.md").read_text(encoding="utf-8") == "Second version {language}"
+
+
+def test_save_template_atomic_no_orphan_tmp_files(prompts_dir: Path) -> None:
+    save_template_atomic(prompts_dir, "instruction", "crypto_en", "{intent_text}\n{articles}")
+    # Hidden tmp files filter out via list_templates, but they must also not linger on disk.
+    leftovers = [p.name for p in (prompts_dir / "instruction").iterdir() if p.name.startswith(".")]
+    assert leftovers == []
+
+
+def test_save_template_atomic_rejects_invalid_name(prompts_dir: Path) -> None:
+    with pytest.raises(ValueError):
+        save_template_atomic(prompts_dir, "system", "../etc/passwd", "x")
+
+
+def test_save_template_atomic_rejects_invalid_kind(prompts_dir: Path) -> None:
+    with pytest.raises(ValueError):
+        save_template_atomic(prompts_dir, "bad_kind", "ok", "x")
+
+
+def test_save_template_atomic_creates_kind_dir(tmp_path: Path) -> None:
+    """Tolerates a fresh prompts root that doesn't yet have the kind subdir."""
+    out = save_template_atomic(tmp_path, "system", "default", "Lang: {language}")
+    assert out.exists()
+
+
+# --- delete_template (D19) ---------------------------------------------------
+
+
+def test_delete_template_removes_file(prompts_dir: Path) -> None:
+    save_template_atomic(prompts_dir, "instruction", "scratch", "{intent_text}\n{articles}")
+    delete_template(prompts_dir, "instruction", "scratch")
+    assert not (prompts_dir / "instruction" / "scratch.md").exists()
+
+
+def test_delete_template_missing_raises(prompts_dir: Path) -> None:
+    with pytest.raises(TemplateNotFoundError):
+        delete_template(prompts_dir, "instruction", "ghost")
+
+
+def test_delete_template_rejects_invalid_name(prompts_dir: Path) -> None:
+    with pytest.raises(ValueError):
+        delete_template(prompts_dir, "system", "../etc/passwd")
+
+
+# --- rename_template (D2 step b) ---------------------------------------------
+
+
+def test_rename_template_moves_file(prompts_dir: Path) -> None:
+    save_template_atomic(prompts_dir, "instruction", "old_name", "{intent_text}\n{articles}")
+    new_path = rename_template(prompts_dir, "instruction", "old_name", "new_name")
+    assert new_path == prompts_dir / "instruction" / "new_name.md"
+    assert new_path.exists()
+    assert not (prompts_dir / "instruction" / "old_name.md").exists()
+
+
+def test_rename_template_missing_old_raises(prompts_dir: Path) -> None:
+    with pytest.raises(TemplateNotFoundError):
+        rename_template(prompts_dir, "instruction", "ghost", "anything")
+
+
+def test_rename_template_rejects_invalid_new_name(prompts_dir: Path) -> None:
+    save_template_atomic(prompts_dir, "instruction", "src", "{intent_text}\n{articles}")
+    with pytest.raises(ValueError):
+        rename_template(prompts_dir, "instruction", "src", "../etc/passwd")
