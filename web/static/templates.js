@@ -144,8 +144,9 @@ function templatesTab() {
     },
 
     closeEditor() {
-      // Bail-out guard for unsaved edits.
-      if (this.editor.dirty && !confirm('Discard unsaved changes?')) return;
+      // Bail-out guard for unsaved edits — read the top-level getter
+      // (`editorDirty`), not a phantom `editor.dirty` field that doesn't exist.
+      if (this.editorDirty && !confirm('Discard unsaved changes?')) return;
       this.editor.open = false;
     },
 

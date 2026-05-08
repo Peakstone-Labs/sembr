@@ -9,6 +9,7 @@ intents table per D2/D15); POST/PUT/DELETE are filesystem-only.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -284,6 +285,8 @@ async def create_template(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"field": "name", "value": body.name, "reason": str(exc)},
         ) from exc
+    # R7/D21: TOCTOU pre-check, accepted under R4 single-admin model. POSIX rename(2)
+    # silently overwrites; renameat2(RENAME_NOREPLACE) lacks a portable Python binding.
     if target_path.exists():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -432,6 +435,8 @@ async def rename_template_endpoint(
         # No-op rename — accept and return the existing row.
         refs = await _refs_index()
         return _build_info(prompts_dir, kind, name, refs)
+    # R7/D21: TOCTOU pre-check, accepted under R4 single-admin model. POSIX rename(2)
+    # silently overwrites; renameat2(RENAME_NOREPLACE) lacks a portable Python binding.
     if new_path.exists():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -464,7 +469,19 @@ async def rename_template_endpoint(
     try:
         async with transaction() as txn:
             await rename_intent_template(txn, kind, name, body.new_name)
-    except BaseException as db_exc:
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        # Best-effort reverse-rename so file/DB stay in sync even if uvicorn cancels
+        # this task (graceful shutdown / client disconnect). Do NOT swallow the
+        # cancellation — it must propagate so the loop tears down cleanly.
+        try:
+            os.rename(new_path, old_path)
+        except OSError as rev_exc:
+            logger.error(
+                "rename rollback during cancellation: kind=%s old=%s new=%s reverse_err=%r",
+                kind, name, body.new_name, rev_exc,
+            )
+        raise
+    except Exception as db_exc:
         # Reverse the filesystem rename so file & DB stay in sync.
         try:
             os.rename(new_path, old_path)

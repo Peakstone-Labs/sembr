@@ -185,7 +185,7 @@ class GroupingStep:
 | `llm_model` | `deepseek-ai/DeepSeek-V4-Flash` | Passed verbatim as `"model"` in the request body |
 | `llm_timeout_seconds` | `60.0` | Per-request HTTP timeout |
 | `llm_max_prompt_chars` | `2_000_000` | Total prompt-side character budget for the LLM backend (system + instruction + articles). Tune to the configured model's context window: 2_000_000 is roomy for DeepSeek-V4-Flash (1M token ctx); drop to ~16_000 for an 8K-token local model. Pipeline reserves 15% for the LLM response and water-fills bodies into the rest |
-| `prompts_dir` | `/app/prompts` | Bind-mounted in the bundled `docker-compose.yml`; override via `SEMBR_PROMPTS_DIR` for local dev |
+| (constant) `PROMPTS_DIR` | `/app/prompts` | Module-level `Final[Path]` in `sembr/summarizer/templates.py`; not configurable since the template-management refactor (legacy `Settings.prompts_dir` field and `SEMBR_PROMPTS_DIR` env var both removed). Bind-mount the host `./prompts` directory in `docker-compose.yml` to persist edits across rebuilds. Tests redirect via `monkeypatch.setattr("sembr.summarizer.templates.PROMPTS_DIR", tmp_path)` |
 
 ## Upstream dependencies
 

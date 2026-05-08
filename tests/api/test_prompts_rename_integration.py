@@ -201,3 +201,55 @@ def test_rename_nonexistent_source_404(prompts_dir: Path) -> None:
             json={"new_name": "ghost_v2"},
         )
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Cancellation arm — `asyncio.CancelledError` from the SQLite step must
+# best-effort reverse-rename and propagate (not be swallowed by HTTPException).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rename_cancellation_reverts_filesystem_and_propagates(prompts_dir: Path, tmp_path: Path) -> None:
+    """If `rename_intent_template` raises `CancelledError`, the API reverses the
+    filesystem rename AND re-raises the cancellation (does not return 500).
+
+    Tests the endpoint coroutine directly — the FastAPI TestClient/Starlette
+    portal translates cancellation to a transport-level error which makes
+    HTTP-level assertion noisy. Calling the route function bypasses that
+    translation and exercises only the except-clause path under review."""
+    import asyncio  # noqa: PLC0415
+
+    from sembr.api.prompts import (  # noqa: PLC0415
+        TemplateRenameRequest,
+        rename_template_endpoint,
+    )
+
+    # Pre-seed: a renamable template + an intent referencing it
+    (prompts_dir / "instruction" / "crypto_zh.md").write_text(
+        "Topic: {intent_text}\n{articles}", encoding="utf-8"
+    )
+
+    conn = await aiosqlite.connect(":memory:")
+    await conn.execute("PRAGMA foreign_keys=ON")
+    await init_intent_tables(conn)
+    install_for_test(conn)
+    try:
+        await _seed(conn, "alpha", instruction_template="crypto_zh")
+
+        async def cancelled(*_args, **_kwargs):
+            raise asyncio.CancelledError()
+
+        request = MagicMock()
+        body = TemplateRenameRequest(new_name="crypto_zh_v2")
+
+        with patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir), \
+             patch("sembr.api.prompts.rename_intent_template", side_effect=cancelled):
+            with pytest.raises(asyncio.CancelledError):
+                await rename_template_endpoint("instruction", "crypto_zh", body, request)
+
+        # File reverted to the old path; new path absent
+        assert (prompts_dir / "instruction" / "crypto_zh.md").is_file()
+        assert not (prompts_dir / "instruction" / "crypto_zh_v2.md").exists()
+    finally:
+        await conn.close()

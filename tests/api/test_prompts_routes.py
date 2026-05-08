@@ -173,6 +173,45 @@ def test_prompts_routes_require_token_when_dashboard_token_set(prompts_dir: Path
     assert resp.status_code == 401
 
 
+@pytest.mark.parametrize(
+    "method, path, body",
+    [
+        ("POST",   "/api/prompts/templates/instruction",                 {"name": "x"}),
+        ("PUT",    "/api/prompts/templates/instruction/default",         {"content": "Topic: {intent_text}\n{articles}"}),
+        ("DELETE", "/api/prompts/templates/instruction/default",         None),
+        ("POST",   "/api/prompts/templates/instruction/default/rename",  {"new_name": "x"}),
+    ],
+)
+def test_prompts_write_verbs_require_token_when_dashboard_token_set(
+    prompts_dir: Path, method: str, path: str, body
+) -> None:
+    """Each write verb is auth-gated by DashboardTokenMiddleware (per-method 401 e2e)."""
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        import aiosqlite  # noqa: PLC0415
+
+        conn = await aiosqlite.connect(":memory:")
+        await conn.execute("PRAGMA foreign_keys=ON")
+        await init_intent_tables(conn)
+        install_for_test(conn)
+        yield
+        await conn.close()
+
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(DashboardTokenMiddleware)
+    app.include_router(router)
+    app.state.settings = MagicMock()
+
+    mock_settings = MagicMock()
+    mock_settings.dashboard_token.get_secret_value.return_value = "secret-token"
+
+    with patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir), \
+         patch("sembr.dashboard.auth.get_settings", return_value=mock_settings):
+        with TestClient(app, raise_server_exceptions=False) as http:
+            resp = http.request(method, path, json=body)
+    assert resp.status_code == 401
+
+
 def test_prompts_routes_allow_request_with_valid_token(prompts_dir: Path) -> None:
     """Requests with a valid X-Dashboard-Token header pass through."""
     conn_holder: dict = {}
