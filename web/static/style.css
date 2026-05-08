@@ -413,6 +413,20 @@ input::placeholder { color: var(--text-dim); }
 [x-cloak] { display: none !important; }
 
 /* ── Templates tab: tree items (left pane) ── */
+/* Grid layout MUST live in the CSS class, not the inline style attribute:
+ * Alpine's x-show writes `style.display` directly when toggling visibility,
+ * which clobbers an inline `display:grid` after the first hide-then-show
+ * cycle. With the rule in CSS class, x-show toggles only `style.display`
+ * between "" (CSS class wins → grid) and "none" (hide). Same reason the
+ * other tab views (.feeds-view, .intents-view) put their layout in CSS. */
+.templates-view {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  min-height: calc(100vh - 200px);
+  align-items: stretch;
+}
+
 .tree-item {
   transition: background 0.08s ease;
   user-select: none;

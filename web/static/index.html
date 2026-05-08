@@ -1580,8 +1580,7 @@
      Two columns (system / instruction) listing TemplateInfo rows with
      inline editor + create/rename/duplicate/delete dialogs.
      ══════════════════════════════════════════════════════ -->
-<div x-show="currentTab==='templates'" x-data="templatesTab()" x-init="init()" class="templates-view"
-     style="display:grid; grid-template-columns:280px 1fr; gap:16px; min-height:calc(100vh - 200px); align-items:stretch;">
+<div x-show="currentTab==='templates'" x-data="templatesTab()" x-init="init()" class="templates-view">
 
   <!-- ── Left: file tree ─────────────────────────────────── -->
   <aside class="panel" style="display:flex; flex-direction:column; min-height:0; padding:16px; overflow:auto;">
