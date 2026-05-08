@@ -241,6 +241,21 @@ function dashboard() {
     _renderContainerSparklines() {
       const containers = this.snapshot.system_metrics?.containers;
       if (!containers || !containers.length) return;
+      // Prune stale Chart instances (loop 2 🟡-1): when a container drops
+      // out of the rolling window, its row leaves the DOM but the Chart.js
+      // instance + its dataset arrays would otherwise leak forever. Destroy
+      // any chart whose canvas id is no longer in the live container set.
+      const liveIds = new Set();
+      for (const c of containers) {
+        liveIds.add('cpu-spark-' + c.name);
+        liveIds.add('mem-spark-' + c.name);
+      }
+      for (const id of Object.keys(this._containerCharts)) {
+        if (!liveIds.has(id)) {
+          try { this._containerCharts[id].destroy(); } catch (e) {}
+          delete this._containerCharts[id];
+        }
+      }
       // $nextTick so the canvases for newly-rendered <tr> rows exist.
       this.$nextTick(() => {
         for (const c of containers) {
@@ -255,10 +270,15 @@ function dashboard() {
       if (!ctx) return;
       // Replace null with NaN so Chart.js draws a gap rather than 0.
       const data = (series || []).map(v => (v === null || v === undefined) ? NaN : v);
+      // Loop 2 💡-4: with pointRadius=0 a single data point renders as
+      // nothing — show a visible dot until the series has ≥2 real points.
+      const realPoints = data.filter(v => !Number.isNaN(v)).length;
+      const pointRadius = realPoints < 2 ? 1.5 : 0;
       const existing = this._containerCharts[canvasId];
       if (existing) {
         existing.data.labels = data.map((_, i) => i);
         existing.data.datasets[0].data = data;
+        existing.data.datasets[0].pointRadius = pointRadius;
         existing.update('none');
         return;
       }
@@ -268,7 +288,8 @@ function dashboard() {
           labels: data.map((_, i) => i),
           datasets: [{
             data, borderColor: color, borderWidth: 1.2,
-            pointRadius: 0, tension: 0.25, spanGaps: false,
+            pointRadius, pointBackgroundColor: color,
+            tension: 0.25, spanGaps: false,
           }],
         },
         options: {
@@ -296,6 +317,9 @@ function dashboard() {
     },
 
     async openFeedEvents(feedId, feedName) {
+      // Loop 2 🟡-2: route every modal-open through closeDrawer first so D11
+      // fresh-state applies symmetrically (filter + page state reset).
+      this.closeDrawer();
       this.drawer = {
         kind: 'feed-events', title: `events · ${feedName}`,
         rows: [], detail: null, loading: true,
@@ -307,6 +331,7 @@ function dashboard() {
     },
 
     async openEmbedderEvents() {
+      this.closeDrawer();
       this.drawer = {
         kind: 'embedder-events', title: 'embedder · recent calls',
         rows: [], detail: null, loading: true,
@@ -318,16 +343,13 @@ function dashboard() {
     },
 
     async openArticles(bucket) {
+      // Symmetric with openFeedEvents/openEmbedderEvents: single-source-of-
+      // truth state reset via closeDrawer (loop 2 🟡-2).
+      this.closeDrawer();
       this.drawer = {
         kind: 'articles', title: `articles · ${bucket}`,
         rows: [], detail: null, loading: true,
         bucket, page: 0, pageSize: 50,
-      };
-      // Reset filter on a fresh open; only qdrant bucket actually uses it.
-      this.filter = {
-        ingested_from: '', ingested_to: '',
-        feed_id: '', title_q: '',
-        feedOptions: this.filter.feedOptions,
       };
       try {
         if (bucket === 'qdrant') {

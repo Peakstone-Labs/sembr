@@ -227,6 +227,35 @@ def test_take_docker_sample_uses_compose_label_filter(monkeypatch):
     assert cm.mem_used_bytes == 1_000_000
 
 
+def test_take_docker_sample_warns_once_when_zero_containers(monkeypatch, caplog):
+    """Loop 2 💡-2: docker reachable but 0 containers match the project label
+    is silent misconfig (e.g. user renamed dir, didn't set
+    COMPOSE_PROJECT_NAME). Emit a single WARNING the first time, then stay
+    quiet so we don't flood logs every poll interval."""
+    import logging as _log
+
+    # Reset module-state guard so the test sees the first-call behaviour.
+    monkeypatch.setattr(sm, "_zero_container_warned", False)
+
+    fake_client = MagicMock()
+    fake_client.containers.list.return_value = []
+    fake_docker = MagicMock()
+    fake_docker.from_env.return_value = fake_client
+    monkeypatch.setitem(__import__("sys").modules, "docker", fake_docker)
+
+    with caplog.at_level(_log.WARNING, logger="sembr.dashboard.system_metrics"):
+        sample1 = sm._take_docker_sample(project="renamed-dir")
+        sample2 = sm._take_docker_sample(project="renamed-dir")
+
+    assert sample1 is not None and sample1.containers == []
+    assert sample2 is not None and sample2.containers == []
+    misconfig_warnings = [
+        r for r in caplog.records
+        if r.levelno == _log.WARNING and "0 containers match label" in r.message
+    ]
+    assert len(misconfig_warnings) == 1, "warning must fire exactly once per process"
+
+
 @pytest.mark.asyncio
 async def test_run_sampler_marks_unavailable_on_failure(monkeypatch):
     """When ``_take_docker_sample`` returns None (docker unreachable), the

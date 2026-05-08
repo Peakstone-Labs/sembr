@@ -54,6 +54,30 @@ SAMPLE_TIMEOUT_SECONDS = 5.0
 # Compose label used to auto-discover the sembr stack's containers.
 _COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 
+# Module-state guard: the silent-misconfig warning (loop 2 💡-2) fires once
+# per process to avoid log spam from a permanent misconfiguration.
+_zero_container_warned = False
+
+
+def _emit_zero_container_warning(project: str) -> None:
+    """One-shot WARNING when the docker socket is reachable but no compose
+    containers match the project label. Most likely cause: user ran
+    ``docker compose up`` from a directory whose name isn't ``sembr`` and
+    didn't set ``COMPOSE_PROJECT_NAME`` to override the default. Without
+    this warning the failure is silent — collector flips to unavailable
+    only on socket errors, not on empty result sets."""
+    global _zero_container_warned
+    if _zero_container_warned:
+        return
+    _zero_container_warned = True
+    logger.warning(
+        "system metrics: docker reachable but 0 containers match label "
+        "%s=%s — sparkline will stay empty. Set COMPOSE_PROJECT_NAME to "
+        "the directory `docker compose up` was run from, or rename the "
+        "directory to `sembr`.",
+        _COMPOSE_PROJECT_LABEL, project,
+    )
+
 
 @dataclass
 class _Sample:
@@ -176,6 +200,9 @@ def _compute_cpu_percent(stats: dict) -> float | None:
       starts tracking the container — there is no baseline yet)
     - ``system_cpu_usage`` is zero (some kernels / cgroup v2 hosts that
       docker hasn't populated yet)
+    - ``cpu_delta < 0`` (counter rollover or clock skew — treat as missing
+      data rather than emit a misleading negative percentage; an idle
+      container with ``cpu_delta == 0`` correctly returns ``0.0``)
 
     A None propagates through to ``ContainerMetric.cpu_percent`` and the UI
     renders "—" instead of a misleading 0%.
@@ -253,6 +280,14 @@ def _take_docker_sample(*, project: str | None = None) -> _Sample | None:
             pass
         return None
 
+    # Loop 2 💡-2: docker socket reachable but no compose containers matched
+    # the project label = silent misconfig (e.g. user renamed repo dir without
+    # setting COMPOSE_PROJECT_NAME). Emit a single WARNING per process so
+    # operators can spot it. _emit_zero_container_warning is module-state so
+    # the warning fires only on the first such sample.
+    if not containers:
+        _emit_zero_container_warning(project)
+
     now = datetime.now(timezone.utc)
     out: list[ContainerMetric] = []
     for container in containers:
@@ -275,6 +310,12 @@ def _take_docker_sample(*, project: str | None = None) -> _Sample | None:
             if isinstance(mem_used, int) and isinstance(mem_limit, int):
                 # cgroup v1 reports cache inside usage; subtract if the daemon
                 # exposes it so the displayed number lines up with `docker stats`.
+                # cgroup v2 hosts (Linux ≥ 5.x without `systemd.unified_cgroup_
+                # hierarchy=0`) don't populate `inactive_file` here at all, so
+                # the subtraction is a no-op and the reported memory will be a
+                # few MB higher than `docker stats --no-stream`'s output.
+                # Documented limitation; not worth a separate cgroup-v2
+                # codepath until acceptance criterion #8 fails on a v2 host.
                 inactive = (mem_stats.get("stats") or {}).get("inactive_file")
                 if isinstance(inactive, int) and 0 <= inactive <= mem_used:
                     mem_used = mem_used - inactive
