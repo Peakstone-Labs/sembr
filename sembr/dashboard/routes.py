@@ -11,8 +11,9 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from datetime import datetime, time as dtime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from sembr.collector.scheduler import SOURCE_REGISTRY
 from sembr.config import get_settings
@@ -49,7 +50,10 @@ async def get_config() -> ConfigResponse:
 async def get_snapshot(request: Request) -> SnapshotResponse:
     qdrant = getattr(request.app.state, "qdrant", None)
     embedder = getattr(request.app.state, "embedder", None)
-    return await read_model.build_snapshot(get_conn(), qdrant, embedder)
+    metrics_collector = getattr(request.app.state, "metrics_collector", None)
+    return await read_model.build_snapshot(
+        get_conn(), qdrant, embedder, metrics_collector
+    )
 
 
 @router.get("/feeds", response_model=FeedListResponse)
@@ -124,21 +128,82 @@ async def get_embedder_events(
     return await read_model.list_embed_events(get_conn(), limit)
 
 
+def _parse_iso_date(value: str, *, end_of_day: bool = False) -> datetime:
+    """Parse an ISO-8601 date string ("YYYY-MM-DD") into a UTC datetime.
+
+    The qdrant articles filter exposes ``ingested_from`` / ``ingested_to`` as
+    date-granularity inputs (the dashboard's date pickers emit YYYY-MM-DD).
+    ``end_of_day`` shifts to the next-day boundary so the filter range stays
+    half-open ``[from, to)`` in seconds while presenting as inclusive in UI.
+    """
+    try:
+        d = datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"invalid date: {value!r} (expected YYYY-MM-DD)",
+        ) from exc
+    if end_of_day:
+        return datetime.combine(d, dtime.min, tzinfo=timezone.utc) + timedelta(days=1)
+    return datetime.combine(d, dtime.min, tzinfo=timezone.utc)
+
+
 @router.get("/articles", response_model=list[ArticleListItem])
 async def get_articles(
     request: Request,
     bucket: ArticleBucket = Query(...),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    ingested_from: str | None = Query(
+        default=None,
+        description="ISO date YYYY-MM-DD; only valid with bucket=qdrant",
+    ),
+    ingested_to: str | None = Query(
+        default=None,
+        description="ISO date YYYY-MM-DD; range is half-open [from, to+1d)",
+    ),
+    feed_id: int | None = Query(
+        default=None,
+        description="filter by feed_id; only valid with bucket=qdrant",
+    ),
+    title_q: str | None = Query(
+        default=None,
+        max_length=200,
+        description="MatchText against the title text-index",
+    ),
 ) -> list[ArticleListItem]:
     conn = get_conn()
-    if bucket == "pending":
-        return await read_model.list_articles_pending(conn, limit, offset)
-    if bucket == "dead":
+    qdrant_filter_params = (ingested_from, ingested_to, feed_id, title_q)
+    has_qdrant_filter = any(p is not None for p in qdrant_filter_params)
+
+    if bucket in ("pending", "dead"):
+        # qdrant-only filter params on a sqlite bucket are a client bug;
+        # 422 surfaces it instead of silently dropping the params (D7).
+        if has_qdrant_filter:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "ingested_from / ingested_to / feed_id / title_q are only "
+                    "valid with bucket=qdrant"
+                ),
+            )
+        if bucket == "pending":
+            return await read_model.list_articles_pending(conn, limit, offset)
         return await read_model.list_articles_dead(conn, limit, offset)
+
     qdrant = getattr(request.app.state, "qdrant", None)
     qclient = getattr(qdrant, "client", None) if qdrant is not None else None
-    return await read_model.list_articles_qdrant(qclient, limit, offset)
+    parsed_from = _parse_iso_date(ingested_from) if ingested_from else None
+    parsed_to = _parse_iso_date(ingested_to, end_of_day=True) if ingested_to else None
+    return await read_model.list_articles_qdrant(
+        qclient,
+        limit,
+        offset,
+        ingested_from=parsed_from,
+        ingested_to=parsed_to,
+        feed_id=feed_id,
+        title_q=title_q,
+    )
 
 
 @router.get("/articles/{md5}", response_model=ArticleDetail)

@@ -256,8 +256,17 @@ async def build_snapshot(
     conn: aiosqlite.Connection,
     qdrant_handle: Any | None,
     embedder: Any | None,
+    metrics_collector: Any | None = None,
 ) -> SnapshotResponse:
-    """Top-level snapshot for the polling client (D5)."""
+    """Top-level snapshot for the polling client (D5 + D6).
+
+    ``metrics_collector`` is the lifespan-owned ``SystemMetricsCollector``
+    (or None if the dashboard wasn't bootstrapped with one). Per design D6
+    we inject it as a function argument rather than reading from
+    ``app.state`` here — this module must not import FastAPI types.
+    The caller (``routes.get_snapshot``) is the only place that touches
+    ``request.app.state``.
+    """
     now = _utcnow()
     qdrant_client = (
         getattr(qdrant_handle, "client", None) if qdrant_handle is not None else None
@@ -299,6 +308,9 @@ async def build_snapshot(
         model_version=getattr(embedder, "model_version", None) if embedder else None,
         calls_24h=calls,
     )
+    system_metrics = (
+        metrics_collector.read() if metrics_collector is not None else None
+    )
     return SnapshotResponse(
         schema_version=1,
         generated_at=now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
@@ -310,6 +322,7 @@ async def build_snapshot(
             dead_count=dead_count,
             qdrant_count=qdrant_count_value,
         ),
+        system_metrics=system_metrics,
     )
 
 
@@ -470,13 +483,75 @@ async def _scroll_articles_qdrant(
 
 
 async def list_articles_qdrant(
-    qdrant_client: Any | None, limit: int, offset: int
+    qdrant_client: Any | None,
+    limit: int,
+    offset: int,
+    *,
+    ingested_from: datetime | None = None,
+    ingested_to: datetime | None = None,
+    feed_id: int | None = None,
+    title_q: str | None = None,
 ) -> list[ArticleListItem]:
-    """Newest-first list of news_current points (no filter)."""
+    """Newest-first list of news_current points (D7).
+
+    Optional filters compose into a single qdrant ``Filter(must=[...])``:
+
+    - ``ingested_from`` / ``ingested_to``: closed range on ``ingested_at_ts``.
+      Both ends optional and independent. Bounds are inclusive on
+      ``ingested_from`` and exclusive on ``ingested_to`` (caller passes
+      end-of-day + 1 second to get an inclusive end-date in UI terms).
+    - ``feed_id``: integer match.
+    - ``title_q``: ``MatchText`` against the title text-index added in D8.
+
+    All filtered fields have payload indexes (``ingested_at_ts``, ``feed_id``,
+    ``title``) so qdrant uses index intersect rather than a full scroll
+    (feedback_qdrant_client rule: scroll filter without payload index =
+    full-collection scan).
+    """
     if qdrant_client is None:
         return []
+
+    has_filter = any(
+        v is not None for v in (ingested_from, ingested_to, feed_id, title_q)
+    )
+    if not has_filter:
+        return await _scroll_articles_qdrant(
+            qdrant_client, limit=limit, offset=offset, log_label="(all)"
+        )
+
+    from qdrant_client.models import (  # noqa: PLC0415
+        FieldCondition,
+        Filter,
+        MatchText,
+        MatchValue,
+        Range,
+    )
+
+    must: list[Any] = []
+    if ingested_from is not None or ingested_to is not None:
+        must.append(
+            FieldCondition(
+                key="ingested_at_ts",
+                range=Range(
+                    gte=int(ingested_from.timestamp()) if ingested_from else None,
+                    lt=int(ingested_to.timestamp()) if ingested_to else None,
+                ),
+            )
+        )
+    if feed_id is not None:
+        must.append(
+            FieldCondition(key="feed_id", match=MatchValue(value=int(feed_id)))
+        )
+    if title_q:
+        must.append(FieldCondition(key="title", match=MatchText(text=title_q)))
+
+    qfilter = Filter(must=must)
     return await _scroll_articles_qdrant(
-        qdrant_client, limit=limit, offset=offset, log_label="(all)"
+        qdrant_client,
+        limit=limit,
+        offset=offset,
+        scroll_filter=qfilter,
+        log_label=f"(filter feed={feed_id} title={title_q!r} range={ingested_from!s}-{ingested_to!s})",
     )
 
 
