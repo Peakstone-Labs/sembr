@@ -50,6 +50,34 @@ def _make_qdrant(facet_counts: dict[int, int] | None = None) -> MagicMock:
     return q
 
 
+def _build_test_app(path: str, qdrant_handle, *, with_auth: bool = False) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        conn = await init_sqlite(path)
+        await init_feed_tables(conn)
+        await init_article_tables(conn)
+        await init_intent_tables(conn)
+        await init_match_seen_tables(conn)
+        yield
+        # Drain still-running BG planning/applying tasks before
+        # close_sqlite so they don't observe a torn-down connection.
+        from sembr.api.maintenance import _BG_TASKS
+        if _BG_TASKS:
+            await asyncio.gather(*list(_BG_TASKS), return_exceptions=True)
+        await close_sqlite()
+
+    app = FastAPI(lifespan=lifespan)
+    app.include_router(maintenance_router)
+    app.state.qdrant = qdrant_handle
+    if with_auth:
+        # Mount the production middleware so the /api/dashboard/maintenance/*
+        # paths are gated. add_middleware uses LIFO ordering, so this is the
+        # outermost wrapper.
+        from sembr.dashboard.auth import DashboardTokenMiddleware
+        app.add_middleware(DashboardTokenMiddleware)
+    return app
+
+
 @pytest.fixture
 def app_factory():
     """Build a FastAPI test app whose lifespan opens a temp SQLite DB and
@@ -61,29 +89,39 @@ def app_factory():
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         paths.append(path)
-
-        @asynccontextmanager
-        async def lifespan(app: FastAPI):
-            conn = await init_sqlite(path)
-            await init_feed_tables(conn)
-            await init_article_tables(conn)
-            await init_intent_tables(conn)
-            await init_match_seen_tables(conn)
-            yield
-            # Drain still-running BG planning/applying tasks before
-            # close_sqlite so they don't observe a torn-down connection.
-            from sembr.api.maintenance import _BG_TASKS
-            if _BG_TASKS:
-                await asyncio.gather(*list(_BG_TASKS), return_exceptions=True)
-            await close_sqlite()
-
-        app = FastAPI(lifespan=lifespan)
-        app.include_router(maintenance_router)
-        app.state.qdrant = qdrant_handle
-        return app
+        return _build_test_app(path, qdrant_handle)
 
     yield _build
 
+    for path in paths:
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                os.unlink(path + suffix)
+            except FileNotFoundError:
+                pass
+
+
+@pytest.fixture
+def app_with_auth_factory(monkeypatch):
+    """Variant that mounts ``DashboardTokenMiddleware`` so the maintenance
+    endpoints actually require ``X-Dashboard-Token``. Resets pydantic-settings
+    LRU cache so the env override is picked up.
+    """
+    paths: list[str] = []
+
+    monkeypatch.setenv("DASHBOARD_TOKEN", "secret-test-token")
+    from sembr.config import get_settings
+    get_settings.cache_clear()
+
+    def _build(qdrant_handle):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        paths.append(path)
+        return _build_test_app(path, qdrant_handle, with_auth=True)
+
+    yield _build
+
+    get_settings.cache_clear()
     for path in paths:
         for suffix in ("", "-wal", "-shm"):
             try:
@@ -331,3 +369,53 @@ def test_manual_prune_dead_path_does_not_call_qdrant(app_factory):
         qdrant.client.facet.assert_not_called()
         qdrant.client.scroll.assert_not_called()
         qdrant.client.delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 🟡-4 regression: DashboardTokenMiddleware actually gates the endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_feed_universe_unauthenticated_returns_401(app_with_auth_factory):
+    """Without X-Dashboard-Token (and the env-set token is non-empty),
+    /feed_universe must 401 — guards against accidentally renaming the
+    router prefix out of the middleware's protected list."""
+    qdrant = _make_qdrant({})
+    app = app_with_auth_factory(qdrant)
+    with TestClient(app) as c:
+        resp = c.get("/api/dashboard/maintenance/feed_universe")
+        assert resp.status_code == 401, resp.text
+
+
+def test_feed_universe_authenticated_succeeds(app_with_auth_factory):
+    qdrant = _make_qdrant({6: 5})
+    app = app_with_auth_factory(qdrant)
+    with TestClient(app) as c:
+        resp = c.get(
+            "/api/dashboard/maintenance/feed_universe",
+            headers={"X-Dashboard-Token": "secret-test-token"},
+        )
+        assert resp.status_code == 200, resp.text
+
+
+def test_manual_prune_post_unauthenticated_returns_401(app_with_auth_factory):
+    qdrant = _make_qdrant({})
+    app = app_with_auth_factory(qdrant)
+    with TestClient(app) as c:
+        resp = c.post(
+            "/api/dashboard/maintenance/manual_prune",
+            json={"target": "news", "feed_ids": [1], "older_than_days": 35},
+        )
+        assert resp.status_code == 401, resp.text
+
+
+def test_manual_prune_post_with_wrong_token_returns_401(app_with_auth_factory):
+    qdrant = _make_qdrant({})
+    app = app_with_auth_factory(qdrant)
+    with TestClient(app) as c:
+        resp = c.post(
+            "/api/dashboard/maintenance/manual_prune",
+            headers={"X-Dashboard-Token": "wrong-token"},
+            json={"target": "news", "feed_ids": [1], "older_than_days": 35},
+        )
+        assert resp.status_code == 401, resp.text
