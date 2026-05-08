@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
@@ -182,6 +182,64 @@ class Settings(BaseSettings):
             "self-restart; normal `docker compose down` is not affected."
         ),
     )
+
+    newsapi_api_key: SecretStr = Field(
+        default="",
+        description=(
+            "NewsAPI.ai (eventregistry.org) API key. Empty = newsapi master "
+            "tick disabled at health() level. Free tier 2000 tokens — at the "
+            "default 30-min poll interval that is ~41 days of operation."
+        ),
+    )
+    newsapi_poll_interval_minutes: int = Field(
+        default=30, ge=5, le=1440,
+        description=(
+            "Master tick cadence shared by ALL source_type='newsapi' feeds — "
+            "one HTTP call per tick consumes 1 token regardless of feed count. "
+            "Lowering this burns the free quota faster (10min ~13d, 30min ~41d, "
+            "60min ~83d). Each feed's per-row poll_interval_minutes column is "
+            "ignored for newsapi feeds (master job is the source of truth)."
+        ),
+    )
+    newsapi_timeout_seconds: float = Field(
+        default=30.0,
+        description="HTTP timeout for newsapi /article/getArticles calls.",
+    )
+    newsapi_categories: str = Field(
+        default="Business,Technology,Science,Politics",
+        description=(
+            "Comma-separated whitelist of NewsAPI.ai top-level categories. "
+            "Maps to categoryUri = ['news/<name>', ...] on the API call. "
+            "Candidates: Business, Politics, Technology, Science, Health, "
+            "Environment, Sports, Arts and Entertainment. Empty CSV is "
+            "rejected — categoryUri=[] would silently fall back to "
+            "all-categories at the API and break the whitelist contract."
+        ),
+    )
+
+    @field_validator("newsapi_categories")
+    @classmethod
+    def _newsapi_categories_nonempty(cls, v: str) -> str:
+        # D25: empty CSV at the API behaves as "all categories", which
+        # contradicts the user's intent of a whitelist; reject explicitly.
+        items = [s.strip() for s in (v or "").split(",") if s.strip()]
+        if not items:
+            raise ValueError(
+                "newsapi_categories must contain at least one category "
+                "(e.g. 'Business,Technology'); empty CSV would unset the "
+                "whitelist server-side"
+            )
+        return v
+
+    @property
+    def newsapi_category_uris(self) -> list[str]:
+        # CSV → ["news/Business", ...]; same csv-derived-property pattern
+        # as proxy_hosts_set above.
+        return [
+            f"news/{name}"
+            for name in (s.strip() for s in self.newsapi_categories.split(","))
+            if name
+        ]
 
     proxy_hosts: str = Field(
         default="rsshub:1200",

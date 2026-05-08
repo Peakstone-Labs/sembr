@@ -9,6 +9,23 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from sembr.notifier.email import EmailChannelConfig
 
+_NEWSAPI_HOSTNAME_RE = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$"
+)
+
+
+def _normalize_newsapi_url(s: str) -> str:
+    # D11/O2-A: same algorithm as collector.newsapi.normalize_source_uri.
+    # Defined here too so models.py stays import-cycle-free (collector
+    # depends on models, not the other way around).
+    out = s.strip().lower()
+    for prefix in ("https://", "http://"):
+        if out.startswith(prefix):
+            out = out[len(prefix):]
+    if out.startswith("www."):
+        out = out[4:]
+    return out.rstrip("/")
+
 # Discriminated union of all known channel configs, keyed by `type`.
 # Single-element today; when a second channel ships, wrap with
 # `Annotated[Union[EmailChannelConfig, TelegramChannelConfig], Field(discriminator="type")]`.
@@ -74,12 +91,33 @@ class FeedCreate(BaseModel):
     poll_interval_minutes: int = Field(default=30, ge=5, le=1440)
     tags: list[str] = Field(default_factory=list, max_length=10)
 
-    @field_validator("url")
-    @classmethod
-    def _scheme_ok(cls, v: str) -> str:
-        if not v.lower().startswith(("http://", "https://")):
-            raise ValueError("url must start with http:// or https://")
-        return v
+    @model_validator(mode="after")
+    def _validate_url_per_source_type(self) -> "FeedCreate":
+        # D11: source_type='newsapi' uses bare hostnames (matches NewsAPI.ai
+        # source.uri format) and requires normalize-on-write so feeds.url's
+        # UNIQUE constraint catches case/scheme/www. duplicates client-side.
+        # source_type='rss' keeps the historical http(s)://-required scheme.
+        if self.source_type == "newsapi":
+            normalized = _normalize_newsapi_url(self.url)
+            if not _NEWSAPI_HOSTNAME_RE.match(normalized):
+                raise ValueError(
+                    "newsapi feed url must be a hostname (e.g. 'reuters.com'); "
+                    f"got {self.url!r} after normalization → {normalized!r}"
+                )
+            self.url = normalized
+            # R6: front-end disables the poll_interval input for newsapi feeds,
+            # but a stale form field or direct API caller may still send a
+            # value that differs from settings. Coerce silently so feeds.url
+            # row matches the global interval. Master tick reads the setting
+            # directly, never this column — coercion is purely cosmetic for
+            # the dashboard list. Imported lazily to keep models.py free of
+            # import-time side effects (Settings reads .env on first call).
+            from sembr.config import get_settings  # noqa: PLC0415
+            self.poll_interval_minutes = get_settings().newsapi_poll_interval_minutes
+        else:
+            if not self.url.lower().startswith(("http://", "https://")):
+                raise ValueError("url must start with http:// or https://")
+        return self
 
     @field_validator("tags")
     @classmethod
