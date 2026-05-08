@@ -56,6 +56,9 @@ _COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 
 # Module-state guard: the silent-misconfig warning (loop 2 💡-2) fires once
 # per process to avoid log spam from a permanent misconfiguration.
+# Tests that exercise this branch must reset this flag in a fixture (e.g.
+# ``monkeypatch.setattr(sm, "_zero_container_warned", False)``) — otherwise
+# a previous test's WARNING would silently suppress the assertion.
 _zero_container_warned = False
 
 
@@ -69,7 +72,9 @@ def _emit_zero_container_warning(project: str) -> None:
     global _zero_container_warned
     if _zero_container_warned:
         return
-    _zero_container_warned = True
+    # Loop 3 💡-6: log BEFORE setting the guard so a logging handler that
+    # raises (uncommon, but possible with custom handlers) doesn't permanently
+    # mute future warnings on what's likely a real misconfig.
     logger.warning(
         "system metrics: docker reachable but 0 containers match label "
         "%s=%s — sparkline will stay empty. Set COMPOSE_PROJECT_NAME to "
@@ -77,6 +82,7 @@ def _emit_zero_container_warning(project: str) -> None:
         "directory to `sembr`.",
         _COMPOSE_PROJECT_LABEL, project,
     )
+    _zero_container_warned = True
 
 
 @dataclass

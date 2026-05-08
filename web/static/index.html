@@ -410,7 +410,12 @@
         </div>
 
         <p x-show="drawer.loading" class="muted">loading…</p>
-        <p x-show="!drawer.loading && drawer.rows.length === 0 && !drawer.detail"
+        <!-- Empty-state copy is kind-specific. Articles modal must show
+             "No articles match" per requirements.md criterion 17 (verbatim
+             spec wording); the other two modals stay generic. -->
+        <p x-show="drawer.kind === 'articles' && !drawer.loading && drawer.rows.length === 0 && !drawer.detail"
+           class="muted" style="margin-top:8px;">No articles match</p>
+        <p x-show="drawer.kind !== 'articles' && !drawer.loading && drawer.rows.length === 0 && !drawer.detail"
            class="muted" style="margin-top:8px;">no rows</p>
 
         <!-- embedder-events table -->
