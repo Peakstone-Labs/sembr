@@ -114,19 +114,6 @@ class Settings(BaseSettings):
     smtp_use_starttls: bool = Field(default=True, description="Enable STARTTLS (port 587 style).")
     smtp_use_ssl: bool = Field(default=False, description="Use SMTP_SSL instead of SMTP+STARTTLS (port 465 style).")
 
-    prompts_dir: Path = Field(
-        default=Path("/app/prompts"),
-        description=(
-            "Root directory holding the LLM prompt templates the summarizer feeds "
-            "to every digest. Two subdirectories: `system/` (system prompts) and "
-            "`instruction/` (user instruction templates with {intent_text} / "
-            "{articles} placeholders). Templates are read on every tick — host-side "
-            "edits take effect on the next summary, no restart needed. Default "
-            "`/app/prompts` is bind-mounted from `./prompts` by the bundled "
-            "docker-compose.yml; override via SEMBR_PROMPTS_DIR for local dev."
-        ),
-    )
-
     display_timezone: str = Field(
         default="Asia/Shanghai",
         description="IANA timezone used to render published_at in notifications (e.g. Asia/Shanghai, UTC, America/New_York).",

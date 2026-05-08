@@ -20,6 +20,7 @@ from markupsafe import Markup
 from pydantic import BaseModel, EmailStr, Field
 
 from sembr.notifier.base import BaseChannel
+from sembr.summarizer.templates import PROMPTS_DIR
 
 if TYPE_CHECKING:
     from sembr.config import Settings
@@ -327,7 +328,7 @@ class EmailChannel(BaseChannel):
             kind=kind,
             name=name,
             reason=reason,
-            prompts_dir=self._settings.prompts_dir.as_posix(),
+            prompts_dir=PROMPTS_DIR.as_posix(),
         )
 
     def _send_sync(self, msg, rcpts: list[str]) -> None:  # MIMEText | MIMEMultipart

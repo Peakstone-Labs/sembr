@@ -23,6 +23,7 @@ from sembr.matcher.jobs import (
     unregister_intent_job,
 )
 from sembr.models import EventSchedule, Intent, IntentCreate, IntentUpdate
+from sembr.summarizer import templates as _templates
 from sembr.summarizer.templates import template_exists
 from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
 from sembr.vector_store.intents import (
@@ -36,11 +37,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/intents", tags=["intents"])
 
 
-def _validate_templates(request: Request, system_tpl: str, instruction_tpl: str) -> None:
-    """Raise 422 if either named template file does not exist on disk."""
-    prompts_dir = request.app.state.settings.prompts_dir
+def _validate_templates(system_tpl: str, instruction_tpl: str) -> None:
+    """Raise 422 if either named template file does not exist on disk.
+
+    Reads the prompts dir lazily from the templates module so tests can
+    redirect via ``monkeypatch.setattr("sembr.summarizer.templates.PROMPTS_DIR", tmp)``.
+    """
     for kind, name in (("system", system_tpl), ("instruction", instruction_tpl)):
-        if not template_exists(prompts_dir, kind, name):
+        if not template_exists(_templates.PROMPTS_DIR, kind, name):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={"field": f"{kind}_template", "value": name, "reason": "template not found"},
@@ -66,7 +70,7 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
     embedder = request.app.state.embedder
     if not embedder.is_loaded:  # D5: fast-fail before any DB write
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="embedder not ready")
-    _validate_templates(request, body.system_template, body.instruction_template)
+    _validate_templates(body.system_template, body.instruction_template)
 
     conn = get_conn()
     intent = await create_intent(conn, body)  # D1: SQLite first
@@ -155,7 +159,7 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     effective_system = body.system_template if body.system_template is not None else current.system_template
     effective_instruction = body.instruction_template if body.instruction_template is not None else current.instruction_template
     if body.system_template is not None or body.instruction_template is not None:
-        _validate_templates(request, effective_system, effective_instruction)
+        _validate_templates(effective_system, effective_instruction)
 
     # D16: schedule.mode is immutable — mode change requires delete + recreate
     if body.schedule is not None and body.schedule.mode != current.schedule.mode:

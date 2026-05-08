@@ -92,7 +92,6 @@ async def test_put_reenable_500_on_missing_vector():
     mock_request = MagicMock()
     mock_request.app.state.embedder.is_loaded = True
     mock_request.app.state.event_intent_cache = cache
-    mock_request.app.state.settings.prompts_dir = "prompts"
     mock_request.app.state.qdrant.client = AsyncMock()
     mock_request.app.state.scheduler = MagicMock()
     # Qdrant retrieve returns empty → no vector
@@ -134,7 +133,6 @@ async def test_d16_mode_immutable_422():
 
     mock_request = MagicMock()
     mock_request.app.state.embedder.is_loaded = True
-    mock_request.app.state.settings.prompts_dir = "prompts"
 
     body = IntentUpdate(schedule=EventSchedule(trigger_count=5))
 

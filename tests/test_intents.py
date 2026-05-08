@@ -91,11 +91,11 @@ def _client(embedder: MagicMock | None = None, vs: dict | None = None):
     app.state.embedder = embedder
     app.state.qdrant = MagicMock()  # .client attribute accessed but never called directly
     app.state.scheduler = MagicMock()
-    _settings = MagicMock()
-    _settings.prompts_dir = Path(__file__).parent.parent / "prompts"
-    app.state.settings = _settings
+    app.state.settings = MagicMock()
 
+    project_prompts = Path(__file__).parent.parent / "prompts"
     with (
+        patch("sembr.summarizer.templates.PROMPTS_DIR", project_prompts),
         patch("sembr.api.intents.get_conn", side_effect=lambda: conn_holder["conn"]),
         patch("sembr.api.intents.upsert_intent_point", vs["upsert"]),
         patch("sembr.api.intents.update_intent_payload", vs["update_payload"]),

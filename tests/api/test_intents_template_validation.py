@@ -40,10 +40,8 @@ def _make_vs():
     }
 
 
-def _make_settings(prompts_dir: Path) -> MagicMock:
-    s = MagicMock()
-    s.prompts_dir = prompts_dir
-    return s
+def _make_settings() -> MagicMock:
+    return MagicMock()
 
 
 @contextmanager
@@ -68,10 +66,11 @@ def _client(prompts_dir: Path):
     app.state.embedder = _make_embedder()
     app.state.qdrant = MagicMock()
     app.state.scheduler = MagicMock()
-    app.state.settings = _make_settings(prompts_dir)
+    app.state.settings = _make_settings()
 
     vs = _make_vs()
     with (
+        patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir),
         patch("sembr.api.intents.get_conn", side_effect=lambda: conn_holder["conn"]),
         patch("sembr.api.intents.upsert_intent_point", vs["upsert"]),
         patch("sembr.api.intents.update_intent_payload", vs["update_payload"]),

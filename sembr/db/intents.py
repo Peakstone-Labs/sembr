@@ -375,6 +375,56 @@ async def delete_intent(conn: aiosqlite.Connection, intent_id: int) -> bool:
     return n > 0
 
 
+# D4: kinds whitelist for column-name interpolation in list_template_refs /
+# rename_intent_template. Frozen — never widened from API input.
+_TEMPLATE_KINDS: frozenset[str] = frozenset({"system", "instruction"})
+
+
+async def list_template_refs(
+    conn: aiosqlite.Connection,
+) -> dict[tuple[str, str], list[tuple[int, str]]]:
+    """D4: scan intents once, group `(intent_id, intent_name)` by `(kind, template_name)`.
+
+    Returned dict has keys ``("system", name)`` / ``("instruction", name)`` and
+    values ``[(id, name), ...]`` ordered by intent id ASC. Templates with zero
+    referencing intents are absent from the dict — caller handles missing keys
+    as empty lists.
+    """
+    out: dict[tuple[str, str], list[tuple[int, str]]] = {}
+    async with conn.execute(
+        "SELECT id, name, system_template, instruction_template FROM intents ORDER BY id ASC"
+    ) as cur:
+        async for row in cur:
+            intent_id, intent_name, sys_tpl, inst_tpl = row
+            out.setdefault(("system", sys_tpl), []).append((intent_id, intent_name))
+            out.setdefault(("instruction", inst_tpl), []).append((intent_id, intent_name))
+    return out
+
+
+async def rename_intent_template(
+    conn: aiosqlite.Connection,
+    kind: str,
+    old: str,
+    new: str,
+) -> int:
+    """D2 step (c): cascade-rename `kind`_template column from *old* to *new*.
+
+    Returns the rowcount of affected intents. The *kind* string is whitelisted
+    against ``_TEMPLATE_KINDS`` to keep the column-name interpolation safe — the
+    column name is built from a frozen set, never from API input directly.
+
+    Caller is expected to wrap this call in ``db.sqlite.transaction()`` per D15.
+    """
+    if kind not in _TEMPLATE_KINDS:
+        raise ValueError(f"invalid template kind {kind!r}; expected one of {sorted(_TEMPLATE_KINDS)}")
+    column = f"{kind}_template"
+    async with conn.execute(
+        f"UPDATE intents SET {column} = ?, updated_at = ? WHERE {column} = ?",
+        (new, _now_utc(), old),
+    ) as cur:
+        return cur.rowcount
+
+
 async def intents_remove_feed_id(conn: aiosqlite.Connection, feed_id: int) -> list[int]:
     """Remove feed_id from all intent feed_filter.ids; return affected intent IDs.
 

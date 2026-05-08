@@ -71,6 +71,7 @@ from sembr.notifier.email import EmailChannel, EmailChannelConfig
 from sembr.summarizer.llm.factory import build_llm_backend
 from sembr.summarizer.models import SummaryResult
 from sembr.summarizer.pipeline import SummaryPipeline
+from sembr.summarizer.templates import PROMPTS_DIR
 from sembr.vector_store.intents import ensure_intents_collection
 from sembr.vector_store.news import ensure_news_collection
 from sembr.vector_store.qdrant import QdrantHandle
@@ -224,7 +225,7 @@ async def lifespan(app: FastAPI):
         get_feed_names=lambda ids: get_feed_names(conn, ids),
         on_summary=lambda r: _dispatch_notification(conn, email_ch, r),
         on_template_error=lambda iid, k, n, r: _dispatch_template_error(conn, email_ch, iid, k, n, r),
-        prompts_dir=settings.prompts_dir,
+        prompts_dir=PROMPTS_DIR,
     )
     app.state.on_match = pipeline.handle
     app.state.qdrant = qdrant

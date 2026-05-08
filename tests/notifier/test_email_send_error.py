@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import smtplib
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,7 +19,6 @@ def _make_settings(smtp_host: str = "smtp.example.com") -> MagicMock:
     s.smtp_use_ssl = False
     s.smtp_use_starttls = True
     s.display_timezone = "UTC"
-    s.prompts_dir = Path("/app/prompts")
     return s
 
 

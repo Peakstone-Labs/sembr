@@ -391,9 +391,8 @@ def test_post_intent_rollback_on_register_job_failure() -> None:
     app.state.scheduler = MagicMock()
     from pathlib import Path as _Path  # noqa: PLC0415
     from unittest.mock import MagicMock as _MM  # noqa: PLC0415
-    _settings = _MM()
-    _settings.prompts_dir = _Path(__file__).parent.parent / "prompts"
-    app.state.settings = _settings
+    app.state.settings = _MM()
+    project_prompts = _Path(__file__).parent.parent / "prompts"
 
     body = {
         "name": "rollback-test",
@@ -402,6 +401,7 @@ def test_post_intent_rollback_on_register_job_failure() -> None:
     }
 
     with (
+        patch("sembr.summarizer.templates.PROMPTS_DIR", project_prompts),
         patch("sembr.api.intents.get_conn", side_effect=lambda: conn_holder["conn"]),
         patch("sembr.api.intents.upsert_intent_point", AsyncMock()),
         patch("sembr.api.intents.delete_intent_point", AsyncMock()),

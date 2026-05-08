@@ -14,14 +14,35 @@ Any other ``{...}`` key in the file raises ``TemplateRenderError``.
 """
 from __future__ import annotations
 
+import logging
+import os
 import re
+import time
 from pathlib import Path
+from typing import Final
+
+logger = logging.getLogger(__name__)
 
 # Identifier validation: no leading dot, no / \ .., length 1..100, Unicode ok.
 _IDENT_RE = re.compile(r"^(?!\.)(?!.*\.\.)[^/\\]{1,100}$")
 
 _SYSTEM_PLACEHOLDERS: frozenset[str] = frozenset({"language"})
 _INSTRUCTION_PLACEHOLDERS: frozenset[str] = frozenset({"intent_text", "articles"})
+
+# D1: prompts root constant. Replaces the removed Settings.prompts_dir field.
+PROMPTS_DIR: Final[Path] = Path("/app/prompts")
+
+# D9 / D17: built-in (read-only) template names; reserved for both kinds.
+BUILTIN_NAMES: frozenset[str] = frozenset({"default"})
+
+# D14: per-write content size cap (bytes, UTF-8 encoded).
+MAX_TEMPLATE_BYTES: Final[int] = 64 * 1024
+
+# D10: kind → allowed placeholder names, used by try_render's strict format_map.
+_PLACEHOLDERS_BY_KIND: dict[str, frozenset[str]] = {
+    "system": _SYSTEM_PLACEHOLDERS,
+    "instruction": _INSTRUCTION_PLACEHOLDERS,
+}
 
 
 class TemplateNotFoundError(FileNotFoundError):
@@ -133,3 +154,107 @@ def render_instruction(
             f"Instruction template '{name}' contains undeclared placeholder {{{exc.args[0]}}}. "
             f"Available placeholders: {{intent_text}}, {{articles}}"
         ) from exc
+
+
+def try_render(kind: str, content: str) -> None:
+    """D10: dry-render *content* with empty-string placeholders to surface unknown
+    placeholders at save-time. Raises ``TemplateRenderError`` on the first violation;
+    returns ``None`` on success.
+
+    The strict map carries one empty-string entry per allowed placeholder for
+    *kind*; any other ``{...}`` key in the file triggers ``KeyError`` via
+    ``_StrictMap.__missing__`` and is surfaced as ``TemplateRenderError``.
+    """
+    if kind not in _PLACEHOLDERS_BY_KIND:
+        raise ValueError(f"unknown template kind {kind!r}")
+    allowed = _PLACEHOLDERS_BY_KIND[kind]
+    strict = _StrictMap({k: "" for k in allowed})
+    try:
+        content.format_map(strict)
+    except KeyError as exc:
+        raise TemplateRenderError(
+            f"{kind} template contains undeclared placeholder {{{exc.args[0]}}}. "
+            f"Available placeholders: {{{', '.join(sorted(allowed))}}}"
+        ) from exc
+
+
+def save_template_atomic(
+    prompts_dir: Path,
+    kind: str,
+    name: str,
+    content: str,
+) -> Path:
+    """D5: atomic write of ``prompts_dir/kind/name.md`` via tmp file + ``os.replace``.
+
+    Validates *name* (raises ``ValueError`` on identifier failure) and resolves
+    the path through ``template_path`` to keep escape-check in lockstep. The tmp
+    filename starts with '.' so ``list_templates`` already filters it out
+    (``sembr/summarizer/templates.py`` glob excludes hidden files).
+
+    Returns the final on-disk path. Raises ``OSError`` on filesystem failure.
+    """
+    if kind not in _PLACEHOLDERS_BY_KIND:
+        raise ValueError(f"unknown template kind {kind!r}")
+    final_path = template_path(prompts_dir, kind, name)
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_name = f".{name}.md.tmp.{os.getpid()}.{time.monotonic_ns()}"
+    tmp_path = final_path.parent / tmp_name
+    data = content.encode("utf-8")
+    try:
+        with open(tmp_path, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, final_path)
+    except BaseException:
+        # Best-effort cleanup so a crash mid-write doesn't leak the tmp file
+        # (list_templates already filters hidden names, but admins reading the
+        # directory directly shouldn't trip over orphans).
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    return final_path
+
+
+def delete_template(prompts_dir: Path, kind: str, name: str) -> None:
+    """Unlink ``prompts_dir/kind/name.md`` after identifier validation.
+
+    Raises ``TemplateNotFoundError`` if the file is missing — explicit, not silent,
+    so callers can translate to 404. Does not check builtin status (that's the
+    API layer's responsibility per D9).
+    """
+    if kind not in _PLACEHOLDERS_BY_KIND:
+        raise ValueError(f"unknown template kind {kind!r}")
+    path = template_path(prompts_dir, kind, name)
+    if not path.is_file():
+        raise TemplateNotFoundError(f"Template '{kind}/{name}' not found at {path}")
+    os.unlink(path)
+
+
+def rename_template(
+    prompts_dir: Path,
+    kind: str,
+    old_name: str,
+    new_name: str,
+) -> Path:
+    """D2 step (b): pure-filesystem rename helper.
+
+    Validates both names + ``os.rename(old, new)`` and returns the new path.
+    Does NOT pre-check existence (caller's responsibility per D2 step a) and
+    does NOT touch SQLite (caller orchestrates the cross-boundary 2PC per D2/D15).
+
+    Raises:
+        ValueError: identifier validation failure on either name.
+        TemplateNotFoundError: the old file does not exist.
+        OSError: rare same-fs rename failure (caller logs + 500).
+    """
+    if kind not in _PLACEHOLDERS_BY_KIND:
+        raise ValueError(f"unknown template kind {kind!r}")
+    old_path = template_path(prompts_dir, kind, old_name)
+    new_path = template_path(prompts_dir, kind, new_name)
+    if not old_path.is_file():
+        raise TemplateNotFoundError(f"Template '{kind}/{old_name}' not found at {old_path}")
+    os.rename(old_path, new_path)
+    return new_path
