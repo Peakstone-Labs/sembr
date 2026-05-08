@@ -1669,10 +1669,13 @@
 
   </div>
 
-  <!-- Editor modal (Edit content) -->
-  <template x-if="editor.open">
-    <div x-teleport="body" class="modal-backdrop" @click.self="closeEditor()" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center;">
-      <div class="modal panel" style="width:min(900px, 92vw); max-height:90vh; display:flex; flex-direction:column;">
+  <!-- Editor modal (Edit content). x-teleport MUST be on the <template>, not on
+       the inner div — when on a div, Alpine silently no-ops the teleport and
+       the modal stays inside <main>'s z-index:1 stacking context, hiding under
+       the tab nav. Mirrors the maintenance-tab pattern at index.html:135. -->
+  <template x-teleport="body">
+  <div class="modal-overlay" x-show="editor.open" x-cloak @click.self="closeEditor()" style="display:none;">
+    <div class="modal-panel" style="max-width:900px; display:flex; flex-direction:column; max-height:85vh;">
         <header style="display:flex; align-items:baseline; gap:8px; margin-bottom:8px;">
           <h3 style="margin:0; font-size:0.95rem;" x-text="(isEditorBuiltin ? 'View ' : 'Edit ') + editor.kind + '/' + editor.name"></h3>
           <span x-show="isEditorBuiltin" class="muted" style="font-size:0.72rem;">read-only</span>
@@ -1698,9 +1701,9 @@
   </template>
 
   <!-- Create modal -->
-  <template x-if="create.open">
-    <div x-teleport="body" class="modal-backdrop" @click.self="closeCreate()" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center;">
-      <div class="modal panel" style="width:min(480px, 92vw);">
+  <template x-teleport="body">
+  <div class="modal-overlay" x-show="create.open" x-cloak @click.self="closeCreate()" style="display:none;">
+    <div class="modal-panel" style="max-width:480px;">
         <header style="margin-bottom:8px;">
           <h3 style="margin:0; font-size:0.95rem;" x-text="'Create ' + create.kind + ' template' + (create.source ? ' (from ' + create.source + ')' : '')"></h3>
         </header>
@@ -1722,9 +1725,9 @@
   </template>
 
   <!-- Rename modal -->
-  <template x-if="rename.open">
-    <div x-teleport="body" class="modal-backdrop" @click.self="closeRename()" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center;">
-      <div class="modal panel" style="width:min(480px, 92vw);">
+  <template x-teleport="body">
+  <div class="modal-overlay" x-show="rename.open" x-cloak @click.self="closeRename()" style="display:none;">
+    <div class="modal-panel" style="max-width:480px;">
         <header style="margin-bottom:8px;">
           <h3 style="margin:0; font-size:0.95rem;" x-text="'Rename ' + rename.kind + '/' + rename.oldName"></h3>
         </header>
@@ -1746,9 +1749,9 @@
   </template>
 
   <!-- Delete confirmation -->
-  <template x-if="del.open">
-    <div x-teleport="body" class="modal-backdrop" @click.self="closeDelete()" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center;">
-      <div class="modal panel" style="width:min(480px, 92vw);">
+  <template x-teleport="body">
+  <div class="modal-overlay" x-show="del.open" x-cloak @click.self="closeDelete()" style="display:none;">
+    <div class="modal-panel" style="max-width:480px;">
         <header style="margin-bottom:8px;">
           <h3 style="margin:0; font-size:0.95rem;" x-text="'Delete ' + del.kind + '/' + del.name + '?'"></h3>
         </header>
