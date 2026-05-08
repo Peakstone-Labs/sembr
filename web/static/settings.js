@@ -16,15 +16,19 @@ window.SENSITIVE_MASK = '••••••';
 // block. Lets RSSHub Passthrough appear inline at position 3 instead of
 // being pinned to the bottom.
 const SECTION_DEFS = [
-  { id: 'embedder',  title: 'Embedder',           prefixes: ['EMBEDDER_'] },
-  { id: 'llm',       title: 'LLM Summarizer',     prefixes: ['LLM_'] },
-  { id: 'rsshub',    title: 'RSSHub Passthrough', special: 'rsshub' },
-  { id: 'smtp',      title: 'Email (SMTP)',       prefixes: ['SMTP_'] },
-  { id: 'dashboard', title: 'Dashboard',          prefixes: ['DASHBOARD_'] },
-  { id: 'display',   title: 'Display & Prompts',  prefixes: ['DISPLAY_', 'PROMPTS_'], exact: ['PROMPTS_DIR'] },
-  { id: 'lifespan',  title: 'Lifespan',           prefixes: ['LIFESPAN_'] },
-  { id: 'proxy',     title: 'Proxy / Routing',    prefixes: ['PROXY_'] },
-  { id: 'storage',   title: 'Storage',            prefixes: ['QDRANT_', 'SQLITE_'] },
+  { id: 'embedder',    title: 'Embedder',           prefixes: ['EMBEDDER_'] },
+  { id: 'llm',         title: 'LLM Summarizer',     prefixes: ['LLM_'] },
+  { id: 'rsshub',      title: 'RSSHub Passthrough', special: 'rsshub' },
+  { id: 'smtp',        title: 'Email (SMTP)',       prefixes: ['SMTP_'] },
+  { id: 'dashboard',   title: 'Dashboard',          prefixes: ['DASHBOARD_'] },
+  // Maintenance must come BEFORE storage so QDRANT_NEWS_RETENTION_DAYS
+  // (a retention setting, not a connection setting) gets bucketed here
+  // — first match wins.
+  { id: 'maintenance', title: 'Maintenance',        prefixes: ['MAINTENANCE_', 'DEAD_ARTICLES_'], exact: ['QDRANT_NEWS_RETENTION_DAYS'] },
+  { id: 'display',     title: 'Display & Prompts',  prefixes: ['DISPLAY_', 'PROMPTS_'], exact: ['PROMPTS_DIR'] },
+  { id: 'lifespan',    title: 'Lifespan',           prefixes: ['LIFESPAN_'] },
+  { id: 'proxy',       title: 'Proxy / Routing',    prefixes: ['PROXY_'] },
+  { id: 'storage',     title: 'Storage',            prefixes: ['QDRANT_', 'SQLITE_'] },
 ];
 
 function settingsTab() {

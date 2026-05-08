@@ -125,7 +125,13 @@
       <button @click="openPrune()">Manual prune…</button>
     </div>
 
-    <!-- Modal: D6 wireframe — radio + checkbox list + days input + action row -->
+    <!-- Modal: D6 wireframe — radio + checkbox list + days input + action row.
+         x-teleport="body" lifts the modal out of <main> (which has z-index:1
+         + a new stacking context). Without teleport, modal-overlay's z-index
+         is trapped inside main's stacking context and the tab nav (z-index:90
+         in body's context) renders on top. The maintenanceTab() x-data scope
+         still owns the modal because Alpine's teleport preserves scope. -->
+    <template x-teleport="body">
     <div class="modal-overlay" x-show="prune.open" @click.self="closePrune()"
          style="display:none;" x-cloak>
       <div class="modal-panel" style="max-width: 640px;">
@@ -287,6 +293,7 @@
         </template>
       </div>
     </div>
+    </template><!-- /x-teleport=body -->
   </section>
 
   <!-- Drawer -->
@@ -1896,7 +1903,7 @@
 <script src="/dashboard/feeds.js?v=4"></script>
 <script src="/dashboard/intents.js?v=2"></script>
 <script src="/dashboard/logs.js?v=2"></script>
-<script src="/dashboard/settings.js?v=6"></script>
+<script src="/dashboard/settings.js?v=7"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>
 <script src="/dashboard/app.js?v=3"></script>
 </body>
