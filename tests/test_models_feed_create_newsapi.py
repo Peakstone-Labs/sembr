@@ -89,6 +89,35 @@ def test_feed_create_newsapi_accepts_all_recommended_sources(monkeypatch) -> Non
         assert f.url == s["uri"]
 
 
+def test_frontend_hostname_regex_mirrors_backend() -> None:
+    """Drift guard (review-loop2 🟡-1): the JS-side hostname regex in
+    feeds.js submitCreate() must use the same pattern as the Python regex
+    or users see backend 422 instead of a friendly client-side hint."""
+    import re as _re
+    from pathlib import Path
+    from sembr.models import _NEWSAPI_HOSTNAME_RE
+    js_path = Path(__file__).resolve().parent.parent / "web" / "static" / "feeds.js"
+    js_src = js_path.read_text(encoding="utf-8")
+    # Locate the JS regex literal in submitCreate. The `i` flag is allowed
+    # since hostnames are already lower-cased before the test, but the
+    # *body* of the regex must match the Python pattern exactly.
+    m = _re.search(
+        r"if \(!/(?P<body>\^\[a-z0-9\][^/]+\$)/\.test\(url\)\)",
+        js_src,
+    )
+    assert m is not None, (
+        "could not locate the newsapi hostname regex in feeds.js; "
+        "if you renamed the assertion, update this test"
+    )
+    js_pattern = m.group("body")
+    py_pattern = _NEWSAPI_HOSTNAME_RE.pattern
+    assert js_pattern == py_pattern, (
+        f"frontend regex out of sync with backend.\n"
+        f"  feeds.js:    {js_pattern}\n"
+        f"  models.py:   {py_pattern}"
+    )
+
+
 def test_feed_create_newsapi_coerces_poll_interval_to_settings(monkeypatch) -> None:
     """R6: front-end disables the field but a stale form may still POST 30;
     backend forces it to the settings value so the list view stays consistent."""

@@ -10,9 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sembr.notifier.email import EmailChannelConfig
 
 _NEWSAPI_HOSTNAME_RE = re.compile(
-    # 💡-2: TLD must contain at least one alphabetic character so bare IPs
-    # (e.g. 127.0.0.1, 8.8.8.8) don't pass — newsapi.ai source.uri values
-    # are always real domains per design §A5.
+    # TLD's first char is [a-z] so bare IPs (127.0.0.1, 8.8.8.8) reject —
+    # newsapi.ai source.uri values are always real domains per design §A5.
+    # Note: this is intentionally NOT full RFC 1035 strict validation; a
+    # contrived all-alpha chain like 'a.b.c.d' would pass. The goal is
+    # "reject pure-numeric IPs", not "validate hostnames generically".
+    # Mirror in web/static/feeds.js:submitCreate — keep both in sync.
     r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*"
     r"\.[a-z][a-z0-9-]*[a-z0-9]?$"
 )

@@ -301,8 +301,11 @@ function feedsTab() {
       let url = this.create.form.url.trim();
       if (sourceType === 'newsapi') {
         // D11/D16: hostname-only. Normalize first, then validate.
+        // Mirror of sembr/models.py:_NEWSAPI_HOSTNAME_RE — TLD must contain
+        // an alphabetic char so bare IPs (127.0.0.1) reject client-side
+        // instead of round-tripping to a backend 422 (review-loop2 🟡-1).
         url = this.normalizeSourceUri(url);
-        if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(url)) {
+        if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z][a-z0-9-]*[a-z0-9]?$/.test(url)) {
           this.create.errors.url = 'must be a hostname like reuters.com';
           return;
         }
