@@ -119,9 +119,7 @@
     <h2>maintenance</h2>
     <p class="muted" style="font-size:0.85rem;">
       Manually prune Qdrant news points or dead-articles forensic rows.
-      Background TTL jobs run every
-      <code x-text="snapshot.config?.maintenance_interval_hours || 24"></code> hours;
-      this button is for one-off cleanup beyond the schedule.
+      This button is for one-off cleanup beyond the scheduled background jobs.
     </p>
     <div style="margin-top:8px;">
       <button @click="openPrune()">Manual prune…</button>
@@ -238,7 +236,7 @@
         </template>
 
         <!-- Applying view: spinner + status -->
-        <template x-if="prune.status==='applying' || prune.status==='planning' && prune.taskId">
+        <template x-if="(prune.status==='applying' || prune.status==='planning') && prune.taskId">
           <div>
             <p>
               <span class="spinner"></span>

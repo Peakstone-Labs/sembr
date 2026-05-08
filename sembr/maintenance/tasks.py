@@ -43,6 +43,12 @@ class ManualPruneTask:
 
 _manual_prune_tasks: dict[str, ManualPruneTask] = {}
 
+# Status values that mean the task has stopped progressing — only these are
+# eligible for sweep. In-flight tasks (planning / applying) must survive any
+# number of TTL ticks, otherwise a user who wandered off after the dry-run
+# (or a 4-minute large apply on 140k rows) gets a phantom 404 mid-poll.
+_TERMINAL_STATUSES: frozenset[str] = frozenset({"done", "error"})
+
 
 def create_task(
     target: ManualPruneTarget,
@@ -66,12 +72,21 @@ def get_task(task_id: str) -> ManualPruneTask | None:
 
 
 def sweep_expired(ttl_seconds: int = _TASK_TTL_SECONDS) -> int:
-    """Drop tasks whose creation timestamp is older than ``ttl_seconds``."""
+    """Drop terminal tasks whose ``finished_at`` (or, as a fallback,
+    ``_created_at``) is older than ``ttl_seconds``.
+
+    Skips non-terminal (planning / applying) tasks regardless of age — a slow
+    140k-row apply can run for several minutes and the user must be able to
+    keep polling without hitting a phantom 404.
+    """
     now = datetime.now(timezone.utc)
-    to_remove = [
-        k for k, v in _manual_prune_tasks.items()
-        if (now - v._created_at).total_seconds() > ttl_seconds
-    ]
+    to_remove: list[str] = []
+    for k, v in _manual_prune_tasks.items():
+        if v.status not in _TERMINAL_STATUSES:
+            continue
+        anchor = v.finished_at or v._created_at
+        if (now - anchor).total_seconds() > ttl_seconds:
+            to_remove.append(k)
     for k in to_remove:
         del _manual_prune_tasks[k]
     if to_remove:

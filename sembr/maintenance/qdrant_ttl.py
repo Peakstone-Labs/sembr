@@ -144,8 +144,8 @@ async def _run_qdrant_ttl(
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info(
             "qdrant_ttl run: cutoff_ts=%d deleted_qdrant=0 deleted_feed_items=0 "
-            "deleted_match_seen=0 elapsed_ms=%d",
-            cutoff_ts, elapsed_ms,
+            "deleted_match_seen=0 elapsed_ms=%d interval_hours=%d",
+            cutoff_ts, elapsed_ms, settings.maintenance_interval_hours,
         )
         return
 
@@ -159,8 +159,9 @@ async def _run_qdrant_ttl(
     elapsed_ms = int((monotonic() - started_at) * 1000)
     logger.info(
         "qdrant_ttl run: cutoff_ts=%d deleted_qdrant=%d deleted_feed_items=%d "
-        "deleted_match_seen=%d elapsed_ms=%d",
+        "deleted_match_seen=%d elapsed_ms=%d interval_hours=%d",
         cutoff_ts, len(purge_uuids), deleted_fi, deleted_ms, elapsed_ms,
+        settings.maintenance_interval_hours,
     )
 
 

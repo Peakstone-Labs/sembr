@@ -286,8 +286,10 @@ async def run_applying(
             if drift > 0 and drift / plan_total > 0.10:
                 logger.warning(
                     "manual_prune drift > 10%%: task_id=%s target=%s "
-                    "plan_total=%d actual=%d",
+                    "plan_total=%d actual=%d "
+                    "(status: /api/dashboard/maintenance/manual_prune/%s)",
                     task.task_id, task.target, plan_total, actual,
+                    task.task_id,
                 )
 
         task.result_summary = result

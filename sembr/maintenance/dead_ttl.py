@@ -41,8 +41,8 @@ async def _run_dead_ttl(settings: Settings) -> None:
         return
     elapsed_ms = int((monotonic() - started_at) * 1000)
     logger.info(
-        "dead_ttl run: cutoff=%s deleted=%d elapsed_ms=%d",
-        cutoff_iso, deleted, elapsed_ms,
+        "dead_ttl run: cutoff=%s deleted=%d elapsed_ms=%d interval_hours=%d",
+        cutoff_iso, deleted, elapsed_ms, settings.maintenance_interval_hours,
     )
 
 

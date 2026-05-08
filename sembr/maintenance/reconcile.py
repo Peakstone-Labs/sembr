@@ -58,8 +58,9 @@ async def _run_reconcile(qdrant_handle: "QdrantHandle", settings: Settings) -> N
     if not md5_list:
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info(
-            "reconcile run: scanned=0 found=0 orphan_deleted=0 elapsed_ms=%d",
-            elapsed_ms,
+            "reconcile run: scanned=0 found=0 orphan_deleted=0 elapsed_ms=%d "
+            "interval_hours=%d",
+            elapsed_ms, settings.maintenance_interval_hours,
         )
         return
 
@@ -112,8 +113,10 @@ async def _run_reconcile(qdrant_handle: "QdrantHandle", settings: Settings) -> N
 
     elapsed_ms = int((monotonic() - started_at) * 1000)
     logger.info(
-        "reconcile run: scanned=%d found=%d orphan_deleted=%d elapsed_ms=%d",
+        "reconcile run: scanned=%d found=%d orphan_deleted=%d elapsed_ms=%d "
+        "interval_hours=%d",
         len(md5_list), len(found_ids), deleted, elapsed_ms,
+        settings.maintenance_interval_hours,
     )
 
 

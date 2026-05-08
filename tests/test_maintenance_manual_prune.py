@@ -238,3 +238,60 @@ async def test_planning_error_path_records_error():
     await conn.close()
     _sqlite_mod._conn = None
     _sqlite_mod._WRITE_LOCK = None
+
+
+# ---------------------------------------------------------------------------
+# sweep_expired status filtering (Loop 2 🟡-3 regression)
+# ---------------------------------------------------------------------------
+
+
+def test_sweep_skips_in_flight_planning_task():
+    """In-flight planning tasks must survive sweep regardless of age — see
+    review.md Loop 1 finding 🟡-3.
+    """
+    task = mp_tasks.create_task("news", [6], 35)
+    # status="planning" out of the box; force _created_at to look ancient
+    task._created_at = datetime.now(timezone.utc) - timedelta(seconds=400)
+    n = mp_tasks.sweep_expired(ttl_seconds=300)
+    assert n == 0
+    assert mp_tasks.get_task(task.task_id) is not None
+
+
+def test_sweep_skips_in_flight_applying_task():
+    task = mp_tasks.create_task("dead", [7], 14)
+    task.status = "applying"
+    task._created_at = datetime.now(timezone.utc) - timedelta(seconds=10000)
+    n = mp_tasks.sweep_expired(ttl_seconds=300)
+    assert n == 0
+    assert mp_tasks.get_task(task.task_id) is not None
+
+
+def test_sweep_drops_done_task_using_finished_at_anchor():
+    task = mp_tasks.create_task("dead", [7], 14)
+    task.status = "done"
+    # _created_at is fresh, but finished_at is stale → must drop
+    task._created_at = datetime.now(timezone.utc)
+    task.finished_at = datetime.now(timezone.utc) - timedelta(seconds=400)
+    n = mp_tasks.sweep_expired(ttl_seconds=300)
+    assert n == 1
+    assert mp_tasks.get_task(task.task_id) is None
+
+
+def test_sweep_keeps_recently_done_task():
+    task = mp_tasks.create_task("dead", [7], 14)
+    task.status = "done"
+    task.finished_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+    n = mp_tasks.sweep_expired(ttl_seconds=300)
+    assert n == 0
+    assert mp_tasks.get_task(task.task_id) is not None
+
+
+def test_sweep_drops_error_task_using_created_at_when_no_finished():
+    """Error tasks that never set finished_at fall back to _created_at."""
+    task = mp_tasks.create_task("news", [6], 35)
+    task.status = "error"
+    task.finished_at = None
+    task._created_at = datetime.now(timezone.utc) - timedelta(seconds=400)
+    n = mp_tasks.sweep_expired(ttl_seconds=300)
+    assert n == 1
+    assert mp_tasks.get_task(task.task_id) is None
