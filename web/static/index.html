@@ -30,6 +30,7 @@
   <button class="tab-btn" :class="{active: currentTab==='dashboard'}" @click="setTab('dashboard')">Dashboard</button>
   <button class="tab-btn" :class="{active: currentTab==='feeds'}"     @click="setTab('feeds')">Feeds</button>
   <button class="tab-btn" :class="{active: currentTab==='intents'}"   @click="setTab('intents')">Intents</button>
+  <button class="tab-btn" :class="{active: currentTab==='templates'}" @click="setTab('templates')">Templates</button>
   <button class="tab-btn" :class="{active: currentTab==='logs'}"      @click="setTab('logs')">Logs</button>
   <button class="tab-btn" :class="{active: currentTab==='settings'}"  @click="setTab('settings')">Settings</button>
 </nav>
@@ -1575,6 +1576,218 @@
 </div><!-- /intents-view -->
 
 <!-- ═══════════════════════════════════════════════════════
+     Templates view — D7 places this between Intents and Logs.
+     Two columns (system / instruction) listing TemplateInfo rows with
+     inline editor + create/rename/duplicate/delete dialogs.
+     ══════════════════════════════════════════════════════ -->
+<div x-show="currentTab==='templates'" x-data="templatesTab()" x-init="init()" class="templates-view">
+
+  <div class="muted" style="margin:8px 0 12px; font-size:0.78rem;">
+    Templates are read on every digest tick — edits take effect on the next match. Built-in
+    templates (e.g. <code>default</code>) are read-only; use Duplicate to start from one.
+  </div>
+
+  <template x-if="loading">
+    <div class="muted">Loading templates…</div>
+  </template>
+
+  <div class="templates-columns" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+
+    <!-- System column -->
+    <section class="panel">
+      <header style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
+        <h3 style="margin:0; font-size:0.9rem;">System Templates</h3>
+        <button class="btn" @click="openCreate('system')">+ New System Template</button>
+      </header>
+      <template x-if="system.length === 0 && !loading">
+        <div class="muted">No templates.</div>
+      </template>
+      <template x-for="row in system" :key="'system/' + row.name">
+        <div class="template-row" style="display:flex; flex-direction:column; gap:4px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+          <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+            <strong x-text="row.name"></strong>
+            <span x-show="row.is_builtin" class="muted" style="font-size:0.7rem; padding:1px 6px; border:1px solid rgba(255,255,255,0.15); border-radius:3px;">built-in</span>
+            <span class="muted" style="font-size:0.72rem;">
+              <span x-text="fmtSize(row.size_bytes)"></span> · modified <span x-text="fmtMtime(row.mtime)"></span>
+              · <span x-text="row.ref_count"></span> intent<span x-show="row.ref_count !== 1">s</span>
+            </span>
+          </div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn" @click="openEditor(row)" x-text="row.is_builtin ? 'View' : 'Edit'"></button>
+            <button class="btn" @click="duplicate(row)">Duplicate</button>
+            <button class="btn" :disabled="row.is_builtin" @click="!row.is_builtin && openRename(row)">Rename</button>
+            <button class="btn btn-danger" :disabled="row.is_builtin" @click="!row.is_builtin && openDelete(row)">Delete</button>
+          </div>
+          <template x-if="row.ref_count > 0">
+            <div class="muted" style="font-size:0.72rem;">
+              Used by:
+              <template x-for="ref in row.ref_intents" :key="ref.id">
+                <span style="margin-right:6px;" x-text="'#' + ref.id + ' ' + ref.name"></span>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+    </section>
+
+    <!-- Instruction column -->
+    <section class="panel">
+      <header style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
+        <h3 style="margin:0; font-size:0.9rem;">Instruction Templates</h3>
+        <button class="btn" @click="openCreate('instruction')">+ New Instruction Template</button>
+      </header>
+      <template x-if="instruction.length === 0 && !loading">
+        <div class="muted">No templates.</div>
+      </template>
+      <template x-for="row in instruction" :key="'instruction/' + row.name">
+        <div class="template-row" style="display:flex; flex-direction:column; gap:4px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+          <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+            <strong x-text="row.name"></strong>
+            <span x-show="row.is_builtin" class="muted" style="font-size:0.7rem; padding:1px 6px; border:1px solid rgba(255,255,255,0.15); border-radius:3px;">built-in</span>
+            <span class="muted" style="font-size:0.72rem;">
+              <span x-text="fmtSize(row.size_bytes)"></span> · modified <span x-text="fmtMtime(row.mtime)"></span>
+              · <span x-text="row.ref_count"></span> intent<span x-show="row.ref_count !== 1">s</span>
+            </span>
+          </div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn" @click="openEditor(row)" x-text="row.is_builtin ? 'View' : 'Edit'"></button>
+            <button class="btn" @click="duplicate(row)">Duplicate</button>
+            <button class="btn" :disabled="row.is_builtin" @click="!row.is_builtin && openRename(row)">Rename</button>
+            <button class="btn btn-danger" :disabled="row.is_builtin" @click="!row.is_builtin && openDelete(row)">Delete</button>
+          </div>
+          <template x-if="row.ref_count > 0">
+            <div class="muted" style="font-size:0.72rem;">
+              Used by:
+              <template x-for="ref in row.ref_intents" :key="ref.id">
+                <span style="margin-right:6px;" x-text="'#' + ref.id + ' ' + ref.name"></span>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+    </section>
+
+  </div>
+
+  <!-- Editor modal (Edit content) -->
+  <template x-if="editor.open">
+    <div x-teleport="body" class="modal-backdrop" @click.self="closeEditor()" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center;">
+      <div class="modal panel" style="width:min(900px, 92vw); max-height:90vh; display:flex; flex-direction:column;">
+        <header style="display:flex; align-items:baseline; gap:8px; margin-bottom:8px;">
+          <h3 style="margin:0; font-size:0.95rem;" x-text="(isEditorBuiltin ? 'View ' : 'Edit ') + editor.kind + '/' + editor.name"></h3>
+          <span x-show="isEditorBuiltin" class="muted" style="font-size:0.72rem;">read-only</span>
+        </header>
+        <div class="muted" style="font-size:0.72rem; margin-bottom:6px;">
+          Allowed placeholders:
+          <code x-text="editor.kind === 'system' ? '{language}' : '{intent_text}, {articles}'"></code>
+        </div>
+        <textarea x-model="editor.content"
+                  :readonly="isEditorBuiltin"
+                  spellcheck="false"
+                  style="flex:1 1 auto; min-height:240px; font-family:monospace; font-size:0.85rem; padding:8px; background:#0d1726; color:#dde3ec; border:1px solid rgba(255,255,255,0.12); border-radius:4px;"></textarea>
+        <div x-show="editor.error" class="muted" style="color:#e08585; font-size:0.78rem; margin-top:6px;" x-text="editor.error"></div>
+        <footer style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
+          <button class="btn" @click="closeEditor()">Cancel</button>
+          <button class="btn"
+                  :disabled="isEditorBuiltin || editor.submitting || !editorDirty"
+                  @click="!isEditorBuiltin && saveEditor()"
+                  x-text="editor.submitting ? 'Saving…' : 'Save'"></button>
+        </footer>
+      </div>
+    </div>
+  </template>
+
+  <!-- Create modal -->
+  <template x-if="create.open">
+    <div x-teleport="body" class="modal-backdrop" @click.self="closeCreate()" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center;">
+      <div class="modal panel" style="width:min(480px, 92vw);">
+        <header style="margin-bottom:8px;">
+          <h3 style="margin:0; font-size:0.95rem;" x-text="'Create ' + create.kind + ' template' + (create.source ? ' (from ' + create.source + ')' : '')"></h3>
+        </header>
+        <label class="field-label" style="display:block; font-size:0.78rem; margin-bottom:4px;">Name</label>
+        <input type="text" x-model="create.name" placeholder="my_template_v1"
+               style="width:100%; padding:6px 8px; background:#0d1726; color:#dde3ec; border:1px solid rgba(255,255,255,0.12); border-radius:4px;"
+               @keyup.enter="submitCreate()">
+        <div class="muted" style="font-size:0.7rem; margin-top:4px;">
+          Letters / digits / underscores; no <code>/</code>, <code>\</code>, <code>..</code>; reserved name <code>default</code>.
+        </div>
+        <div x-show="create.error" class="muted" style="color:#e08585; font-size:0.78rem; margin-top:8px;" x-text="create.error"></div>
+        <footer style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+          <button class="btn" @click="closeCreate()">Cancel</button>
+          <button class="btn" :disabled="create.submitting" @click="submitCreate()"
+                  x-text="create.submitting ? 'Creating…' : 'Create'"></button>
+        </footer>
+      </div>
+    </div>
+  </template>
+
+  <!-- Rename modal -->
+  <template x-if="rename.open">
+    <div x-teleport="body" class="modal-backdrop" @click.self="closeRename()" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center;">
+      <div class="modal panel" style="width:min(480px, 92vw);">
+        <header style="margin-bottom:8px;">
+          <h3 style="margin:0; font-size:0.95rem;" x-text="'Rename ' + rename.kind + '/' + rename.oldName"></h3>
+        </header>
+        <div class="muted" style="font-size:0.72rem; margin-bottom:6px;">
+          Renaming cascades to every intent that references this template — atomic file move + SQLite UPDATE in one request.
+        </div>
+        <label class="field-label" style="display:block; font-size:0.78rem; margin-bottom:4px;">New name</label>
+        <input type="text" x-model="rename.newName" placeholder="my_template_v2"
+               style="width:100%; padding:6px 8px; background:#0d1726; color:#dde3ec; border:1px solid rgba(255,255,255,0.12); border-radius:4px;"
+               @keyup.enter="submitRename()">
+        <div x-show="rename.error" class="muted" style="color:#e08585; font-size:0.78rem; margin-top:8px;" x-text="rename.error"></div>
+        <footer style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+          <button class="btn" @click="closeRename()">Cancel</button>
+          <button class="btn" :disabled="rename.submitting" @click="submitRename()"
+                  x-text="rename.submitting ? 'Renaming…' : 'Rename'"></button>
+        </footer>
+      </div>
+    </div>
+  </template>
+
+  <!-- Delete confirmation -->
+  <template x-if="del.open">
+    <div x-teleport="body" class="modal-backdrop" @click.self="closeDelete()" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; display:flex; align-items:center; justify-content:center;">
+      <div class="modal panel" style="width:min(480px, 92vw);">
+        <header style="margin-bottom:8px;">
+          <h3 style="margin:0; font-size:0.95rem;" x-text="'Delete ' + del.kind + '/' + del.name + '?'"></h3>
+        </header>
+        <template x-if="del.refIntents.length > 0">
+          <div class="muted" style="font-size:0.78rem; color:#e0a64a;">
+            This template is referenced by <strong x-text="del.refIntents.length"></strong> intent(s):
+            <ul style="margin:4px 0 0 16px; padding:0;">
+              <template x-for="ref in del.refIntents" :key="ref.id">
+                <li><span x-text="'#' + ref.id + ' ' + ref.name"></span></li>
+              </template>
+            </ul>
+            Detach those intents first (or change their template) before deleting.
+          </div>
+        </template>
+        <template x-if="del.refIntents.length === 0">
+          <div class="muted" style="font-size:0.78rem;">This action removes the file from <code>/app/prompts/</code>. It cannot be undone.</div>
+        </template>
+        <div x-show="del.error" class="muted" style="color:#e08585; font-size:0.78rem; margin-top:8px;" x-text="del.error"></div>
+        <footer style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+          <button class="btn" @click="closeDelete()">Cancel</button>
+          <button class="btn btn-danger"
+                  :disabled="del.submitting || del.refIntents.length > 0"
+                  @click="del.refIntents.length === 0 && submitDelete()"
+                  x-text="del.submitting ? 'Deleting…' : 'Delete'"></button>
+        </footer>
+      </div>
+    </div>
+  </template>
+
+  <!-- Toasts -->
+  <div class="toast-container">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="toast" :class="'toast-' + t.type" x-text="t.msg"></div>
+    </template>
+  </div>
+
+</div><!-- /templates-view -->
+
+<!-- ═══════════════════════════════════════════════════════
      Logs view — wrapped in <template x-if> so logsTab() (and the SSE
      stream it opens on init) only mounts when the user actually clicks
      the Logs tab. With plain x-show the component initialises on first
@@ -1901,10 +2114,11 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=4"></script>
-<script src="/dashboard/intents.js?v=2"></script>
+<script src="/dashboard/intents.js?v=3"></script>
+<script src="/dashboard/templates.js?v=1"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=7"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>
-<script src="/dashboard/app.js?v=3"></script>
+<script src="/dashboard/app.js?v=4"></script>
 </body>
 </html>

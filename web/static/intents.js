@@ -123,12 +123,14 @@ function intentsTab() {
     },
 
     async loadTemplates() {
+      // Server returns rich TemplateInfo rows since the template-mgmt rewrite
+      // (D6); the intents tab only needs the names for the <select> options.
       try {
         const res = await this._request('GET', '/api/prompts/templates');
         if (!res.ok) throw new Error();
         const data = await res.json();
-        this.systemTemplates = data.system || [];
-        this.instructionTemplates = data.instruction || [];
+        this.systemTemplates = (data.system || []).map(r => r.name);
+        this.instructionTemplates = (data.instruction || []).map(r => r.name);
       } catch (_) {
         this.systemTemplates = [];
         this.instructionTemplates = [];

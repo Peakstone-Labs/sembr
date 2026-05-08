@@ -68,11 +68,12 @@ function dashboard() {
 
     _syncFromHash() {
       const hash = window.location.hash.slice(1) || 'dashboard';
-      if (hash.startsWith('intents'))      this.currentTab = 'intents';
-      else if (hash.startsWith('logs'))    this.currentTab = 'logs';
-      else if (hash.startsWith('feeds'))   this.currentTab = 'feeds';
-      else if (hash.startsWith('settings')) this.currentTab = 'settings';
-      else                                 this.currentTab = 'dashboard';
+      if (hash.startsWith('intents'))        this.currentTab = 'intents';
+      else if (hash.startsWith('templates')) this.currentTab = 'templates';
+      else if (hash.startsWith('logs'))      this.currentTab = 'logs';
+      else if (hash.startsWith('feeds'))     this.currentTab = 'feeds';
+      else if (hash.startsWith('settings'))  this.currentTab = 'settings';
+      else                                   this.currentTab = 'dashboard';
     },
 
     setTab(tab) {
@@ -87,6 +88,8 @@ function dashboard() {
         }
       } else if (tab === 'settings') {
         if (!window.location.hash.startsWith('#settings')) window.location.hash = 'settings';
+      } else if (tab === 'templates') {
+        if (!window.location.hash.startsWith('#templates')) window.location.hash = 'templates';
       } else {
         if (!window.location.hash.startsWith('#intents')) {
           window.location.hash = 'intents/cron';
