@@ -425,12 +425,19 @@ function dashboard() {
     },
 
     async openArticleDetail(md5, bucket) {
+      // The body modal is driven by `drawer.detail` truthiness — set null
+      // first so the previous detail isn't briefly visible while the new
+      // one fetches.
       this.drawer.detail = null;
       try {
         this.drawer.detail = await this._api(
           `/api/dashboard/articles/${md5}?bucket=${bucket}`
         );
       } catch (e) { console.error(e); }
+    },
+
+    closeArticleDetail() {
+      this.drawer.detail = null;
     },
 
     // ── restart (D1 + D10 + D13) ─────────────────────────────────────────
