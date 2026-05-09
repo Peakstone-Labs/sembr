@@ -119,15 +119,16 @@ async def ensure_news_collection(
     # place before the first filtered scroll. Idempotent: create_payload_index
     # is a no-op when the index already exists.
     #
-    # WORD tokenizer + lowercase = case-insensitive whole-token match.
-    # CJK input gets char-level tokenization under WORD; this is an accepted
-    # v1 trade-off (design D / R9). MULTILINGUAL is the post-1.0 candidate.
+    # MULTILINGUAL tokenizer (ICU-based) is required for CJK: WORD only splits
+    # on whitespace/punctuation, so a Chinese title becomes a single >20-char
+    # token that `max_token_len` then drops, making MatchText return 0 hits for
+    # any Chinese query. MULTILINGUAL segments CJK at the character level.
     await client.create_payload_index(
         collection_name=name,
         field_name="title",
         field_schema=TextIndexParams(
             type="text",
-            tokenizer=TokenizerType.WORD,
+            tokenizer=TokenizerType.MULTILINGUAL,
             lowercase=True,
             min_token_len=1,
             max_token_len=20,

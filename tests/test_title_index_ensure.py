@@ -2,7 +2,9 @@
 
 Tests that the lazy-import block exposes ``TextIndexParams`` and ``TokenizerType``
 (memory: dev would silently NameError at runtime if missed) and that the
-field_schema sent to qdrant is type=text + tokenizer=WORD + lowercase=True.
+field_schema sent to qdrant is type=text + tokenizer=MULTILINGUAL + lowercase=True.
+The MULTILINGUAL tokenizer is required for CJK title search — WORD treats a
+Chinese title as a single token that ``max_token_len`` then drops.
 """
 from __future__ import annotations
 
@@ -40,7 +42,7 @@ async def test_ensure_news_collection_creates_title_text_index():
         if c.kwargs.get("field_name") == "title"
     )
     schema = title_call.kwargs["field_schema"]
-    # TextIndexParams type=text + WORD + lowercase
+    # TextIndexParams type=text + MULTILINGUAL + lowercase
     assert schema.type == "text"
     # qdrant-client serializes TokenizerType enum as a string-valued enum;
     # accept either the enum or its lowercase string form.
@@ -49,7 +51,7 @@ async def test_ensure_news_collection_creates_title_text_index():
     tokenizer_str = (
         tokenizer.value if hasattr(tokenizer, "value") else str(tokenizer)
     )
-    assert "word" in tokenizer_str.lower()
+    assert "multilingual" in tokenizer_str.lower()
     assert schema.lowercase is True
     assert schema.min_token_len == 1
     assert schema.max_token_len == 20
