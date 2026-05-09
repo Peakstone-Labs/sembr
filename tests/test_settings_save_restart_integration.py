@@ -103,15 +103,15 @@ async def test_save_settings_schedules_self_restart_call_later(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """schedule_self_restart() registers call_later; when it fires, _RESTART_REQUESTED
-    becomes True (simulated via a _send_sigterm_to_self that sets the flag but
-    suppresses the actual SIGTERM)."""
+    becomes True (simulated via a _spawn_self_force_recreate that sets the flag but
+    suppresses the actual fork)."""
     fired: list[bool] = []
 
-    def fake_send_sigterm():
+    def fake_spawn():
         settings_restart._RESTART_REQUESTED = True
         fired.append(True)
 
-    monkeypatch.setattr(settings_restart, "_send_sigterm_to_self", fake_send_sigterm)
+    monkeypatch.setattr(settings_restart, "_spawn_self_force_recreate", fake_spawn)
 
     loop = asyncio.get_running_loop()
     rc = RestartController(loop=loop, subprocess_runner=lambda *a, **k: None)

@@ -7,18 +7,22 @@ Two responsibilities:
    the bind-mounted `.env`. We drive this via `docker compose up --force-recreate`
    using the compose CLI available inside the API container (see design.md D1-D7).
 
-2. **API self-restart** — sembr changed its own ``.env`` and needs
-   ``get_settings()``'s ``lru_cache`` cleared. The simplest correct path is
-   to let the FastAPI lifespan run its full shutdown chain and rely on
-   ``restart: unless-stopped`` to bring us back up. We schedule a delayed
-   ``SIGTERM`` so the response that triggered the restart can be flushed
-   to the browser first (design.md D8-D11).
+2. **API self-restart** — sembr changed its own ``.env`` and needs the new
+   values to land in ``os.environ`` (env_file: bakes values at container
+   *creation* time; ``docker restart`` of the same container keeps the old
+   env). We spawn a *detached* ``docker compose up -d --force-recreate api``
+   on a 1.5s delay; compose sends SIGTERM to the running api so FastAPI's
+   lifespan shutdown chain still runs cleanly, then creates a fresh
+   container which re-reads the modified ``.env``. Detached so the spawned
+   compose process survives our own death.
 
-Why SIGTERM rather than restarting the api container externally: the
-external path bypasses our own lifespan shutdown chain — APScheduler,
-Qdrant, and sqlite cleanup get SIGKILL'd at the docker-stop timeout,
-defeating the ordering enforced in ``sembr.main.lifespan``. SIGTERM lets
-uvicorn's lifespan run to completion before the process exits.
+Earlier design (D8-D11) called ``os.kill(SIGTERM)`` and expected
+``restart: unless-stopped`` to "rehydrate" the container with the new
+``.env``. That assumption was wrong — restart of an existing container
+does not re-read ``env_file``, only ``up --force-recreate`` does. Symptom
+was the Settings page reporting "overridden by shell env" after every
+save because pydantic-settings was reading the stale baked-in env values
+that took priority over the freshly-written ``.env``.
 """
 from __future__ import annotations
 
@@ -33,9 +37,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SELF_SHUTDOWN_DELAY = 1.5  # seconds — long enough for an HTTP response to flush
 RSSHUB_SERVICE_NAME = "rsshub"          # docker compose service name (for `compose up`)
+API_SERVICE_NAME = "api"                # docker compose service name for self
 COMPOSE_FILE_PATH = "/app/docker-compose.yml"
 
-# Module-level flag: set to True by _send_sigterm_to_self so the lifespan
+# Module-level flag: set to True by _spawn_self_force_recreate so the lifespan
 # finally block knows to call _force_exit after graceful shutdown completes.
 # Never True in TestClient paths (signal never sent → flag never set).
 _RESTART_REQUESTED: bool = False
@@ -105,27 +110,57 @@ class RestartController:
     # ── API self-restart ──────────────────────────────────────────────────
 
     def schedule_self_restart(self, delay: float = DEFAULT_SELF_SHUTDOWN_DELAY) -> None:
-        """Send ourselves SIGTERM after ``delay`` seconds.
+        """Spawn a detached ``docker compose up -d --force-recreate api``
+        after ``delay`` seconds.
 
-        SIGTERM triggers the FastAPI lifespan shutdown chain
-        (scheduler.shutdown, embedder.aclose, qdrant.close, close_sqlite —
-        memory: feedback_lifespan); ``restart: unless-stopped`` then has
-        docker rehydrate the container, which re-reads the (now-modified)
-        bind-mounted ``.env`` and rebuilds Settings.
+        Detached (``start_new_session=True``) so the compose process survives
+        the SIGTERM compose itself sends to us. The new container reads the
+        freshly-written ``.env``, replacing the stale env baked in at the
+        previous container's creation time. Lifespan shutdown still runs
+        cleanly because compose sends SIGTERM (not SIGKILL) and waits for
+        the docker stop grace period (memory: feedback_lifespan).
         """
         loop = self._loop or asyncio.get_event_loop()
-        loop.call_later(delay, _send_sigterm_to_self)
-        logger.info("api self-restart scheduled in %.2fs (SIGTERM → lifespan shutdown)", delay)
+        loop.call_later(delay, _spawn_self_force_recreate)
+        logger.info(
+            "api self-restart scheduled in %.2fs (compose force-recreate → lifespan shutdown)",
+            delay,
+        )
 
 
-def _send_sigterm_to_self() -> None:
-    # Separate function so tests can monkeypatch it without owning the
-    # full call_later scheduling machinery.
-    #
-    # Set the flag BEFORE sending the signal: lifespan finally checks it
-    # and calls _force_exit only when True, ensuring the process actually
-    # exits so Docker restart: unless-stopped can bring it back up.
+def _spawn_self_force_recreate() -> None:
+    """Spawn a detached ``docker compose up -d --force-recreate api`` and set
+    the lifespan exit flag.
+
+    Why detached: the compose command will SIGTERM us as part of its
+    "stop the existing container, start a new one" flow. If we spawned
+    it in our own process group, the SIGTERM that propagates would also
+    kill the compose child before it gets to start the new container.
+    ``start_new_session=True`` puts compose in its own session so it
+    survives our death.
+
+    The lifespan finally-block reads ``_RESTART_REQUESTED`` and calls
+    ``_force_exit`` on shutdown completion to make sure docker's
+    grace-period logic doesn't get to SIGKILL us mid-cleanup.
+    """
     global _RESTART_REQUESTED
     _RESTART_REQUESTED = True
-    logger.info("api self-restart firing now (SIGTERM to PID %d)", os.getpid())
-    os.kill(os.getpid(), signal.SIGTERM)
+    cmd = [
+        "docker", "compose",
+        "-f", COMPOSE_FILE_PATH,
+        "up", "-d", "--force-recreate", "--no-deps",
+        API_SERVICE_NAME,
+    ]
+    logger.info("api self-restart firing now (spawning %s detached)", " ".join(cmd))
+    try:
+        subprocess.Popen(  # noqa: S603 — controlled argv, no shell expansion
+            cmd,
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+    except Exception:  # noqa: BLE001 — last-ditch fallback so we don't leave a dead container
+        logger.exception("compose spawn failed; falling back to SIGTERM-self")
+        os.kill(os.getpid(), signal.SIGTERM)

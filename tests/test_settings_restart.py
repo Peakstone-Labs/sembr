@@ -130,9 +130,12 @@ async def test_restart_rsshub_runs_off_event_loop() -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_self_restart_uses_call_later(monkeypatch: pytest.MonkeyPatch) -> None:
-    sent: list[int] = []
+    """call_later wires up the spawn helper. Implementation switched from
+    SIGTERM-self to docker-compose-force-recreate-self in the env_file fix
+    (see settings_restart docstring); the test pins call_later wiring."""
+    fired: list[bool] = []
     monkeypatch.setattr(
-        settings_restart, "_send_sigterm_to_self", lambda: sent.append(signal.SIGTERM)
+        settings_restart, "_spawn_self_force_recreate", lambda: fired.append(True)
     )
 
     loop = asyncio.get_running_loop()
@@ -140,7 +143,7 @@ async def test_schedule_self_restart_uses_call_later(monkeypatch: pytest.MonkeyP
     rc.schedule_self_restart(delay=0.05)
 
     await asyncio.sleep(0.15)
-    assert sent == [signal.SIGTERM]
+    assert fired == [True]
 
 
 @pytest.mark.asyncio
@@ -161,24 +164,51 @@ async def test_schedule_self_restart_default_delay_argument(monkeypatch: pytest.
 
 # ── Phase 2: _RESTART_REQUESTED flag ─────────────────────────────────────────
 
-def test_send_sigterm_to_self_calls_os_kill(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[int, int]] = []
-    monkeypatch.setattr(
-        settings_restart.os, "kill", lambda pid, sig: calls.append((pid, sig))
-    )
-    settings_restart._send_sigterm_to_self()
-    assert len(calls) == 1
-    pid, sig = calls[0]
-    assert sig == signal.SIGTERM
-    assert pid > 0
+def test_spawn_self_force_recreate_invokes_compose(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The detached spawn must invoke docker compose with the api service
+    name and force-recreate flag. Captures Popen args without actually
+    forking."""
+    captured: list[tuple[list[str], dict]] = []
+
+    class _FakePopen:
+        def __init__(self, argv, **kwargs):
+            captured.append((argv, kwargs))
+
+    monkeypatch.setattr(settings_restart.subprocess, "Popen", _FakePopen)
+    settings_restart._spawn_self_force_recreate()
+    assert len(captured) == 1
+    argv, kwargs = captured[0]
+    assert argv[:2] == ["docker", "compose"]
+    assert "--force-recreate" in argv
+    assert "--no-deps" in argv
+    assert argv[-1] == settings_restart.API_SERVICE_NAME
+    assert kwargs.get("start_new_session") is True
+    assert kwargs.get("close_fds") is True
 
 
-def test_send_sigterm_sets_restart_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spawn_self_force_recreate_sets_restart_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        settings_restart.os, "kill", lambda pid, sig: None  # suppress real signal
+        settings_restart.subprocess, "Popen",
+        lambda *a, **k: None,  # suppress real fork
     )
-    settings_restart._send_sigterm_to_self()
+    settings_restart._spawn_self_force_recreate()
     assert settings_restart.is_restart_requested() is True
+
+
+def test_spawn_self_force_recreate_falls_back_to_sigterm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If Popen raises (no docker binary, etc.), fall back to SIGTERM-self
+    rather than leaving the api process orphaned with a stale env."""
+    def _boom(*a, **k):
+        raise FileNotFoundError("docker not found")
+    monkeypatch.setattr(settings_restart.subprocess, "Popen", _boom)
+
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        settings_restart.os, "kill", lambda pid, sig: sent.append((pid, sig))
+    )
+    settings_restart._spawn_self_force_recreate()
+    assert len(sent) == 1
+    assert sent[0][1] == signal.SIGTERM
 
 
 def test_is_restart_requested_default_false() -> None:
