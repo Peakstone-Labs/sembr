@@ -430,21 +430,35 @@ async def _scroll_articles_qdrant(
 ) -> list[ArticleListItem]:
     """Newest-first scroll over `news_current` with client-side offset.
 
-    Qdrant's `scroll(order_by=...)` does NOT return a usable `next_page_offset`
-    cursor — every call comes back with `next_page_offset=None` even when more
-    matching points exist. Pagination must be driven by the order_by field
-    itself: pass `start_from=<last seen value>` and dedup on point id (the
-    boundary point is returned again because the bound is inclusive).
+    Qdrant docs (manage-data/points): "When you use the order_by parameter,
+    pagination is disabled. ... next_page_offset is not returned within the
+    response. However, you can still do pagination by combining
+    ``order_by.start_from`` with a ``must_not.has_id`` filter."
+
+    So each iteration after the first sets ``order_by.start_from = last_ts``
+    AND appends a ``HasIdCondition`` with every already-seen point id to
+    ``must_not``. Qdrant excludes those ids server-side, which sidesteps the
+    "boundary cluster of equal ts" duplicate problem entirely.
 
     Without this loop the dashboard silently capped each result page at one
     Qdrant page (~64 hits), making a search like ``title_q=伊朗`` look like it
     only had ~24h of coverage when the collection actually held >700 hits over
     >10 days.
     """
+    from qdrant_client.models import (  # noqa: PLC0415
+        Filter,
+        HasIdCondition,
+    )
+
     items: list[ArticleListItem] = []
     seen_ids: set[str] = set()
     target = limit + offset
     last_ts: int | None = None
+
+    base_must = list(getattr(scroll_filter, "must", None) or []) if scroll_filter else []
+    base_should = list(getattr(scroll_filter, "should", None) or []) if scroll_filter else []
+    base_must_not = list(getattr(scroll_filter, "must_not", None) or []) if scroll_filter else []
+
     try:
         while len(items) < target:
             order_by_spec: dict[str, Any] = {
@@ -454,6 +468,19 @@ async def _scroll_articles_qdrant(
             if last_ts is not None:
                 order_by_spec["start_from"] = last_ts
 
+            iter_must_not = list(base_must_not)
+            if seen_ids:
+                iter_must_not.append(HasIdCondition(has_id=list(seen_ids)))
+
+            if base_must or base_should or iter_must_not:
+                iter_filter: Any | None = Filter(
+                    must=base_must or None,
+                    should=base_should or None,
+                    must_not=iter_must_not or None,
+                )
+            else:
+                iter_filter = None
+
             scroll_kwargs: dict[str, Any] = {
                 "collection_name": _NEWS_ALIAS,
                 "with_payload": True,
@@ -461,21 +488,18 @@ async def _scroll_articles_qdrant(
                 "order_by": order_by_spec,
                 "limit": min(target - len(items), 64),
             }
-            if scroll_filter is not None:
-                scroll_kwargs["scroll_filter"] = scroll_filter
+            if iter_filter is not None:
+                scroll_kwargs["scroll_filter"] = iter_filter
 
             points, _next_unused = await qdrant_client.scroll(**scroll_kwargs)
             if not points:
                 break
 
-            new_count = 0
             page_last_ts: int | None = None
             for p in points:
                 pid = str(getattr(p, "id", ""))
                 payload = getattr(p, "payload", {}) or {}
                 page_last_ts = payload.get("ingested_at_ts") or page_last_ts
-                if pid in seen_ids:
-                    continue
                 seen_ids.add(pid)
                 items.append(
                     ArticleListItem(
@@ -488,15 +512,9 @@ async def _scroll_articles_qdrant(
                         bucket="qdrant",
                     )
                 )
-                new_count += 1
                 if len(items) >= target:
                     break
 
-            # No new ids in this page = we're stuck on a boundary cluster of
-            # equal-ts points already drained, or the page was all duplicates.
-            # Either way, advancing further would loop forever.
-            if new_count == 0:
-                break
             if page_last_ts is None:
                 break
             last_ts = page_last_ts

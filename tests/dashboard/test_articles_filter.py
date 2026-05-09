@@ -137,19 +137,18 @@ def test_articles_qdrant_invalid_feed_id_returns_422(app: FastAPI):
     assert r.status_code == 422
 
 
-def test_articles_qdrant_paginates_via_start_from_when_cursor_none(tmp_path):
+def test_articles_qdrant_paginates_via_start_from_and_must_not_has_id(tmp_path):
     """Regression: Qdrant scroll(order_by=...) returns next_page_offset=None
-    even when more matching points exist. The loop must drive pagination via
-    order_by.start_from and dedup on point id, otherwise every result page is
-    silently capped at one Qdrant page (~64 hits) — what made title_q=伊朗 look
-    like ~24h of coverage when >700 hits over >10 days actually existed.
+    even when more matching points exist. The loop must drive pagination per
+    Qdrant docs: order_by.start_from = last seen ts AND a HasIdCondition in
+    must_not listing every previously seen point id (server-side dedup).
+    Without this, every result page silently caps at one Qdrant page (~64
+    hits) — what made title_q=伊朗 look like ~24h of coverage when >700 hits
+    over 10+ days actually existed.
     """
     fake_qclient = MagicMock()
     calls: list[dict] = []
 
-    # Page 1: 64 distinct points at descending ts — boundary at ts=940.
-    # Page 2: ts<=940 returns 5 points (937..933), one of which (id "p64", ts 940)
-    # repeats the boundary — must be deduped.
     page1 = [
         SimpleNamespace(
             id=f"p{i}",
@@ -158,19 +157,15 @@ def test_articles_qdrant_paginates_via_start_from_when_cursor_none(tmp_path):
         )
         for i in range(60)
     ]
+    # Page 2: only points Qdrant would return after must_not has_id filter
+    # excludes p0..p59 — i.e. ids the loop has not seen yet.
     page2 = [
-        SimpleNamespace(
-            id="p59",  # boundary duplicate (ingested_at_ts == last seen)
-            payload={"ingested_at_ts": 941, "title": "dup", "url": "u",
-                     "feed_id": 1, "published_at": None},
-        ),
-    ] + [
         SimpleNamespace(
             id=f"q{i}",
             payload={"ingested_at_ts": 940 - i, "title": f"q{i}", "url": "u",
                      "feed_id": 1, "published_at": None},
         )
-        for i in range(4)
+        for i in range(5)
     ]
 
     async def _scroll(**kwargs):
@@ -202,12 +197,21 @@ def test_articles_qdrant_paginates_via_start_from_when_cursor_none(tmp_path):
         r = client.get("/api/dashboard/articles?bucket=qdrant&limit=63")
     assert r.status_code == 200, r.text
     rows = r.json()
-    # 60 from page1 + 3 unique from page2 (boundary dup p59 is dropped).
+    # 60 from page1 + 3 from page2 (limit=63 caps the run).
     assert len(rows) == 63
     md5s = [row["md5"] for row in rows]
     assert len(md5s) == len(set(md5s)), "duplicate point ids leaked through"
-    # Two scroll calls: first with no start_from, second with start_from=941
-    # (the ts of p59, the last item of page1).
+
+    # First call: no start_from, no scroll_filter (no base filter on this route).
     assert len(calls) == 2
     assert "start_from" not in calls[0]["order_by"]
+    assert "scroll_filter" not in calls[0]
+
+    # Second call: start_from = last seen ts (941, p59); scroll_filter has a
+    # must_not entry that is a HasIdCondition listing all 60 page-1 ids.
     assert calls[1]["order_by"]["start_from"] == 941
+    qfilter = calls[1]["scroll_filter"]
+    assert qfilter.must_not is not None and len(qfilter.must_not) == 1
+    has_id_cond = qfilter.must_not[0]
+    excluded = set(getattr(has_id_cond, "has_id", []))
+    assert excluded == {f"p{i}" for i in range(60)}
