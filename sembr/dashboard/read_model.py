@@ -707,7 +707,15 @@ async def list_feeds_with_meta(
                 ),
                 tags=tag_map.get(fid, []),
                 enabled=bool(enabled),
-                group_key=derive_group_key(url, proxy_hosts),
+                # newsapi feeds share a single master job + a single API
+                # endpoint, so they collapse into one display group regardless
+                # of the per-feed source.uri. Bare hostnames also fail
+                # urlparse-based grouping (no scheme → parsed.hostname=None
+                # → empty key), so the special-case is also a correctness fix.
+                group_key=(
+                    "newsapi" if source_type == "newsapi"
+                    else derive_group_key(url, proxy_hosts)
+                ),
                 next_run_iso=next_run_iso,
                 created_at=created_at,
             )
