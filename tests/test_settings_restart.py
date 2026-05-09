@@ -164,10 +164,18 @@ async def test_schedule_self_restart_default_delay_argument(monkeypatch: pytest.
 
 # ── Phase 2: _RESTART_REQUESTED flag ─────────────────────────────────────────
 
-def test_spawn_self_force_recreate_invokes_compose(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The detached spawn must invoke docker compose with the api service
-    name and force-recreate flag. Captures Popen args without actually
-    forking."""
+def _stub_compose_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pretend the api container's labels resolve to a known compose project."""
+    monkeypatch.setattr(
+        settings_restart, "_self_compose_context",
+        lambda: ("/host/project", "sembr", "sembr-api"),
+    )
+
+
+def test_spawn_self_force_recreate_launches_helper_container(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Helper container reuses our image, mounts docker socket + project dir,
+    and runs docker compose with the api service + force-recreate."""
+    _stub_compose_context(monkeypatch)
     captured: list[tuple[list[str], dict]] = []
 
     class _FakePopen:
@@ -178,26 +186,51 @@ def test_spawn_self_force_recreate_invokes_compose(monkeypatch: pytest.MonkeyPat
     settings_restart._spawn_self_force_recreate()
     assert len(captured) == 1
     argv, kwargs = captured[0]
-    assert argv[:2] == ["docker", "compose"]
-    assert "--force-recreate" in argv
-    assert "--no-deps" in argv
-    assert argv[-1] == settings_restart.API_SERVICE_NAME
-    assert kwargs.get("start_new_session") is True
+    assert argv[:3] == ["docker", "run", "-d"]
+    assert "--rm" in argv
+    assert "/var/run/docker.sock:/var/run/docker.sock" in argv
+    assert any("/host/project" in a for a in argv)
+    # Image is the api image (introspected, not hardcoded)
+    assert "sembr-api" in argv
+    # Inner command runs the actual recreate
+    inner_cmd = argv[-1]
+    assert "docker compose" in inner_cmd
+    assert "--project-name sembr" in inner_cmd
+    assert "--force-recreate" in inner_cmd
+    assert "--no-deps" in inner_cmd
+    assert settings_restart.API_SERVICE_NAME in inner_cmd
     assert kwargs.get("close_fds") is True
 
 
 def test_spawn_self_force_recreate_sets_restart_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_compose_context(monkeypatch)
     monkeypatch.setattr(
         settings_restart.subprocess, "Popen",
-        lambda *a, **k: None,  # suppress real fork
+        lambda *a, **k: None,
     )
     settings_restart._spawn_self_force_recreate()
     assert settings_restart.is_restart_requested() is True
 
 
-def test_spawn_self_force_recreate_falls_back_to_sigterm(monkeypatch: pytest.MonkeyPatch) -> None:
-    """If Popen raises (no docker binary, etc.), fall back to SIGTERM-self
-    rather than leaving the api process orphaned with a stale env."""
+def test_spawn_self_force_recreate_falls_back_to_sigterm_on_introspection_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If we can't introspect our own compose labels, fall back to SIGTERM
+    rather than spawning a malformed helper."""
+    def _boom():
+        raise RuntimeError("inspect failed")
+    monkeypatch.setattr(settings_restart, "_self_compose_context", _boom)
+
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        settings_restart.os, "kill", lambda pid, sig: sent.append((pid, sig))
+    )
+    settings_restart._spawn_self_force_recreate()
+    assert len(sent) == 1
+    assert sent[0][1] == signal.SIGTERM
+
+
+def test_spawn_self_force_recreate_falls_back_to_sigterm_on_popen_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If Popen raises (e.g. docker binary missing), fall back to SIGTERM."""
+    _stub_compose_context(monkeypatch)
     def _boom(*a, **k):
         raise FileNotFoundError("docker not found")
     monkeypatch.setattr(settings_restart.subprocess, "Popen", _boom)

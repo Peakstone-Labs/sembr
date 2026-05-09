@@ -10,19 +10,19 @@ Two responsibilities:
 2. **API self-restart** — sembr changed its own ``.env`` and needs the new
    values to land in ``os.environ`` (env_file: bakes values at container
    *creation* time; ``docker restart`` of the same container keeps the old
-   env). We spawn a *detached* ``docker compose up -d --force-recreate api``
-   on a 1.5s delay; compose sends SIGTERM to the running api so FastAPI's
-   lifespan shutdown chain still runs cleanly, then creates a fresh
-   container which re-reads the modified ``.env``. Detached so the spawned
-   compose process survives our own death.
+   env). We spawn a **helper container** (reusing our own image) that runs
+   ``docker compose up -d --force-recreate --no-deps api`` against the
+   host daemon via the bind-mounted docker socket. The helper runs in
+   its own container namespace, so when the daemon stops the api
+   container as part of the recreate, the helper is unaffected and
+   proceeds to create+start the new api container.
 
-Earlier design (D8-D11) called ``os.kill(SIGTERM)`` and expected
-``restart: unless-stopped`` to "rehydrate" the container with the new
-``.env``. That assumption was wrong — restart of an existing container
-does not re-read ``env_file``, only ``up --force-recreate`` does. Symptom
-was the Settings page reporting "overridden by shell env" after every
-save because pydantic-settings was reading the stale baked-in env values
-that took priority over the freshly-written ``.env``.
+Earlier attempts called ``os.kill(SIGTERM)`` (broke env_file reload — restart
+of an existing container does not re-read env_file, only ``up --force-recreate``
+does) and then spawned a *detached* compose CLI inside our own container
+(broke because the daemon's container-stop step SIGKILL'd our entire pid
+namespace including the in-flight compose CLI between its stop+create
+steps, leaving a Created-but-never-started new container).
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ import asyncio
 import logging
 import os
 import signal
+import socket
 import subprocess
 from typing import Callable
 
@@ -110,57 +111,98 @@ class RestartController:
     # ── API self-restart ──────────────────────────────────────────────────
 
     def schedule_self_restart(self, delay: float = DEFAULT_SELF_SHUTDOWN_DELAY) -> None:
-        """Spawn a detached ``docker compose up -d --force-recreate api``
-        after ``delay`` seconds.
+        """Schedule a helper-container-driven force-recreate of self after
+        ``delay`` seconds.
 
-        Detached (``start_new_session=True``) so the compose process survives
-        the SIGTERM compose itself sends to us. The new container reads the
-        freshly-written ``.env``, replacing the stale env baked in at the
-        previous container's creation time. Lifespan shutdown still runs
-        cleanly because compose sends SIGTERM (not SIGKILL) and waits for
-        the docker stop grace period (memory: feedback_lifespan).
+        See module docstring for why we can't simply spawn compose inside
+        our own container's pid namespace. ``delay`` is the time the
+        HTTP response that triggered this needs to flush before the
+        helper container's compose actually stops us.
         """
         loop = self._loop or asyncio.get_event_loop()
         loop.call_later(delay, _spawn_self_force_recreate)
         logger.info(
-            "api self-restart scheduled in %.2fs (compose force-recreate → lifespan shutdown)",
+            "api self-restart scheduled in %.2fs (helper container → compose force-recreate)",
             delay,
         )
 
 
+def _self_compose_context() -> tuple[str, str, str]:
+    """Return (host_working_dir, project_name, image_tag) for our own
+    container by inspecting it via the bind-mounted docker socket.
+
+    Used to drive the helper container's bind mounts and the compose
+    invocation; we can't hardcode the host paths because the user's
+    install location varies.
+    """
+    short_id = socket.gethostname()
+    fmt = (
+        "{{index .Config.Labels \"com.docker.compose.project.working_dir\"}}"
+        "\t{{index .Config.Labels \"com.docker.compose.project\"}}"
+        "\t{{.Config.Image}}"
+    )
+    result = subprocess.run(
+        ["docker", "inspect", "--format", fmt, short_id],
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+    parts = result.stdout.strip().split("\t")
+    if len(parts) != 3 or not all(parts):
+        raise RuntimeError(
+            f"could not introspect compose context from labels: {result.stdout!r}"
+        )
+    return parts[0], parts[1], parts[2]
+
+
 def _spawn_self_force_recreate() -> None:
-    """Spawn a detached ``docker compose up -d --force-recreate api`` and set
-    the lifespan exit flag.
+    """Launch a helper container that runs the compose force-recreate.
 
-    Why detached: the compose command will SIGTERM us as part of its
-    "stop the existing container, start a new one" flow. If we spawned
-    it in our own process group, the SIGTERM that propagates would also
-    kill the compose child before it gets to start the new container.
-    ``start_new_session=True`` puts compose in its own session so it
-    survives our death.
+    Helper inherits our docker socket + image (so docker CLI + compose
+    plugin are available) and bind-mounts the host's compose project dir
+    read-only at /project. After a 2s sleep — long enough for any
+    in-flight HTTP response from the api to drain — it runs
+    ``docker compose --project-name <ours> up -d --force-recreate
+    --no-deps api`` and exits. ``--rm`` cleans up.
 
-    The lifespan finally-block reads ``_RESTART_REQUESTED`` and calls
-    ``_force_exit`` on shutdown completion to make sure docker's
-    grace-period logic doesn't get to SIGKILL us mid-cleanup.
+    Falls back to SIGTERM-self if introspection or spawn fails — keeps
+    the api process from being permanently wedged with stale env when
+    the helper path is unavailable, at the cost of NOT picking up the
+    .env changes (user must re-run docker compose by hand).
     """
     global _RESTART_REQUESTED
     _RESTART_REQUESTED = True
+    try:
+        host_wd, project_name, image = _self_compose_context()
+    except Exception:  # noqa: BLE001
+        logger.exception("self-recreate introspection failed; falling back to SIGTERM-self")
+        os.kill(os.getpid(), signal.SIGTERM)
+        return
+
+    helper_inner = (
+        "sleep 2 && cd /project && "
+        f"docker compose --project-name {project_name} "
+        f"up -d --force-recreate --no-deps {API_SERVICE_NAME}"
+    )
     cmd = [
-        "docker", "compose",
-        "-f", COMPOSE_FILE_PATH,
-        "up", "-d", "--force-recreate", "--no-deps",
-        API_SERVICE_NAME,
+        "docker", "run", "-d", "--rm",
+        "--name", f"sembr-api-recreate-{os.getpid()}",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-v", f"{host_wd}:/project:ro",
+        "--entrypoint", "sh",
+        image,
+        "-c", helper_inner,
     ]
-    logger.info("api self-restart firing now (spawning %s detached)", " ".join(cmd))
+    logger.info(
+        "api self-restart firing now (helper container; project=%s host_wd=%s image=%s)",
+        project_name, host_wd, image,
+    )
     try:
         subprocess.Popen(  # noqa: S603 — controlled argv, no shell expansion
             cmd,
-            start_new_session=True,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             close_fds=True,
         )
-    except Exception:  # noqa: BLE001 — last-ditch fallback so we don't leave a dead container
-        logger.exception("compose spawn failed; falling back to SIGTERM-self")
+    except Exception:  # noqa: BLE001
+        logger.exception("helper container spawn failed; falling back to SIGTERM-self")
         os.kill(os.getpid(), signal.SIGTERM)
