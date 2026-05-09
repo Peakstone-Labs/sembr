@@ -135,3 +135,79 @@ def test_articles_qdrant_invalid_feed_id_returns_422(app: FastAPI):
             "/api/dashboard/articles?bucket=qdrant&feed_id=not-an-int"
         )
     assert r.status_code == 422
+
+
+def test_articles_qdrant_paginates_via_start_from_when_cursor_none(tmp_path):
+    """Regression: Qdrant scroll(order_by=...) returns next_page_offset=None
+    even when more matching points exist. The loop must drive pagination via
+    order_by.start_from and dedup on point id, otherwise every result page is
+    silently capped at one Qdrant page (~64 hits) — what made title_q=伊朗 look
+    like ~24h of coverage when >700 hits over >10 days actually existed.
+    """
+    fake_qclient = MagicMock()
+    calls: list[dict] = []
+
+    # Page 1: 64 distinct points at descending ts — boundary at ts=940.
+    # Page 2: ts<=940 returns 5 points (937..933), one of which (id "p64", ts 940)
+    # repeats the boundary — must be deduped.
+    page1 = [
+        SimpleNamespace(
+            id=f"p{i}",
+            payload={"ingested_at_ts": 1000 - i, "title": f"t{i}", "url": "u",
+                     "feed_id": 1, "published_at": None},
+        )
+        for i in range(60)
+    ]
+    page2 = [
+        SimpleNamespace(
+            id="p59",  # boundary duplicate (ingested_at_ts == last seen)
+            payload={"ingested_at_ts": 941, "title": "dup", "url": "u",
+                     "feed_id": 1, "published_at": None},
+        ),
+    ] + [
+        SimpleNamespace(
+            id=f"q{i}",
+            payload={"ingested_at_ts": 940 - i, "title": f"q{i}", "url": "u",
+                     "feed_id": 1, "published_at": None},
+        )
+        for i in range(4)
+    ]
+
+    async def _scroll(**kwargs):
+        calls.append(kwargs)
+        order = kwargs.get("order_by") or {}
+        start_from = order.get("start_from")
+        if start_from is None:
+            return (page1, None)
+        return (page2, None)
+
+    fake_qclient.scroll = AsyncMock(side_effect=_scroll)
+    fake_qdrant = SimpleNamespace(client=fake_qclient)
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        conn = await init_sqlite(str(tmp_path / "sembr.db"))
+        await init_feed_tables(conn)
+        await init_article_tables(conn)
+        app.state.qdrant = fake_qdrant
+        try:
+            yield
+        finally:
+            await close_sqlite()
+
+    app = FastAPI(lifespan=_lifespan)
+    app.include_router(router)
+
+    with TestClient(app) as client:
+        r = client.get("/api/dashboard/articles?bucket=qdrant&limit=63")
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    # 60 from page1 + 3 unique from page2 (boundary dup p59 is dropped).
+    assert len(rows) == 63
+    md5s = [row["md5"] for row in rows]
+    assert len(md5s) == len(set(md5s)), "duplicate point ids leaked through"
+    # Two scroll calls: first with no start_from, second with start_from=941
+    # (the ts of p59, the last item of page1).
+    assert len(calls) == 2
+    assert "start_from" not in calls[0]["order_by"]
+    assert calls[1]["order_by"]["start_from"] == 941

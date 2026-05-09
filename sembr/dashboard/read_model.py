@@ -430,39 +430,56 @@ async def _scroll_articles_qdrant(
 ) -> list[ArticleListItem]:
     """Newest-first scroll over `news_current` with client-side offset.
 
-    Qdrant's scroll API uses an opaque `next_page_offset` cursor, not a
-    numeric offset, so we walk forward `limit + offset` items and drop the
-    first `offset`. `scroll_filter`, when given, is forwarded as the
-    `scroll_filter` parameter (uses qdrant_client.models.Filter shape).
-    `log_label` is interpolated into the warning message on failure so
-    operators can tell which call site failed.
+    Qdrant's `scroll(order_by=...)` does NOT return a usable `next_page_offset`
+    cursor — every call comes back with `next_page_offset=None` even when more
+    matching points exist. Pagination must be driven by the order_by field
+    itself: pass `start_from=<last seen value>` and dedup on point id (the
+    boundary point is returned again because the bound is inclusive).
+
+    Without this loop the dashboard silently capped each result page at one
+    Qdrant page (~64 hits), making a search like ``title_q=伊朗`` look like it
+    only had ~24h of coverage when the collection actually held >700 hits over
+    >10 days.
     """
     items: list[ArticleListItem] = []
-    seen = 0
-    next_offset = None
+    seen_ids: set[str] = set()
     target = limit + offset
-    scroll_kwargs: dict[str, Any] = {
-        "collection_name": _NEWS_ALIAS,
-        "with_payload": True,
-        "with_vectors": False,
-        # Order by ingested_at desc so the latest articles come first.
-        "order_by": {"key": "ingested_at_ts", "direction": "desc"},
-    }
-    if scroll_filter is not None:
-        scroll_kwargs["scroll_filter"] = scroll_filter
+    last_ts: int | None = None
     try:
-        while seen < target:
-            page_size = min(target - seen, 64)
-            points, next_offset = await qdrant_client.scroll(
-                limit=page_size,
-                offset=next_offset,
-                **scroll_kwargs,
-            )
+        while len(items) < target:
+            order_by_spec: dict[str, Any] = {
+                "key": "ingested_at_ts",
+                "direction": "desc",
+            }
+            if last_ts is not None:
+                order_by_spec["start_from"] = last_ts
+
+            scroll_kwargs: dict[str, Any] = {
+                "collection_name": _NEWS_ALIAS,
+                "with_payload": True,
+                "with_vectors": False,
+                "order_by": order_by_spec,
+                "limit": min(target - len(items), 64),
+            }
+            if scroll_filter is not None:
+                scroll_kwargs["scroll_filter"] = scroll_filter
+
+            points, _next_unused = await qdrant_client.scroll(**scroll_kwargs)
+            if not points:
+                break
+
+            new_count = 0
+            page_last_ts: int | None = None
             for p in points:
+                pid = str(getattr(p, "id", ""))
                 payload = getattr(p, "payload", {}) or {}
+                page_last_ts = payload.get("ingested_at_ts") or page_last_ts
+                if pid in seen_ids:
+                    continue
+                seen_ids.add(pid)
                 items.append(
                     ArticleListItem(
-                        md5=str(getattr(p, "id", "")),
+                        md5=pid,
                         feed_id=payload.get("feed_id"),
                         url=payload.get("url", ""),
                         title=payload.get("title", ""),
@@ -471,11 +488,18 @@ async def _scroll_articles_qdrant(
                         bucket="qdrant",
                     )
                 )
-                seen += 1
-                if seen >= target:
+                new_count += 1
+                if len(items) >= target:
                     break
-            if next_offset is None:
+
+            # No new ids in this page = we're stuck on a boundary cluster of
+            # equal-ts points already drained, or the page was all duplicates.
+            # Either way, advancing further would loop forever.
+            if new_count == 0:
                 break
+            if page_last_ts is None:
+                break
+            last_ts = page_last_ts
     except Exception as exc:
         logger.warning("qdrant scroll %s failed: %s", log_label, exc)
         return []
