@@ -18,6 +18,7 @@ window.SENSITIVE_MASK = '••••••';
 const SECTION_DEFS = [
   { id: 'embedder',    title: 'Embedder',           prefixes: ['EMBEDDER_'] },
   { id: 'llm',         title: 'LLM Summarizer',     prefixes: ['LLM_'] },
+  { id: 'newsapi',     title: 'newsapi',            prefixes: ['NEWSAPI_'] },
   { id: 'rsshub',      title: 'RSSHub Passthrough', special: 'rsshub' },
   { id: 'smtp',        title: 'Email (SMTP)',       prefixes: ['SMTP_'] },
   { id: 'dashboard',   title: 'Dashboard',          prefixes: ['DASHBOARD_'] },

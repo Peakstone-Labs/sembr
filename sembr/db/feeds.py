@@ -91,9 +91,12 @@ async def seed_initial_feeds(conn: aiosqlite.Connection) -> int:
     to_seed = [f for f in INITIAL_FEEDS if f["url"] not in seeded]
 
     for f in to_seed:
+        # source_type defaults to 'rss' for backward compat; newsapi entries
+        # (added Loop 5 from RECOMMENDED_SOURCES) declare it explicitly.
         await conn.execute(
-            "INSERT OR IGNORE INTO feeds (name, url, poll_interval_minutes) VALUES (?, ?, ?)",
-            (f["name"], f["url"], f["poll_interval_minutes"]),
+            "INSERT OR IGNORE INTO feeds (name, url, source_type, poll_interval_minutes) "
+            "VALUES (?, ?, ?, ?)",
+            (f["name"], f["url"], f.get("source_type", "rss"), f["poll_interval_minutes"]),
         )
         await conn.execute("INSERT OR IGNORE INTO seeded_feeds (url) VALUES (?)", (f["url"],))
     await conn.commit()

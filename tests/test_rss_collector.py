@@ -230,7 +230,11 @@ async def test_rss_source_http_error_raises():
 
 @pytest.mark.asyncio
 async def test_seed_idempotent():
-    """Two consecutive seeds must produce exactly 23 rows; second seed returns 0."""
+    """Two consecutive seeds must produce exactly len(INITIAL_FEEDS) rows;
+    second seed returns 0. RSS + 30 newsapi recommended sources combine into
+    the total — pin against the dynamic length so adding/removing entries
+    only requires updating INITIAL_FEEDS itself."""
+    expected = len(INITIAL_FEEDS)
     async with aiosqlite.connect(":memory:") as conn:
         await init_feed_tables(conn)
         first = await seed_initial_feeds(conn)
@@ -239,9 +243,28 @@ async def test_seed_idempotent():
             row = await cur.fetchone()
         total = row[0]
 
-    assert first == 23
+    assert first == expected
     assert second == 0
-    assert total == 23
+    assert total == expected
+
+
+# ---------------------------------------------------------------------------
+# Test: seed_initial_feeds — newsapi entries persist with source_type='newsapi'
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_seed_inserts_newsapi_source_type():
+    """All 30 RECOMMENDED_SOURCES seeded with source_type='newsapi'."""
+    from sembr.collector.newsapi import RECOMMENDED_SOURCES
+    async with aiosqlite.connect(":memory:") as conn:
+        await init_feed_tables(conn)
+        await seed_initial_feeds(conn)
+        async with conn.execute(
+            "SELECT COUNT(*) FROM feeds WHERE source_type='newsapi'"
+        ) as cur:
+            n = (await cur.fetchone())[0]
+    assert n == len(RECOMMENDED_SOURCES) == 30
 
 
 # ---------------------------------------------------------------------------

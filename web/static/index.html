@@ -2171,9 +2171,9 @@
                       </select>
                     </template>
                     <template x-if="field.type === 'multiselect'">
-                      <div class="multiselect-wrap">
+                      <div class="multiselect-wrap" style="display:flex; flex-direction:column; gap:0.3rem;">
                         <template x-for="opt in (field.enum || [])" :key="opt">
-                          <label class="multiselect-option" style="display:inline-flex; align-items:center; gap:0.4rem; margin-right:1rem;">
+                          <label class="multiselect-option" style="display:flex; align-items:center; gap:0.5rem;">
                             <input type="checkbox"
                                    :checked="isMultiselectChecked(field.key, opt)"
                                    @change="toggleMultiselect(field.key, opt, $event.target.checked)">
@@ -2316,7 +2316,7 @@
 <script src="/dashboard/intents.js?v=3"></script>
 <script src="/dashboard/templates.js?v=3"></script>
 <script src="/dashboard/logs.js?v=2"></script>
-<script src="/dashboard/settings.js?v=9"></script>
+<script src="/dashboard/settings.js?v=10"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>
 <script src="/dashboard/app.js?v=7"></script>
 </body>

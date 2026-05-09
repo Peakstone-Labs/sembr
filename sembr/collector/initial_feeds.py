@@ -5,8 +5,33 @@ For local dev outside Docker, replace with ``localhost:1200``.
 
 Selection criteria: feeds either deliver substantive body text OR carry
 information-dense headlines (newsflash style where the title is the fact).
+
+Each entry may optionally carry ``source_type`` (default ``"rss"``). The
+30 NewsAPI.ai sources from ``collector.newsapi.RECOMMENDED_SOURCES`` are
+appended via ``_newsapi_initial_feeds()`` so the canonical source list
+stays single-source-of-truth (only the title/uri pair lives in newsapi.py).
 """
 from __future__ import annotations
+
+
+def _newsapi_initial_feeds() -> list[dict]:
+    """Materialize the 30 RECOMMENDED_SOURCES as INITIAL_FEEDS dicts.
+
+    poll_interval_minutes is set to 30 for cosmetic alignment with the master
+    job's default cadence; the master tick reads ``Settings.newsapi_poll_interval_minutes``
+    directly so the column is purely display.
+    """
+    from sembr.collector.newsapi import RECOMMENDED_SOURCES  # noqa: PLC0415
+    return [
+        {
+            "name": s["title"],
+            "url": s["uri"],
+            "source_type": "newsapi",
+            "poll_interval_minutes": 30,
+        }
+        for s in RECOMMENDED_SOURCES
+    ]
+
 
 INITIAL_FEEDS: list[dict] = [
     # --- International General ---
@@ -50,3 +75,7 @@ INITIAL_FEEDS: list[dict] = [
     # --- Twitter ---
     {"name": "Elon Musk",           "url": "http://rsshub:1200/twitter/user/elonmusk",                   "poll_interval_minutes": 60},
 ]
+
+# Append all 30 NewsAPI.ai sources. Done at module-import time so existing
+# `seeded_feeds` machinery + tests treat them as ordinary INITIAL_FEEDS rows.
+INITIAL_FEEDS.extend(_newsapi_initial_feeds())
