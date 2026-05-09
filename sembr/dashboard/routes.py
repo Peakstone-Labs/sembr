@@ -13,10 +13,17 @@ from __future__ import annotations
 import logging
 from datetime import datetime, time as dtime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from apscheduler.jobstores.base import JobLookupError
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 
+from sembr.api.settings import require_header_token
 from sembr.collector.newsapi import RECOMMENDED_SOURCES as _NEWSAPI_RECOMMENDED
-from sembr.collector.scheduler import SOURCE_REGISTRY
+from sembr.collector.scheduler import (
+    NEWSAPI_MASTER_JOB_ID,
+    SOURCE_REGISTRY,
+    ensure_newsapi_master_job,
+)
 from sembr.config import get_settings
 from sembr.dashboard import read_model
 from sembr.dashboard.schemas import (
@@ -113,6 +120,71 @@ async def get_newsapi_recommended_sources() -> list[dict]:
     """D14: combobox datalist source for the create-feed modal. Static list
     is cheap to return on every modal open; frontend caches client-side."""
     return list(_NEWSAPI_RECOMMENDED)
+
+
+class NewsApiFireResponse(BaseModel):
+    job_id: str
+    next_run_time: str
+    note: str
+
+
+@router.post(
+    "/sources/newsapi/fire",
+    response_model=NewsApiFireResponse,
+    dependencies=[Depends(require_header_token)],
+)
+async def post_newsapi_fire(request: Request) -> NewsApiFireResponse:
+    """Trigger the newsapi master tick immediately instead of waiting for
+    the next scheduled fire. Costs 1 NewsAPI token like a regular tick.
+
+    Header-token guarded (CSRF) — the action consumes paid quota, so it
+    matches the same auth posture as POST /api/settings/save.
+
+    Behavior: if the master job is registered (i.e. at least one enabled
+    newsapi feed exists), modify_job sets next_run_time=now so the
+    scheduler picks it up on the next executor tick. APScheduler's
+    max_instances=1 guard handles the corner case of a tick currently
+    running — the manual fire queues but won't double-up. If the master
+    job is absent (no enabled newsapi feeds), 404."""
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="scheduler not initialised",
+        )
+    try:
+        job = scheduler.get_job(NEWSAPI_MASTER_JOB_ID)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("newsapi fire: get_job failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"scheduler error: {exc}",
+        ) from exc
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "newsapi master job not registered — create at least one "
+                "enabled feed with source_type='newsapi' first"
+            ),
+        )
+    now = datetime.now(timezone.utc)
+    try:
+        scheduler.modify_job(NEWSAPI_MASTER_JOB_ID, next_run_time=now)
+    except JobLookupError as exc:
+        # Race: job removed between get_job and modify_job — surface as 404.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="newsapi master job disappeared mid-request",
+        ) from exc
+    return NewsApiFireResponse(
+        job_id=NEWSAPI_MASTER_JOB_ID,
+        next_run_time=now.isoformat(),
+        note=(
+            "master tick scheduled for immediate execution; check "
+            "/api/dashboard/feeds/<id>/events for per-feed fetch_event rows"
+        ),
+    )
 
 
 @router.get("/sources/schemas", response_model=SourceSchemaResponse)
