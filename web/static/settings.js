@@ -383,7 +383,13 @@ function settingsTab() {
       this.restart.startedAt = Date.now();
       this.restart.elapsedMs = 0;
       this.restart.message = message;
-      // Polling loop. Wait for /health to respond 200 again.
+      // Force-recreate path: helper container has a ~3.5s window where the
+      // OLD api is still alive answering /health. We need to wait for the
+      // OLD api to go down before treating a 200 from /health as "the new
+      // api is up", otherwise _reload() reads stale env from the not-yet-
+      // recreated container and shows phantom "overridden by shell env"
+      // badges.
+      this.restart.sawDown = false;
       this.restart.timer = setInterval(() => this._pollRestart(), 1000);
     },
 
@@ -399,12 +405,21 @@ function settingsTab() {
       try {
         const res = await fetch('/health', { cache: 'no-store' });
         if (res.status === 200) {
-          this._endRestart();
-          this._toast('ok', 'restart complete');
-          await this._reload();
+          // Only accept "up" once we've actually observed the api going
+          // down. Otherwise the still-alive pre-restart container flips us
+          // straight to "restart complete" before the helper has stopped it.
+          if (this.restart.sawDown) {
+            this._endRestart();
+            this._toast('ok', 'restart complete');
+            await this._reload();
+          }
+        } else {
+          this.restart.sawDown = true;
         }
       } catch (e) {
-        // expected during the restart window
+        // Network error / fetch failure means the api went away — exactly
+        // the down signal we're waiting for.
+        this.restart.sawDown = true;
       } finally {
         this.restart._inFlight = false;
       }
