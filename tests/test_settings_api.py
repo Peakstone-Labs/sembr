@@ -303,6 +303,89 @@ def test_save_rejects_non_whitelist_key(
     assert env_file.read_text(encoding="utf-8") == original
 
 
+# Settings validator dry-run: invalid sembr-class values must 422 and NOT
+# write .env. Otherwise the bad value would crash the next force-recreate's
+# Settings() construction in lifespan startup, causing a restart loop.
+
+def test_save_rejects_invalid_newsapi_categories(
+    client: TestClient, env_file: Path, fake_rc: MagicMock
+) -> None:
+    """Foo is not in NEWSAPI_VALID_CATEGORIES → ValidationError → 422."""
+    original = env_file.read_text(encoding="utf-8")
+    r = client.post(
+        "/api/settings/save",
+        json={"changes": {"NEWSAPI_CATEGORIES": "Foo"}, "confirmed": True},
+    )
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "Settings validation failed" in detail["error"]
+    assert "NEWSAPI_CATEGORIES" in detail["rejected_fields"]
+    # Disk untouched, no restart triggered.
+    assert env_file.read_text(encoding="utf-8") == original
+    fake_rc.schedule_self_restart.assert_not_called()
+
+
+def test_save_rejects_empty_newsapi_categories(
+    client: TestClient, env_file: Path, fake_rc: MagicMock
+) -> None:
+    """Empty CSV violates non-empty validator (whitelist contract)."""
+    original = env_file.read_text(encoding="utf-8")
+    r = client.post(
+        "/api/settings/save",
+        json={"changes": {"NEWSAPI_CATEGORIES": ""}, "confirmed": True},
+    )
+    assert r.status_code == 422
+    assert env_file.read_text(encoding="utf-8") == original
+    fake_rc.schedule_self_restart.assert_not_called()
+
+
+def test_save_rejects_out_of_range_int(
+    client: TestClient, env_file: Path, fake_rc: MagicMock
+) -> None:
+    """NEWSAPI_POLL_INTERVAL_MINUTES has ge=5, le=1440. 0 or 9999 must 422."""
+    original = env_file.read_text(encoding="utf-8")
+    r = client.post(
+        "/api/settings/save",
+        json={"changes": {"NEWSAPI_POLL_INTERVAL_MINUTES": "0"}, "confirmed": True},
+    )
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "NEWSAPI_POLL_INTERVAL_MINUTES" in detail["rejected_fields"]
+    assert env_file.read_text(encoding="utf-8") == original
+    fake_rc.schedule_self_restart.assert_not_called()
+
+
+def test_save_accepts_valid_newsapi_categories(
+    client: TestClient, env_file: Path, fake_rc: MagicMock
+) -> None:
+    """Sanity check the validator doesn't reject canonical values."""
+    r = client.post(
+        "/api/settings/save",
+        json={
+            "changes": {"NEWSAPI_CATEGORIES": "Business,Sports,Health"},
+            "confirmed": True,
+        },
+    )
+    assert r.status_code == 200
+    text = env_file.read_text(encoding="utf-8")
+    assert "NEWSAPI_CATEGORIES=Business,Sports,Health" in text
+    fake_rc.schedule_self_restart.assert_called_once()
+
+
+def test_save_validator_skipped_for_passthrough_only_changes(
+    client: TestClient, env_file: Path, fake_rc: MagicMock
+) -> None:
+    """Pure passthrough additions don't trigger Settings() dry-run since
+    they're not Settings fields. Avoids unrelated Settings() side effects
+    when user only edits RSSHub passthrough vars."""
+    r = client.post(
+        "/api/settings/save",
+        json={"additions": {"OPENAI_API_KEY": "sk-test"}, "confirmed": True},
+    )
+    assert r.status_code == 200
+    assert "OPENAI_API_KEY=sk-test" in env_file.read_text(encoding="utf-8")
+
+
 def test_save_mask_sentinel_does_not_overwrite_secret(
     client: TestClient, env_file: Path, fake_rc: MagicMock
 ) -> None:

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, ValidationError
 from pydantic.fields import FieldInfo
 
 from sembr.api.settings_envfile import KEY_PATTERN, EnvFile
@@ -371,6 +371,56 @@ def _coalesce_value(key: str, submitted: str, current_raw: str) -> str:
     return submitted
 
 
+def _validate_proposed_settings(ef: EnvFile) -> None:
+    """Dry-run ``Settings(**proposed)`` against the in-memory EnvFile state
+    so a save that would crash the next force-recreate is rejected with
+    422 instead of being persisted.
+
+    Why: ``/api/settings/save`` writes ``.env`` then triggers a force-recreate.
+    pydantic-settings validators (e.g. ``newsapi_categories`` enum membership,
+    ``newsapi_poll_interval_minutes`` ge/le) only fire at ``Settings()``
+    construction time, which is during the NEW container's lifespan startup.
+    A bad value would land on disk → new container fails to boot →
+    ``restart: unless-stopped`` loops. Catch it here, before persist.
+
+    Sembr-class keys from the proposed envfile go in as ``init_settings``
+    kwargs (highest priority in the 5-level chain), so they override any
+    stale value still in ``os.environ``. Passthrough keys are not
+    ``Settings`` fields and are excluded. Sensitive fields receive the
+    coalesced disk value (real secret, not the SENSITIVE_MASK sentinel),
+    so SecretStr validators see the real input.
+    """
+    proposed = ef.values()
+    sembr_kwargs: dict[str, Any] = {}
+    for upper_key, value in proposed.items():
+        lower = upper_key.lower()
+        if lower in Settings.model_fields:
+            sembr_kwargs[lower] = value
+    try:
+        Settings(**sembr_kwargs)
+    except ValidationError as exc:
+        # Surface offending fields + per-field messages. Don't pass
+        # exc.errors() raw — pydantic's `ctx` field can contain
+        # non-JSON-serializable ValueError instances; build a flat
+        # JSON-safe summary instead.
+        bad_fields: list[str] = []
+        messages: list[dict[str, str]] = []
+        for err in exc.errors():
+            loc = err.get("loc") or ()
+            field = str(loc[0]).upper() if loc else ""
+            if field and field not in bad_fields:
+                bad_fields.append(field)
+            messages.append({"field": field, "msg": str(err.get("msg", ""))})
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "Settings validation failed; .env not written",
+                "rejected_fields": bad_fields,
+                "errors": messages,
+            },
+        ) from exc
+
+
 def _build_passthrough_error_detail(bad_keys: list[str]) -> dict[str, Any]:
     return {
         "error": "key not in passthrough whitelist",
@@ -461,6 +511,14 @@ async def save_settings(body: SaveRequest) -> SaveResponse:
     if not saved and not deleted:
         # Nothing to do — return without writing or restarting.
         return SaveResponse(saved_keys=[], deleted_keys=[], restart_targets=[])
+
+    # ── validate proposed state (before persist) ─────────────────────────
+    # Catches "user typed an invalid value in the UI" before .env hits disk;
+    # otherwise the bad value would only surface during the next
+    # force-recreate's Settings() construction → uvicorn fails to boot →
+    # restart loop. See _validate_proposed_settings docstring.
+    if "sembr" in touched_classes:
+        _validate_proposed_settings(ef)
 
     # ── persist ───────────────────────────────────────────────────────────
     try:
