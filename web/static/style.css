@@ -1432,6 +1432,29 @@ input:disabled, select:disabled, textarea:disabled {
   outline: none;
   border-color: var(--gold);                /* state.focus-ring */
 }
+/* Multi-select (NEWSAPI_CATEGORIES) — vertical checkbox list. Reset the
+   generic .settings-row-input input rules so checkboxes don't stretch
+   to width:100% with text-input padding/border. */
+.settings-row-input .multiselect-wrap {
+  display: flex; flex-direction: column; gap: 6px;
+  padding-top: 4px;
+}
+.settings-row-input .multiselect-option {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.82rem; color: var(--text-primary);
+  cursor: pointer;
+}
+.settings-row-input .multiselect-option input[type="checkbox"] {
+  width: 16px; height: 16px;
+  flex: 0 0 16px;
+  margin: 0; padding: 0;
+  background: initial; border: initial; border-radius: initial;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+.settings-row-input .multiselect-option input[type="checkbox"]:focus {
+  outline: 2px solid var(--gold); outline-offset: 1px;
+}
 .settings-row-delete {
   background: transparent; color: var(--bad);
   border: 1px solid var(--border);
