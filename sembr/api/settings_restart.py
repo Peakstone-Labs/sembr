@@ -177,8 +177,18 @@ def _spawn_self_force_recreate() -> None:
         os.kill(os.getpid(), signal.SIGTERM)
         return
 
+    # Mount the host project dir at the SAME path inside the helper so
+    # compose's relative volume paths (./data, ./.env, etc. in the api
+    # service block) resolve to identical strings on both sides. The
+    # daemon validates host paths against Docker Desktop's file-sharing
+    # allow-list; if compose sends "./data" resolved against the helper-
+    # internal mount point (e.g. /project/data), the daemon rejects it
+    # ("path is not shared from the host"). Mounting at host_wd keeps the
+    # path string identical, so the daemon accepts it. Read-only because
+    # compose only reads the YAML + .env from this mount.
     helper_inner = (
-        "sleep 2 && cd /project && "
+        "sleep 2 && "
+        f"cd {host_wd} && "
         f"docker compose --project-name {project_name} "
         f"up -d --force-recreate --no-deps {API_SERVICE_NAME}"
     )
@@ -186,7 +196,7 @@ def _spawn_self_force_recreate() -> None:
         "docker", "run", "-d", "--rm",
         "--name", f"sembr-api-recreate-{os.getpid()}",
         "-v", "/var/run/docker.sock:/var/run/docker.sock",
-        "-v", f"{host_wd}:/project:ro",
+        "-v", f"{host_wd}:{host_wd}:ro",
         "--entrypoint", "sh",
         image,
         "-c", helper_inner,

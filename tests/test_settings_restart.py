@@ -189,11 +189,15 @@ def test_spawn_self_force_recreate_launches_helper_container(monkeypatch: pytest
     assert argv[:3] == ["docker", "run", "-d"]
     assert "--rm" in argv
     assert "/var/run/docker.sock:/var/run/docker.sock" in argv
-    assert any("/host/project" in a for a in argv)
+    # Project dir mounted at the SAME path on both sides so compose's
+    # relative volume paths resolve identically (Docker Desktop file-
+    # sharing requires host-real paths in mount specs).
+    assert "/host/project:/host/project:ro" in argv
     # Image is the api image (introspected, not hardcoded)
     assert "sembr-api" in argv
     # Inner command runs the actual recreate
     inner_cmd = argv[-1]
+    assert "cd /host/project" in inner_cmd
     assert "docker compose" in inner_cmd
     assert "--project-name sembr" in inner_cmd
     assert "--force-recreate" in inner_cmd
