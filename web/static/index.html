@@ -545,9 +545,9 @@
 
   <div class="feeds-toolbar">
     <div class="feeds-filters">
-      <input type="text" x-model.debounce.300ms="filterQ" @input="onFilterChange()"
+      <input type="text" x-model="filterQ" @input.debounce.300ms="onFilterChange()"
              placeholder="Search name…" class="feeds-search">
-      <input type="text" x-model.debounce.300ms="filterTag" @input="onFilterChange()"
+      <input type="text" x-model="filterTag" @input.debounce.300ms="onFilterChange()"
              placeholder="Filter by tag" class="feeds-search">
       <span class="muted" x-text="pageInfo()" style="font-size:0.75rem;"></span>
     </div>
