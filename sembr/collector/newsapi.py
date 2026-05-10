@@ -46,6 +46,14 @@ _NEWSAPI_BASE_URL = "https://eventregistry.org/api/v1"
 _GET_ARTICLES_PATH = "/article/getArticles"
 _NEWSAPI_HOST_KEY = "eventregistry.org"
 
+# Fire-path lookback when since is None. NewsApiSource only serves fire (master
+# tick has its own _date_window with a 1-day first-pull fallback that has to
+# stay tight so 30 feeds × ~50 articles/day fit inside max_pages × 100). Fire
+# touches a single source at page=1 with no such constraint, so widen the
+# window enough that low-volume sources (reuters ~13/day on EventRegistry)
+# still fill the 100-article page on the 1 token already paid.
+_FIRE_LOOKBACK_DAYS = 30
+
 # D18 (v1.0) / D31 (v1.1): fixed request-body fields for /article/getArticles.
 # articlesPage was in this dict in v1.0 (always 1, no pagination) and is now
 # parameterized via _build_request_body(page=...) since the master tick walks
@@ -231,7 +239,12 @@ class NewsApiSource(BaseSource):
             # for newsapi feeds the same way it does for misconfigured RSS.
             raise FetchError("NEWSAPI_API_KEY is empty; cannot fetch newsapi feed")
 
-        date_start, date_end = _date_window([since])
+        if since is None:
+            now = datetime.now(timezone.utc)
+            date_start = (now - timedelta(days=_FIRE_LOOKBACK_DAYS)).date().isoformat()
+            date_end = now.date().isoformat()
+        else:
+            date_start, date_end = _date_window([since])
         body = _build_request_body(
             api_key=api_key,
             source_uris=[self._url],
