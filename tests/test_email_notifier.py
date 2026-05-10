@@ -94,7 +94,7 @@ def test_published_at_rendered_in_shanghai_tz() -> None:
     from zoneinfo import ZoneInfo
 
     out = _render_published_at("2026-01-01T10:00:00Z", ZoneInfo("Asia/Shanghai"))
-    # 10:00 UTC == 18:00 CST. Format includes TZ name; allow either CST or +0800.
+    # 10:00 UTC == 18:00 in Asia/Shanghai. Format is "YYYY-MM-DD HH:MM" (no TZ suffix).
     assert "2026-01-01" in out
     assert "18:00" in out
 
@@ -408,13 +408,16 @@ async def test_empty_smtp_host_skips_send() -> None:
 
 
 # ---------------------------------------------------------------------------
-# UT-7: subject format — singular and plural
+# UT-7: subject format — [Sembr] {intent_name} - YYYYMMDD (intent timezone)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("n,expected_word", [(1, "1 matched article"), (3, "3 matched articles")])
-async def test_subject_format(n: int, expected_word: str) -> None:
+@pytest.mark.parametrize("n", [1, 3])
+async def test_subject_format(n: int) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     ch = _make_channel()
 
     captured_msgs: list[MIMEText] = []
@@ -429,9 +432,9 @@ async def test_subject_format(n: int, expected_word: str) -> None:
         result = _result(citations)
         await ch.send(result, config=_cfg("x@example.com"), intent_name="My Intent", intent_timezone="UTC")
 
+    expected_date = datetime.now(ZoneInfo("UTC")).strftime("%Y%m%d")
     assert len(captured_msgs) == 1
-    assert expected_word in captured_msgs[0]["Subject"]
-    assert "My Intent" in captured_msgs[0]["Subject"]
+    assert captured_msgs[0]["Subject"] == f"[Sembr] My Intent - {expected_date}"
 
 
 # ---------------------------------------------------------------------------

@@ -100,7 +100,7 @@ class _RenderedCitation:
     title: str
     url: str
     source_name: str
-    datetime_display: str  # e.g. "2026-04-28 14:32 CST" or "" when unknown
+    datetime_display: str  # e.g. "2026-04-28 14:32" (intent timezone) or "" when unknown
     score_display: str  # e.g. "0.82" or "" when score not available
 
 
@@ -121,7 +121,7 @@ def _render_published_at(raw: str | None, tz: ZoneInfo) -> str:
         # Naive timestamps from feeds are conventionally UTC.
         dt = dt.replace(tzinfo=timezone.utc)
     local = dt.astimezone(tz)
-    return local.strftime("%Y-%m-%d %H:%M %Z")
+    return local.strftime("%Y-%m-%d %H:%M")
 
 
 def _format_score(score: float | None) -> str:
@@ -211,11 +211,10 @@ class EmailChannel(BaseChannel):
         tz = _resolve_zoneinfo(intent_timezone)
         rendered = _build_rendered_citations(citations, tz)
         summary_html = _summary_to_html(result.summary, len(rendered))
-        html_body = self._render_html(intent_name, summary_html, rendered)
+        digest_date = datetime.now(tz).strftime("%Y%m%d")
+        html_body = self._render_html(intent_name, summary_html, rendered, digest_date)
 
-        n = len(rendered)
-        article_word = "article" if n == 1 else "articles"
-        subject = f"[sembr] {intent_name} — {n} matched {article_word}"
+        subject = f"[Sembr] {intent_name} - {digest_date}"
 
         # multipart/related so the inline logo (cid:sembr-logo) is part of the
         # same MIME tree as the HTML. SpamAssassin's MIME_HTML_ONLY penalty
@@ -254,12 +253,14 @@ class EmailChannel(BaseChannel):
         intent_name: str,
         summary_html: Markup,
         citations: list[_RenderedCitation],
+        digest_date: str,
     ) -> str:
         tmpl = self._env.get_template("email_digest.html.jinja2")
         return tmpl.render(
             intent_name=intent_name,
             summary_html=summary_html,
             citations=citations,
+            digest_date=digest_date,
         )
 
     async def send_error(
@@ -301,7 +302,7 @@ class EmailChannel(BaseChannel):
             return
 
         short_reason = reason.split("\n")[0][:120]
-        subject = f"[sembr][error] {intent_name} — {kind} template '{name}' — {short_reason}"
+        subject = f"[Sembr][error] {intent_name} — {kind} template '{name}' — {short_reason}"
         html_body = self._render_error_html(intent_name, kind, name, reason)
         msg = MIMEText(html_body, "html", "utf-8")
         msg["Subject"] = subject
