@@ -141,13 +141,20 @@ async def create_feed(
         # via _date_window now-1d (SC6).
         last_collected_at: str | None = None
         if source_type == "newsapi":
+            # Loop 6 💡-4: pick MAX (most recent) cursor instead of LIMIT 1.
+            # Under v1.0 D7's cohort-cursor invariant all donors are equal,
+            # but a partial-failure tick could temporarily desync the cohort
+            # (one feed advanced, another not yet). MAX is the safest
+            # assumption ("we've already seen everything before this") and
+            # self-heals on the next successful tick. Returns one row with
+            # NULL when the cohort is empty.
             async with txn.execute(
-                "SELECT last_collected_at FROM feeds "
+                "SELECT MAX(last_collected_at) FROM feeds "
                 "WHERE source_type='newsapi' AND enabled=1 "
-                "AND last_collected_at IS NOT NULL LIMIT 1"
+                "AND last_collected_at IS NOT NULL"
             ) as cur:
                 row = await cur.fetchone()
-            if row is not None:
+            if row is not None and row[0] is not None:
                 last_collected_at = row[0]
         cursor = await txn.execute(
             """INSERT INTO feeds (name, url, source_type, config, poll_interval_minutes, last_collected_at)

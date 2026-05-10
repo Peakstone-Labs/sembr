@@ -108,6 +108,47 @@ async def test_create_feed_newsapi_skips_disabled_existing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_feed_newsapi_picks_max_when_cohort_desynced() -> None:
+    """Loop 6 💡-4: when the cohort is temporarily desynced (e.g. partial
+    failure on a previous tick advanced cursor for one feed but not the
+    other), the donor query picks the MAX (most recent) cursor — safest
+    'we've seen everything before this' assumption."""
+    conn = await aiosqlite.connect(":memory:")
+    _sqlite_mod._conn = conn
+    _sqlite_mod._WRITE_LOCK = asyncio.Lock()
+    try:
+        await init_feed_tables(conn)
+        old_cursor = "2026-05-01T00:00:00Z"
+        new_cursor = "2026-05-09T12:00:00Z"
+        # Two donors: one stale, one freshly advanced (cohort desync state).
+        await conn.execute(
+            "INSERT INTO feeds (name, url, source_type, last_collected_at, enabled) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("Old", "old.example.com", "newsapi", old_cursor, 1),
+        )
+        await conn.execute(
+            "INSERT INTO feeds (name, url, source_type, last_collected_at, enabled) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("Fresh", "fresh.example.com", "newsapi", new_cursor, 1),
+        )
+        await conn.commit()
+
+        new_feed = await create_feed(
+            conn,
+            name="Reuters",
+            url="reuters.com",
+            source_type="newsapi",
+        )
+        # Must inherit the MAX (newer) cursor, not whichever row SQLite
+        # happens to return first.
+        assert new_feed.last_collected_at == new_cursor
+    finally:
+        _sqlite_mod._conn = None
+        _sqlite_mod._WRITE_LOCK = None
+        await conn.close()
+
+
+@pytest.mark.asyncio
 async def test_create_feed_rss_unaffected_by_newsapi_donor() -> None:
     """Regression guard: rss feeds must not inherit a newsapi cursor — the
     D32 branch is gated on source_type=='newsapi'."""

@@ -633,9 +633,19 @@ async def test_master_tick_http_error_does_not_advance_cursor(monkeypatch, patch
     ) as cur:
         row = await cur.fetchone()
     assert row[0] is None  # D20: no cursor advance on failure
-    async with conn.execute("SELECT COUNT(*) FROM feed_fetch_log") as cur:
-        n = (await cur.fetchone())[0]
-    assert n == 0  # D20: no fetch_event on failure
+    # Loop 6 🟡-1 v1.1: HTTP failure now also emits an ok=False fetch_log
+    # row per feed (was 0 in v1.0, see review.md Loop 5 🟡-1). Cursor still
+    # NOT advanced — D20 atomicity preserved; only the failed *attempt* is
+    # recorded so the dashboard sparkline can detect a stuck cohort.
+    async with conn.execute(
+        "SELECT feed_id, ok, items_seen, error_class FROM feed_fetch_log"
+    ) as cur:
+        rows = await cur.fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == 1
+    assert rows[0][1] == 0  # ok=False
+    assert rows[0][2] == 0  # items_seen=0
+    assert rows[0][3] == "http_error"
     await conn.close()
 
 
@@ -873,16 +883,27 @@ async def test_master_tick_pagination_cap_dropped(monkeypatch, patched_get_conn,
     assert any("max_pages=10 cap reached" in r.getMessage() for r in caplog.records), [
         r.getMessage() for r in caplog.records
     ]
-    # D28: no dispatch on cap → 0 articles, no log row, no cursor advance.
+    # D28: no dispatch on cap → 0 articles, no cursor advance.
     async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
-        n = (await cur.fetchone())[0]
-    assert n == 0
-    async with conn.execute("SELECT COUNT(*) FROM feed_fetch_log") as cur:
         n = (await cur.fetchone())[0]
     assert n == 0
     async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
         row = await cur.fetchone()
     assert row[0] == cut  # unchanged
+    # Loop 6 🟡-1 v1.1: cap-reached path now writes one ok=False fetch_log
+    # row per feed (was 0 in v1.0 + Loop 5; review.md 🟡-1) so the
+    # dashboard sparkline reflects the stuck state.
+    async with conn.execute(
+        "SELECT feed_id, ok, items_seen, items_new, error_class FROM feed_fetch_log"
+    ) as cur:
+        log_rows = await cur.fetchall()
+    assert len(log_rows) == 1
+    fid, ok, seen, new, err = log_rows[0]
+    assert fid == 1
+    assert ok == 0
+    assert seen == 0
+    assert new == 0
+    assert err == "cap_reached"
     await conn.close()
 
 
@@ -918,11 +939,22 @@ async def test_master_tick_pagination_mid_failure_atomic(monkeypatch, patched_ge
     # B-1 atomic: page 1 results never dispatched.
     async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
         assert (await cur.fetchone())[0] == 0
-    async with conn.execute("SELECT COUNT(*) FROM feed_fetch_log") as cur:
-        assert (await cur.fetchone())[0] == 0
     async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
         row = await cur.fetchone()
     assert row[0] == cut  # unchanged
+    # Loop 6 🟡-1 v1.1: mid-page HTTP failure now writes ok=False fetch_log
+    # rows per feed (was 0 in Loop 5). Atomicity preserved (no cursor advance,
+    # no pending inserts), only the failed *attempt* is recorded.
+    async with conn.execute(
+        "SELECT feed_id, ok, items_seen, error_class FROM feed_fetch_log"
+    ) as cur:
+        log_rows = await cur.fetchall()
+    assert len(log_rows) == 1
+    fid, ok, seen, err = log_rows[0]
+    assert fid == 1
+    assert ok == 0
+    assert seen == 0
+    assert err == "http_error"
     await conn.close()
 
 
@@ -968,6 +1000,64 @@ async def test_master_tick_steady_state_one_token(monkeypatch, patched_get_conn,
 # ---------------------------------------------------------------------------
 # v1.0 D31 sanity: fire path (NewsApiSource.fetch) still sends articlesPage=1.
 # ---------------------------------------------------------------------------
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_master_tick_json_parse_failure_emits_log(monkeypatch, patched_get_conn) -> None:
+    """Loop 6 🟡-1: JSON parse failure writes ok=False fetch_log per feed
+    (atomicity preserved — no cursor advance, no pending inserts)."""
+    monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    from sembr.config import get_settings
+    get_settings.cache_clear()
+    conn = await _setup_inmem_db_with_feeds([
+        {"id": 1, "url": "reuters.com"},
+        {"id": 2, "url": "bbc.com"},
+    ])
+    patched_get_conn(conn)
+    respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+        return_value=httpx.Response(200, content=b"not json", headers={"req-tokens": "1.000"})
+    )
+    await NewsApiMaster().tick()
+
+    async with conn.execute(
+        "SELECT feed_id, ok, error_class FROM feed_fetch_log ORDER BY feed_id"
+    ) as cur:
+        rows = await cur.fetchall()
+    assert {(r[0], r[1], r[2]) for r in rows} == {
+        (1, 0, "json_error"), (2, 0, "json_error"),
+    }
+    async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
+        assert (await cur.fetchone())[0] == 0
+    await conn.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_master_tick_bad_articles_block_emits_log(monkeypatch, patched_get_conn) -> None:
+    """Loop 6 🟡-1: malformed response (no 'articles' block) writes
+    ok=False fetch_log per feed; cursor unchanged."""
+    monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    from sembr.config import get_settings
+    get_settings.cache_clear()
+    conn = await _setup_inmem_db_with_feeds([{"id": 1, "url": "reuters.com"}])
+    patched_get_conn(conn)
+    respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+        return_value=httpx.Response(
+            200,
+            json={"error": "rate-limited"},  # no 'articles' key
+            headers={"req-tokens": "1.000"},
+        )
+    )
+    await NewsApiMaster().tick()
+
+    async with conn.execute(
+        "SELECT feed_id, ok, error_class FROM feed_fetch_log"
+    ) as cur:
+        rows = await cur.fetchall()
+    assert len(rows) == 1
+    assert rows[0] == (1, 0, "bad_response")
+    await conn.close()
 
 
 def test_build_request_body_default_page_is_one() -> None:

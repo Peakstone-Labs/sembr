@@ -352,9 +352,38 @@ class NewsApiMaster:
         )
         started_at = datetime.now(timezone.utc)
 
+        # Loop 6 🟡-1 v1.1: per-feed feed_fetch_log row on EVERY failure path
+        # (cap, HTTP, JSON, malformed body) so the dashboard sparkline can
+        # tell "feed stuck on cap" apart from "feed idle". Cursor still does
+        # NOT advance — D20/D28/D29 atomicity unchanged; this only marks the
+        # failed *attempt* in the log table. Mirrors collect_feed's RSS
+        # failure-row pattern.
+        async def _emit_failure_logs(error_class: str, error_message: str) -> None:
+            elapsed_ms = int(
+                (datetime.now(timezone.utc) - started_at).total_seconds() * 1000
+            )
+            for slot in per_feed.values():
+                try:
+                    await log_fetch_event(
+                        feed_id=slot.feed_id,
+                        started_at=started_at,
+                        elapsed_ms=elapsed_ms,
+                        ok=False,
+                        items_seen=0,
+                        items_new=0,
+                        error_class=error_class,
+                        error_message=error_message,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "log_fetch_event(ok=False, %s) failed for newsapi feed_id=%d: %s",
+                        error_class, slot.feed_id, exc,
+                    )
+
         # D29 v1.1: B-1 atomic semantics — accumulate all pages' results in
         # memory; any page failure → return early without dispatch (no
-        # pending_articles insert, no update_last_collected, no fetch_event).
+        # pending_articles insert, no update_last_collected). Failure paths
+        # DO emit ok=False feed_fetch_log rows (Loop 6 🟡-1).
         # Memory budget: max_pages=10 × 100 articles × ~5KB ≈ 5MB (see
         # design §"Memory Footprint"); cap=20 → ~10MB worst case.
         all_results: list[dict[str, Any]] = []
@@ -377,11 +406,15 @@ class NewsApiMaster:
                         resp.raise_for_status()
                     except httpx.HTTPError as exc:
                         # D20 / D29: any page HTTP failure → integral rollback.
-                        # No dispatch yet, no cursor advance, no fetch_event.
-                        # Next tick will retry from the same dateStart.
+                        # No dispatch yet, no cursor advance.
                         logger.warning(
                             "newsapi master tick: page=%d HTTP failed (%d feeds, since=%s): %s",
                             page, len(per_feed), date_start, exc,
+                        )
+                        await _emit_failure_logs(
+                            "http_error",
+                            f"newsapi master tick page={page} HTTP failed: "
+                            f"{type(exc).__name__}: {exc!s}",
                         )
                         return
                     # 🟢-3 v1.0: log req-tokens as soon as the response is in
@@ -394,6 +427,10 @@ class NewsApiMaster:
                             "newsapi master tick: page=%d JSON parse failed: %s",
                             page, exc,
                         )
+                        await _emit_failure_logs(
+                            "json_error",
+                            f"newsapi master tick page={page} JSON parse failed: {exc}",
+                        )
                         return
 
                     articles_block = data.get("articles") if isinstance(data, dict) else None
@@ -403,6 +440,10 @@ class NewsApiMaster:
                             "block; payload keys=%s",
                             page,
                             list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+                        )
+                        await _emit_failure_logs(
+                            "bad_response",
+                            f"newsapi master tick page={page}: response missing 'articles' block",
                         )
                         return
 
@@ -426,13 +467,19 @@ class NewsApiMaster:
                 if not stopped_naturally:
                     # D28 v1.1: defensive cap reached without watermark trigger.
                     # Treat as soft failure (same as D20 atomic): don't dispatch,
-                    # don't advance cursor, don't emit fetch_event. Next tick
-                    # retries with same dateStart. Operator response: lower the
-                    # poll cadence or raise newsapi_max_pages in Settings.
+                    # don't advance cursor. Next tick retries with same dateStart.
+                    # Operator response: lower the poll cadence or raise
+                    # newsapi_max_pages in Settings.
                     logger.warning(
                         "newsapi master tick: max_pages=%d cap reached "
                         "(since=%s, %d feeds); dropping tick to retry next cycle",
                         max_pages, universal_since, len(per_feed),
+                    )
+                    await _emit_failure_logs(
+                        "cap_reached",
+                        f"newsapi master tick: max_pages={max_pages} cap reached "
+                        f"without watermark stop (since={universal_since}); "
+                        f"dropping tick to retry next cycle",
                     )
                     return
 
