@@ -39,13 +39,25 @@ class _FieldCondition:
 
 
 class _Filter:
-    def __init__(self, *, must=None, should=None):
+    # Mirror the real qdrant Filter kwargs (must / should / must_not / min_should)
+    # so this stub doesn't crash when leaked into other tests via sys.modules —
+    # e.g. dashboard tests that pass must_not=[HasIdCondition(...)] for
+    # server-side dedup pagination.
+    def __init__(self, *, must=None, should=None, must_not=None, min_should=None):
         self.must = must or []
+        self.should = should or []
+        self.must_not = must_not or []
+        self.min_should = min_should
 
 
 class _PointIdsList:
     def __init__(self, *, points=None):
         self.points = points or []
+
+
+class _HasIdCondition:
+    def __init__(self, *, has_id=None):
+        self.has_id = has_id or []
 
 
 def _install_qdrant_stub() -> None:
@@ -62,6 +74,7 @@ def _install_qdrant_stub() -> None:
     qc_models.FieldCondition = _FieldCondition  # type: ignore[attr-defined]
     qc_models.Filter = _Filter  # type: ignore[attr-defined]
     qc_models.PointIdsList = _PointIdsList  # type: ignore[attr-defined]
+    qc_models.HasIdCondition = _HasIdCondition  # type: ignore[attr-defined]
 
 
 _install_qdrant_stub()
