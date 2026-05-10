@@ -95,6 +95,11 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
     `articles` is one dict per fetched article with title/url/published_at/status
     ("NEW" or "DUP") so feed fire popups can render the same shape as dry run.
     Returns (0, 0, []) on configuration errors or fetch failures.
+
+    source_type='newsapi' only reaches this function via feeds_fire — master
+    tick owns scheduled polling (add_feed_job:200). Fire forces since=None
+    and skips update_last_collected so the already-paid 1 token returns a
+    full page of 100, while master tick's D27 watermark math stays intact.
     """
     source_cls = SOURCE_REGISTRY.get(source_type)
     if source_cls is None:
@@ -104,14 +109,15 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
 
     conn = get_conn()
 
-    async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=?", (feed_id,)) as cur:
-        row = await cur.fetchone()
     since: datetime | None = None
-    if row and row[0]:
-        try:
-            since = datetime.fromisoformat(row[0].replace("Z", "+00:00"))
-        except ValueError:
-            pass
+    if source_type != "newsapi":
+        async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=?", (feed_id,)) as cur:
+            row = await cur.fetchone()
+        if row and row[0]:
+            try:
+                since = datetime.fromisoformat(row[0].replace("Z", "+00:00"))
+            except ValueError:
+                pass
 
     timeout = float(config.get("timeout", 30.0))
     source = source_cls(feed_url, timeout=timeout)
@@ -182,7 +188,8 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
             "status": "NEW" if is_new else "DUP",
         })
 
-    await update_last_collected(conn, feed_id)
+    if source_type != "newsapi":
+        await update_last_collected(conn, feed_id)
 
     logger.info("fetched %d new items from %r (feed_id=%d, total_seen=%d)", new_count, feed_name, feed_id, len(articles))
     await _emit_fetch_event(
