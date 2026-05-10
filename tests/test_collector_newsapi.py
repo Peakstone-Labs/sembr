@@ -21,10 +21,13 @@ from sembr.collector.newsapi import (
     NewsApiMaster,
     NewsApiSource,
     RECOMMENDED_SOURCES,
+    _PerFeedSince,
     _build_request_body,
     _classify_quality,
     _date_window,
+    _should_stop_paginating,
     _to_raw_article,
+    _universal_since_for_pagination,
     normalize_source_uri,
 )
 from sembr.collector.rss import FetchError
@@ -383,8 +386,15 @@ async def test_master_tick_dispatch_to_feed_ids(monkeypatch, patched_get_conn) -
             "totalResults": 3,
         }
     }
+    # v1.1 pagination: feeds have no last_collected_at → universal_since=None
+    # → watermark cannot stop, so we rely on page 2 being empty (natural end)
+    # to trigger dispatch. Matches real newsapi behavior when results < cap.
+    empty = {"articles": {"results": [], "totalResults": 3}}
     respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
-        return_value=httpx.Response(200, json=payload, headers={"req-tokens": "1.000"})
+        side_effect=[
+            httpx.Response(200, json=payload, headers={"req-tokens": "1.000"}),
+            httpx.Response(200, json=empty, headers={"req-tokens": "1.000"}),
+        ]
     )
 
     await NewsApiMaster().tick()
@@ -456,21 +466,67 @@ async def test_master_tick_token_header_logged(monkeypatch, patched_get_conn, ca
 @respx.mock
 @pytest.mark.asyncio
 async def test_master_tick_total_results_overflow_warns(monkeypatch, patched_get_conn, caplog) -> None:
+    """D33 v1.1: file name preserved (git-diff-friendly) but body rewritten.
+
+    v1.0 asserted only-warn 'exceeds articlesCount=100'; v1.1 replaces the
+    only-warn behavior with watermark+cap pagination. This test now drives
+    the same totalResults>articlesCount mock through the page loop and
+    checks watermark stop kicks in on page 2 — i.e. only 2 HTTP calls,
+    no D24 only-warn left.
+    """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
     get_settings.cache_clear()
-    conn = await _setup_inmem_db_with_feeds([{"id": 1, "url": "reuters.com"}])
+    now = datetime.now(timezone.utc)
+    cut = (now - timedelta(hours=2)).isoformat()
+    conn = await _setup_inmem_db_with_feeds([
+        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+    ])
     patched_get_conn(conn)
-    respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
-        return_value=httpx.Response(
-            200,
-            json={"articles": {"results": [], "totalResults": 150}},
-            headers={"req-tokens": "1.000"},
-        )
+    page1 = {"articles": {"results": [
+        {
+            "url": "https://r.com/p1", "title": "Page1",
+            "body": "x" * 600,
+            "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": {"uri": "reuters.com"},
+        },
+    ], "totalResults": 150}}
+    # page 2 oldest is older than universal_since cut → watermark stop
+    page2 = {"articles": {"results": [
+        {
+            "url": "https://r.com/p2-old", "title": "Page2Old",
+            "body": "x" * 600,
+            "dateTime": (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": {"uri": "reuters.com"},
+        },
+    ], "totalResults": 150}}
+    page3 = {"articles": {"results": [
+        {
+            "url": "https://r.com/p3", "title": "ShouldNotFetch",
+            "body": "x" * 600,
+            "dateTime": (now - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": {"uri": "reuters.com"},
+        },
+    ], "totalResults": 150}}
+    route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+        side_effect=[
+            httpx.Response(200, json=page1, headers={"req-tokens": "1.000"}),
+            httpx.Response(200, json=page2, headers={"req-tokens": "1.000"}),
+            httpx.Response(200, json=page3, headers={"req-tokens": "1.000"}),
+        ]
     )
     with caplog.at_level(logging.WARNING):
         await NewsApiMaster().tick()
-    assert any("exceeds articlesCount=100" in r.getMessage() for r in caplog.records)
+    # Watermark stop on page 2 → exactly 2 HTTP calls, page 3 untouched.
+    assert route.call_count == 2
+    # The legacy D24 only-warn message must be gone.
+    assert not any("exceeds articlesCount=100" in r.getMessage() for r in caplog.records)
+    # Watermark stop = unified dispatch ran → page 1 article landed.
+    async with conn.execute("SELECT title FROM pending_articles ORDER BY title") as cur:
+        rows = await cur.fetchall()
+    assert "Page1" in {r[0] for r in rows}
+    # ShouldNotFetch never attempted → never inserted.
+    assert "ShouldNotFetch" not in {r[0] for r in rows}
     await conn.close()
 
 
@@ -482,20 +538,27 @@ async def test_master_tick_dispatch_unknown_source_dropped(monkeypatch, patched_
     get_settings.cache_clear()
     conn = await _setup_inmem_db_with_feeds([{"id": 1, "url": "reuters.com"}])
     patched_get_conn(conn)
+    payload = {
+        "articles": {
+            "results": [
+                {
+                    "url": "https://vox.com/a", "title": "Mystery",
+                    "body": "x" * 200,
+                    "dateTime": "2026-05-08T10:00:00Z",
+                    "source": {"uri": "vox.com"},
+                },
+            ],
+            "totalResults": 1,
+        }
+    }
+    # v1.1: no last_collected_at on the feed → page 2 must be empty so the
+    # loop naturally ends and dispatch runs.
+    empty = {"articles": {"results": [], "totalResults": 1}}
     respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
-        return_value=httpx.Response(200, json={
-            "articles": {
-                "results": [
-                    {
-                        "url": "https://vox.com/a", "title": "Mystery",
-                        "body": "x" * 200,
-                        "dateTime": "2026-05-08T10:00:00Z",
-                        "source": {"uri": "vox.com"},
-                    },
-                ],
-                "totalResults": 1,
-            }
-        }, headers={"req-tokens": "1.000"})
+        side_effect=[
+            httpx.Response(200, json=payload, headers={"req-tokens": "1.000"}),
+            httpx.Response(200, json=empty, headers={"req-tokens": "1.000"}),
+        ]
     )
     with caplog.at_level(logging.WARNING):
         await NewsApiMaster().tick()
@@ -586,3 +649,350 @@ async def test_master_tick_no_enabled_feeds_skips_silently(monkeypatch, patched_
     # No httpx mock — if tick tried to call out it would explode
     await NewsApiMaster().tick()
     await conn.close()
+
+
+# ===========================================================================
+# v1.1 master tick pagination — D26 / D27 / D28 / D29 / D30 / D31
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# _should_stop_paginating — pure function (D27, defense for Open Q1 desc/asc)
+# ---------------------------------------------------------------------------
+
+
+def _mk_article(dt: datetime) -> dict:
+    return {
+        "url": f"https://r.com/{dt.timestamp()}",
+        "title": "T",
+        "body": "x" * 200,
+        "dateTime": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source": {"uri": "reuters.com"},
+    }
+
+
+def test_should_stop_paginating_orientation_robust() -> None:
+    """D27 / Open Q1: stop decision is invariant under page-internal sort
+    direction. Same articles in desc and asc must produce the same stop bool.
+    Failure here means the upstream silently flipped articleSortBy and the
+    'last article' heuristic would have given wrong answers — i.e. the
+    drift-guard for Q1."""
+    now = datetime.now(timezone.utc)
+    cut = now - timedelta(hours=2)
+    # 3 articles: now, now-1h, now-3h. Oldest (now-3h) <= cut → stop.
+    arts = [_mk_article(now), _mk_article(now - timedelta(hours=1)), _mk_article(now - timedelta(hours=3))]
+    assert _should_stop_paginating(arts, cut) is True
+    assert _should_stop_paginating(list(reversed(arts)), cut) is True
+
+    # All articles newer than cut → don't stop, regardless of order.
+    fresh = [_mk_article(now), _mk_article(now - timedelta(minutes=30))]
+    assert _should_stop_paginating(fresh, cut) is False
+    assert _should_stop_paginating(list(reversed(fresh)), cut) is False
+
+
+def test_should_stop_paginating_since_none_never_stops() -> None:
+    """First-pull bootstrap: universal_since=None → defensive cap is the
+    only stop mechanism, watermark never fires."""
+    now = datetime.now(timezone.utc)
+    arts = [_mk_article(now - timedelta(days=30))]
+    assert _should_stop_paginating(arts, None) is False
+
+
+def test_should_stop_paginating_empty_page_returns_false() -> None:
+    """Empty page is handled separately by the caller (`if not page_results`
+    break); helper just must not crash and must return False."""
+    cut = datetime.now(timezone.utc)
+    assert _should_stop_paginating([], cut) is False
+    assert _should_stop_paginating([], None) is False
+
+
+def test_should_stop_paginating_handles_missing_or_bad_datetime() -> None:
+    """No parseable dateTime in any article → no signal to stop on → False
+    (caller will rely on cap or empty-page break)."""
+    cut = datetime.now(timezone.utc)
+    bad = [{"title": "no dt"}, {"dateTime": ""}, {"dateTime": "garbage"}]
+    assert _should_stop_paginating(bad, cut) is False
+
+
+def test_universal_since_min_when_all_set() -> None:
+    now = datetime.now(timezone.utc)
+    pf = {
+        "a": _PerFeedSince(feed_id=1, since=now - timedelta(hours=2)),
+        "b": _PerFeedSince(feed_id=2, since=now - timedelta(hours=5)),
+    }
+    out = _universal_since_for_pagination(pf)
+    assert out is not None
+    assert out == now - timedelta(hours=5)
+
+
+def test_universal_since_none_when_any_feed_first_pull() -> None:
+    now = datetime.now(timezone.utc)
+    pf = {
+        "a": _PerFeedSince(feed_id=1, since=now - timedelta(hours=2)),
+        "b": _PerFeedSince(feed_id=2, since=None),
+    }
+    assert _universal_since_for_pagination(pf) is None
+
+
+# ---------------------------------------------------------------------------
+# Master tick pagination — SC1 / SC2 / SC4
+# ---------------------------------------------------------------------------
+
+
+def _page_envelope(results: list[dict], total: int) -> dict:
+    return {"articles": {"results": results, "totalResults": total}}
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_conn) -> None:
+    """SC1 v1.1: page1 newest, page2 mid, page3 oldest (≤ since) → only 2
+    HTTP calls; page3 NOT requested; pending_articles contains only the
+    ≥ since portion of pages 1+2."""
+    monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    from sembr.config import get_settings
+    get_settings.cache_clear()
+    now = datetime.now(timezone.utc)
+    cut = (now - timedelta(hours=4)).isoformat()
+    conn = await _setup_inmem_db_with_feeds([
+        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+    ])
+    patched_get_conn(conn)
+
+    # page 1: newest (now) + (now-1h) — both > cut
+    page1 = _page_envelope([
+        {"url": "https://r.com/p1a", "title": "P1A", "body": "x" * 300,
+         "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "source": {"uri": "reuters.com"}},
+        {"url": "https://r.com/p1b", "title": "P1B", "body": "x" * 300,
+         "dateTime": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "source": {"uri": "reuters.com"}},
+    ], total=250)
+    # page 2: (now-3h, now-5h) — oldest ≤ cut(now-4h) → watermark stop
+    # The article at now-5h is still loaded into all_results, but the
+    # per-article since-cut (D22) drops it during dispatch.
+    page2 = _page_envelope([
+        {"url": "https://r.com/p2a", "title": "P2A", "body": "x" * 300,
+         "dateTime": (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "source": {"uri": "reuters.com"}},
+        {"url": "https://r.com/p2b-old", "title": "P2BOld", "body": "x" * 300,
+         "dateTime": (now - timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "source": {"uri": "reuters.com"}},
+    ], total=250)
+    # page 3: must NEVER be hit; if respx side_effect runs out it raises.
+    page3 = _page_envelope([
+        {"url": "https://r.com/p3", "title": "P3SHOULDNOTFETCH", "body": "x" * 300,
+         "dateTime": (now - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "source": {"uri": "reuters.com"}},
+    ], total=250)
+    route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+        side_effect=[
+            httpx.Response(200, json=page1, headers={"req-tokens": "1.000"}),
+            httpx.Response(200, json=page2, headers={"req-tokens": "1.000"}),
+            httpx.Response(200, json=page3, headers={"req-tokens": "1.000"}),
+        ]
+    )
+
+    await NewsApiMaster().tick()
+
+    # Exactly 2 HTTP calls (watermark stop on page 2).
+    assert route.call_count == 2
+
+    async with conn.execute(
+        "SELECT title FROM pending_articles ORDER BY title"
+    ) as cur:
+        rows = await cur.fetchall()
+    titles = {r[0] for r in rows}
+    # P1A, P1B, P2A landed (all > cut). P2BOld dropped by D22 since-cut.
+    # P3SHOULDNOTFETCH never even fetched.
+    assert "P1A" in titles
+    assert "P1B" in titles
+    assert "P2A" in titles
+    assert "P2BOld" not in titles
+    assert "P3SHOULDNOTFETCH" not in titles
+
+    async with conn.execute(
+        "SELECT feed_id, ok, items_seen FROM feed_fetch_log"
+    ) as cur:
+        log_rows = await cur.fetchall()
+    assert len(log_rows) == 1
+    assert log_rows[0][0] == 1
+    assert log_rows[0][1] == 1
+    # items_seen counts pages 1+2 = 4 (cross-page accumulation, D29).
+    assert log_rows[0][2] == 4
+
+    async with conn.execute(
+        "SELECT last_collected_at FROM feeds WHERE id=1"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row[0] is not None  # cursor advanced (watermark stop = success)
+    await conn.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_master_tick_pagination_cap_dropped(monkeypatch, patched_get_conn, caplog) -> None:
+    """SC2 v1.1 / D28: every fetched page's articles are newer than
+    universal_since (watermark never fires) → cap=10 reached → integral
+    drop: pending_articles=0, last_collected_at unchanged, no fetch_event.
+    """
+    monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    from sembr.config import get_settings
+    get_settings.cache_clear()
+    now = datetime.now(timezone.utc)
+    cut = (now - timedelta(days=30)).isoformat()  # very far back
+    conn = await _setup_inmem_db_with_feeds([
+        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+    ])
+    patched_get_conn(conn)
+
+    # Each of the 10 pages returns articles all dated within last hour
+    # (well above cut). Watermark stop never fires; cap fires after page 10.
+    def _fresh_page(idx: int) -> dict:
+        return _page_envelope([
+            {"url": f"https://r.com/p{idx}-{i}", "title": f"P{idx}-{i}",
+             "body": "x" * 200,
+             "dateTime": (now - timedelta(minutes=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "source": {"uri": "reuters.com"}}
+            for i in range(2)
+        ], total=2000)
+    side_effects = [
+        httpx.Response(200, json=_fresh_page(p), headers={"req-tokens": "1.000"})
+        for p in range(1, 11)
+    ]
+    route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+        side_effect=side_effects
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await NewsApiMaster().tick()
+
+    # All 10 pages fetched (cap=10 default).
+    assert route.call_count == 10
+    # Cap warning issued.
+    assert any("max_pages=10 cap reached" in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records
+    ]
+    # D28: no dispatch on cap → 0 articles, no log row, no cursor advance.
+    async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
+        n = (await cur.fetchone())[0]
+    assert n == 0
+    async with conn.execute("SELECT COUNT(*) FROM feed_fetch_log") as cur:
+        n = (await cur.fetchone())[0]
+    assert n == 0
+    async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
+        row = await cur.fetchone()
+    assert row[0] == cut  # unchanged
+    await conn.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_master_tick_pagination_mid_failure_atomic(monkeypatch, patched_get_conn) -> None:
+    """SC4 v1.1 / D29: page 1 OK, page 2 HTTP 500 → integral rollback.
+    pending_articles=0, last_collected_at unchanged, no fetch_event."""
+    monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    from sembr.config import get_settings
+    get_settings.cache_clear()
+    now = datetime.now(timezone.utc)
+    cut = (now - timedelta(days=30)).isoformat()
+    conn = await _setup_inmem_db_with_feeds([
+        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+    ])
+    patched_get_conn(conn)
+
+    page1 = _page_envelope([
+        {"url": "https://r.com/p1", "title": "P1WOULDLAND", "body": "x" * 300,
+         "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "source": {"uri": "reuters.com"}},
+    ], total=300)
+    respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+        side_effect=[
+            httpx.Response(200, json=page1, headers={"req-tokens": "1.000"}),
+            httpx.Response(500, text="upstream broke"),
+        ]
+    )
+
+    await NewsApiMaster().tick()
+
+    # B-1 atomic: page 1 results never dispatched.
+    async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
+        assert (await cur.fetchone())[0] == 0
+    async with conn.execute("SELECT COUNT(*) FROM feed_fetch_log") as cur:
+        assert (await cur.fetchone())[0] == 0
+    async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
+        row = await cur.fetchone()
+    assert row[0] == cut  # unchanged
+    await conn.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_master_tick_steady_state_one_token(monkeypatch, patched_get_conn, caplog) -> None:
+    """SC3 v1.1: totalResults=80 (under 100) — page 1 oldest is ≤ cut →
+    watermark stop after page 1 → 1 HTTP call, equivalent to v1.0 cost.
+    Guards against regression where pagination accidentally always walks
+    multiple pages."""
+    monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    from sembr.config import get_settings
+    get_settings.cache_clear()
+    now = datetime.now(timezone.utc)
+    cut = (now - timedelta(hours=1)).isoformat()
+    conn = await _setup_inmem_db_with_feeds([
+        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+    ])
+    patched_get_conn(conn)
+
+    # Page 1 contains an article at now-2h (older than cut) so watermark
+    # stop fires on page 1.
+    page1 = _page_envelope([
+        {"url": "https://r.com/a", "title": "A", "body": "x" * 300,
+         "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "source": {"uri": "reuters.com"}},
+        {"url": "https://r.com/b-old", "title": "BOld", "body": "x" * 300,
+         "dateTime": (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "source": {"uri": "reuters.com"}},
+    ], total=80)
+    route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+        side_effect=[
+            httpx.Response(200, json=page1, headers={"req-tokens": "1.000"}),
+        ]
+    )
+    with caplog.at_level(logging.INFO, logger="sembr.collector.newsapi"):
+        await NewsApiMaster().tick()
+    assert route.call_count == 1
+    assert any("req-tokens=1.0" in r.getMessage() for r in caplog.records)
+    await conn.close()
+
+
+# ---------------------------------------------------------------------------
+# v1.0 D31 sanity: fire path (NewsApiSource.fetch) still sends articlesPage=1.
+# ---------------------------------------------------------------------------
+
+
+def test_build_request_body_default_page_is_one() -> None:
+    """D31: page parameter defaults to 1 so single-page callers (fire path,
+    legacy tests) keep v1.0 wire format identical."""
+    settings = Settings(newsapi_categories="Business")
+    body = _build_request_body(
+        api_key="K",
+        source_uris=["reuters.com"],
+        settings=settings,
+        date_start="2026-05-09",
+        date_end="2026-05-10",
+    )
+    assert body["articlesPage"] == 1
+
+
+def test_build_request_body_explicit_page() -> None:
+    """D31: master tick passes 1..max_pages."""
+    settings = Settings(newsapi_categories="Business")
+    body = _build_request_body(
+        api_key="K",
+        source_uris=["reuters.com"],
+        settings=settings,
+        date_start="2026-05-09",
+        date_end="2026-05-10",
+        page=7,
+    )
+    assert body["articlesPage"] == 7

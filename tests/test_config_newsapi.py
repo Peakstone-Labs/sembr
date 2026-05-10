@@ -72,3 +72,34 @@ def test_newsapi_valid_categories_constant_matches_multiselect() -> None:
     from sembr.api.settings import _MULTISELECT_FIELDS
     assert _MULTISELECT_FIELDS["newsapi_categories"] == list(NEWSAPI_VALID_CATEGORIES)
     assert len(NEWSAPI_VALID_CATEGORIES) == 8
+
+
+# ---------------------------------------------------------------------------
+# SC9 v1.1: newsapi_max_pages bounds (D26)
+# ---------------------------------------------------------------------------
+
+
+def test_newsapi_max_pages_default_is_10() -> None:
+    s = Settings()
+    assert s.newsapi_max_pages == 10
+
+
+def test_newsapi_max_pages_lower_bound_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(newsapi_max_pages=0)
+
+
+def test_newsapi_max_pages_upper_bound_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(newsapi_max_pages=21)
+
+
+def test_newsapi_max_pages_one_accepted() -> None:
+    # newsapi_max_pages=1 is the explicit "off" knob (= v1.0 behavior).
+    s = Settings(newsapi_max_pages=1)
+    assert s.newsapi_max_pages == 1
+
+
+def test_newsapi_max_pages_twenty_accepted() -> None:
+    s = Settings(newsapi_max_pages=20)
+    assert s.newsapi_max_pages == 20

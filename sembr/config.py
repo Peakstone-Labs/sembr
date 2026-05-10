@@ -231,6 +231,15 @@ class Settings(BaseSettings):
             "all-categories at the API and break the whitelist contract."
         ),
     )
+    newsapi_max_pages: int = Field(
+        default=10, ge=1, le=20,
+        description=(
+            "Master tick 单拍最多翻页数 (D26 v1.1)。1=v1.0 关闭翻页（仅取 page 1，"
+            "稳态等价旧行为）；watermark 应在此之前先停。20 是上限以防误设把单"
+            "拍 token 代价拉到 20。defensive cap 触发时 (10 页全没 watermark) 整"
+            "拍按软失败处理（D28，不推进 cursor）。"
+        ),
+    )
 
     @field_validator("newsapi_categories")
     @classmethod

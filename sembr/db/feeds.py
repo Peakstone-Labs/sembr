@@ -131,10 +131,28 @@ async def create_feed(
     # feeds insert + feed_tags insert must be atomic so a partial failure can't
     # leave a tagless feed (see api/feeds.post_feed rollback path).
     async with transaction() as txn:
+        # D32 v1.1: a newly-added newsapi feed must NOT pull a 24h bootstrap
+        # window on its first tick — that would burn extra tokens and pollute
+        # an already-aligned cohort. v1.0 D7 holds the invariant that all
+        # enabled newsapi feeds share the same last_collected_at after each
+        # tick; piggyback on that by copying any existing newsapi cursor at
+        # INSERT time (same transaction so a concurrent delete-and-recreate
+        # cannot interleave). Empty-cohort first install → NULL = bootstrap
+        # via _date_window now-1d (SC6).
+        last_collected_at: str | None = None
+        if source_type == "newsapi":
+            async with txn.execute(
+                "SELECT last_collected_at FROM feeds "
+                "WHERE source_type='newsapi' AND enabled=1 "
+                "AND last_collected_at IS NOT NULL LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+            if row is not None:
+                last_collected_at = row[0]
         cursor = await txn.execute(
-            """INSERT INTO feeds (name, url, source_type, config, poll_interval_minutes)
-               VALUES (?, ?, ?, ?, ?)""",
-            (name, url, source_type, json.dumps(config or {}), poll_interval_minutes),
+            """INSERT INTO feeds (name, url, source_type, config, poll_interval_minutes, last_collected_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (name, url, source_type, json.dumps(config or {}), poll_interval_minutes, last_collected_at),
         )
         feed_id = cursor.lastrowid
         if tags:
