@@ -47,6 +47,10 @@ class ScanOptions:
     skip_seen: bool  # True → filter out already-seen articles before returning
     feed_ids: list[int] | None  # None=all feeds; []=no feeds (short-circuits to [])
     write_match_seen: bool  # True → insert hits into match_seen; False → fire path
+    # D-A6 / D12: cron path keeps the silent-skip-tick contract (False); sync
+    # external fire endpoint sets True so a Qdrant outage surfaces as 500 rather
+    # than masquerading as 0 hits.
+    propagate_qdrant_errors: bool = False
 
 
 async def scan_once(
@@ -195,6 +199,8 @@ async def scan_once(
                 (top.payload or {}).get("title", "")[:80],
             )
     except Exception as exc:
+        if options.propagate_qdrant_errors:
+            raise
         logger.warning("intent_id=%d scan_once Qdrant error: %s", intent.id, exc)
         return []
 

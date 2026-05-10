@@ -2,6 +2,12 @@
 
 on_match must never raise; all errors are logged and the tick is silently
 skipped (same contract as log_matches in matcher/callback.py).
+
+`compute_summary` is the public, raise-on-error variant: it returns a
+SummaryResult or None (the None branches are configuration-level skips, not
+errors), and re-raises TemplateError / LLM exceptions so synchronous callers
+(e.g. external fire endpoint) can surface them. `handle` wraps it as the
+never-raise on_match callback used by the cron scheduler.
 """
 from __future__ import annotations
 
@@ -163,16 +169,35 @@ class SummaryPipeline:
         self._on_template_error = on_template_error
         self._prompts_dir = prompts_dir
 
-    async def handle(self, matches: list[Match]) -> None:
-        """on_match callback entry point — must never raise."""
-        if not matches:
-            return
-        try:
-            await self._handle(matches)
-        except Exception:
-            logger.exception("SummaryPipeline.handle unexpected error for intent_id=%s", matches[0].intent_id)
+    async def compute_summary(self, matches: list[Match]) -> SummaryResult | None:
+        """Build prompt, call LLM, return SummaryResult — or None for skip-class
+        conditions (empty matches / empty intent_text / ctx fetch failed /
+        body_budget deficit). Template errors raise TemplateNotFoundError /
+        TemplateRenderError; LLM errors raise the original exception.
 
-    async def _handle(self, matches: list[Match]) -> None:
+        Skip-class (None) vs. error-class (raise) split:
+          * None  — prompt cannot be assembled but it isn't a code-path failure
+                    (intent_text is empty / ctx fetch failed / batch can't fit
+                    inside max_prompt_chars). Same semantics as the old
+                    _handle's "logger.warning + return". Synchronous callers
+                    treat these as "no summary, no error".
+          * raise — template missing/broken or LLM call failed. Synchronous
+                    callers convert into a `summary_error` field; `handle()`
+                    catches Template* into on_template_error and swallows the
+                    rest.
+
+        Template exceptions are tagged with private
+        ``_sembr_template_kind`` (``"system"`` / ``"instruction"``) and
+        ``_sembr_template_name`` (the template identifier) attributes before
+        re-raise. ``handle()`` reads them via ``getattr(..., "unknown")``
+        when dispatching to ``on_template_error`` so it doesn't have to
+        re-parse exception messages. External callers (e.g. the
+        ``/api/external/.../fire`` endpoint) ignore these attributes and
+        format the exception via their own scrubbing pipeline.
+        """
+        if not matches:
+            return None
+
         intent_id = matches[0].intent_id
         ordered = sorted(
             matches,
@@ -194,14 +219,19 @@ class SummaryPipeline:
                     "SummaryPipeline: could not fetch prompt ctx for intent_id=%d, skipping tick",
                     intent_id,
                 )
-                return
+                return None
             if not intent_text:
                 logger.warning(
                     "SummaryPipeline: empty intent_text for intent_id=%d, skipping",
                     intent_id,
                 )
-                return
+                return None
 
+        # Template errors propagate (D-A7 / D17). Logging here mirrors the old
+        # _handle line so log readers see the same string before the wrapper
+        # decides whether to dispatch _on_template_error. We tag the exception
+        # with ``_sembr_template_kind/_name`` so handle() can hand them to
+        # _on_template_error without re-parsing the exception message.
         try:
             system_prompt = _templates.render_system(
                 self._prompts_dir, system_tpl_name, language=language
@@ -212,9 +242,9 @@ class SummaryPipeline:
                 intent_id,
                 exc,
             )
-            if self._on_template_error is not None:
-                await self._on_template_error(intent_id, "system", system_tpl_name, str(exc))
-            return
+            exc._sembr_template_kind = "system"
+            exc._sembr_template_name = system_tpl_name
+            raise
 
         feed_name_map: dict[int, str] = {}
         if self._get_feed_names is not None:
@@ -244,11 +274,9 @@ class SummaryPipeline:
                 intent_id,
                 exc,
             )
-            if self._on_template_error is not None:
-                await self._on_template_error(
-                    intent_id, "instruction", instruction_tpl_name, str(exc)
-                )
-            return
+            exc._sembr_template_kind = "instruction"
+            exc._sembr_template_name = instruction_tpl_name
+            raise
 
         n_articles = len(ordered)
         per_entry_overhead = sum(
@@ -276,7 +304,7 @@ class SummaryPipeline:
                 "skipping tick. Reduce template size or raise SEMBR_LLM_MAX_PROMPT_CHARS.",
                 intent_id, self._llm.max_prompt_chars, n_articles, -body_budget,
             )
-            return
+            return None
 
         articles_text, n_truncated, longest_cap = _build_articles_text(ordered, body_budget)
         if n_truncated > 0:
@@ -300,25 +328,14 @@ class SummaryPipeline:
                 intent_id,
                 exc,
             )
-            if self._on_template_error is not None:
-                await self._on_template_error(
-                    intent_id, "instruction", instruction_tpl_name, str(exc)
-                )
-            return
+            exc._sembr_template_kind = "instruction"
+            exc._sembr_template_name = instruction_tpl_name
+            raise
 
-        try:
-            summary = await self._llm.summarize(prompt, system=system_prompt)
-        except Exception as exc:
-            logger.error(
-                "SummaryPipeline: LLM error for intent_id=%d batch_size=%d: %s",
-                intent_id,
-                len(ordered),
-                exc,
-            )
-            return
+        summary = await self._llm.summarize(prompt, system=system_prompt)
 
         citations = [_to_citation(m, feed_name_map) for m in ordered]
-        result = SummaryResult(
+        return SummaryResult(
             intent_id=intent_id,
             summary=summary,
             citations=citations,
@@ -326,13 +343,64 @@ class SummaryPipeline:
             other_sources=citations[1:] if len(citations) > 1 else [],
         )
 
-        if self._pre_push_hook is not None:
-            try:
-                should_push = await self._pre_push_hook(result)
-            except Exception:
-                logger.exception("SummaryPipeline: pre_push_hook error, skipping result")
-                return
-            if not should_push:
-                return
+    async def handle(self, matches: list[Match]) -> None:
+        """on_match callback entry point — must never raise.
 
-        await self._on_summary(result)
+        Two nested try blocks split the responsibility:
+
+        * The OUTER try wraps **only** ``compute_summary`` so its own
+          template / LLM errors route correctly. Catch order is hard-coded:
+          ``(TemplateNotFoundError, TemplateRenderError)`` first → dispatch
+          ``on_template_error``; then bare ``Exception`` → swallow with
+          ``logger.exception``. Reversing the order would let the generic
+          catch eat template errors and silently drop the
+          ``on_template_error`` → email path.
+
+        * The INNER try wraps ``pre_push_hook`` + ``on_summary``. Their
+          exceptions are dispatch-side failures; routing them to the
+          template-error channel would publish bogus
+          ``kind="unknown"/name="unknown"`` alerts when, e.g., a hook does
+          its own Jinja render and raises ``TemplateRenderError`` for
+          unrelated reasons.
+
+        ``compute_summary`` tags template exceptions with
+        ``_sembr_template_kind`` / ``_sembr_template_name`` private
+        attributes; the outer catch reads them with ``getattr(..., "unknown")``
+        so a third-party caller raising one of these exception types directly
+        won't crash this method, just lose the kind/name detail in the alert.
+        """
+        if not matches:
+            return
+        intent_id = matches[0].intent_id
+        try:
+            result = await self.compute_summary(matches)
+        except (TemplateNotFoundError, TemplateRenderError) as exc:
+            kind = getattr(exc, "_sembr_template_kind", "unknown")
+            name = getattr(exc, "_sembr_template_name", "unknown")
+            if self._on_template_error is not None:
+                try:
+                    await self._on_template_error(intent_id, kind, name, str(exc))
+                except Exception:
+                    logger.exception(
+                        "SummaryPipeline: on_template_error callback raised for intent_id=%d",
+                        intent_id,
+                    )
+            return
+        except Exception:
+            logger.exception(
+                "SummaryPipeline.compute_summary unexpected error for intent_id=%s", intent_id
+            )
+            return
+
+        if result is None:
+            return
+
+        try:
+            if self._pre_push_hook is not None and not await self._pre_push_hook(result):
+                return
+            await self._on_summary(result)
+        except Exception:
+            logger.exception(
+                "SummaryPipeline dispatch (pre_push_hook / on_summary) error for intent_id=%s",
+                intent_id,
+            )

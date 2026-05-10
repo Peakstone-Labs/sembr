@@ -29,6 +29,7 @@ _PROTECTED_PREFIXES = (
     "/api/dashboard/",
     "/api/prompts/",
     "/api/settings/",
+    "/api/external/",
     "/intents/",
     "/feeds/",
 )

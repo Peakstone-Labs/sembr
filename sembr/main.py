@@ -31,6 +31,7 @@ logging.getLogger("sembr").setLevel(logging.DEBUG)
 import aiosqlite
 
 from sembr.api import settings_restart
+from sembr.api.external_fire import router as external_fire_router
 from sembr.api.feeds import router as feeds_router
 from sembr.api.feeds_fire import router as feeds_fire_router
 from sembr.api.fire import router as fire_router
@@ -244,6 +245,10 @@ async def lifespan(app: FastAPI):
         prompts_dir=PROMPTS_DIR,
     )
     app.state.on_match = pipeline.handle
+    # D16: external fire endpoint reaches the pipeline through this handle;
+    # must be set in lifespan adjacent to on_match so both are wired before the
+    # first request lands.
+    app.state.summary_pipeline = pipeline
     app.state.qdrant = qdrant
     app.state.scheduler = scheduler
     app.state.settings = settings
@@ -312,6 +317,7 @@ app.include_router(feeds_router)
 app.include_router(feeds_fire_router)
 app.include_router(intents_router)
 app.include_router(fire_router)
+app.include_router(external_fire_router)
 app.include_router(prompts_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)

@@ -10,10 +10,13 @@ import pytest
 from sembr.matcher.fire_tasks import (
     FireTask,
     _fire_tasks,
+    _last_fire_at,
     _reset_for_testing,
+    check_and_record_fire,
     create_task,
     get_task,
     sweep_expired,
+    throttle_check,
 )
 
 
@@ -117,3 +120,64 @@ def test_sweep_expired_mixed() -> None:
 
 def test_sweep_expired_empty_no_error() -> None:
     assert sweep_expired() == 0
+
+
+# ---------------------------------------------------------------------------
+# check_and_record_fire (D-A9 / external-fire-api)
+# ---------------------------------------------------------------------------
+
+
+def test_check_and_record_fire_first_call_returns_true_and_records() -> None:
+    """First call for an intent: True + writes _last_fire_at."""
+    assert check_and_record_fire(42) is True
+    assert 42 in _last_fire_at
+
+
+def test_check_and_record_fire_within_window_returns_false() -> None:
+    """Second call inside the rate window: False; existing record unchanged."""
+    assert check_and_record_fire(7) is True
+    recorded = _last_fire_at[7]
+    assert check_and_record_fire(7) is False
+    # Rejected request must not bump the timestamp; otherwise consumers can
+    # extend their own window indefinitely by hammering the endpoint.
+    assert _last_fire_at[7] == recorded
+
+
+def test_check_and_record_fire_after_window_returns_true() -> None:
+    """Window expired: True; timestamp advances."""
+    assert check_and_record_fire(8) is True
+    # Backdate to outside the rate window
+    _last_fire_at[8] = datetime.now(timezone.utc) - timedelta(seconds=120)
+    old = _last_fire_at[8]
+    assert check_and_record_fire(8) is True
+    assert _last_fire_at[8] > old
+
+
+def test_check_and_record_fire_independent_per_intent() -> None:
+    assert check_and_record_fire(1) is True
+    assert check_and_record_fire(2) is True
+    assert check_and_record_fire(1) is False
+    assert check_and_record_fire(2) is False
+
+
+def test_check_and_record_fire_shares_bucket_with_async_path() -> None:
+    """create_task (async fire) and check_and_record_fire (sync fire) share
+    _last_fire_at, so triggering one must immediately rate-limit the other.
+    Validates the design D-A5 single-bucket promise."""
+    create_task(intent_id=99)
+    # Async path created the task and stamped _last_fire_at[99]; sync path
+    # must therefore reject within the window.
+    assert check_and_record_fire(99) is False
+
+
+def test_check_and_record_fire_blocks_subsequent_async_path() -> None:
+    """Symmetric: sync path stamping must block async ``throttle_check``."""
+    assert check_and_record_fire(5) is True
+    assert throttle_check(5) is False
+
+
+def test_check_and_record_fire_sync_signature() -> None:
+    """D-A9 hard constraint: must remain a sync function. Adding async/await
+    re-opens the TOCTOU window the helper was created to close."""
+    import asyncio  # noqa: PLC0415
+    assert not asyncio.iscoroutinefunction(check_and_record_fire)
