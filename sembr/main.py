@@ -171,8 +171,15 @@ async def lifespan(app: FastAPI):
     if not isinstance(_vectors_cfg, dict) or "main" not in _vectors_cfg:
         raise RuntimeError(
             f"intents collection {_INTENTS_ALIAS!r} is not in named-vector layout "
-            f"(vectors_config={_vectors_cfg!r}); migration must have failed. "
-            f"Manual recovery required."
+            f"(vectors_config={_vectors_cfg!r}); the intent-match-enhancement "
+            f"migration (D2/D3) did not complete. "
+            f"Recovery: inspect Qdrant for an `intents_<model>_mv` collection; "
+            f"if absent or has wrong layout, restart the container to retry the "
+            f"migration. If retry fails repeatedly, delete the partially-built "
+            f"`*_mv` collection (`docker compose exec api python -c \"from "
+            f"qdrant_client import QdrantClient; QdrantClient(url='http://qdrant:6333')"
+            f".delete_collection('<NAME>_mv')\"`) and restart so ensure_intents_collection "
+            f"rebuilds it from scratch."
         )
     load_task = asyncio.create_task(embedder.load())  # background; /health probes status
     scheduler = make_scheduler()

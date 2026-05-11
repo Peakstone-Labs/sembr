@@ -296,11 +296,23 @@ async def get_intent(conn: aiosqlite.Connection, intent_id: int) -> Intent | Non
     return intent
 
 
-async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: IntentUpdate) -> Intent:
-    current = await get_intent(conn, intent_id)
-    if current is None:  # explicit raise instead of assert — not stripped under python -O (I6)
-        raise ValueError(f"intent {intent_id} not found; caller must check existence first")
+async def _update_intent_in_txn(
+    txn: aiosqlite.Connection,
+    intent_id: int,
+    body: IntentUpdate,
+    current: Intent,
+) -> None:
+    """UPDATE intents row only, inside the caller's transaction.
 
+    Extracted from update_intent so PUT can co-commit the intents row and
+    intent_sub_texts table inside a single outer transaction (Loop 2 🔴-1):
+    the previous two-COMMIT pattern left intents updated but sub_texts
+    rollback-less if the child write raised.
+
+    Caller is responsible for the surrounding transaction() and for re-reading
+    via get_intent (this function returns nothing; the post-write state is
+    not visible until the transaction commits).
+    """
     new_name = body.name if body.name is not None else current.name
     new_text = body.text if body.text is not None else current.text
     new_threshold = body.threshold if body.threshold is not None else current.threshold
@@ -320,69 +332,94 @@ async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: Intent
     schedule_json = new_schedule.model_dump_json()
     feed_filter_json = _feed_filter_json(new_feed_filter)
     now = _now_utc()
+    await txn.execute(
+        """UPDATE intents
+           SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
+               system_template=?,instruction_template=?,
+               feed_filter=?,schedule=?,timezone=?,language=?,
+               updated_at=?
+           WHERE id=?""",
+        (
+            new_name,
+            new_text,
+            new_threshold,
+            int(new_enabled),
+            channels_json,
+            tags_json,
+            new_system_template,
+            new_instruction_template,
+            feed_filter_json,
+            schedule_json,
+            new_timezone,
+            new_language,
+            now,
+            intent_id,
+        ),
+    )
+
+
+async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: IntentUpdate) -> Intent:
+    current = await get_intent(conn, intent_id)
+    if current is None:  # explicit raise instead of assert — not stripped under python -O (I6)
+        raise ValueError(f"intent {intent_id} not found; caller must check existence first")
     async with transaction() as txn:
-        await txn.execute(
-            """UPDATE intents
-               SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
-                   system_template=?,instruction_template=?,
-                   feed_filter=?,schedule=?,timezone=?,language=?,
-                   updated_at=?
-               WHERE id=?""",
-            (
-                new_name,
-                new_text,
-                new_threshold,
-                int(new_enabled),
-                channels_json,
-                tags_json,
-                new_system_template,
-                new_instruction_template,
-                feed_filter_json,
-                schedule_json,
-                new_timezone,
-                new_language,
-                now,
-                intent_id,
-            ),
-        )
+        await _update_intent_in_txn(txn, intent_id, body, current)
     result = await get_intent(conn, intent_id)
     return result  # type: ignore[return-value]
 
 
-async def update_intent_raw(conn: aiosqlite.Connection, intent_id: int, snapshot: Intent) -> None:
-    """Restore a snapshot to roll back a failed PUT (R7: write original updated_at, not now).
+async def _update_intent_raw_in_txn(
+    txn: aiosqlite.Connection,
+    intent_id: int,
+    snapshot: Intent,
+) -> None:
+    """Restore a snapshot row inside the caller's transaction (PUT rollback path).
 
-    created_at is intentionally not written — no code path mutates it after INSERT.
+    Counterpart of `_update_intent_in_txn` for the failure branch. Pairing the
+    SQL restore with `_sub_texts_replace_in_txn(txn, id, snapshot.sub_texts)`
+    inside one transaction prevents the same split-brain that 🔴-1 fixed on
+    the happy path.
     """
     channels_json = json.dumps([c.model_dump() for c in snapshot.channels], ensure_ascii=False)
     tags_json = json.dumps(snapshot.tags, ensure_ascii=False)
     schedule_json = snapshot.schedule.model_dump_json()
     feed_filter_json = _feed_filter_json(snapshot.feed_filter)
+    await txn.execute(
+        """UPDATE intents
+           SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
+               system_template=?,instruction_template=?,
+               feed_filter=?,schedule=?,timezone=?,language=?,
+               updated_at=?
+           WHERE id=?""",
+        (
+            snapshot.name,
+            snapshot.text,
+            snapshot.threshold,
+            int(snapshot.enabled),
+            channels_json,
+            tags_json,
+            snapshot.system_template,
+            snapshot.instruction_template,
+            feed_filter_json,
+            schedule_json,
+            snapshot.timezone,
+            snapshot.language,
+            snapshot.updated_at,
+            intent_id,
+        ),
+    )
+
+
+async def update_intent_raw(conn: aiosqlite.Connection, intent_id: int, snapshot: Intent) -> None:
+    """Restore a snapshot to roll back a failed PUT (R7: write original updated_at, not now).
+
+    Standalone transaction wrapper kept for backward compat with callers that
+    only need to restore the intents row (not the child sub_texts table).
+
+    created_at is intentionally not written — no code path mutates it after INSERT.
+    """
     async with transaction() as txn:
-        await txn.execute(
-            """UPDATE intents
-               SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
-                   system_template=?,instruction_template=?,
-                   feed_filter=?,schedule=?,timezone=?,language=?,
-                   updated_at=?
-               WHERE id=?""",
-            (
-                snapshot.name,
-                snapshot.text,
-                snapshot.threshold,
-                int(snapshot.enabled),
-                channels_json,
-                tags_json,
-                snapshot.system_template,
-                snapshot.instruction_template,
-                feed_filter_json,
-                schedule_json,
-                snapshot.timezone,
-                snapshot.language,
-                snapshot.updated_at,
-                intent_id,
-            ),
-        )
+        await _update_intent_raw_in_txn(txn, intent_id, snapshot)
 
 
 async def delete_intent(conn: aiosqlite.Connection, intent_id: int) -> bool:

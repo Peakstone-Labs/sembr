@@ -265,9 +265,15 @@ function intentsTab() {
     },
 
     async translateSubText(idx) {
-      const sub = this.modal.form.subTexts[idx];
+      // Cache form + sub references at call time. If the modal closes / reopens
+      // (openCreate replaces this.modal wholesale) before the LLM responds,
+      // we drop the response on the floor — writing data.text to a sub that
+      // belongs to a discarded form would silently mutate stale state and
+      // potentially leak across edit sessions. (Review loop 1 💡-2.)
+      const form = this.modal.form;
+      const sub = form.subTexts[idx];
       if (!sub) return;
-      const source = (this.modal.form.text || '').trim();
+      const source = (form.text || '').trim();
       if (!source) {
         this.showToast('Fill the main intent text before translating', 'error');
         return;
@@ -284,6 +290,7 @@ function intentsTab() {
           source_text: source,
           target_language: target,
         });
+        if (this.modal.form !== form) return; // form discarded — abandon response
         if (res.ok) {
           const data = await res.json();
           sub.text = data.text || '';
@@ -292,9 +299,16 @@ function intentsTab() {
           this.showToast('Translation failed: ' + this._extractError(data, `HTTP ${res.status}`), 'error');
         }
       } catch (e) {
-        this.showToast('Network error: ' + e.message, 'error');
+        if (this.modal.form === form) {
+          this.showToast('Network error: ' + e.message, 'error');
+        }
       } finally {
-        sub.translating = false;
+        // Reset translating only if the form is still the live one (a discarded
+        // form's sub is unreachable from UI anyway, but skipping the write avoids
+        // ref-count noise on long-running translate retries).
+        if (this.modal.form === form) {
+          sub.translating = false;
+        }
       }
     },
 

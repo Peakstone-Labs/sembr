@@ -173,20 +173,55 @@ async def ensure_intents_collection(
     rows = await _select_intent_main_texts(conn) if conn is not None else []
     expected_count = len(rows)
 
-    # Case 4: partial-recovery check. R1 requires exact count.
+    # Case 4: partial-recovery check. R1 + 🟡-1 require both exact count AND
+    # ID-set equality — "count plausible but ID set diverged" is a real failure
+    # mode when a partial migration left the _mv collection stale relative to
+    # SQLite (e.g. user added an intent between two failed migration attempts).
     if mv_name in existing_names:
-        try:
-            actual = (await client.count(collection_name=mv_name, exact=True)).count
-        except Exception as exc:
-            logger.warning("R1 probe: client.count failed (%s); treating as mismatch", exc)
-            actual = -1
-        if actual != expected_count or not await _layout_is_named_vec(client, mv_name):
-            logger.warning(
-                "R1 recovery: _mv=%r count=%s expected=%s OR layout mismatch — recreating",
-                mv_name,
-                actual,
-                expected_count,
-            )
+        mismatch_reason: str | None = None
+        if not await _layout_is_named_vec(client, mv_name):
+            mismatch_reason = "layout"
+        else:
+            try:
+                actual = (await client.count(collection_name=mv_name, exact=True)).count
+            except Exception as exc:
+                logger.warning("R1 probe: client.count failed (%s); treating as mismatch", exc)
+                actual = -1
+                mismatch_reason = f"count probe failed ({exc})"
+            if mismatch_reason is None and actual != expected_count:
+                mismatch_reason = f"count={actual} expected={expected_count}"
+            if mismatch_reason is None and expected_count > 0:
+                # ID-level cross-check via scroll (loop 2 🟡-1). N<1000 in practice
+                # so one or two scroll pages cover the whole collection; the round-
+                # trip cost is paid once at startup. Catches the "count equal but
+                # IDs diverged" silent inconsistency window.
+                scroll_ids: set[int] = set()
+                offset = None
+                try:
+                    while True:
+                        pts, offset = await client.scroll(
+                            collection_name=mv_name,
+                            limit=256,
+                            offset=offset,
+                            with_payload=False,
+                            with_vectors=False,
+                        )
+                        scroll_ids.update(int(p.id) for p in pts)
+                        if offset is None:
+                            break
+                except Exception as exc:
+                    logger.warning("R1 ID probe: scroll failed (%s); treating as mismatch", exc)
+                    mismatch_reason = f"scroll probe failed ({exc})"
+                else:
+                    expected_ids = {r[0] for r in rows}
+                    if scroll_ids != expected_ids:
+                        diff_short = (
+                            f"missing={sorted(expected_ids - scroll_ids)[:5]} "
+                            f"extra={sorted(scroll_ids - expected_ids)[:5]}"
+                        )
+                        mismatch_reason = f"ID set diverged ({diff_short})"
+        if mismatch_reason is not None:
+            logger.warning("R1 recovery: _mv=%r %s — recreating", mv_name, mismatch_reason)
             await client.delete_collection(mv_name)
             existing_names.discard(mv_name)
 

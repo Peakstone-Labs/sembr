@@ -59,10 +59,18 @@ def test_post_defensive_copy():
 # ── e. PUT re-enable 500 on missing vector ────────────────────────────────────
 @pytest.mark.asyncio
 async def test_put_reenable_500_on_missing_vector():
-    """PUT enabling an event-mode intent where Qdrant returns empty → HTTP 500."""
+    """PUT enabling an event-mode intent where Qdrant returns empty → HTTP 500.
+
+    Loop 2 update: PUT now writes intents row + sub_texts inside one
+    transaction() (🔴-1 fix), so we patch the in-txn helper and the
+    transaction context manager instead of the old `update_intent`.
+    `get_intent` returns existing snapshot first, then post-writeback
+    state (D22 step 5 re-read), matching the new flow.
+    """
     import fastapi
+    import contextlib
     from sembr.api.intents import put_intent
-    from sembr.models import IntentUpdate, EventSchedule
+    from sembr.models import IntentUpdate, EventSchedule, SubTextSpec
     from sembr.matcher.event_cache import EventIntentCache
 
     intent_id = 99
@@ -76,6 +84,7 @@ async def test_put_reenable_500_on_missing_vector():
     existing_intent.system_template = "default"
     existing_intent.instruction_template = "default"
     existing_intent.timezone = "UTC"
+    existing_intent.sub_texts = []
 
     updated_intent = MagicMock()
     updated_intent.id = intent_id
@@ -86,6 +95,7 @@ async def test_put_reenable_500_on_missing_vector():
     updated_intent.feed_filter = None
     updated_intent.system_template = "default"
     updated_intent.instruction_template = "default"
+    updated_intent.sub_texts = []
 
     cache = EventIntentCache()  # empty — intent not in cache
 
@@ -99,9 +109,17 @@ async def test_put_reenable_500_on_missing_vector():
 
     body = IntentUpdate(enabled=True)
 
+    # D22 step 1 snapshot vs step 5 re-read return different states
+    get_intent_mock = AsyncMock(side_effect=[existing_intent, updated_intent])
+
+    @contextlib.asynccontextmanager
+    async def fake_transaction():
+        yield MagicMock()  # txn handle is unused by mocked _update_intent_in_txn
+
     with patch("sembr.api.intents.get_conn", return_value=MagicMock()), \
-         patch("sembr.api.intents.get_intent", AsyncMock(return_value=existing_intent)), \
-         patch("sembr.api.intents.update_intent", AsyncMock(return_value=updated_intent)), \
+         patch("sembr.api.intents.get_intent", get_intent_mock), \
+         patch("sembr.api.intents._update_intent_in_txn", AsyncMock()), \
+         patch("sembr.api.intents.transaction", fake_transaction), \
          patch("sembr.api.intents.update_intent_payload", AsyncMock()), \
          patch("sembr.api.intents.template_exists", return_value=True), \
          patch("sembr.api.intents.unregister_intent_job"), \

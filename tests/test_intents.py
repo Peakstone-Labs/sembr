@@ -690,3 +690,136 @@ def test_put_text_change_clear_intent_failure_not_silent() -> None:
 
     assert resp.status_code == 500
     assert "deduplication" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Loop 2 🔴-1: PUT sub_texts write must be atomic with intents row write
+# ---------------------------------------------------------------------------
+
+def test_put_sub_texts_split_brain_rolled_back() -> None:
+    """🔴-1: when the sub_texts write fails inside the PUT transaction, the
+    intents row must NOT be left with the new values. The single-transaction
+    pattern guarantees both writes commit or neither does.
+    """
+    import pytest
+    from sembr.db.intent_sub_texts import list_for_intent as _list_subs
+
+    embedder = _make_embedder()
+    vs = _make_vs()
+    with _client(embedder=embedder, vs=vs) as (http, _):
+        # Create an intent with no sub_texts; original text recorded.
+        body = {**VALID_BODY, "text": "ORIGINAL TEXT", "sub_texts": []}
+        resp = http.post("/intents", json=body)
+        assert resp.status_code == 201
+        iid = resp.json()["id"]
+
+        # Make the child-table write fail mid-transaction.
+        with patch(
+            "sembr.api.intents._sub_texts_replace_in_txn",
+            AsyncMock(side_effect=RuntimeError("simulated child-table failure")),
+        ):
+            put_resp = http.put(
+                f"/intents/{iid}",
+                json={
+                    "text": "MODIFIED TEXT",
+                    "sub_texts": [{"language": "en", "text": "english variant"}],
+                },
+            )
+
+        # Backend returns 500 because the PUT transaction raised.
+        assert put_resp.status_code == 500
+
+        # Critical: GET must show the ORIGINAL intent text — the failed inner
+        # write must have rolled back the outer UPDATE too. If the two writes
+        # were independent transactions (Loop 1 bug), the intents row would
+        # already be "MODIFIED TEXT" with empty sub_texts.
+        get_resp = http.get(f"/intents/{iid}")
+        assert get_resp.status_code == 200
+        data = get_resp.json()
+        assert data["text"] == "ORIGINAL TEXT", (
+            "PUT split-brain regression: intents row updated despite "
+            "sub_texts write failure"
+        )
+        assert data["sub_texts"] == []
+
+
+# ---------------------------------------------------------------------------
+# Loop 2 🟡-1: R1 partial-migration recovery detects ID divergence (not just count)
+# ---------------------------------------------------------------------------
+
+async def test_lifespan_recovery_id_mismatch() -> None:
+    """🟡-1: when _mv collection has the right row count but the ID set has
+    diverged from SQLite (e.g. user DELETE+POST between two failed migration
+    attempts), ensure_intents_collection must detect the mismatch via scroll
+    and recreate the collection — count alone is insufficient.
+    """
+    from sembr.vector_store.intents import (  # noqa: PLC0415
+        ALIAS_NAME,
+        ensure_intents_collection,
+        multi_vec_collection_name,
+    )
+
+    mv_name = multi_vec_collection_name("bge-m3_v1")
+
+    mock_embedder = MagicMock()
+    mock_embedder.model_version = "bge-m3_v1"
+    mock_embedder.dim = 1024
+    mock_embedder.aembed = AsyncMock(return_value=[[0.1] * 1024, [0.2] * 1024, [0.3] * 1024])
+
+    mock_client = AsyncMock()
+
+    # _mv exists from a prior failed migration with IDs {1, 2, 5}
+    col = MagicMock()
+    col.name = mv_name
+    collections_resp = MagicMock()
+    collections_resp.collections = [col]
+    mock_client.get_collections = AsyncMock(return_value=collections_resp)
+
+    # Alias still points at the legacy unnamed-vec collection (or nothing)
+    aliases_resp = MagicMock()
+    aliases_resp.aliases = []
+    mock_client.get_aliases = AsyncMock(return_value=aliases_resp)
+
+    # Layout probe succeeds: _mv has named-vec layout
+    col_info = MagicMock()
+    col_info.config.params.vectors = {"main": MagicMock(), "alt_0": MagicMock(),
+                                       "alt_1": MagicMock(), "alt_2": MagicMock()}
+    mock_client.get_collection = AsyncMock(return_value=col_info)
+
+    # Count probe says 3 — same as SQLite (the count-only check would pass!)
+    count_resp = MagicMock()
+    count_resp.count = 3
+    mock_client.count = AsyncMock(return_value=count_resp)
+
+    # But scroll reveals IDs {1, 2, 5} — SQLite has {1, 2, 4}, so they diverge.
+    scroll_pts = [MagicMock(id=1), MagicMock(id=2), MagicMock(id=5)]
+    mock_client.scroll = AsyncMock(return_value=(scroll_pts, None))
+
+    # Track recreate path
+    mock_client.delete_collection = AsyncMock()
+    mock_client.create_collection = AsyncMock()
+    mock_client.upsert = AsyncMock()
+    mock_client.update_collection_aliases = AsyncMock()
+
+    # SQLite mock: SELECT id, text returns 3 rows but IDs are {1, 2, 4}
+    mock_conn = AsyncMock()
+    cursor = AsyncMock()
+    cursor.fetchall = AsyncMock(return_value=[(1, "t1"), (2, "t2"), (4, "t4")])
+    cursor.__aenter__ = AsyncMock(return_value=cursor)
+    cursor.__aexit__ = AsyncMock(return_value=None)
+    mock_conn.execute = MagicMock(return_value=cursor)
+
+    mock_qdrant_models = MagicMock()
+    with patch.dict(sys.modules, {"qdrant_client": MagicMock(),
+                                  "qdrant_client.models": mock_qdrant_models}):
+        await ensure_intents_collection(mock_client, mock_embedder, conn=mock_conn)
+
+    # Critical assertion: delete_collection must have been called because the
+    # ID set diverged, even though count matched (3 == 3).
+    mock_client.delete_collection.assert_called_once_with(mv_name)
+    # And then create_collection rebuilds the _mv collection from scratch.
+    mock_client.create_collection.assert_called_once()
+    # And upsert repopulates with the SQLite-truth rows.
+    mock_client.upsert.assert_called_once()
+    # Finally alias flip points to the freshly rebuilt _mv.
+    mock_client.update_collection_aliases.assert_called_once()

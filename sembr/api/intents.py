@@ -6,8 +6,12 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from sembr.db.intent_sub_texts import replace_for_intent as _replace_sub_texts_for_intent
+from sembr.db.intent_sub_texts import (
+    _replace_in_txn as _sub_texts_replace_in_txn,
+)
 from sembr.db.intents import (
+    _update_intent_in_txn,
+    _update_intent_raw_in_txn,
     create_intent,
     delete_intent,
     get_intent,
@@ -16,7 +20,7 @@ from sembr.db.intents import (
     update_intent_raw,
 )
 from sembr.db.match_seen import clear_intent
-from sembr.db.sqlite import get_conn
+from sembr.db.sqlite import get_conn, transaction
 from sembr.matcher.event_cache import EventIntentEntry
 from sembr.matcher.jobs import (
     register_intent_job,
@@ -84,9 +88,16 @@ def _slot_set(sub_text_count: int) -> set[str]:
 
 def _diff_sub_texts(
     old: list[SubTextSpec], new: list[SubTextSpec]
-) -> tuple[bool, bool, bool, bool]:
-    """R6 / D23: position-aligned diff. Returns (added, edited, deleted, label_only_changed)."""
-    added = edited = deleted = label_only = False
+) -> tuple[bool, bool, bool]:
+    """R6 / D23: position-aligned diff. Returns (added, edited, deleted).
+
+    `sub_text_label_only_changed` from the design's R6 truth table is implicit:
+    it's exactly the case where this function returns (False, False, False) but
+    new != old (only languages changed). The PUT handler never branches on it
+    directly — it ends up in the payload-only-sync branch, which is the correct
+    target per R6 ("纯 DB 路径"). Returning it as a bool was unused (review 🟢-2).
+    """
+    added = edited = deleted = False
     for i in range(max(len(old), len(new))):
         o = old[i] if i < len(old) else None
         n = new[i] if i < len(new) else None
@@ -94,12 +105,9 @@ def _diff_sub_texts(
             added = True
         elif o is not None and n is None:
             deleted = True
-        elif o is not None and n is not None:
-            if o.text != n.text:
-                edited = True
-            elif o.language != n.language:
-                label_only = True
-    return added, edited, deleted, label_only
+        elif o is not None and n is not None and o.text != n.text:
+            edited = True
+    return added, edited, deleted
 
 
 @router.post("", response_model=Intent, status_code=status.HTTP_201_CREATED)
@@ -195,11 +203,11 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     )
 
     if body.sub_texts is not None:
-        sub_texts_added, sub_texts_edited, sub_texts_deleted, sub_text_label_only_changed = (
-            _diff_sub_texts(current.sub_texts, body.sub_texts)
+        sub_texts_added, sub_texts_edited, sub_texts_deleted = _diff_sub_texts(
+            current.sub_texts, body.sub_texts
         )
     else:
-        sub_texts_added = sub_texts_edited = sub_texts_deleted = sub_text_label_only_changed = False
+        sub_texts_added = sub_texts_edited = sub_texts_deleted = False
 
     needs_reembed = text_changed or sub_texts_added or sub_texts_edited
 
@@ -219,17 +227,29 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
             detail="schedule.mode is immutable; delete and recreate the intent to change mode",
         )
 
-    # D22 step 3: write intents row (sub_texts handled separately per D18)
-    updated = await update_intent(conn, intent_id, body)
-    # D22 step 4 + 5: when body carries sub_texts, write the child table and re-read
-    # so `updated.sub_texts` reflects post-writeback state. Otherwise update_intent's
-    # return already has current sub_texts (loaded via the get_intent inside it).
-    if body.sub_texts is not None:
-        await _replace_sub_texts_for_intent(conn, intent_id, body.sub_texts)
-        re_read = await get_intent(conn, intent_id)
-        if re_read is None:  # pragma: no cover — concurrent delete; the UPDATE above would have errored first
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="intent vanished mid-update")
-        updated = re_read
+    # D22 step 3-5: write intents row + sub_texts inside a SINGLE outer transaction
+    # (Loop 2 🔴-1). Splitting these into two transaction() blocks left intents
+    # committed but sub_texts un-restorable if the child write raised — there was
+    # no rollback path. Single transaction commits both or neither.
+    try:
+        async with transaction() as txn:
+            await _update_intent_in_txn(txn, intent_id, body, current)
+            if body.sub_texts is not None:
+                await _sub_texts_replace_in_txn(txn, intent_id, body.sub_texts)
+    except Exception as exc:
+        # ROLLBACK was already issued by transaction()'s context manager exit
+        # path (db/sqlite.py:97-100). Surface as 500 — caller retries.
+        logger.error("PUT intent_id=%d SQLite write failed (rolled back): %s", intent_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="failed to persist intent changes",
+        ) from exc
+    # D22 step 5: re-read once after the transaction commits so `updated.sub_texts`
+    # reflects post-writeback state (also picks up any default-touched fields like updated_at).
+    re_read = await get_intent(conn, intent_id)
+    if re_read is None:  # pragma: no cover — concurrent delete; the UPDATE above would have errored first
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="intent vanished mid-update")
+    updated = re_read
 
     # Slots gone after the update (D17 + reembed cleanup): when sub_texts shrank,
     # the alt_X for indices ≥ new count must be deleted from Qdrant explicitly —
@@ -279,12 +299,14 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
             )
     except Exception as exc:
         # SQLite rollback runs first so log messages below reflect true state (L2-I1).
-        # D22 rollback: restore intents row AND sub_texts (sub_texts only when we wrote them).
+        # D22 rollback: restore intents row AND sub_texts inside a SINGLE transaction
+        # (Loop 2 🔴-1 — pairs with the single-transaction happy path above).
         sqlite_state = "rolled-back"
         try:
-            await update_intent_raw(conn, intent_id, current)
-            if body.sub_texts is not None:
-                await _replace_sub_texts_for_intent(conn, intent_id, current.sub_texts)
+            async with transaction() as txn:
+                await _update_intent_raw_in_txn(txn, intent_id, current)
+                if body.sub_texts is not None:
+                    await _sub_texts_replace_in_txn(txn, intent_id, current.sub_texts)
         except Exception as rb:
             sqlite_state = "rollback-failed"
             logger.error("PUT SQLite rollback failed for intent_id=%d: %s", intent_id, rb)
