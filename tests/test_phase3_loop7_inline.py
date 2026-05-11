@@ -44,7 +44,7 @@ def test_post_defensive_copy():
     cache.add(
         intent_id,
         EventIntentEntry(
-            vector=list(v),  # same defensive copy as intents.py does
+            vectors={"main": list(v)},  # intent-match-enhancement: dict per slot
             threshold=0.75,
             feed_filter_ids=None,
             schedule=EventSchedule(trigger_count=5),
@@ -52,8 +52,8 @@ def test_post_defensive_copy():
     )
     entry = cache.get(intent_id)
     assert entry is not None
-    assert entry.vector == v, "vector values must match"
-    assert entry.vector is not v, "vector must be a defensive copy, not alias the original"
+    assert entry.vectors["main"] == v, "main vector values must match"
+    assert entry.vectors["main"] is not v, "vector must be a defensive copy, not alias the original"
 
 
 # ── e. PUT re-enable 500 on missing vector ────────────────────────────────────

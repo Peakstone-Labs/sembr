@@ -1,17 +1,20 @@
 """Per-intent scan logic: one APScheduler tick = one call to run_intent_scan.
 
-Flow per tick (from design):
+Flow per tick (post intent-match-enhancement):
   1. Guard: embedder not ready → skip (D6)
   2. Load Intent from SQLite; skip if missing/disabled (race cover)
-  3. Retrieve intent vector from Qdrant intents_current (B1)
-  4. Search news_current with score_threshold + Range(ingested_at_ts) filter (C1)
-  5. Filter disabled articles (D20 — always-True at MVP, retention hook)
-  6. INSERT OR IGNORE into match_seen; RETURNING gives new article_ids (D11)
-  7. Build Match list for new article_ids
-  8. If non-empty: await app.state.on_match(matches) (D12, D13)
+  3. Retrieve intent point from Qdrant intents_current — exposes all named-vector
+     slots {main, alt_*} in one round-trip
+  4. For each populated slot, query news_current via asyncio.gather (parallel fan-out, D6)
+  5. Merge hits by article_id, keep max score across slots
+  6. Filter disabled articles (D20 — always-True at MVP, retention hook)
+  7. INSERT OR IGNORE into match_seen; RETURNING gives new article_ids (D11)
+  8. Build Match list for new article_ids
+  9. If non-empty: await app.state.on_match(matches) (D12, D13)
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -26,7 +29,7 @@ from sembr.db.sqlite import get_conn
 from sembr.matcher.callback import Match
 from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
 from sembr.vector_store.news import ALIAS_NAME as _NEWS_ALIAS
-from sembr.vector_store.qdrant import extract_point_vector
+from sembr.vector_store.qdrant import extract_named_vector
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -74,7 +77,8 @@ async def scan_once(
     try:
         from qdrant_client.models import FieldCondition, Filter, MatchAny, Range  # noqa: PLC0415
 
-        # B1: retrieve intent vector fresh per call; avoids stale-cache inconsistency
+        # Retrieve intent point fresh per call; avoids stale-cache inconsistency.
+        # with_vectors=True returns dict[slot, list[float]] under named-vec layout.
         points = await qdrant_client.retrieve(
             collection_name=_INTENTS_ALIAS,
             ids=[intent.id],
@@ -87,11 +91,24 @@ async def scan_once(
                 intent.id,
             )
             return []
-        intent_vector = extract_point_vector(points[0])
-        if intent_vector is None:
+        # Build slot → vector dict. Strict named-vector contract per R4: extract_named_vector
+        # returns None for legacy unnamed-vec layout, which would mean migration failed.
+        raw_vectors = getattr(points[0], "vector", None)
+        if not isinstance(raw_vectors, dict):
             logger.warning(
-                "intent_id=%d Qdrant point has no resolvable vector "
-                "(named-vector layout?); skipping scan tick",
+                "intent_id=%d Qdrant point has non-dict vector layout (migration not run?); "
+                "skipping scan tick",
+                intent.id,
+            )
+            return []
+        slot_vectors: dict[str, list[float]] = {}
+        for slot in ("main", "alt_0", "alt_1", "alt_2"):
+            v = extract_named_vector(points[0], slot)
+            if v is not None:
+                slot_vectors[slot] = v
+        if "main" not in slot_vectors:
+            logger.warning(
+                "intent_id=%d Qdrant point missing main slot vector; skipping scan tick",
                 intent.id,
             )
             return []
@@ -113,32 +130,62 @@ async def scan_once(
                     match=MatchAny(any=options.feed_ids),
                 )
             )
+        query_filter = Filter(must=must_conditions)
 
-        # qdrant-client 1.10+ removed search() in favour of query_points()
-        response = await qdrant_client.query_points(
-            collection_name=_NEWS_ALIAS,
-            query=intent_vector,
-            score_threshold=options.threshold,
-            limit=_SEARCH_LIMIT,
-            query_filter=Filter(must=must_conditions),
+        # D6: parallel fan-out — one query_points per slot. news_current is unnamed-vec
+        # so we don't pass `using=`; the slot identity is intent-side only, news-side
+        # cosine is the same regardless of which intent slot drove the query.
+        slot_list = list(slot_vectors.keys())
+        responses = await asyncio.gather(
+            *[
+                qdrant_client.query_points(
+                    collection_name=_NEWS_ALIAS,
+                    query=slot_vectors[slot],
+                    score_threshold=options.threshold,
+                    limit=_SEARCH_LIMIT,
+                    query_filter=query_filter,
+                )
+                for slot in slot_list
+            ],
+            return_exceptions=True,
         )
-        results = response.points
+
+        # Merge by article_id; keep max score across slots (dedupe).
+        hits_by_id: dict[str, tuple[float, dict, str]] = {}  # article_id → (score, payload, slot)
+        first_exc: BaseException | None = None
+        for slot, resp in zip(slot_list, responses):
+            if isinstance(resp, BaseException):
+                if first_exc is None:
+                    first_exc = resp
+                if options.propagate_qdrant_errors:
+                    # External fire path: any slot failure should surface as 500.
+                    raise resp
+                logger.warning(
+                    "intent_id=%d slot=%s query_points failed: %s",
+                    intent.id, slot, resp,
+                )
+                continue
+            for pt in resp.points:
+                aid = str(pt.id)
+                prev = hits_by_id.get(aid)
+                if prev is None or pt.score > prev[0]:
+                    hits_by_id[aid] = (pt.score, pt.payload or {}, slot)
+        results_count = len(hits_by_id)
         logger.debug(
-            "intent_id=%d scan_once: qdrant returned %d results "
+            "intent_id=%d scan_once: %d unique hits across %d slots "
             "(threshold=%.2f, lookback_cutoff_ts=%d, feed_ids=%s)",
             intent.id,
-            len(results),
+            results_count,
+            len(slot_list),
             options.threshold,
             lookback_cutoff_ts,
             options.feed_ids,
         )
 
-        # Diagnostic probe: when normal query returns nothing, run two fallback queries
-        # to distinguish "time filter too narrow" from "threshold too high".
-        # Gated behind SEMBR_DEBUG_MATCHER because empty results are the common case
-        # under cron mode — running two extra Qdrant queries per intent per tick
-        # multiplies load by ~3× when most intents have nothing to match this window.
-        if not results and os.environ.get("SEMBR_DEBUG_MATCHER"):
+        # Diagnostic probe: D20 — only run on the `main` slot to bound blast radius
+        # (4× slots × 2 probes would balloon Qdrant load 8× under SEMBR_DEBUG_MATCHER).
+        if not hits_by_id and os.environ.get("SEMBR_DEBUG_MATCHER"):
+            main_vec = slot_vectors["main"]
             _feed_cond = (
                 [FieldCondition(key="feed_id", match=MatchAny(any=options.feed_ids))]
                 if options.feed_ids is not None
@@ -146,14 +193,14 @@ async def scan_once(
             )
             _probe_no_time = await qdrant_client.query_points(
                 collection_name=_NEWS_ALIAS,
-                query=intent_vector,
+                query=main_vec,
                 score_threshold=options.threshold,
                 limit=3,
                 query_filter=Filter(must=_feed_cond) if _feed_cond else None,
             )
             _probe_no_thresh = await qdrant_client.query_points(
                 collection_name=_NEWS_ALIAS,
-                query=intent_vector,
+                query=main_vec,
                 score_threshold=0.0,
                 limit=3,
                 query_filter=Filter(
@@ -167,7 +214,8 @@ async def scan_once(
                 ),
             )
             logger.info(
-                "intent_id=%d DIAG: no-time-filter hits=%d, no-threshold hits=%d (best_score=%.4f)",
+                "intent_id=%d DIAG (main slot only): no-time-filter hits=%d, "
+                "no-threshold hits=%d (best_score=%.4f)",
                 intent.id,
                 len(_probe_no_time.points),
                 len(_probe_no_thresh.points),
@@ -189,14 +237,17 @@ async def scan_once(
                     (_probe_no_time.points[0].payload or {}).get("ingested_at_ts"),
                 )
 
-        if results:
-            top = results[0]
+        if hits_by_id:
+            best_aid, (best_score, best_payload, best_slot) = max(
+                hits_by_id.items(), key=lambda kv: kv[1][0]
+            )
             logger.debug(
-                "intent_id=%d top hit: score=%.4f id=%s title=%r",
+                "intent_id=%d top hit: score=%.4f id=%s slot=%s title=%r",
                 intent.id,
-                top.score,
-                top.id,
-                (top.payload or {}).get("title", "")[:80],
+                best_score,
+                best_aid,
+                best_slot,
+                best_payload.get("title", "")[:80],
             )
     except Exception as exc:
         if options.propagate_qdrant_errors:
@@ -206,18 +257,20 @@ async def scan_once(
 
     # D20: exclude articles with enabled=False (retention hook; currently always True
     # because news points don't carry an 'enabled' payload field at MVP)
-    hits = [r for r in results if (r.payload or {}).get("enabled", True)]
+    hits_by_id = {
+        aid: triple
+        for aid, triple in hits_by_id.items()
+        if triple[1].get("enabled", True)
+    }
     logger.info(
-        "intent_id=%d scan_once: %d Qdrant hits → %d after enabled-filter",
+        "intent_id=%d scan_once: %d unique hits across slots (after enabled-filter)",
         intent.id,
-        len(results),
-        len(hits),
+        len(hits_by_id),
     )
-    if not hits:
+    if not hits_by_id:
         return []
 
-    article_ids = [str(r.id) for r in hits]
-    id_to_hit = {str(r.id): r for r in hits}
+    article_ids = list(hits_by_id.keys())
 
     if options.write_match_seen:
         try:
@@ -248,8 +301,8 @@ async def scan_once(
         Match(
             intent_id=intent.id,
             article_id=aid,
-            score=id_to_hit[aid].score,
-            payload=id_to_hit[aid].payload,
+            score=hits_by_id[aid][0],
+            payload=hits_by_id[aid][1],
         )
         for aid in new_article_ids
     ]

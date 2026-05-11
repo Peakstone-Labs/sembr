@@ -412,13 +412,14 @@ def test_put_text_change_rollback_on_upsert_failure() -> None:
 
 
 async def test_ensure_intents_collection_creates_with_correct_config() -> None:
+    """intent-match-enhancement D2/D3: named-vector layout `_mv` collection on fresh install."""
     from sembr.vector_store.intents import (  # noqa: PLC0415
         ALIAS_NAME,
-        collection_name,
         ensure_intents_collection,
+        multi_vec_collection_name,
     )
 
-    expected_name = collection_name("bge-m3_v1")
+    expected_name = multi_vec_collection_name("bge-m3_v1")  # intents_bge-m3_v1_mv
 
     mock_embedder = MagicMock()
     mock_embedder.model_version = "bge-m3_v1"
@@ -439,22 +440,27 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
 
     mock_qdrant_models = MagicMock()
     with patch.dict(sys.modules, {"qdrant_client": MagicMock(), "qdrant_client.models": mock_qdrant_models}):
-        await ensure_intents_collection(mock_client, mock_embedder)
+        # conn=None — no SQLite rows to re-embed; fresh install branch
+        await ensure_intents_collection(mock_client, mock_embedder, conn=None)
 
-        # D3: size=embedder.dim, distance=COSINE, on_disk=False, no quantization_config
-        mock_qdrant_models.VectorParams.assert_called_once_with(
-            size=1024,
-            distance=mock_qdrant_models.Distance.COSINE,
-            on_disk=False,
-        )
+        # Named-vector layout: VectorParams should be called once per slot {main, alt_0, alt_1, alt_2}
+        assert mock_qdrant_models.VectorParams.call_count == 4
+        for call in mock_qdrant_models.VectorParams.call_args_list:
+            assert call.kwargs["size"] == 1024
+            assert call.kwargs["distance"] == mock_qdrant_models.Distance.COSINE
+            assert call.kwargs["on_disk"] is False
+
         create_kwargs = mock_client.create_collection.call_args.kwargs
-        assert create_kwargs["collection_name"] == expected_name
-        assert "quantization_config" not in create_kwargs  # O2-B: no quantization
+        assert create_kwargs["collection_name"] == expected_name  # _mv suffix
+        # vectors_config should be a dict[slot_name → VectorParams]
+        assert isinstance(create_kwargs["vectors_config"], dict)
+        assert set(create_kwargs["vectors_config"].keys()) == {"main", "alt_0", "alt_1", "alt_2"}
+        assert "quantization_config" not in create_kwargs  # no quantization for intents
 
-        # D4: alias intents_current → intents_bge-m3_v1
+        # Alias intents_current → _mv collection (D3 step 5)
         mock_client.update_collection_aliases.assert_called_once()
 
-        # Idempotency: second call with collection + alias already present must be no-op
+        # Idempotency: second call with named-vec collection + alias already in place → no-op
         col = MagicMock()
         col.name = expected_name
         collections_resp2 = MagicMock()
@@ -468,10 +474,15 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
         aliases_resp2.aliases = [alias]
         mock_client.get_aliases = AsyncMock(return_value=aliases_resp2)
 
+        # Layout probe: get_collection must return a named-vec dict layout
+        col_info = MagicMock()
+        col_info.config.params.vectors = {"main": MagicMock(), "alt_0": MagicMock(), "alt_1": MagicMock(), "alt_2": MagicMock()}
+        mock_client.get_collection = AsyncMock(return_value=col_info)
+
         mock_client.create_collection.reset_mock()
         mock_client.update_collection_aliases.reset_mock()
 
-        await ensure_intents_collection(mock_client, mock_embedder)
+        await ensure_intents_collection(mock_client, mock_embedder, conn=None)
 
     mock_client.create_collection.assert_not_called()
     mock_client.update_collection_aliases.assert_not_called()

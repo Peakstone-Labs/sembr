@@ -84,7 +84,9 @@ async def _event_match_batch_inner(
         return
 
     for intent_id, entry in cache.items():
-        intent_vec = entry.vector
+        slot_vecs = list(entry.vectors.values())
+        if not slot_vecs:
+            continue
         hits: list[Match] = []
 
         for article_vec, payload, article_id in article_entries:
@@ -94,7 +96,8 @@ async def _event_match_batch_inner(
                 if feed_id not in entry.feed_filter_ids:
                     continue
 
-            score = _dot(intent_vec, article_vec)
+            # D12: score each slot independently, keep max (dedupe on article side)
+            score = max(_dot(sv, article_vec) for sv in slot_vecs)
             if score >= entry.threshold:
                 hits.append(
                     Match(

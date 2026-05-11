@@ -98,10 +98,14 @@ _INTENT_BODY = IntentCreate(
 
 
 def _make_qdrant(hits: list | None = None) -> MagicMock:
-    """Return a mock qdrant_client with configurable query_points results."""
+    """Return a mock qdrant_client with configurable query_points results.
+
+    intent-match-enhancement: point.vector is now a named-vector dict (main + alt_*)
+    after the layout migration. scan_once parses the dict via extract_named_vector.
+    """
     client = MagicMock()
     point = MagicMock()
-    point.vector = [0.1] * 1024
+    point.vector = {"main": [0.1] * 1024}
     client.retrieve = AsyncMock(return_value=[point])
 
     result = MagicMock()

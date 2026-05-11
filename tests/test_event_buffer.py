@@ -254,7 +254,7 @@ async def test_sweep_triggers_flush_when_oldest_group_exceeds_max_wait():
     cache.add(
         intent_id,
         EventIntentEntry(
-            vector=[0.1] * 1024,
+            vectors={"main": [0.1] * 1024},
             threshold=0.75,
             feed_filter_ids=None,
             schedule=EventSchedule(trigger_count=10, max_wait_seconds=60),
@@ -293,7 +293,7 @@ async def test_sweep_does_not_flush_when_not_yet_timed_out():
     cache.add(
         intent_id,
         EventIntentEntry(
-            vector=[0.1] * 1024,
+            vectors={"main": [0.1] * 1024},
             threshold=0.75,
             feed_filter_ids=None,
             schedule=EventSchedule(trigger_count=10, max_wait_seconds=3600),
@@ -340,7 +340,7 @@ async def test_sweep_isolates_per_intent_failures():
         cache.add(
             iid,
             EventIntentEntry(
-                vector=[0.1] * 1024, threshold=0.75, feed_filter_ids=None,
+                vectors={"main": [0.1] * 1024}, threshold=0.75, feed_filter_ids=None,
                 schedule=EventSchedule(trigger_count=10, max_wait_seconds=60),
             ),
         )
@@ -415,7 +415,7 @@ async def test_event_match_batch_swallows_dot_mismatch(caplog):
         cache.add(
             intent_id,
             EventIntentEntry(
-                vector=[0.1] * 512,  # mismatched — article points will be 1024-dim
+                vectors={"main": [0.1] * 512},  # mismatched — article points will be 1024-dim
                 threshold=0.75,
                 feed_filter_ids=None,
                 schedule=_EVENT_SCHEDULE,

@@ -1,9 +1,12 @@
 """Intents collection bootstrap and CRUD.
 
-Idempotent: checks existence before creating collection and alias.
-No quantization: intent vectors are query-side in the matcher's `query_points`
-calls; precision matters more than memory savings at < 1000 entries
-(~4 MB raw at 1024-dim).
+Idempotent: checks existence and layout before mutating.
+No quantization: intent vectors are query-side; precision matters more than memory
+savings at < 1000 entries (~4 MB raw at 1024-dim).
+
+Layout: named-vector dict {main, alt_0, alt_1, alt_2} per point (D2). The "_mv"
+suffix on the collection name marks the layout version orthogonally to
+embedder.model_version (D13).
 """
 from __future__ import annotations
 
@@ -11,6 +14,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import aiosqlite
     from qdrant_client import AsyncQdrantClient
 
     from sembr.embedder.base import BaseEmbedder
@@ -19,85 +23,204 @@ logger = logging.getLogger(__name__)
 
 ALIAS_NAME = "intents_current"
 
+# v1 caps sub_texts at 3; all four slots are declared in the collection so a
+# point may omit alt_* slots and query_points(using="alt_2") on a slot-less point
+# simply yields no hits — see design D2.
+_SLOT_NAMES: tuple[str, ...] = ("main", "alt_0", "alt_1", "alt_2")
+
+# BGE-M3 / SiliconFlow batch ceiling (sembr CLAUDE.md tech-stack table).
+_EMBED_BATCH_MAX = 32
+
 
 def collection_name(model_version: str) -> str:
-    """Versioned collection name for the intents store.
-
-    The alias `intents_current` points at the active version; readers should always
-    address points via the alias, never via the versioned name directly.
+    """Legacy unnamed-vector collection name. Retained so migration can detect
+    the old layout when probing an existing alias target.
     """
     return f"intents_{model_version}"
 
 
-async def ensure_intents_collection(
-    client: "AsyncQdrantClient", embedder: "BaseEmbedder"
-) -> None:
-    """Create the intents collection and alias if missing. Idempotent.
+def multi_vec_collection_name(model_version: str) -> str:
+    """Named-vector layout collection name (D13)."""
+    return f"intents_{model_version}_mv"
 
-    Collection name and vector dim are derived from the embedder so a backend swap
-    (e.g. bge-m3 → another 1024-dim model, or a different-dim model entirely) flips
-    the storage in lockstep without any duplicated literals to keep in sync.
+
+async def _layout_is_named_vec(client: "AsyncQdrantClient", collection: str) -> bool:
+    """True iff `collection` has a named-vector dict layout that includes the `main` slot.
+
+    A False answer means either the collection does not exist, or it uses the
+    legacy unnamed-vector layout, or its dict-layout is missing the main slot
+    (corrupt state).
     """
+    try:
+        info = await client.get_collection(collection)
+    except Exception:
+        return False
+    vectors_cfg = getattr(info.config.params, "vectors", None)
+    if not isinstance(vectors_cfg, dict):
+        return False
+    return "main" in vectors_cfg
+
+
+async def _select_intent_main_texts(conn: "aiosqlite.Connection") -> list[tuple[int, str]]:
+    """Pulls (id, text) pairs for the migration re-embed. ORDER BY id for log determinism."""
+    async with conn.execute("SELECT id, text FROM intents ORDER BY id ASC") as cur:
+        rows = await cur.fetchall()
+    return [(int(r[0]), str(r[1])) for r in rows]
+
+
+async def _build_mv_collection(
+    client: "AsyncQdrantClient",
+    name: str,
+    dim: int,
+) -> None:
+    from qdrant_client.models import Distance, VectorParams  # noqa: PLC0415
+
+    await client.create_collection(
+        collection_name=name,
+        vectors_config={
+            slot: VectorParams(size=dim, distance=Distance.COSINE, on_disk=False)
+            for slot in _SLOT_NAMES
+        },
+    )
+    logger.info("created Qdrant collection %r (named-vector layout)", name)
+
+
+async def _migrate_reembed_and_upsert(
+    client: "AsyncQdrantClient",
+    embedder: "BaseEmbedder",
+    mv_name: str,
+    rows: list[tuple[int, str]],
+) -> None:
+    """Embed all main texts and upsert into the new _mv collection (D3 step 3–4)."""
+    from qdrant_client.models import PointStruct  # noqa: PLC0415
+
+    if not rows:
+        return
+    ids = [r[0] for r in rows]
+    texts = [r[1] for r in rows]
+    vectors: list[list[float]] = []
+    for i in range(0, len(texts), _EMBED_BATCH_MAX):
+        batch = texts[i : i + _EMBED_BATCH_MAX]
+        vectors.extend(await embedder.aembed(batch))
+    model_version = embedder.model_version
+    points = [
+        PointStruct(
+            id=ids[i],
+            vector={"main": vectors[i]},
+            payload={"intent_id": ids[i], "embedding_model_version": model_version},
+        )
+        for i in range(len(ids))
+    ]
+    await client.upsert(collection_name=mv_name, points=points, wait=True)
+    logger.info("migration: re-embedded + upserted %d intents into %r", len(rows), mv_name)
+
+
+async def _flip_alias(
+    client: "AsyncQdrantClient",
+    alias_map: dict[str, str],
+    target: str,
+) -> None:
+    """Move ALIAS_NAME to `target`. Uses delete+create in one ops batch when alias exists."""
     from qdrant_client.models import (  # noqa: PLC0415
         CreateAlias,
         CreateAliasOperation,
-        Distance,
-        VectorParams,
+        DeleteAlias,
+        DeleteAliasOperation,
     )
 
-    name = collection_name(embedder.model_version)
-
-    collections = await client.get_collections()
-    existing_names = {c.name for c in collections.collections}
-
-    if name not in existing_names:
-        await client.create_collection(
-            collection_name=name,
-            vectors_config=VectorParams(
-                size=embedder.dim,
-                distance=Distance.COSINE,
-                on_disk=False,  # full memory; query-side vectors need precision over savings
-            ),
+    ops: list[Any] = []
+    if ALIAS_NAME in alias_map:
+        ops.append(DeleteAliasOperation(delete_alias=DeleteAlias(alias_name=ALIAS_NAME)))
+    ops.append(
+        CreateAliasOperation(
+            create_alias=CreateAlias(collection_name=target, alias_name=ALIAS_NAME)
         )
-        logger.info("created Qdrant collection %r", name)
+    )
+    await client.update_collection_aliases(change_aliases_operations=ops)
+    logger.info("flipped alias %r → %r", ALIAS_NAME, target)
 
-    all_aliases = await client.get_aliases()
-    alias_map = {a.alias_name: a.collection_name for a in all_aliases.aliases}
 
-    if ALIAS_NAME not in alias_map:
-        await client.update_collection_aliases(
-            change_aliases_operations=[
-                CreateAliasOperation(
-                    create_alias=CreateAlias(
-                        collection_name=name,
-                        alias_name=ALIAS_NAME,
-                    )
-                )
-            ],
-        )
-        logger.info("created alias %r → %r", ALIAS_NAME, name)
-    elif alias_map[ALIAS_NAME] != name:
-        logger.warning(
-            "alias %r already points to %r, not %r — leaving as-is "
-            "(alias migration is owned by the model-upgrade flow, not bootstrap)",
-            ALIAS_NAME,
-            alias_map[ALIAS_NAME],
-            name,
-        )
+async def ensure_intents_collection(
+    client: "AsyncQdrantClient",
+    embedder: "BaseEmbedder",
+    conn: "aiosqlite.Connection | None" = None,
+) -> None:
+    """Bootstrap or migrate the intents collection to named-vector layout (D2/D3).
+
+    Cases:
+      1. Fresh DB / no _mv: create _mv with named-vec layout, no re-embed, flip alias.
+      2. Alias points to legacy unnamed-vec collection: create _mv, re-embed all
+         main texts, flip alias. Old collection retained for manual rollback.
+      3. Alias already points to a named-vec _mv with the `main` slot present: no-op.
+      4. _mv exists but Qdrant count != SQLite count (partial-failure recovery, R1):
+         delete + recreate _mv, redo re-embed + alias flip.
+    """
+    mv_name = multi_vec_collection_name(embedder.model_version)
+
+    all_collections = await client.get_collections()
+    existing_names = {c.name for c in all_collections.collections}
+
+    aliases_resp = await client.get_aliases()
+    alias_map = {a.alias_name: a.collection_name for a in aliases_resp.aliases}
+
+    # Case 3: no-op
+    current_target = alias_map.get(ALIAS_NAME)
+    if current_target and await _layout_is_named_vec(client, current_target):
+        logger.debug("intents collection already at named-vector layout (%r)", current_target)
+        return
+
+    # SQLite row count: used by R1 partial-recovery and to drive the re-embed loop
+    rows = await _select_intent_main_texts(conn) if conn is not None else []
+    expected_count = len(rows)
+
+    # Case 4: partial-recovery check. R1 requires exact count.
+    if mv_name in existing_names:
+        try:
+            actual = (await client.count(collection_name=mv_name, exact=True)).count
+        except Exception as exc:
+            logger.warning("R1 probe: client.count failed (%s); treating as mismatch", exc)
+            actual = -1
+        if actual != expected_count or not await _layout_is_named_vec(client, mv_name):
+            logger.warning(
+                "R1 recovery: _mv=%r count=%s expected=%s OR layout mismatch — recreating",
+                mv_name,
+                actual,
+                expected_count,
+            )
+            await client.delete_collection(mv_name)
+            existing_names.discard(mv_name)
+
+    if mv_name not in existing_names:
+        await _build_mv_collection(client, mv_name, embedder.dim)
+        await _migrate_reembed_and_upsert(client, embedder, mv_name, rows)
+
+    # Flip alias only after the new collection holds the expected row count.
+    await _flip_alias(client, alias_map, mv_name)
 
 
 async def upsert_intent_point(
     client: "AsyncQdrantClient",
     intent_id: int,
-    vector: list[float],
+    vectors: list[float] | dict[str, list[float]],
     payload: dict[str, Any],
 ) -> None:
-    """Insert or replace the intent vector. point_id == SQLite intent_id."""
+    """Insert or replace the intent point. point_id == SQLite intent_id (D2).
+
+    Accepts either `list[float]` (legacy single-vector form; auto-wrapped as
+    {"main": vec}) or `dict[str, list[float]]` (named-vector form for the
+    multi-vector layout). Phase 3 will migrate callers to always pass dict and
+    this shim can be dropped.
+    """
     from qdrant_client.models import PointStruct  # noqa: PLC0415
+
+    if isinstance(vectors, list):
+        vectors_payload: dict[str, list[float]] | list[float] = {"main": vectors}
+    else:
+        vectors_payload = vectors
 
     await client.upsert(
         collection_name=ALIAS_NAME,
-        points=[PointStruct(id=intent_id, vector=vector, payload=payload)],
+        points=[PointStruct(id=intent_id, vector=vectors_payload, payload=payload)],
     )
 
 
@@ -106,12 +229,10 @@ async def update_intent_payload(
     intent_id: int,
     payload: dict[str, Any],
 ) -> None:
-    """Replace the stored payload atomically without re-uploading the vector.
+    """Replace stored payload atomically without touching vectors.
 
-    Uses overwrite_payload (replace semantics) not set_payload (merge semantics) so
-    that keys removed from the payload-builder in future do not silently persist in
-    Qdrant storage. The matcher reads enabled/threshold from this payload, so stale
-    keys would be a correctness hazard.
+    Uses overwrite_payload (replace) not set_payload (merge) so removed keys
+    do not silently persist.
     """
     await client.overwrite_payload(
         collection_name=ALIAS_NAME,
@@ -121,7 +242,7 @@ async def update_intent_payload(
 
 
 async def delete_intent_point(client: "AsyncQdrantClient", intent_id: int) -> None:
-    """Remove the intent vector. Caller is responsible for deleting the SQLite row."""
+    """Remove the entire intent point (all named vectors). Caller deletes SQLite row."""
     from qdrant_client.models import PointIdsList  # noqa: PLC0415
 
     await client.delete(

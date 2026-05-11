@@ -228,7 +228,7 @@ async def test_scan_happy_path_triggers_callback(mem_conn) -> None:
     }
 
     mock_retrieve_result = [MagicMock()]
-    mock_retrieve_result[0].vector = [0.1] * 1024
+    mock_retrieve_result[0].vector = {"main": [0.1] * 1024}
 
     mock_response = MagicMock()
     mock_response.points = [hit]
@@ -279,7 +279,7 @@ async def test_scan_dedup_no_repeated_callback(mem_conn) -> None:
     mock_response = MagicMock()
     mock_response.points = [hit]
     mock_retrieve_result = [MagicMock()]
-    mock_retrieve_result[0].vector = [0.1] * 1024
+    mock_retrieve_result[0].vector = {"main": [0.1] * 1024}
     mock_client = AsyncMock()
     mock_client.retrieve = AsyncMock(return_value=mock_retrieve_result)
     mock_client.query_points = AsyncMock(return_value=mock_response)

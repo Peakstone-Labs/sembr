@@ -38,10 +38,12 @@ def extract_point_vector(point) -> list[float] | None:
     """Return a flat float list from a Qdrant point's `vector` field.
 
     Qdrant returns vectors as either a flat list (unnamed-vector collection,
-    sembr's default) or a `dict[name, list[float]]` (named-vector collection).
-    Returns None when the point carries no vector or carries a named-vector
-    dict without a resolvable default — callers must treat None as
-    "vector absent" and skip the point rather than crash on type mismatch.
+    sembr's news layout) or a `dict[name, list[float]]` (named-vector). The
+    dict fallback (`next(iter(raw.values()))`) here is unreliable for named-vec
+    intents — its iteration order is server-response-dependent — so this helper
+    is intended only for unnamed-vector callers (news collection / matcher
+    article-side). Intent-side callers must use `extract_named_vector(point, slot)`
+    after the layout migration (intent-match-enhancement D2/R4).
     """
     raw = getattr(point, "vector", None)
     if raw is None:
@@ -49,3 +51,25 @@ def extract_point_vector(point) -> list[float] | None:
     if isinstance(raw, dict):
         raw = raw.get("default") or next(iter(raw.values()), None)
     return list(raw) if raw is not None else None
+
+
+def extract_named_vector(point, slot: str) -> list[float] | None:
+    """Return the vector stored at `slot` on a named-vector point.
+
+    Returns None when:
+      - point carries no vector at all,
+      - point.vector is not a dict (legacy unnamed-vector layout — caller
+        should treat as "wrong layout, skip"),
+      - the requested slot is absent from the dict (intent had no sub_text
+        for this slot — caller may skip or treat as no-hit-on-this-slot).
+
+    The strict no-fallback contract is required by R4: a fallback to `next(iter(...))`
+    would silently return e.g. alt_0 when the caller asked for main.
+    """
+    raw = getattr(point, "vector", None)
+    if not isinstance(raw, dict):
+        return None
+    v = raw.get(slot)
+    if not isinstance(v, list):
+        return None
+    return list(v)
