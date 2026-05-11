@@ -147,6 +147,10 @@ function intentsTab() {
     _defaultForm() {
       return {
         name: '', text: '',
+        // intent-match-enhancement: each item is { language, text, translating } where
+        // `translating` is a transient UI flag (loading spinner on the translate button)
+        // and is stripped before POST/PUT body construction.
+        subTexts: [],
         threshold: 0.75,
         enabled: true,
         language: 'zh',
@@ -187,6 +191,11 @@ function intentsTab() {
         form: {
           name: intent.name,
           text: intent.text,
+          subTexts: (intent.sub_texts || []).map(st => ({
+            language: st.language || 'en',
+            text: st.text || '',
+            translating: false,
+          })),
           threshold: intent.threshold,
           enabled: intent.enabled,
           language: intent.language || 'zh',
@@ -239,6 +248,56 @@ function intentsTab() {
       if (e.key === 'Enter') { e.preventDefault(); this.addTag(); }
     },
 
+    // ── Sub-texts (intent-match-enhancement) ──────────────
+    // Slot identity is positional (D23): index 0 → alt_0, 1 → alt_1, 2 → alt_2.
+    // Reordering with up/down would change slot identity and force a full re-embed,
+    // so v1 UI deliberately omits a reorder control — add/edit/delete only.
+    addSubText() {
+      if (this.modal.form.subTexts.length >= 3) {
+        this.showToast('Max 3 sub-texts', 'error');
+        return;
+      }
+      this.modal.form.subTexts.push({ language: 'en', text: '', translating: false });
+    },
+
+    removeSubText(idx) {
+      this.modal.form.subTexts.splice(idx, 1);
+    },
+
+    async translateSubText(idx) {
+      const sub = this.modal.form.subTexts[idx];
+      if (!sub) return;
+      const source = (this.modal.form.text || '').trim();
+      if (!source) {
+        this.showToast('Fill the main intent text before translating', 'error');
+        return;
+      }
+      const target = (sub.language || '').trim();
+      if (!target) {
+        this.showToast('Pick a target language first', 'error');
+        return;
+      }
+      if (sub.translating) return; // R11: in-flight guard, no debounce needed
+      sub.translating = true;
+      try {
+        const res = await this._request('POST', '/intents/translate', {
+          source_text: source,
+          target_language: target,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          sub.text = data.text || '';
+        } else {
+          const data = await res.json().catch(() => ({}));
+          this.showToast('Translation failed: ' + this._extractError(data, `HTTP ${res.status}`), 'error');
+        }
+      } catch (e) {
+        this.showToast('Network error: ' + e.message, 'error');
+      } finally {
+        sub.translating = false;
+      }
+    },
+
     // ── Email tag management ───────────────────────────────
     addEmail(field) {
       const k   = field + 'Input';
@@ -288,6 +347,27 @@ function intentsTab() {
 
       if (!f.text.trim())           errors.text = 'Required';
       else if (f.text.length > 2000) errors.text = 'Max 2000 characters';
+
+      // intent-match-enhancement: mirror backend SubTextSpec validation (≤3 entries,
+      // text 1..2000, language [A-Za-z][A-Za-z0-9_- ]{0..31}).
+      if (f.subTexts.length > 3) {
+        errors._global = (errors._global ? errors._global + '; ' : '') + 'Max 3 sub-texts';
+      }
+      for (let i = 0; i < f.subTexts.length; i++) {
+        const st = f.subTexts[i];
+        if (!st.text || !st.text.trim()) {
+          errors['sub_text_' + i] = 'Required (or remove this entry)';
+        } else if (st.text.length > 2000) {
+          errors['sub_text_' + i] = 'Max 2000 characters';
+        }
+        if (!st.language || !st.language.trim()) {
+          errors['sub_lang_' + i] = 'Required';
+        } else if (st.language.length > 32) {
+          errors['sub_lang_' + i] = 'Max 32 characters';
+        } else if (!/^[A-Za-z][A-Za-z0-9_\- ]*$/.test(st.language)) {
+          errors['sub_lang_' + i] = 'Must start with a letter; letters/digits/hyphens/underscores only';
+        }
+      }
 
       const thr = parseFloat(f.threshold);
       if (isNaN(thr) || thr < 0.60 || thr > 0.95)
@@ -353,6 +433,12 @@ function intentsTab() {
       const payload = {
         name:                 f.name.trim(),
         text:                 f.text.trim(),
+        // intent-match-enhancement: PUT/POST body strips the transient `translating`
+        // field; only language + text reach the backend.
+        sub_texts: f.subTexts.map(st => ({
+          language: (st.language || '').trim(),
+          text: (st.text || '').trim(),
+        })),
         threshold:            parseFloat(f.threshold),
         enabled:              !!f.enabled,
         language:             f.language.trim(),

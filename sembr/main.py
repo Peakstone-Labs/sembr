@@ -41,6 +41,7 @@ from sembr.api.maintenance import router as maintenance_router
 from sembr.api.prompts import router as prompts_router
 from sembr.api.restart import router as restart_router
 from sembr.api.settings import router as settings_router
+from sembr.api.translate import router as translate_router
 from sembr.collector.host_limiter import HostLimiter
 from sembr.collector.scheduler import add_feed_job, make_scheduler, set_host_limiter
 from sembr.config import get_settings
@@ -78,7 +79,7 @@ from sembr.summarizer.llm.factory import build_llm_backend
 from sembr.summarizer.models import SummaryResult
 from sembr.summarizer.pipeline import SummaryPipeline
 from sembr.summarizer.templates import PROMPTS_DIR
-from sembr.vector_store.intents import ensure_intents_collection
+from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS, ensure_intents_collection
 from sembr.vector_store.news import ensure_news_collection
 from sembr.vector_store.qdrant import QdrantHandle
 
@@ -159,7 +160,20 @@ async def lifespan(app: FastAPI):
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client, embedder)
-    await ensure_intents_collection(qdrant.client, embedder)
+    # intent-match-enhancement: pass conn so the migration step (SELECT id,text FROM intents)
+    # can re-embed main vectors for the new named-vector layout.
+    await ensure_intents_collection(qdrant.client, embedder, conn=conn)
+    # D19 fail-fast assertion: after migration the alias-targeted collection must use
+    # the named-vector dict layout with a "main" slot. If it doesn't, lifespan aborts
+    # rather than starting in a degraded state where every matcher tick logs warnings.
+    _intents_info = await qdrant.client.get_collection(_INTENTS_ALIAS)
+    _vectors_cfg = getattr(_intents_info.config.params, "vectors", None)
+    if not isinstance(_vectors_cfg, dict) or "main" not in _vectors_cfg:
+        raise RuntimeError(
+            f"intents collection {_INTENTS_ALIAS!r} is not in named-vector layout "
+            f"(vectors_config={_vectors_cfg!r}); migration must have failed. "
+            f"Manual recovery required."
+        )
     load_task = asyncio.create_task(embedder.load())  # background; /health probes status
     scheduler = make_scheduler()
     # D4: per-host concurrency limiter must exist before any feed job can fire so
@@ -255,6 +269,9 @@ async def lifespan(app: FastAPI):
     app.state.embedder = embedder
     app.state.event_intent_cache = event_intent_cache
     app.state.metrics_collector = metrics_collector
+    # intent-match-enhancement R3: translate endpoint reads the LLM backend
+    # from app.state. Wiring it here keeps a single instance for summarizer + translator.
+    app.state.llm_backend = llm_backend
     scheduler.start()
     # Log actual next_run_time for matcher jobs after scheduler.start() computes them.
     for job in scheduler.get_jobs():
@@ -316,6 +333,10 @@ app.include_router(health_router)
 app.include_router(feeds_router)
 app.include_router(feeds_fire_router)
 app.include_router(intents_router)
+# intent-match-enhancement D5: /intents/translate stateless endpoint.
+# Separate router module so the translate-specific imports (LLMError) and the
+# hardcoded prompt constant stay out of api/intents.py.
+app.include_router(translate_router)
 app.include_router(fire_router)
 app.include_router(external_fire_router)
 app.include_router(prompts_router)

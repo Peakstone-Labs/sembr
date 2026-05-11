@@ -1366,6 +1366,59 @@
           </div>
         </div><!-- /Basic -->
 
+        <!-- ── Sub-texts (cross-language match recall) ── -->
+        <div class="form-section">
+          <div class="form-section-title">
+            Sub-texts
+            <span class="field-hint" style="text-transform:none; letter-spacing:0; font-weight:normal;">
+              optional — up to 3 alternative-language texts. All participate in matching;
+              only the main text feeds the summary prompt.
+            </span>
+          </div>
+          <div class="form-grid">
+            <div class="form-grid-full">
+              <template x-for="(sub, sidx) in modal.form.subTexts" :key="sidx">
+                <div class="form-field"
+                     style="margin-bottom:12px; padding:12px; border:1px solid #444; border-radius:6px;">
+                  <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:6px;">
+                    <div style="width:140px;">
+                      <label class="field-label" x-text="'Slot ' + sidx + ' language'"></label>
+                      <input type="text" x-model="sub.language" maxlength="32" placeholder="en"
+                             :class="modal.errors['sub_lang_' + sidx] ? 'field-err' : ''">
+                      <span class="field-err-msg"
+                            x-show="modal.errors['sub_lang_' + sidx]"
+                            x-text="modal.errors['sub_lang_' + sidx]"></span>
+                    </div>
+                    <div style="flex:1;"></div>
+                    <button type="button"
+                            @click="translateSubText(sidx)"
+                            :disabled="sub.translating">
+                      <span x-show="sub.translating"><span class="spinner"></span>&nbsp;</span>
+                      <span x-text="sub.translating ? 'Translating…' : 'Translate from main'"></span>
+                    </button>
+                    <button type="button" class="danger" @click="removeSubText(sidx)">Remove</button>
+                  </div>
+                  <textarea x-model="sub.text" maxlength="2000" rows="2"
+                            :class="modal.errors['sub_text_' + sidx] ? 'field-err' : ''"
+                            placeholder="Same intent, expressed in the chosen language…"></textarea>
+                  <span class="field-err-msg"
+                        x-show="modal.errors['sub_text_' + sidx]"
+                        x-text="modal.errors['sub_text_' + sidx]"></span>
+                  <span class="field-hint"
+                        x-text="(sub.text?.length || 0) + ' / 2000'"></span>
+                </div>
+              </template>
+              <button type="button"
+                      @click="addSubText()"
+                      :disabled="modal.form.subTexts.length >= 3">
+                + Add sub-text
+                <span x-show="modal.form.subTexts.length >= 3"
+                      class="field-hint" style="margin-left:6px;">(max 3)</span>
+              </button>
+            </div>
+          </div>
+        </div><!-- /Sub-texts -->
+
         <!-- ── Schedule ── -->
         <div class="form-section">
           <div class="form-section-title">Schedule</div>
