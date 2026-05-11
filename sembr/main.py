@@ -153,7 +153,7 @@ async def lifespan(app: FastAPI):
     await init_feed_tables(conn)
     await init_article_tables(conn)
     await init_event_log_tables(conn)  # dashboard D1/D2; FK references feeds.id
-    await init_intent_tables(conn)
+    await init_intent_tables(conn)  # also chains init_intent_sub_texts_tables (FK CASCADE)
     await init_match_seen_tables(conn)  # D17: after intents (FK dependency)
     await init_event_buffer_tables(conn)  # D6/D22: after intents (FK dependency)
     await seed_initial_feeds(conn)

@@ -188,9 +188,41 @@ def _validate_template_name(v: str) -> str:
     return v
 
 
+_LANGUAGE_SAFE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_\- ]*")
+
+
+def _validate_language_safe(v: str) -> str:
+    """Shared by Intent.language, SubTextSpec.language, TranslateRequest.target_language (D14, D21)."""
+    if not v:
+        raise ValueError("language must not be empty")
+    if len(v) > 32:
+        raise ValueError("language must be ≤ 32 chars")
+    if not _LANGUAGE_SAFE_RE.fullmatch(v):
+        raise ValueError("language must start with a letter and contain only letters, digits, hyphens, underscores, or spaces")
+    return v
+
+
+class SubTextSpec(BaseModel):
+    """One auxiliary intent text (副 intent text) for cross-language match recall (D14, D23).
+
+    - `language` is a metadata tag, not a uniqueness key — same language may repeat across slots.
+    - `text` shares the main `text` field's `max_length=2000`; embedder truncates further.
+    - Slot identity is positional (list index → Qdrant `alt_0/1/2`); see D23.
+    """
+
+    language: str = Field(min_length=1, max_length=32)
+    text: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("language")
+    @classmethod
+    def _lang(cls, v: str) -> str:
+        return _validate_language_safe(v)
+
+
 class IntentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     text: str = Field(min_length=1, max_length=2000)
+    sub_texts: list[SubTextSpec] = Field(default_factory=list, max_length=3)
     threshold: float = Field(default=0.75, ge=0.60, le=0.95)
     enabled: bool = True
     channels: list[ChannelConfig] = Field(min_length=1, max_length=10)
@@ -222,13 +254,7 @@ class IntentCreate(BaseModel):
     @field_validator("language")
     @classmethod
     def _language_safe(cls, v: str) -> str:
-        if not v:
-            raise ValueError("language must not be empty")
-        if len(v) > 32:
-            raise ValueError("language must be ≤ 32 chars")
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_\- ]*", v):
-            raise ValueError("language must start with a letter and contain only letters, digits, hyphens, underscores, or spaces")
-        return v
+        return _validate_language_safe(v)
 
     @field_validator("system_template", "instruction_template")
     @classmethod
@@ -241,6 +267,7 @@ class IntentUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     text: str | None = Field(default=None, min_length=1, max_length=2000)
+    sub_texts: list[SubTextSpec] | None = Field(default=None, max_length=3)
     threshold: float | None = Field(default=None, ge=0.60, le=0.95)
     enabled: bool | None = None
     channels: list[ChannelConfig] | None = Field(default=None, min_length=1, max_length=10)
@@ -278,13 +305,7 @@ class IntentUpdate(BaseModel):
     def _language_safe(cls, v: str | None) -> str | None:
         if v is None:
             return v
-        if not v:
-            raise ValueError("language must not be empty")
-        if len(v) > 32:
-            raise ValueError("language must be ≤ 32 chars")
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_\- ]*", v):
-            raise ValueError("language must start with a letter and contain only letters, digits, hyphens, underscores, or spaces")
-        return v
+        return _validate_language_safe(v)
 
     @field_validator("system_template", "instruction_template")
     @classmethod
@@ -304,6 +325,7 @@ class Intent(BaseModel):
     id: int
     name: str
     text: str
+    sub_texts: list[SubTextSpec] = Field(default_factory=list)
     threshold: float
     enabled: bool
     channels: list[ChannelConfig]
@@ -316,3 +338,23 @@ class Intent(BaseModel):
     language: str
     created_at: str
     updated_at: str
+
+
+class TranslateRequest(BaseModel):
+    """Body of POST /intents/translate (D5, D21).
+
+    Stateless — no intent_id binding so creation form can call before draft exists.
+    target_language is freeform; v1 does not enforce BCP 47 compliance.
+    """
+
+    source_text: str = Field(min_length=1, max_length=2000)
+    target_language: str = Field(min_length=1, max_length=32)
+
+    @field_validator("target_language")
+    @classmethod
+    def _lang(cls, v: str) -> str:
+        return _validate_language_safe(v)
+
+
+class TranslateResponse(BaseModel):
+    text: str

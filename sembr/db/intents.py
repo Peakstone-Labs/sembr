@@ -15,6 +15,11 @@ from pydantic import TypeAdapter
 
 logger = logging.getLogger(__name__)
 
+from sembr.db.intent_sub_texts import (
+    _replace_in_txn as _sub_texts_replace_in_txn,
+    init_intent_sub_texts_tables,
+    list_for_intent as _list_sub_texts_for_intent,
+)
 from sembr.db.sqlite import transaction
 from sembr.models import ChannelConfig, FeedFilter, Intent, IntentCreate, IntentUpdate, Schedule
 
@@ -166,6 +171,10 @@ async def init_intent_tables(conn: aiosqlite.Connection) -> None:
             else:
                 raise
     await conn.commit()
+    # Sub-texts is conceptually an extension of the intents row (FK with CASCADE);
+    # chaining the init avoids 40+ test-fixture updates that would otherwise need
+    # to call both functions side-by-side. CREATE TABLE IF NOT EXISTS is idempotent.
+    await init_intent_sub_texts_tables(conn)
     # Warn on startup if any rows have an unrecognized schedule mode; these would crash _row_to_intent
     async with conn.execute(
         "SELECT id, json_extract(schedule, '$.mode') FROM intents "
@@ -254,7 +263,9 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
                 now,
             ),
         )
-    assert cursor.lastrowid is not None  # AUTOINCREMENT INSERT on SQLite always sets lastrowid (M2)
+        assert cursor.lastrowid is not None  # AUTOINCREMENT INSERT on SQLite always sets lastrowid (M2)
+        # Same transaction so the intents row + its sub_texts commit atomically (D1).
+        await _sub_texts_replace_in_txn(txn, cursor.lastrowid, body.sub_texts)
     result = await get_intent(conn, cursor.lastrowid)
     return result  # type: ignore[return-value]
 
@@ -269,13 +280,20 @@ async def list_intents(
         sql, params = _SELECT_INTENTS + " WHERE enabled=?", (int(enabled),)
     async with conn.execute(sql, params) as cur:
         rows = await cur.fetchall()
-    return [_row_to_intent(r) for r in rows]
+    intents = [_row_to_intent(r) for r in rows]
+    for intent in intents:
+        intent.sub_texts = await _list_sub_texts_for_intent(conn, intent.id)
+    return intents
 
 
 async def get_intent(conn: aiosqlite.Connection, intent_id: int) -> Intent | None:
     async with conn.execute(_SELECT_INTENTS + " WHERE id=?", (intent_id,)) as cur:
         row = await cur.fetchone()
-    return _row_to_intent(row) if row else None
+    if not row:
+        return None
+    intent = _row_to_intent(row)
+    intent.sub_texts = await _list_sub_texts_for_intent(conn, intent_id)
+    return intent
 
 
 async def update_intent(conn: aiosqlite.Connection, intent_id: int, body: IntentUpdate) -> Intent:
