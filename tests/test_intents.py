@@ -125,13 +125,16 @@ def test_post_intent_success() -> None:
     assert data["enabled"] is True
 
     vs["upsert"].assert_called_once()
-    _intent_id, vector, payload = (
+    _intent_id, vectors, payload = (
         vs["upsert"].call_args.args[1],
         vs["upsert"].call_args.args[2],
         vs["upsert"].call_args.kwargs["payload"],
     )
     assert _intent_id == data["id"]
-    assert len(vector) == 1024
+    # intent-match-enhancement: upsert_intent_point now takes a slot dict; no sub_texts → only "main".
+    assert isinstance(vectors, dict)
+    assert set(vectors.keys()) == {"main"}
+    assert len(vectors["main"]) == 1024
     assert payload["enabled"] is True
     assert payload["embedding_model_version"] == "bge-m3_v1"
     assert payload["intent_id"] == data["id"]

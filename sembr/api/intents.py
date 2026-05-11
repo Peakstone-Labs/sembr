@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
+from sembr.db.intent_sub_texts import replace_for_intent as _replace_sub_texts_for_intent
 from sembr.db.intents import (
     create_intent,
     delete_intent,
@@ -22,7 +23,7 @@ from sembr.matcher.jobs import (
     reregister_intent_job,
     unregister_intent_job,
 )
-from sembr.models import EventSchedule, Intent, IntentCreate, IntentUpdate
+from sembr.models import EventSchedule, Intent, IntentCreate, IntentUpdate, SubTextSpec
 from sembr.summarizer import templates as _templates
 from sembr.summarizer.templates import template_exists
 from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
@@ -31,18 +32,14 @@ from sembr.vector_store.intents import (
     update_intent_payload,
     upsert_intent_point,
 )
-from sembr.vector_store.qdrant import extract_point_vector
+from sembr.vector_store.qdrant import extract_named_vector
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/intents", tags=["intents"])
 
 
 def _validate_templates(system_tpl: str, instruction_tpl: str) -> None:
-    """Raise 422 if either named template file does not exist on disk.
-
-    Reads the prompts dir lazily from the templates module so tests can
-    redirect via ``monkeypatch.setattr("sembr.summarizer.templates.PROMPTS_DIR", tmp)``.
-    """
+    """Raise 422 if either named template file does not exist on disk."""
     for kind, name in (("system", system_tpl), ("instruction", instruction_tpl)):
         if not template_exists(_templates.PROMPTS_DIR, kind, name):
             raise HTTPException(
@@ -52,7 +49,14 @@ def _validate_templates(system_tpl: str, instruction_tpl: str) -> None:
 
 
 def _build_payload(intent: Intent, model_version: str) -> dict[str, Any]:
-    """D10 / D12: payload fields required by matcher; channels and name omitted (D14)."""
+    """D10 / D12: payload fields required by matcher; channels and name omitted (D14).
+
+    intent-match-enhancement: adds `sub_text_slots` listing populated alt_* slot
+    names so the dashboard can render "this intent has N sub-vectors" without
+    re-reading Qdrant. Matcher does NOT depend on this field (it derives slots
+    from the Qdrant point's vector dict itself), so payload drift is non-fatal.
+    """
+    slot_names = [f"alt_{i}" for i in range(len(intent.sub_texts))]
     return {
         "intent_id": intent.id,
         "text": intent.text,
@@ -60,9 +64,42 @@ def _build_payload(intent: Intent, model_version: str) -> dict[str, Any]:
         "enabled": intent.enabled,
         "tags": intent.tags,
         "embedding_model_version": model_version,
+        "sub_text_slots": slot_names,
         "created_at": intent.created_at,
         "updated_at": intent.updated_at,
     }
+
+
+def _slot_dict_from_vectors(vectors: list[list[float]]) -> dict[str, list[float]]:
+    """[main_vec, alt0_vec, alt1_vec, ...] → {"main":..., "alt_0":..., "alt_1":..., ...}."""
+    out: dict[str, list[float]] = {"main": vectors[0]}
+    for i, v in enumerate(vectors[1:]):
+        out[f"alt_{i}"] = v
+    return out
+
+
+def _slot_set(sub_text_count: int) -> set[str]:
+    return {"main"} | {f"alt_{i}" for i in range(sub_text_count)}
+
+
+def _diff_sub_texts(
+    old: list[SubTextSpec], new: list[SubTextSpec]
+) -> tuple[bool, bool, bool, bool]:
+    """R6 / D23: position-aligned diff. Returns (added, edited, deleted, label_only_changed)."""
+    added = edited = deleted = label_only = False
+    for i in range(max(len(old), len(new))):
+        o = old[i] if i < len(old) else None
+        n = new[i] if i < len(new) else None
+        if o is None and n is not None:
+            added = True
+        elif o is not None and n is None:
+            deleted = True
+        elif o is not None and n is not None:
+            if o.text != n.text:
+                edited = True
+            elif o.language != n.language:
+                label_only = True
+    return added, edited, deleted, label_only
 
 
 @router.post("", response_model=Intent, status_code=status.HTTP_201_CREATED)
@@ -73,16 +110,18 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
     _validate_templates(body.system_template, body.instruction_template)
 
     conn = get_conn()
-    intent = await create_intent(conn, body)  # D1: SQLite first
+    intent = await create_intent(conn, body)  # D1: SQLite first (intents row + sub_texts atomically)
 
     qdrant_client = request.app.state.qdrant.client
     qdrant_written = False
     try:
-        [vector] = await embedder.aembed([body.text])  # D1: embed second
+        texts_to_embed = [body.text] + [st.text for st in body.sub_texts]
+        vectors = await embedder.aembed(texts_to_embed)  # batch ≤ 4 << 32 single-shot
+        slot_vecs = _slot_dict_from_vectors(vectors)
         await upsert_intent_point(  # D1: Qdrant third
             qdrant_client,
             intent.id,
-            vector,
+            slot_vecs,
             payload=_build_payload(intent, embedder.model_version),
         )
         qdrant_written = True
@@ -91,7 +130,7 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
             request.app.state.event_intent_cache.add(
                 intent.id,
                 EventIntentEntry(
-                    vector=list(vector),  # defensive copy — vector ref must not alias caller's list
+                    vectors={k: list(v) for k, v in slot_vecs.items()},  # defensive copies
                     threshold=intent.threshold,
                     feed_filter_ids=intent.feed_filter.ids if intent.feed_filter else None,
                     schedule=intent.schedule,  # type: ignore[arg-type]
@@ -102,6 +141,7 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
             register_intent_job(request.app.state.scheduler, intent, request.app, fire_immediately=True)
     except Exception as exc:
         # Rollback in reverse order: cache, job (already failed/not-registered), Qdrant, SQLite
+        # delete_intent CASCADES sub_texts via FK ON DELETE CASCADE — no separate cleanup needed.
         if isinstance(intent.schedule, EventSchedule):
             request.app.state.event_intent_cache.remove(intent.id)
         if qdrant_written:
@@ -113,7 +153,7 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
                 )
         try:
             deleted = await delete_intent(conn, intent.id)
-            if not deleted:  # M4: log if the row was already gone before rollback
+            if not deleted:
                 logger.warning("POST rollback no-op for intent_id=%d: row already absent", intent.id)
         except Exception as rollback_exc:
             logger.error("POST SQLite rollback failed for intent_id=%d: %s", intent.id, rollback_exc)
@@ -141,19 +181,30 @@ async def get_intent_by_id(intent_id: int) -> Intent:
 @router.put("/{intent_id}", response_model=Intent)
 async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> Intent:
     conn = get_conn()
+    # D22 step 1: current snapshot (Intent has current.sub_texts populated by get_intent)
     current = await get_intent(conn, intent_id)
     if current is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
 
-    text_changed = body.text is not None and body.text.strip() != current.text.strip()  # D6
+    # D22 step 2: compute diff booleans against the snapshot (NOT against `updated.*`).
+    text_changed = body.text is not None and body.text.strip() != current.text.strip()
     enabled_changed = body.enabled is not None and body.enabled != current.enabled
     schedule_changed = (
         (body.schedule is not None and body.schedule != current.schedule)
         or (body.timezone is not None and body.timezone != current.timezone)
     )
 
+    if body.sub_texts is not None:
+        sub_texts_added, sub_texts_edited, sub_texts_deleted, sub_text_label_only_changed = (
+            _diff_sub_texts(current.sub_texts, body.sub_texts)
+        )
+    else:
+        sub_texts_added = sub_texts_edited = sub_texts_deleted = sub_text_label_only_changed = False
+
+    needs_reembed = text_changed or sub_texts_added or sub_texts_edited
+
     embedder = request.app.state.embedder
-    if text_changed and not embedder.is_loaded:  # D5: only gate when re-embed needed
+    if needs_reembed and not embedder.is_loaded:  # D5: only gate when re-embed needed
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="embedder not ready")
     # Validate template existence only when the field is actually being changed.
     effective_system = body.system_template if body.system_template is not None else current.system_template
@@ -168,61 +219,93 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
             detail="schedule.mode is immutable; delete and recreate the intent to change mode",
         )
 
-    updated = await update_intent(conn, intent_id, body)  # D1: SQLite first
+    # D22 step 3: write intents row (sub_texts handled separately per D18)
+    updated = await update_intent(conn, intent_id, body)
+    # D22 step 4 + 5: when body carries sub_texts, write the child table and re-read
+    # so `updated.sub_texts` reflects post-writeback state. Otherwise update_intent's
+    # return already has current sub_texts (loaded via the get_intent inside it).
+    if body.sub_texts is not None:
+        await _replace_sub_texts_for_intent(conn, intent_id, body.sub_texts)
+        re_read = await get_intent(conn, intent_id)
+        if re_read is None:  # pragma: no cover — concurrent delete; the UPDATE above would have errored first
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="intent vanished mid-update")
+        updated = re_read
+
+    # Slots gone after the update (D17 + reembed cleanup): when sub_texts shrank,
+    # the alt_X for indices ≥ new count must be deleted from Qdrant explicitly —
+    # upsert with `{main, alt_0..alt_{m-1}}` only writes those slots, it does
+    # NOT remove higher-index slots that existed before.
+    removed_slots = sorted(_slot_set(len(current.sub_texts)) - _slot_set(len(updated.sub_texts)))
 
     qdrant_client = request.app.state.qdrant.client
+    new_slot_vecs: dict[str, list[float]] | None = None
     qdrant_written = False
     try:
-        if text_changed:
-            [vector] = await embedder.aembed([updated.text])
+        if needs_reembed:
+            # D22 step 6: embed from `updated.*` so the post-writeback state is the source of truth
+            texts_to_embed = [updated.text] + [st.text for st in updated.sub_texts]
+            raw_vectors = await embedder.aembed(texts_to_embed)
+            new_slot_vecs = _slot_dict_from_vectors(raw_vectors)
+            # D22 step 7a: upsert entire vector dict (replaces named slots in-place)
             await upsert_intent_point(
                 qdrant_client,
                 intent_id,
-                vector,
+                new_slot_vecs,
                 payload=_build_payload(updated, embedder.model_version),
             )
             qdrant_written = True
+            # Clean up any leftover slots from before — upsert doesn't delete them
+            if removed_slots:
+                await qdrant_client.delete_vectors(
+                    collection_name=_INTENTS_ALIAS,
+                    points=[intent_id],
+                    vectors=removed_slots,
+                )
         else:
-            await update_intent_payload(  # D7: payload-only sync (enabled toggle, threshold, etc.)
+            # No re-embed required. Two possible vector mutations: deleted slots OR none.
+            # Label-only change and payload-only change both fall here and need payload sync.
+            if removed_slots:
+                # D17: shed alt_* slots without touching main / surviving alt_*
+                await qdrant_client.delete_vectors(
+                    collection_name=_INTENTS_ALIAS,
+                    points=[intent_id],
+                    vectors=removed_slots,
+                )
+                qdrant_written = True
+            await update_intent_payload(
                 qdrant_client,
                 intent_id,
                 payload=_build_payload(updated, embedder.model_version),
             )
     except Exception as exc:
-        # SQLite rollback runs first so log messages below reflect true state (L2-I1)
+        # SQLite rollback runs first so log messages below reflect true state (L2-I1).
+        # D22 rollback: restore intents row AND sub_texts (sub_texts only when we wrote them).
         sqlite_state = "rolled-back"
         try:
             await update_intent_raw(conn, intent_id, current)
+            if body.sub_texts is not None:
+                await _replace_sub_texts_for_intent(conn, intent_id, current.sub_texts)
         except Exception as rb:
             sqlite_state = "rollback-failed"
             logger.error("PUT SQLite rollback failed for intent_id=%d: %s", intent_id, rb)
 
-        # I2: if the new vector was already written server-side, attempt best-effort revert
-        if text_changed and qdrant_written:
-            try:
-                await delete_intent_point(qdrant_client, intent_id)
-                logger.error(
-                    "PUT inconsistency: intent_id=%d sqlite=%s qdrant=best-effort-deleted",
-                    intent_id,
-                    sqlite_state,
-                )
-            except Exception as revert_exc:
-                logger.error(
-                    "PUT inconsistency: intent_id=%d sqlite=%s qdrant=uncertain (%s)",
-                    intent_id,
-                    sqlite_state,
-                    revert_exc,
-                )
+        # I2: if the new vector dict was already written server-side, attempt best-effort revert.
+        # We do NOT delete_intent_point (would wipe main + alt_* including unrelated valid slots)
+        # — instead leave the Qdrant point in its inconsistent state and log so operators can
+        # reconcile. SQLite is the source of truth; subsequent PUT with matching body re-syncs.
+        if qdrant_written:
+            logger.error(
+                "PUT inconsistency: intent_id=%d sqlite=%s qdrant=ahead-of-sqlite (no auto-revert)",
+                intent_id,
+                sqlite_state,
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="failed to sync intent vector",
         ) from exc
 
-    # D4: clear match_seen when text changes and intent is/becomes enabled.
-    # Outside the scheduler try/except because this is a DB write, not a best-effort job sync.
-    # Failure → 500 so the caller can retry; silently returning 200 with stale dedup rows
-    # would suppress legitimate new matches against the re-embedded vector.
-    if text_changed and updated.enabled:
+    # D22 step 8: clear match_seen when vector-set content (main or sub) changed and intent is enabled.
+    if needs_reembed and updated.enabled:
         try:
             await clear_intent(conn, intent_id)
         except Exception as exc:
@@ -231,31 +314,42 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
                 detail="failed to clear match deduplication state",
             ) from exc
 
-    # D10: sync event-mode intent into in-process cache.
-    # Placed after Qdrant confirm and clear_intent; outside the Qdrant try/except so no
+    # D22 step 9: event-mode cache sync (R10 three-branch).
+    # Placed after Qdrant confirm + clear_intent; outside the Qdrant try/except so no
     # cache rollback is needed (if we get here, all writes succeeded).
     if isinstance(updated.schedule, EventSchedule):
         cache = request.app.state.event_intent_cache
         if updated.enabled:
-            # Resolve vector: new embed if text changed, else reuse cached or retrieve from Qdrant
-            if text_changed:
-                cache_vector: list[float] | None = list(vector)  # defensive copy
+            cache_vectors: dict[str, list[float]] | None
+            if needs_reembed and new_slot_vecs is not None:
+                # R10 branch (a): we just embedded — use the fresh dict directly (defensive copy).
+                cache_vectors = {k: list(v) for k, v in new_slot_vecs.items()}
             else:
                 existing_entry = cache.get(intent_id)
                 if existing_entry is not None:
-                    cache_vector = existing_entry.vector
+                    # R10 branch (b): cache hit — reuse, minus any deleted slots.
+                    cache_vectors = {
+                        k: list(v)
+                        for k, v in existing_entry.vectors.items()
+                        if k not in removed_slots
+                    }
                 else:
-                    # Intent was disabled (not in cache); retrieve once from Qdrant.
-                    # extract_point_vector handles the named-vector dict case.
+                    # R10 branch (c): cache miss (intent was disabled or evicted) — retrieve from Qdrant.
                     pts = await qdrant_client.retrieve(
                         collection_name=_INTENTS_ALIAS, ids=[intent_id], with_vectors=True
                     )
-                    cache_vector = extract_point_vector(pts[0]) if pts else None
-            if cache_vector is None:
-                # Vector absent — intent is enabled in SQLite but unresolvable in Qdrant.
-                # Surface as 500 so the operator knows to DELETE+POST (🟡2 fix).
+                    cache_vectors = None
+                    if pts:
+                        raw = getattr(pts[0], "vector", None)
+                        if isinstance(raw, dict):
+                            cache_vectors = {}
+                            for slot in ("main", "alt_0", "alt_1", "alt_2"):
+                                v = extract_named_vector(pts[0], slot)
+                                if v is not None and slot not in removed_slots:
+                                    cache_vectors[slot] = v
+            if cache_vectors is None or "main" not in cache_vectors:
                 logger.error(
-                    "PUT intent_id=%d: enabled=True but Qdrant vector absent; "
+                    "PUT intent_id=%d: enabled=True but Qdrant main vector unresolvable; "
                     "event cache not updated. Disable or DELETE+POST to resolve.",
                     intent_id,
                 )
@@ -266,7 +360,7 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
             cache.add(
                 intent_id,
                 EventIntentEntry(
-                    vector=cache_vector,
+                    vectors=cache_vectors,
                     threshold=updated.threshold,
                     feed_filter_ids=updated.feed_filter.ids if updated.feed_filter else None,
                     schedule=updated.schedule,  # type: ignore[arg-type]
@@ -280,14 +374,12 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     scheduler = request.app.state.scheduler
     try:
         if enabled_changed:
-            # D3: enable/disable takes precedence over job lifecycle
             if updated.enabled:
                 register_intent_job(scheduler, updated, request.app, fire_immediately=True)
             else:
                 unregister_intent_job(scheduler, intent_id)
         elif updated.enabled:
             if text_changed or schedule_changed:
-                # D4/D5: text or schedule change → reregister with updated trigger
                 reregister_intent_job(scheduler, updated, request.app)
     except Exception as exc:
         logger.warning(
@@ -320,10 +412,10 @@ async def delete_intent_handler(intent_id: int, request: Request) -> Response:
         ) from exc
 
     try:
-        # match_seen rows cascade automatically via ON DELETE CASCADE (D10)
+        # match_seen rows cascade automatically via ON DELETE CASCADE (D10);
+        # intent_sub_texts also cascades via FK ON DELETE CASCADE.
         await delete_intent(conn, intent_id)
     except Exception as exc:
-        # I3: Qdrant is already deleted; log orphan SQLite row so operators can reconcile
         logger.error(
             "DELETE inconsistency: intent_id=%d qdrant=deleted sqlite=failed (%s) — "
             "row remains visible via GET but matcher will not consume it (no Qdrant vector)",
