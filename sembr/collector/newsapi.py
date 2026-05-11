@@ -65,7 +65,13 @@ _NEWSAPI_REQUEST_FIXED: dict[str, Any] = {
     "resultType": "articles",
     "dataType": "news",
     "articleBodyLen": -1,           # -1 = full body
-    "isDuplicateFilter": "skipDuplicates",
+    # `keepAll`: do NOT collapse cross-source near-duplicates server-side.
+    # Master tick bundles ~20 sourceUris into one call; `skipDuplicates` was
+    # silently dropping Reuters/BBC/NYT coverage of the same event in favor
+    # of newsapi's chosen canonical version, leaving items_seen=0–3 per tick
+    # for big-name feeds. Client-side MD5(url+title) dedup catches true URL
+    # duplicates at insert time, so the API filter is redundant.
+    "isDuplicateFilter": "keepAll",
     "lang": "eng",
     "timezone": "UTC",
 }

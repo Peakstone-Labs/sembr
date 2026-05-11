@@ -190,7 +190,7 @@ def test_build_request_body_has_fixed_fields_and_dates() -> None:
     assert body["resultType"] == "articles"
     assert body["dataType"] == "news"
     assert body["articleBodyLen"] == -1
-    assert body["isDuplicateFilter"] == "skipDuplicates"
+    assert body["isDuplicateFilter"] == "keepAll"
     assert body["lang"] == "eng"
     assert body["timezone"] == "UTC"
     # forceMaxDataTimeWindow MUST NOT appear (D8)
