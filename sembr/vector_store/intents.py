@@ -91,11 +91,32 @@ async def _migrate_reembed_and_upsert(
     mv_name: str,
     rows: list[tuple[int, str]],
 ) -> None:
-    """Embed all main texts and upsert into the new _mv collection (D3 step 3–4)."""
+    """Embed all main texts and upsert into the new _mv collection (D3 step 3–4).
+
+    The embedder is loaded lazily on first migration run — lifespan launches
+    `embedder.load()` as a background task AFTER this function, so on legacy
+    DBs we'd otherwise hit "embedder not loaded". load() is idempotent and
+    never raises; we re-check is_loaded after and fail loudly if the probe
+    didn't succeed (bad API key / network) so lifespan aborts with a clear
+    message instead of crashing on the first embed call.
+    """
     from qdrant_client.models import PointStruct  # noqa: PLC0415
 
     if not rows:
         return
+    if not embedder.is_loaded:
+        logger.info(
+            "ensure_intents_collection: %d intents need re-embed but embedder not yet loaded; "
+            "running embedder.load() synchronously before migration",
+            len(rows),
+        )
+        await embedder.load()
+        if not embedder.is_loaded:
+            raise RuntimeError(
+                "embedder.load() probe failed during intents migration "
+                "(bad EMBEDDER_API_KEY or upstream outage); cannot re-embed "
+                "intent main texts. Fix the embedder configuration and restart."
+            )
     ids = [r[0] for r in rows]
     texts = [r[1] for r in rows]
     vectors: list[list[float]] = []

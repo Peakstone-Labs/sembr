@@ -108,7 +108,13 @@ class SiliconFlowEmbedder(BaseEmbedder):
 
         Does not retry on failure — a bad API key or network outage should
         surface as a persistent 503 so operators notice rather than spin in a retry loop.
+
+        Idempotent: re-entry while `_status=="ok"` is a no-op so the migration
+        path (which may eagerly call `load()` before main.py's background task)
+        does not double-probe and leak `httpx.AsyncClient` instances.
         """
+        if self._status == "ok" and self._client is not None:
+            return
         self._client = httpx.AsyncClient(timeout=self._timeout)
         try:
             vectors = await self._call([" "])
