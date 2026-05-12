@@ -49,10 +49,11 @@ class _YamlSource(PydanticBaseSettingsSource):
 
 
 class Settings(BaseSettings):
-    """Minimal Feature-1 settings surface (设计决策 #9).
+    """Application settings exposed to the dashboard and consumed by every subsystem.
 
-    Real-feature config (RSS cadence, LLM backend, channel tokens, ...) is intentionally
-    not declared here yet — extending later won't break this module's contract.
+    Field descriptions are user-facing — they render as the hint text under each
+    setting row in the dashboard accordion, so keep them concise, English-only,
+    and free of internal references (code paths, design-decision IDs, jargon).
     """
 
     model_config = SettingsConfigDict(
@@ -74,7 +75,7 @@ class Settings(BaseSettings):
     )
     embedder_api_key: SecretStr = Field(
         default="",
-        description="API key for the embeddings endpoint. Required; startup fails if empty.",
+        description="API key for the embeddings provider. Required to start.",
     )
     embedder_model: str = Field(
         default="BAAI/bge-m3",
@@ -83,9 +84,9 @@ class Settings(BaseSettings):
     embedder_timeout_seconds: float = Field(
         default=30.0,
         description=(
-            "HTTP timeout for the startup probe and as the httpx client default. "
-            "Note: batch embed calls compute a dynamic timeout = max(30s, total_chars/1500) "
-            "in scheduler.py, so values below 30 do not tighten the batch path."
+            "HTTP timeout (seconds) for embedding requests. Batch calls scale "
+            "the timeout up with payload size, so values below 30 mostly affect "
+            "the startup probe."
         ),
     )
 
@@ -95,29 +96,23 @@ class Settings(BaseSettings):
     )
     llm_api_key: SecretStr = Field(
         default="",
-        description="API key for the LLM endpoint. Shares the SiliconFlow key by default.",
+        description="API key for the LLM provider.",
     )
     llm_model: str = Field(
         default="deepseek-ai/DeepSeek-V4-Flash",
-        description="Model name passed to the LLM chat/completions endpoint.",
+        description="Model name for LLM summarization.",
     )
     llm_timeout_seconds: float = Field(
         default=60.0,
-        description="Per-request HTTP timeout in seconds for LLM summarization calls.",
+        description="HTTP timeout (seconds) per summarization call.",
     )
     llm_max_prompt_chars: int = Field(
         default=1_500_000,
         ge=2_000,
         description=(
-            "Total prompt-side character budget for the LLM backend (system + "
-            "instruction + assembled articles). The pipeline reserves ~15% for the "
-            "LLM response and instruction overhead, then water-fills article bodies "
-            "into the remainder — short articles stay whole, only the longest get "
-            "truncated. Tune to your model's context window. Characters (not tokens), "
-            "so the safe budget depends on language mix — Chinese ≈ 1–1.7 chars/token, "
-            "English ≈ 4 chars/token. Defaults: 1_500_000 for a 1M-token ctx model "
-            "(DeepSeek-V4-Flash) on mixed-language news; 200_000 for 128K-token ctx; "
-            "16_000 for an 8K-token local model."
+            "Character budget for the full LLM prompt. Tune to your model's "
+            "context window — roughly 1.5M for 1M-token models, 200K for 128K, "
+            "16K for 8K. Counts characters, not tokens."
         ),
     )
 
@@ -125,119 +120,93 @@ class Settings(BaseSettings):
     smtp_port: int = Field(default=587, description="SMTP server port.")
     smtp_username: str = Field(default="", description="SMTP login username.")
     smtp_password: SecretStr = Field(default="", description="SMTP login password.")
-    smtp_from: str = Field(default="", description="From address. Falls back to smtp_username if empty.")
-    smtp_use_starttls: bool = Field(default=True, description="Enable STARTTLS (port 587 style).")
-    smtp_use_ssl: bool = Field(default=False, description="Use SMTP_SSL instead of SMTP+STARTTLS (port 465 style).")
+    smtp_from: str = Field(default="", description="From address for outgoing email. Falls back to the SMTP username if empty.")
+    smtp_use_starttls: bool = Field(default=True, description="Use STARTTLS (typical port 587).")
+    smtp_use_ssl: bool = Field(default=False, description="Use SMTPS (typical port 465). Overrides STARTTLS when enabled.")
 
     display_timezone: str = Field(
         default="Asia/Shanghai",
-        description="IANA timezone used to render published_at in notifications (e.g. Asia/Shanghai, UTC, America/New_York).",
+        description="IANA timezone for rendering timestamps in notifications (e.g. Asia/Shanghai, UTC, America/New_York).",
     )
 
     dashboard_token: SecretStr = Field(
         default="",
-        description="Optional shared token gating /dashboard and /api/dashboard. Empty = no auth.",
+        description="Shared token required to access the dashboard. Empty = open access.",
     )
     dashboard_log_retention_days: int = Field(
         default=7, ge=1, le=90,
-        description="Maximum age (days) of rows kept in feed_fetch_log / embed_call_log.",
+        description="How long (days) to keep feed-fetch and embedder-call history.",
     )
     dashboard_log_max_per_feed: int = Field(
         default=1000, ge=10, le=100000,
-        description="Per-feed cap on retained feed_fetch_log rows; older rows pruned in FIFO order.",
+        description="Max fetch records kept per feed (oldest pruned first).",
     )
     dashboard_poll_interval_seconds: int = Field(
         default=10, ge=2, le=120,
-        description="Frontend polling cadence; surfaced via /api/dashboard/config to the bundled JS.",
+        description="How often (seconds) the dashboard refreshes its snapshot.",
     )
     dashboard_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
         default="INFO",
-        description="Default level applied to all LogBus tags on startup.",
+        description="Default log level on startup.",
     )
     dashboard_log_buffer_per_tag: int = Field(
         default=1000, ge=100, le=10000,
-        description="Ring buffer capacity per log tag (number of log entries retained in memory).",
+        description="Number of log lines kept in memory per category.",
     )
 
     qdrant_news_retention_days: int = Field(
         default=35, ge=30, le=365,
         description=(
-            "TTL for Qdrant news_current points. Default 35 = matcher lookback hard "
-            "ceiling (30d, see sembr/models.py IntentSchedule.lookback_seconds le=2592000) "
-            "+ 5d buffer. The lower bound (ge=30) MUST stay >= the matcher lookback "
-            "hard ceiling: setting it lower would silently expire articles a still-active "
-            "intent could legitimately want to scan, producing empty digests. Setting "
-            "this also controls the cascade pruning of feed_items.md5 + "
-            "match_seen.article_id rows whose Qdrant point has been removed."
+            "How long (days) to keep ingested article vectors in Qdrant. "
+            "Must be at least 30 to cover the maximum intent lookback window."
         ),
     )
     dead_articles_retention_days: int = Field(
         default=14, ge=1, le=180,
-        description=(
-            "TTL for dead_articles forensic rows. Independent of Qdrant retention. "
-            "Default 14d balances forensic value (post-mortem of embedder failures) "
-            "against disk growth from the 1MB body cap."
-        ),
+        description="How long (days) to keep dead-article records (failed-embedder rows kept for debugging).",
     )
     maintenance_interval_hours: int = Field(
         default=24, ge=1, le=168,
-        description=(
-            "Cadence for the three background maintenance jobs (reconcile, "
-            "qdrant_news TTL, dead_articles TTL). All three share this single "
-            "interval to keep the runtime profile predictable; per-job cadence "
-            "is intentionally not exposed."
-        ),
+        description="How often (hours) to run background cleanup jobs.",
     )
 
     lifespan_shutdown_timeout: float = Field(
         default=8.0,
-        description=(
-            "Maximum seconds allowed for graceful lifespan shutdown before forcing exit. "
-            "Set below docker stop's SIGKILL deadline (default 10s). Only applies during "
-            "self-restart; normal `docker compose down` is not affected."
-        ),
+        description="Max seconds for graceful shutdown before forcing exit. Keep below Docker's stop timeout (~10s).",
     )
 
     newsapi_api_key: SecretStr = Field(
         default="",
         description=(
-            "NewsAPI.ai (eventregistry.org) API key. Empty = newsapi master "
-            "tick disabled at health() level. Free tier 2000 tokens — at the "
-            "default 30-min poll interval that is ~41 days of operation."
+            "NewsAPI.ai (eventregistry.org) API key. Empty = NewsAPI feeds "
+            "disabled. Free tier ≈ 2000 tokens/month."
         ),
     )
     newsapi_poll_interval_minutes: int = Field(
         default=30, ge=5, le=1440,
         description=(
-            "Master tick cadence shared by ALL source_type='newsapi' feeds — "
-            "one HTTP call per tick consumes 1 token regardless of feed count. "
-            "Lowering this burns the free quota faster (10min ~13d, 30min ~41d, "
-            "60min ~83d). Each feed's per-row poll_interval_minutes column is "
-            "ignored for newsapi feeds (master job is the source of truth)."
+            "How often (minutes) to poll NewsAPI. One token per poll is "
+            "shared across all NewsAPI feeds; lowering this burns the free "
+            "quota faster."
         ),
     )
     newsapi_timeout_seconds: float = Field(
         default=30.0,
-        description="HTTP timeout for newsapi /article/getArticles calls.",
+        description="HTTP timeout (seconds) for NewsAPI requests.",
     )
     newsapi_categories: str = Field(
         default="Business,Technology,Science,Politics",
         description=(
-            "Comma-separated whitelist of NewsAPI.ai top-level categories. "
-            "Maps to categoryUri = ['news/<name>', ...] on the API call. "
-            "Candidates: Business, Politics, Technology, Science, Health, "
-            "Environment, Sports, Arts and Entertainment. Empty CSV is "
-            "rejected — categoryUri=[] would silently fall back to "
-            "all-categories at the API and break the whitelist contract."
+            "Comma-separated NewsAPI category whitelist. Valid: Business, "
+            "Politics, Technology, Science, Health, Environment, Sports, "
+            "Arts and Entertainment."
         ),
     )
     newsapi_max_pages: int = Field(
         default=10, ge=1, le=20,
         description=(
-            "Master tick 单拍最多翻页数 (D26 v1.1)。1=v1.0 关闭翻页（仅取 page 1，"
-            "稳态等价旧行为）；watermark 应在此之前先停。20 是上限以防误设把单"
-            "拍 token 代价拉到 20。defensive cap 触发时 (10 页全没 watermark) 整"
-            "拍按软失败处理（D28，不推进 cursor）。"
+            "Max pages fetched per NewsAPI poll. Set to 1 to disable "
+            "pagination; higher values raise the token cost of each poll."
         ),
     )
 
@@ -275,11 +244,9 @@ class Settings(BaseSettings):
     proxy_hosts: str = Field(
         default="rsshub:1200",
         description=(
-            "Comma-separated host[:port] entries that front many backends "
-            "(e.g. an RSSHub instance). For these hosts, the per-host concurrency "
-            "limiter additionally segments by the first URL path segment so backends "
-            "behind one proxy don't share a single semaphore. Default mirrors the "
-            "docker-compose RSSHub service."
+            "Comma-separated host[:port] entries that fan out to many backends "
+            "(e.g. RSSHub). Concurrency is tracked separately for each backend "
+            "behind these proxies so they don't share a single rate limit."
         ),
     )
 
