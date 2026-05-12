@@ -6,8 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=6">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/style.css?v=7">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 </head>
@@ -1379,7 +1379,7 @@
             <div class="form-grid-full">
               <template x-for="(sub, sidx) in modal.form.subTexts" :key="sidx">
                 <div class="form-field"
-                     style="margin-bottom:12px; padding:12px; border:1px solid #444; border-radius:6px;">
+                     style="margin-bottom:12px; padding:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-secondary);">
                   <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:6px;">
                     <div style="width:140px;">
                       <label class="field-label" x-text="'Slot ' + sidx + ' language'"></label>
@@ -1753,7 +1753,7 @@
           <div style="display:flex; gap:20px; margin-bottom:16px; font-size:0.82rem;">
             <div>
               <span class="muted" style="text-transform:uppercase; letter-spacing:0.1em; font-size:0.65rem;">Matches</span>
-              <div class="mono" style="font-size:1.2rem; font-weight:700; color:var(--gold);"
+              <div class="mono" style="font-size:1.2rem; font-weight:600; color:var(--ink);"
                    x-text="fire.result?.match_count ?? 0"></div>
             </div>
             <div>
@@ -1827,7 +1827,7 @@
 
     <!-- system/ group -->
     <div style="margin-bottom:12px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:rgba(255,255,255,0.04); border-radius:3px; margin-bottom:4px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px; margin-bottom:4px;">
         <span style="font-size:0.7rem; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim);">system/</span>
         <button class="btn" @click="openCreate('system')" title="+ New system template" style="padding:0 6px; font-size:0.85rem; line-height:1;">+</button>
       </div>
@@ -1841,14 +1841,14 @@
              style="display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:3px; cursor:pointer; font-size:0.82rem;">
           <span x-text="row.name" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
           <span x-show="row.is_builtin" class="muted" style="font-size:0.62rem;" title="built-in (read-only)">🔒</span>
-          <span x-show="row.ref_count > 0" class="muted" style="font-size:0.65rem; padding:0 5px; border:1px solid rgba(255,255,255,0.15); border-radius:8px;" :title="'Used by ' + row.ref_count + ' intent(s)'" x-text="row.ref_count"></span>
+          <span x-show="row.ref_count > 0" class="muted" style="font-size:0.65rem; padding:0 5px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-secondary); border-radius:8px;" :title="'Used by ' + row.ref_count + ' intent(s)'" x-text="row.ref_count"></span>
         </div>
       </template>
     </div>
 
     <!-- instruction/ group -->
     <div>
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:rgba(255,255,255,0.04); border-radius:3px; margin-bottom:4px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px; margin-bottom:4px;">
         <span style="font-size:0.7rem; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim);">instruction/</span>
         <button class="btn" @click="openCreate('instruction')" title="+ New instruction template" style="padding:0 6px; font-size:0.85rem; line-height:1;">+</button>
       </div>
@@ -1862,7 +1862,7 @@
              style="display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:3px; cursor:pointer; font-size:0.82rem;">
           <span x-text="row.name" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
           <span x-show="row.is_builtin" class="muted" style="font-size:0.62rem;" title="built-in (read-only)">🔒</span>
-          <span x-show="row.ref_count > 0" class="muted" style="font-size:0.65rem; padding:0 5px; border:1px solid rgba(255,255,255,0.15); border-radius:8px;" :title="'Used by ' + row.ref_count + ' intent(s)'" x-text="row.ref_count"></span>
+          <span x-show="row.ref_count > 0" class="muted" style="font-size:0.65rem; padding:0 5px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-secondary); border-radius:8px;" :title="'Used by ' + row.ref_count + ' intent(s)'" x-text="row.ref_count"></span>
         </div>
       </template>
     </div>
@@ -1890,8 +1890,8 @@
           <div style="min-width:0; flex:1;">
             <h3 style="margin:0; font-size:1rem; font-family:monospace;">
               <span x-text="editor.kind"></span><span style="opacity:0.5;">/</span><span x-text="editor.name"></span>
-              <span x-show="isEditorBuiltin" class="muted" style="font-size:0.65rem; padding:1px 6px; border:1px solid rgba(255,255,255,0.15); border-radius:3px; margin-left:6px; vertical-align:middle;">built-in</span>
-              <span x-show="editorDirty" style="color:var(--gold); font-size:0.78rem; margin-left:6px;" title="Unsaved changes">●</span>
+              <span x-show="isEditorBuiltin" class="muted" style="font-size:0.65rem; padding:1px 6px; border:1px solid var(--border); background:var(--bg-secondary); border-radius:4px; margin-left:6px; vertical-align:middle;">built-in</span>
+              <span x-show="editorDirty" style="color:var(--ink); font-size:0.95rem; margin-left:6px; line-height:1;" title="Unsaved changes">●</span>
             </h3>
             <div class="muted" style="font-size:0.72rem; margin-top:4px;">
               <span x-text="fmtSize(currentRow?.size_bytes)"></span>
@@ -1910,9 +1910,9 @@
         <textarea x-model="editor.content"
                   :readonly="isEditorBuiltin"
                   spellcheck="false"
-                  style="flex:1 1 auto; min-height:300px; font-family:monospace; font-size:0.85rem; padding:10px; background:#0d1726; color:#dde3ec; border:1px solid rgba(255,255,255,0.12); border-radius:4px; resize:vertical;"></textarea>
+                  style="flex:1 1 auto; min-height:300px; font-family:'Geist Mono','JetBrains Mono',monospace; font-size:0.85rem; line-height:1.55; padding:14px; background:var(--bg-ink); color:#ededed; border:1px solid var(--bg-ink); border-radius:8px; resize:vertical; outline:none;"></textarea>
 
-        <div x-show="editor.error" class="muted" style="color:#e08585; font-size:0.78rem; margin-top:6px;" x-text="editor.error"></div>
+        <div x-show="editor.error" style="color:var(--bad); font-size:0.78rem; margin-top:6px;" x-text="editor.error"></div>
 
         <footer style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px;">
           <div class="muted" style="font-size:0.72rem; flex:1; min-width:0; overflow:hidden;">
@@ -1946,12 +1946,12 @@
         </header>
         <label class="field-label" style="display:block; font-size:0.78rem; margin-bottom:4px;">Name</label>
         <input type="text" x-model="create.name" placeholder="my_template_v1"
-               style="width:100%; padding:6px 8px; background:#0d1726; color:#dde3ec; border:1px solid rgba(255,255,255,0.12); border-radius:4px;"
+               style="width:100%; padding:0 12px; height:36px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border); border-radius:6px;"
                @keyup.enter="submitCreate()">
         <div class="muted" style="font-size:0.7rem; margin-top:4px;">
           Letters / digits / underscores; no <code>/</code>, <code>\</code>, <code>..</code>; reserved name <code>default</code>.
         </div>
-        <div x-show="create.error" class="muted" style="color:#e08585; font-size:0.78rem; margin-top:8px;" x-text="create.error"></div>
+        <div x-show="create.error" style="color:var(--bad); font-size:0.78rem; margin-top:8px;" x-text="create.error"></div>
         <footer style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
           <button class="btn" @click="closeCreate()">Cancel</button>
           <button class="btn" :disabled="create.submitting" @click="submitCreate()"
@@ -1973,9 +1973,9 @@
         </div>
         <label class="field-label" style="display:block; font-size:0.78rem; margin-bottom:4px;">New name</label>
         <input type="text" x-model="rename.newName" placeholder="my_template_v2"
-               style="width:100%; padding:6px 8px; background:#0d1726; color:#dde3ec; border:1px solid rgba(255,255,255,0.12); border-radius:4px;"
+               style="width:100%; padding:0 12px; height:36px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border); border-radius:6px;"
                @keyup.enter="submitRename()">
-        <div x-show="rename.error" class="muted" style="color:#e08585; font-size:0.78rem; margin-top:8px;" x-text="rename.error"></div>
+        <div x-show="rename.error" style="color:var(--bad); font-size:0.78rem; margin-top:8px;" x-text="rename.error"></div>
         <footer style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
           <button class="btn" @click="closeRename()">Cancel</button>
           <button class="btn" :disabled="rename.submitting" @click="submitRename()"
@@ -1993,7 +1993,7 @@
           <h3 style="margin:0; font-size:0.95rem;" x-text="'Delete ' + del.kind + '/' + del.name + '?'"></h3>
         </header>
         <template x-if="del.refIntents.length > 0">
-          <div class="muted" style="font-size:0.78rem; color:#e0a64a;">
+          <div style="font-size:0.78rem; color:var(--warn-deep);">
             This template is referenced by <strong x-text="del.refIntents.length"></strong> intent(s):
             <ul style="margin:4px 0 0 16px; padding:0;">
               <template x-for="ref in del.refIntents" :key="ref.id">
@@ -2006,7 +2006,7 @@
         <template x-if="del.refIntents.length === 0">
           <div class="muted" style="font-size:0.78rem;">This action removes the file from <code>/app/prompts/</code>. It cannot be undone.</div>
         </template>
-        <div x-show="del.error" class="muted" style="color:#e08585; font-size:0.78rem; margin-top:8px;" x-text="del.error"></div>
+        <div x-show="del.error" style="color:var(--bad); font-size:0.78rem; margin-top:8px;" x-text="del.error"></div>
         <footer style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
           <button class="btn" @click="closeDelete()">Cancel</button>
           <button class="btn btn-danger"

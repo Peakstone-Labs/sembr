@@ -212,9 +212,9 @@ function dashboard() {
             datasets: [{
               label: 'avg ms',
               data,
-              backgroundColor: 'rgba(59,138,138,0.65)',
-              borderColor: 'rgba(59,138,138,0.9)',
-              borderWidth: 1,
+              backgroundColor: '#171717',
+              borderColor: '#171717',
+              borderWidth: 0,
               borderRadius: 2,
             }],
           },
@@ -227,10 +227,11 @@ function dashboard() {
                 beginAtZero: true,
                 ticks: {
                   precision: 0,
-                  color: '#5a6678',
-                  font: { family: "'JetBrains Mono', monospace", size: 10 },
+                  color: '#888888',
+                  font: { family: "'Geist Mono', 'JetBrains Mono', monospace", size: 10 },
                 },
-                grid: { color: 'rgba(30,45,69,0.8)' },
+                grid: { color: 'rgba(0,0,0,0.06)' },
+                border: { color: '#ebebeb' },
               },
             },
           },
@@ -259,8 +260,8 @@ function dashboard() {
       // $nextTick so the canvases for newly-rendered <tr> rows exist.
       this.$nextTick(() => {
         for (const c of containers) {
-          this._renderOneSparkline('cpu-spark-' + c.name, c.cpu_history, 'rgba(160,180,90,0.7)');
-          this._renderOneSparkline('mem-spark-' + c.name, c.mem_history, 'rgba(59,138,138,0.7)');
+          this._renderOneSparkline('cpu-spark-' + c.name, c.cpu_history, '#171717');
+          this._renderOneSparkline('mem-spark-' + c.name, c.mem_history, '#0070f3');
         }
       });
     },

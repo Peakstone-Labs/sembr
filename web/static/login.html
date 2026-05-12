@@ -6,8 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/style.css?v=7">
 </head>
 <body>
 
@@ -18,18 +18,18 @@
 <div class="login-wrap">
   <div class="login-card" id="login-panel">
     <h2>access token</h2>
-    <p class="muted" id="hint" style="display:none; margin-bottom:16px; font-size:0.85rem; line-height:1.6;">
-      Enter the value of <code style="font-family:var(--font-mono); background:var(--bg-secondary); padding:1px 6px; border-radius:3px;">DASHBOARD_TOKEN</code>
+    <p class="muted" id="hint" style="display:none; margin-bottom:16px; font-size:0.88rem; line-height:1.6;">
+      Enter the value of <code style="font-family:var(--font-mono); background:var(--bg-secondary); border:1px solid var(--border); padding:1px 6px; border-radius:4px; font-size:0.84rem;">DASHBOARD_TOKEN</code>
       from the server environment to continue.
     </p>
-    <p class="muted" id="hint-public" style="display:none; margin-bottom:16px; font-size:0.85rem;">
+    <p class="muted" id="hint-public" style="display:none; margin-bottom:16px; font-size:0.88rem;">
       Auth is not required by the server. Click continue.
     </p>
     <div style="margin-bottom:16px;">
       <input type="password" id="token-input" placeholder="dashboard token" autocomplete="off">
     </div>
     <p class="error-text" id="error-msg" style="display:none; margin-bottom:12px;"></p>
-    <button class="primary" id="submit-btn" style="width:100%; padding:10px 24px;">continue</button>
+    <button class="primary" id="submit-btn" style="width:100%; height:44px; font-size:0.95rem;">Continue</button>
   </div>
 </div>
 
