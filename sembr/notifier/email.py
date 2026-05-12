@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """EmailChannel: Jinja2 HTML rendering + smtplib executor delivery."""
 
 from __future__ import annotations

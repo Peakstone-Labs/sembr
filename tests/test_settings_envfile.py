@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for sembr.api.settings_envfile."""
 
 from __future__ import annotations

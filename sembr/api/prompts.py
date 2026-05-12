@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Prompt template CRUD — list / get / create / update / delete / rename.
 
 All write endpoints follow the same fail-fast validation order:

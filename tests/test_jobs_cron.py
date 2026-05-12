@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for DD10: CronTrigger scheduling in jobs.py.
 
 Verifies that register_intent_job correctly translates CronSchedule

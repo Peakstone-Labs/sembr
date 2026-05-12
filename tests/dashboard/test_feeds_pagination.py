@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SC#4: GET /api/dashboard/feeds returns the correct page slice + total."""
 
 from __future__ import annotations

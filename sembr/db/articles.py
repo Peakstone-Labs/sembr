@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """pending_articles and dead_articles persistence.
 
 Row presence in pending_articles is the *only* state indicator — no status column.

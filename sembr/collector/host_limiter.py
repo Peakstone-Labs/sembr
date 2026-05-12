@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Per-host concurrency limiter.
 
 Process-local dict[group_key -> asyncio.Semaphore]. Lazy-create on first

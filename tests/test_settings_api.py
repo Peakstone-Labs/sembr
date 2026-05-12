@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for sembr.api.settings router (FastAPI TestClient + monkeypatched envfile)."""
 
 from __future__ import annotations

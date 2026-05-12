@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for DB migration strategy (M1).
 
 Verifies that init_intent_tables is idempotent and correctly migrates

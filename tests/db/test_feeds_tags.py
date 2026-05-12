@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SC#1: feed_tags persist across reconnect; FK CASCADE removes tags on feed delete."""
 
 from __future__ import annotations

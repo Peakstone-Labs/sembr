@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Loop polish: list_feed_events supports offset for inline-expand pagination.
 
 Companion to the Feeds tab UI change that limits drill-down to 10 rows + prev/next.

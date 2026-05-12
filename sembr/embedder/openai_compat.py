@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """OpenAI-compatible embedding backend (SiliconFlow + any /v1/embeddings endpoint).
 
 Implements BaseEmbedder for remote API backends that speak the OpenAI embeddings

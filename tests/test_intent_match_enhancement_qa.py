@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """QA coverage for the named-vector intent layout (intent-match-enhancement).
 
 Coverage map:

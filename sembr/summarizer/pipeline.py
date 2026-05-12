@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SummaryPipeline: on_match → LLM → hook → on_summary.
 
 on_match must never raise; all errors are logged and the tick is silently

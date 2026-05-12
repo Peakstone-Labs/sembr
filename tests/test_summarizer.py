@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for summarizer modules (Windows-runnable, no Docker/GPU deps).
 
 Covers design.md SC1–SC6.

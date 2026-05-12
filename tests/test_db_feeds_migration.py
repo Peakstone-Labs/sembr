@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for feeds DB migration — enabled column idempotent add (C1)."""
 
 from __future__ import annotations

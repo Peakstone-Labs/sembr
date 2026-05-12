@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Initial seed feeds loaded on first startup.
 
 RSSHub routes use the internal docker-compose service name ``rsshub:1200``.

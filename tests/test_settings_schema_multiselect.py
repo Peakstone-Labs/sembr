@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """D13: NEWSAPI_CATEGORIES is exposed as type='multiselect' with the 8-candidate enum."""
 
 from __future__ import annotations

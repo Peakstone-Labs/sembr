@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for POST /feeds/{id}/fire + GET .../fire/{task_id} (SC#6–9)."""
 
 from __future__ import annotations

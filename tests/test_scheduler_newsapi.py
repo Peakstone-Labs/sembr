@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """D1 / D6 / D9 / D10: scheduler-side wiring for newsapi feeds.
 
 Verifies:

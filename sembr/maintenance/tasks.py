@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """In-memory ManualPruneTask state store + 5-minute sweep.
 
 Mirrors the ``feeds_fire`` pattern (``sembr/collector/fire_tasks.py``):

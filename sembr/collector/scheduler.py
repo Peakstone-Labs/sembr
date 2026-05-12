@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """APScheduler integration for per-feed collection jobs.
 
 Uses APScheduler 3.11.2 (NOT 4.0 — API is incompatible).

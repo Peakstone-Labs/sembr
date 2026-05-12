@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """End-to-end CRUD tests for /api/prompts/templates (SC #1–#10).
 
 Mirrors the test pyramid in design.md §"Concrete Acceptance Tests": exercises

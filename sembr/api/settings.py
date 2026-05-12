@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Settings editor router — /api/settings/*.
 
 Reads / writes the host-side `.env` file (bind-mounted to /app/.env) and

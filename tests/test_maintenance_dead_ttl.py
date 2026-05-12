@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for sembr.maintenance.dead_ttl (S5)."""
 
 from __future__ import annotations

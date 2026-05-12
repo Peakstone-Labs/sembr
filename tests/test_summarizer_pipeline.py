@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for ``SummaryPipeline.compute_summary`` + ``handle`` (refactor
 introduced by external-fire-api feature).
 

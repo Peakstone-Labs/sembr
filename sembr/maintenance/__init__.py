@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Background maintenance jobs (reconcile + Qdrant TTL + dead_articles TTL) and
 manual prune endpoints.
 

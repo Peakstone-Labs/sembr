@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Intent persistence — intents table CRUD.
 
 DDL is idempotent (CREATE TABLE IF NOT EXISTS). All functions accept the

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """APScheduler job lifecycle management for per-intent scan jobs.
 
 Conventions:

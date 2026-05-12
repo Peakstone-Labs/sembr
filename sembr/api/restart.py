@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Dashboard restart endpoint — POST /api/dashboard/restart.
 
 Single-purpose router: triggers the same "double restart" (rsshub

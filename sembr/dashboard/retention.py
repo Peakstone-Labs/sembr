@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Hourly APScheduler job pruning event log rows beyond age / per-feed cap.
 
 Two predicates, applied as a union:

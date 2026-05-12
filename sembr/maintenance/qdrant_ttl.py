@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Qdrant ``news_current`` TTL job + cascade delete to ``feed_items`` and
 ``match_seen``.
 

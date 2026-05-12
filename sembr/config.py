@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Application settings.
 
 Priority chain (low → high) per CLAUDE.md "Configuration":

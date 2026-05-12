@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Integration test: build_snapshot reads SystemMetricsCollector via D6 wiring.
 
 Verifies that:

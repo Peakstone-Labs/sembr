@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Reconcile job: bulk-delete ``feed_items`` rows whose ``md5`` has no
 corresponding Qdrant point in ``news_current``.
 

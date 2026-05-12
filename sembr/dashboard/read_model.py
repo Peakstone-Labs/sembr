@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Aggregate read queries for the dashboard.
 
 This module is the only place that joins SQLite + Qdrant + app.state.embedder

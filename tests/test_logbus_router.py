@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for sembr.logbus.router — TAG_PREFIX_MAP routing logic."""
 
 import logging

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Reconcile S10: insert_article_pending must emit an INFO log when an article
 body exceeds the 1MB cap and gets truncated.
 

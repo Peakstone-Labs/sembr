@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """APScheduler job for embedding articles from pending_articles.
 
 Runs on a 30 s IntervalTrigger; each tick pulls a batch, embeds via the configured

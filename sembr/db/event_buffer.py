@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Event buffer persistence — event_pending DDL.
 
 Low-level DB helpers for the event-driven intent matching path.

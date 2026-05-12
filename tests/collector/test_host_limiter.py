@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SC#6 + D5: HostLimiter caps concurrency per group_key; derive_group_key uses path for proxy hosts."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Token gate for /dashboard and /api/dashboard.
 
 Single shared token via env DASHBOARD_TOKEN. Empty token = pass-through (no auth).

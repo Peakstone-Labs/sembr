@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """feed_tags persistence.
 
 Composite PK (feed_id, tag) with FK CASCADE on feed_id so DELETE FROM feeds

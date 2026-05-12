@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Marker ABC for notification channels.
 
 Each concrete channel module owns its own Pydantic config type

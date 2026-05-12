@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for the embedding engine (Windows-runnable, no Docker/GPU deps).
 
 All DB tests use in-memory SQLite. Embedder and Qdrant calls are mocked.

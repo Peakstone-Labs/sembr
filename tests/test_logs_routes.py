@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for /api/dashboard/logs/* endpoints."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Revive dead_articles back to pending_articles for re-embedding.
 
 Use after fixing a transient downstream issue (e.g. SiliconFlow timeout) that

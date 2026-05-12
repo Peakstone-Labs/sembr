@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for EmailChannel rendering, TZ conversion, citation anchors, SMTP."""
 
 from __future__ import annotations

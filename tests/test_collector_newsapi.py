@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Static unit tests for sembr.collector.newsapi.
 
 Cover NewsApiSource.fetch single-source path, NewsApiMaster.tick aggregation

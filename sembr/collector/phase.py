@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Hash-based deterministic phase + jitter for per-feed scheduling.
 
 Phase is derived from md5(feed.id) so the first-tick distribution survives

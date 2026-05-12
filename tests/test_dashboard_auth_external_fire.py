@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Auth-middleware integration for the new ``/api/external/`` prefix.
 
 Per design test-strategy: this file ONLY covers whether the prefix is gated by

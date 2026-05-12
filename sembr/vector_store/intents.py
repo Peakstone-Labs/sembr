@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Intents collection bootstrap and CRUD.
 
 Idempotent: checks existence and layout before mutating.

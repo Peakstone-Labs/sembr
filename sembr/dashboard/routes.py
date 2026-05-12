@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """APIRouter for /api/dashboard/* — read-only endpoints serving the monitoring UI.
 
 Endpoints:

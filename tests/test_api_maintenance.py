@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for POST/GET /api/dashboard/maintenance/* (S6 + S7 + S8)."""
 
 from __future__ import annotations

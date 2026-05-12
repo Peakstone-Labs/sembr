@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Maps logging record names to dashboard UI tags."""
 
 from __future__ import annotations

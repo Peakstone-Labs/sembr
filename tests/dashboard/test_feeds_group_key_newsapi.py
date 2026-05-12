@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """newsapi feeds collapse onto a single 'newsapi' group_key in the dashboard.
 
 Two reasons combined:

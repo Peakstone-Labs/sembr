@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SC#5 (a)(b): hash phase is deterministic and spreads feeds apart."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """
 sembr runtime diagnostic — run directly on the server (no extra deps).
 

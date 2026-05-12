@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for sembr.dashboard.system_metrics (design D2/D3/D4/D5).
 
 Covers:

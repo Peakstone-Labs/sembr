@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """FastAPI entrypoint.
 
 设计决策 #16 / #17: lifespan startup = SQLite init → Qdrant client init;

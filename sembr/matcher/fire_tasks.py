@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """In-memory fire task state store.
 
 Tasks are stored in a module-level dict. TTL sweep runs every 5 minutes

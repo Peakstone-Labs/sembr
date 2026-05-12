@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for Phase 2: lifespan graceful-shutdown wrapper + _force_exit logic.
 
 These tests verify the settings_restart module flags and _force_exit helper

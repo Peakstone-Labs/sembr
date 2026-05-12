@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for sembr.api.restart — POST /api/dashboard/restart (design D1).
 
 Auth model and response shape mirror /api/settings/save:

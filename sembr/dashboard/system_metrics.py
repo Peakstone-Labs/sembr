@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Background sampler for the dashboard's per-container system-metrics panel.
 
 Three responsibilities:

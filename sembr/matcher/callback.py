@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Matcher callback types and default implementation.
 
 ``on_match`` is registered on ``app.state`` so the lifespan can replace the

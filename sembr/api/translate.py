@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """POST /intents/translate — stateless one-shot translation via the summarizer LLM.
 
 The endpoint is "stateless" in the sense that it does not bind to an intent_id —

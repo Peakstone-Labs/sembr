@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SC#7: derive_group_key URL table — direct hosts vs proxy hosts."""
 
 from __future__ import annotations

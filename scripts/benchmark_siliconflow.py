@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Empirically measure SiliconFlow /v1/embeddings latency vs batch size + chars.
 
 Pulls real articles out of dead_articles (or pending_articles if dead is

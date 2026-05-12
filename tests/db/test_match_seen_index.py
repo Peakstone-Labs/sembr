@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Reconcile design D11: match_seen.article_id must have a single-column
 index, otherwise TTL-driven `DELETE WHERE article_id IN (...)` falls back to a
 full scan and stalls the global write lock.

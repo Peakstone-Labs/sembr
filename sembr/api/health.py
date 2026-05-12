@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """GET /health.
 
 Real-time probe (no cache); returns 200 iff

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """D11/R6 tests: FeedCreate.url validator branches by source_type.
 
 * RSS keeps the existing http(s):// scheme requirement.

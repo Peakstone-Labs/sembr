@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """In-memory feed fire task state store.
 
 Parallel to sembr.matcher.fire_tasks but scoped to feeds. Tasks are stored in a

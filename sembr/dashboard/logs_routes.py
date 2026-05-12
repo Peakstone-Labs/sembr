@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SSE log-stream and level-control endpoints for the dashboard Logs tab.
 
 Routes (all under /api/dashboard/logs):

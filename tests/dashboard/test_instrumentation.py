@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Verify collect_feed and embedder_worker write feed_fetch_log / embed_call_log
 rows on each exit branch (per design D4).
 

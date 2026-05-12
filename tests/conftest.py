@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Shared pytest fixtures.
 
 Resets sembr.db.sqlite module-level globals (_conn, _WRITE_LOCK) before and after

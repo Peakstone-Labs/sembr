@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Embedder abstract base.
 
 设计决策 #7 / Option Set D-2: only the smallest surface this Feature can justify is fixed.

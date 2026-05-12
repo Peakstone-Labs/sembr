@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """D32 v1.1 — create_feed inherits last_collected_at from existing newsapi feeds.
 
 A newly-added newsapi feed must NOT pull a 24h bootstrap window on its first

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """POST/GET endpoints for the maintenance Dashboard panel.
 
 Endpoints (prefix `/api/dashboard/maintenance`, gated by

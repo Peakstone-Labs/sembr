@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Verify DB migration: custom_prompt column is dropped; new template columns exist with defaults."""
 
 from __future__ import annotations

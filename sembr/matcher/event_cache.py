@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """In-process cache of event-mode intent vectors.
 
 ``app.state.event_intent_cache`` holds one ``EventIntentEntry`` per event-mode

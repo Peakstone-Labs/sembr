@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Manual prune planning + apply (state machine implementation).
 
 Two background coroutines per task:

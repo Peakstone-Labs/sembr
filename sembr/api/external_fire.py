@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """POST /api/external/intents/{intent_id}/fire — synchronous fire endpoint.
 
 Single-shot HTTP request/response form of the reverse-RAG digest, exposed for

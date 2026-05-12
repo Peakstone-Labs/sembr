@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Event grouping: cluster match articles by title similarity.
 
 Uses difflib.SequenceMatcher (stdlib) with union-find merging to handle

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Benchmark SiliconFlow /v1/embeddings latency at different batch sizes.
 
 Run inside the api container (requires EMBEDDER_API_KEY in the environment):

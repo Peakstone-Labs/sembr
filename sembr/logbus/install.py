@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Install the RingBufferHandler on the root logger at lifespan start."""
 
 from __future__ import annotations

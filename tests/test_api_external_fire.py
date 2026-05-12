@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Endpoint behaviour for ``POST /api/external/intents/{intent_id}/fire``.
 
 Covers AC1–AC10 of external-fire-api/requirements.md plus v2 additions

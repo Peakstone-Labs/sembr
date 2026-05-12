@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Container restart orchestration for the settings editor.
 
 Two responsibilities:

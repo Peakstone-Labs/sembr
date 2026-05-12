@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """match_seen table: deduplication log for matched (intent, article) pairs.
 
 Composite PK (intent_id, article_id) with ON DELETE CASCADE keeps cleanup trivial.

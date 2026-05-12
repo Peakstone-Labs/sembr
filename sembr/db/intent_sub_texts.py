@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """intent_sub_texts table: auxiliary intent texts for cross-language match recall.
 
 Mirrors db/match_seen.py's child-table-with-ON-DELETE-CASCADE pattern:

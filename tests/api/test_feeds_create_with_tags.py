@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SC#2 server-side: POST /feeds with tags and PATCH /feeds/{id}/tags.
 
 Uses a real on-disk SQLite (init_sqlite + WAL) so transaction() works against

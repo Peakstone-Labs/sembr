@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Async Qdrant client wrapper.
 
 The lifespan owns one `AsyncQdrantClient` per process; `/health` calls `ping()`.

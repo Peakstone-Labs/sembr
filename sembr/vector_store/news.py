@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """News collection bootstrap + write helpers.
 
 Idempotent: checks existence before creating collection and alias.

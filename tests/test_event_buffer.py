@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for sembr/matcher/event_buffer.py — absorb, flush, sweep_timed_out."""
 
 from __future__ import annotations

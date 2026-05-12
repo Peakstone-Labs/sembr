@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """RingBufferHandler — logging.Handler that feeds LogBus."""
 
 from __future__ import annotations

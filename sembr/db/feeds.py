@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Feed and feed_item persistence.
 
 DDL is idempotent (CREATE TABLE IF NOT EXISTS).  All functions accept the

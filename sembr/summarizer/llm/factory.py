@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """LLM backend factory."""
 
 from __future__ import annotations

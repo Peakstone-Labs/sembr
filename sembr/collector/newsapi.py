@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """NewsAPI.ai (eventregistry.org) source + master-tick aggregator.
 
 This module bundles three responsibilities so RSS-side code stays untouched:

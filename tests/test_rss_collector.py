@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for the RSS collector (Windows-runnable, no Docker deps).
 
 Uses respx to mock httpx and aiosqlite in-memory for DB tests.

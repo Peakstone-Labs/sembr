@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Embedder factory: build_embedder(settings) → BaseEmbedder.
 
 Mirrors the pattern in sembr/summarizer/factory.py. Callers depend only on

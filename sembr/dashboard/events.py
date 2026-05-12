@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Event log tables for the monitoring dashboard.
 
 Two append-only tables:

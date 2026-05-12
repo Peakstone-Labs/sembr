@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Quick SMTP smoke test — run once to verify credentials before wiring into the app."""
 
 import smtplib

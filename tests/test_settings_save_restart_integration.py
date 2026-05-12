@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Integration tests: settings save + self-restart lifecycle.
 
 Verifies that:

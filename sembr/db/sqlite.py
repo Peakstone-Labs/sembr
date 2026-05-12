@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SQLite handle.
 
 设计决策 #3 / #4: a single global aiosqlite connection per process. WAL must be on

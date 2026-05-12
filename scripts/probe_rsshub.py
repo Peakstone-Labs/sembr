@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """
 RSSHub full-text conversion probe -- Phase 2 pre-flight.
 

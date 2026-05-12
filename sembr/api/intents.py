@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """POST/GET/PUT/DELETE /intents router."""
 
 from __future__ import annotations

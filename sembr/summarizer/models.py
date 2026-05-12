@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Summarizer domain types.
 
 Intentionally dataclasses (not Pydantic) to match the Match dataclass pattern

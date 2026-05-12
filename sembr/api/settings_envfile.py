@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Line-level `.env` parser/writer.
 
 Preserves comments, blank lines, and group ordering across read/modify/write

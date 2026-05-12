@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """LogBus — in-process ring buffer with per-tag deques and asyncio fan-out.
 
 Thread-safety: a single threading.Lock guards deques, subscribers, and

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for sembr.dashboard.read_model.build_snapshot and related helpers.
 
 Cover (per test plan):

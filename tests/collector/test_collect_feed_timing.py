@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Loop 2 regression: started_at must reflect actual fetch start, not queue-wait
 time. (#🟡-2 in dashboard-feeds-tab review.md)
 """

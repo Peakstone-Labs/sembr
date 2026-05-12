@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Pydantic v2 response models for /api/dashboard endpoints."""
 
 from __future__ import annotations

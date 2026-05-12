@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Regression: source_type='newsapi' feeds must be treated identically to
 RSS feeds by Intent.feed_filter — feed_filter only stores integer feed_ids,
 so the source_type column is opaque to it. This test pins that invariant

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Event buffer: absorb + flush business logic for event-driven intent matching.
 
 Three entry points:

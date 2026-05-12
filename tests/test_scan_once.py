@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for DD9: scan_once extracted function.
 
 qdrant_client is not installed on the Windows dev machine, so the test shims

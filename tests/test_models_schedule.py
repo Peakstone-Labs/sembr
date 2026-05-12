@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for Schedule discriminated union (CronSchedule / EventSchedule)."""
 
 from __future__ import annotations

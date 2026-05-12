@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for template existence validation on POST/PUT /intents."""
 
 from __future__ import annotations

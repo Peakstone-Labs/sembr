@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Per-intent scan logic: one APScheduler tick = one call to run_intent_scan.
 
 Flow per tick:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """D12 / D25: Settings.newsapi_categories validator + category_uris property."""
 
 from __future__ import annotations

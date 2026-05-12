@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for `list_template_refs` and `rename_intent_template` (D2/D4/D15)."""
 
 from __future__ import annotations

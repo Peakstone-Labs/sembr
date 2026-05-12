@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """POST /intents/{id}/fire + GET /intents/{id}/fire/{task_id}.
 
 Fire triggers an immediate intent scan outside the APScheduler tick.

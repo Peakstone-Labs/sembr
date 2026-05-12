@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Focused inline tests for Phase 3 — Loop 7 QA.
 
 Tests: _extract_vector variants, POST defensive copy,

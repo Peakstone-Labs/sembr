@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for manual prune state machine (S6 + S7 + S8 + correctness)."""
 
 from __future__ import annotations

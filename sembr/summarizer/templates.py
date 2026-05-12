@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Prompt template discovery, loading, and rendering.
 
 Templates live under ``prompts_dir/{kind}/{name}.md`` where:

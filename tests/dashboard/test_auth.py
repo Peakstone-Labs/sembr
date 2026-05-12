@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for sembr.dashboard.auth.DashboardTokenMiddleware (D7 / R4).
 
 Cover:

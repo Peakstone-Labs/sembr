@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Concurrency regression tests for the reconcile / TTL paths.
 
 Covers two design.md Test Strategy entries that earlier loops missed:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for /api/dashboard/articles?bucket=qdrant&... filter (D7).
 
 Three concerns:

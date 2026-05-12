@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """OpenAI-compatible chat/completions LLM backend.
 
 Reuses the httpx.AsyncClient pattern from SiliconFlowEmbedder (no new deps).

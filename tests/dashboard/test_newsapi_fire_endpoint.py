@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """POST /api/dashboard/sources/newsapi/fire — manual master-tick trigger."""
 
 from __future__ import annotations

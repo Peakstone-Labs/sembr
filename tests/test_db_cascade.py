@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for DD3: feed delete cascade — intents_remove_feed_id."""
 
 from __future__ import annotations

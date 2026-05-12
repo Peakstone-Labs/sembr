@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Verify ensure_news_collection creates the title text-index (design D8).
 
 Tests that the lazy-import block exposes ``TextIndexParams`` and ``TokenizerType``

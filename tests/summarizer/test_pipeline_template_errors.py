@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests: template errors route to on_template_error; LLM is never called."""
 
 from __future__ import annotations

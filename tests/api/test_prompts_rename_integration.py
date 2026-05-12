@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Integration tests for the rename endpoint (D2 / D15).
 
 These exercise the full 3-step orchestration in `rename_template_endpoint`:

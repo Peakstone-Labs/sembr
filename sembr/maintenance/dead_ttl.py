@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Dead-articles TTL job: prune ``dead_articles`` rows older than
 ``settings.dead_articles_retention_days``.
 

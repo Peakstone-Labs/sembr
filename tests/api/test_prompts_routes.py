@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for GET /api/prompts/templates routes (post-rewrite shape)."""
 
 from __future__ import annotations

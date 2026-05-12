@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Event-driven intent matching: in-process cosine scoring against cached intent vectors.
 
 ``event_match_batch`` is called after each Qdrant upsert in embedder_worker.
