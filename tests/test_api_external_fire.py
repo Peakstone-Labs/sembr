@@ -229,7 +229,7 @@ def test_event_mode_returns_409() -> None:
 
     assert resp.status_code == 409
     detail = resp.json()["detail"]
-    # D9: distinct wording from /intents/{id}/fire so logs disambiguate origin.
+    # Distinct wording from /intents/{id}/fire so logs disambiguate the origin.
     assert "/api/external/" in detail
     assert "cron-mode" in detail
 
@@ -433,10 +433,10 @@ def test_llm_error_returns_summary_error_field() -> None:
     assert body["summary_error"]
     assert len(body["matches"]) == 1
     assert "TimeoutException" in body["summary_error"]
-    # R5 / constraint #8: summary_error must not leak tracebacks, filesystem
-    # paths, or upstream URLs. Scrub strips both `/` (URL / posix path) and
-    # `\\` (windows path) — the LLM provider URL ``/v1/chat`` in the source
-    # exception must therefore disappear.
+    # summary_error must not leak tracebacks, filesystem paths, or upstream
+    # URLs. Scrub strips both `/` (URL / posix path) and `\\` (windows path) —
+    # the LLM provider URL ``/v1/chat`` in the source exception must
+    # therefore disappear.
     se = body["summary_error"]
     assert len(se) <= 250
     assert "Traceback" not in se
@@ -448,9 +448,9 @@ def test_llm_error_returns_summary_error_field() -> None:
 
 
 def test_summary_error_scrubs_paths_and_newlines() -> None:
-    """🟡-1 / constraint #8 / R5: even when str(exc) contains posix paths,
-    windows paths, multi-line content, tabs, and an upstream URL, the
-    response field MUST collapse them all to whitespace before truncation."""
+    """Even when str(exc) contains posix paths, windows paths, multi-line
+    content, tabs, and an upstream URL, the response field MUST collapse them
+    all to whitespace before truncation."""
     intent = _fake_intent()
     matches = [_fake_match()]
     raw = (
@@ -509,7 +509,7 @@ def test_summary_error_length_bound_holds_for_long_message() -> None:
 
 
 # ---------------------------------------------------------------------------
-# v2 — Qdrant failure → 500 (D-A6 / D12 / R6)
+# v2 — Qdrant failure → 500
 # ---------------------------------------------------------------------------
 
 
@@ -529,12 +529,12 @@ def test_qdrant_failure_returns_500() -> None:
         resp = client.post("/api/external/intents/1/fire", json={})
 
     assert resp.status_code == 500
-    # D12: error body must not leak internal exception detail.
+    # Error body must not leak internal exception detail.
     assert resp.json() == {"detail": "qdrant query failed"}
 
 
 # ---------------------------------------------------------------------------
-# v2 — empty intent_text → summary null, no error (D-A8 / D15)
+# v2 — empty intent_text → summary null, no error
 # ---------------------------------------------------------------------------
 
 

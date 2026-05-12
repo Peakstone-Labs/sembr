@@ -601,7 +601,7 @@ async def test_embedder_worker_phase3b_upsert_then_delete(monkeypatch):
     await embedder_worker(embedder, qdrant)
 
     assert call_order == ["upsert", "delete"], (
-        f"D2 violation: expected upsert→delete, got {call_order}"
+        f"order violation: expected upsert→delete, got {call_order}"
     )
     qdrant.client.upsert.assert_called_once()
     assert qdrant.client.upsert.call_args.kwargs["collection_name"] == ALIAS_NAME
@@ -613,7 +613,7 @@ async def test_embedder_worker_phase3b_upsert_then_delete(monkeypatch):
 
 
 async def test_embedder_worker_qdrant_transient_no_retry_inc(monkeypatch):
-    """ConnectError from Qdrant must not increment retry_count (D20)."""
+    """ConnectError from Qdrant must not increment retry_count."""
     conn = await _make_conn()
     feed_id = await _insert_feed(conn)
     md5 = "b" * 32

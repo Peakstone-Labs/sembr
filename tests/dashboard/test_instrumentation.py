@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Verify collect_feed and embedder_worker write feed_fetch_log / embed_call_log
-rows on each exit branch (per design D4).
+rows on each exit branch.
 
 Strategy:
   - Real aiosqlite + real init_event_log_tables (the events helper writes rows)
@@ -125,7 +125,7 @@ def test_collect_feed_writes_fetch_event_on_success_empty(tmp_path):
 
 
 def test_collect_feed_unknown_source_type_writes_no_event(tmp_path):
-    """Unknown source_type is a config error, not a fetch attempt — D4 says no row."""
+    """Unknown source_type is a config error, not a fetch attempt — no row."""
 
     async def run():
         await _setup_db(tmp_path)

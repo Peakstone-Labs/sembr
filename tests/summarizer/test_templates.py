@@ -190,26 +190,26 @@ def test_unicode_filename_loads(prompts_dir: Path) -> None:
     assert "news" in result
 
 
-# --- Module-level constants (D1 / D9 / D14 / D17) ----------------------------
+# --- Module-level constants --------------------------------------------------
 
 
 def test_prompts_dir_constant() -> None:
-    """D1: PROMPTS_DIR is the canonical bind-mount path."""
+    """PROMPTS_DIR is the canonical bind-mount path."""
     assert PROMPTS_DIR == Path("/app/prompts")
 
 
 def test_builtin_names_includes_default() -> None:
-    """D9 / D17: 'default' is reserved for both kinds via a single frozenset."""
+    """'default' is reserved for both kinds via a single frozenset."""
     assert "default" in BUILTIN_NAMES
     assert isinstance(BUILTIN_NAMES, frozenset)
 
 
 def test_max_template_bytes_is_64kib() -> None:
-    """D14: per-write content size cap matches requirements (64 KiB)."""
+    """Per-write content size cap is 64 KiB."""
     assert MAX_TEMPLATE_BYTES == 64 * 1024
 
 
-# --- try_render (D10) --------------------------------------------------------
+# --- try_render --------------------------------------------------------------
 
 
 def test_try_render_accepts_valid_system_placeholder() -> None:
@@ -221,7 +221,7 @@ def test_try_render_accepts_valid_instruction_placeholders() -> None:
 
 
 def test_try_render_accepts_no_placeholders() -> None:
-    """R6: pathologically valid content with no placeholders is accepted."""
+    """Pathologically valid content with no placeholders is accepted."""
     try_render("instruction", "Just plain text — no curly braces.")
 
 
@@ -242,7 +242,7 @@ def test_try_render_rejects_invalid_kind() -> None:
         try_render("notakind", "anything")
 
 
-# --- save_template_atomic (D5) -----------------------------------------------
+# --- save_template_atomic ----------------------------------------------------
 
 
 def test_save_template_atomic_writes_content(prompts_dir: Path) -> None:
@@ -284,7 +284,7 @@ def test_save_template_atomic_creates_kind_dir(tmp_path: Path) -> None:
     assert out.exists()
 
 
-# --- delete_template (D19) ---------------------------------------------------
+# --- delete_template ---------------------------------------------------------
 
 
 def test_delete_template_removes_file(prompts_dir: Path) -> None:
@@ -303,7 +303,7 @@ def test_delete_template_rejects_invalid_name(prompts_dir: Path) -> None:
         delete_template(prompts_dir, "system", "../etc/passwd")
 
 
-# --- rename_template (D2 step b) ---------------------------------------------
+# --- rename_template (filesystem rename step only) ---------------------------
 
 
 def test_rename_template_moves_file(prompts_dir: Path) -> None:

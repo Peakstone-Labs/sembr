@@ -1,15 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Concurrency regression tests for the reconcile / TTL paths.
 
-Covers two design.md Test Strategy entries that earlier loops missed:
+Two scenarios:
 
-- ``test_changes_count_inside_txn`` — D3/D4: ``SELECT changes()`` reads inside
+- ``test_changes_count_inside_txn`` — ``SELECT changes()`` must read inside
   the transaction so a concurrent writer between chunks can't bleed its
   rowcount into reconcile's accumulated deleted count.
-- ``test_concurrent_writer_not_starved`` — Risk row #10: with the
-  ``idx_match_seen_article_id`` index in place + chunk size 500, a normal
-  collect_feed-style writer must drain in well under the perceived-lockup
-  threshold.
+- ``test_concurrent_writer_not_starved`` — with the ``idx_match_seen_article_id``
+  index in place + chunk size 500, a normal collect_feed-style writer must
+  drain in well under the perceived-lockup threshold.
 """
 
 from __future__ import annotations
@@ -80,13 +79,13 @@ def _make_qdrant_handle(found_md5s: set[str]) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# 🟡-2 part 1: D3/D4 SELECT changes() correctness across chunk boundary
+# SELECT changes() correctness across chunk boundary
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_reconcile_changes_count_not_polluted_by_concurrent_writer(caplog):
-    """D3/D4: ``SELECT changes()`` must run INSIDE the chunk's transaction.
+    """``SELECT changes()`` must run INSIDE the chunk's transaction.
 
     We verify this two ways:
       (1) Snapshot semantics — the racer's INSERT (landed between chunk
@@ -150,9 +149,9 @@ async def test_reconcile_changes_count_not_polluted_by_concurrent_writer(caplog)
         "snapshot it scanned, not rows that arrived after the snapshot"
     )
 
-    # (2) Direct guard for D3 — orphan_deleted reported by reconcile must
-    #     equal exactly the snapshot size (700). Any value > 700 means
-    #     SELECT changes() leaked a concurrent writer's rowcount.
+    # (2) Direct guard — orphan_deleted reported by reconcile must equal
+    #     exactly the snapshot size (700). Any value > 700 means SELECT
+    #     changes() leaked a concurrent writer's rowcount.
     log_lines = [r.getMessage() for r in caplog.records]
     matches = [m for line in log_lines for m in re.findall(r"orphan_deleted=(\d+)", line)]
     assert matches, f"no orphan_deleted= count in reconcile log; got {log_lines!r}"
@@ -186,11 +185,11 @@ async def test_concurrent_writer_not_starved_during_qdrant_ttl():
 
     # Hard precondition: index must exist. This catches the root cause if
     # the test fails — without it a starvation failure looks like a flaky
-    # latency assertion instead of "you broke D11".
+    # latency assertion instead of "you broke the match_seen article_id index".
     async with conn.execute("PRAGMA index_list(match_seen)") as cur:
         names = {r[1] for r in await cur.fetchall()}
     assert "idx_match_seen_article_id" in names, (
-        "test prerequisite: idx_match_seen_article_id must exist (D11)"
+        "test prerequisite: idx_match_seen_article_id must exist"
     )
 
     feed_id = await _seed_feed(conn)
@@ -251,13 +250,13 @@ async def test_concurrent_writer_not_starved_during_qdrant_ttl():
     assert writer_started_at, "writer never started"
     # Writer wait time = time to acquire the lock once it tried.
     wait_seconds = writer_acquired_at[0] - writer_started_at[0]
-    # Threshold derived from D11/D12 design:
-    #   chunk=500 + match_seen index → < 100ms per chunk worst-case.
+    # Threshold derivation:
+    #   chunk=500 + match_seen article_id index → < 100ms per chunk worst-case.
     #   1000 rows = 2 chunks → at most ~200ms of contention.
     # We allow a 2× margin for CI variability.
     assert wait_seconds < 0.5, (
         f"writer took {wait_seconds:.3f}s to acquire the write lock — "
-        f"chunk-scoped txn invariant (D12) or D11 index regression?"
+        f"chunk-scoped txn invariant or match_seen index regression?"
     )
 
     await conn.close()

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for sembr.collector.fire_tasks — task store + sweep (D13)."""
+"""Tests for sembr.collector.fire_tasks — task store + sweep."""
 
 from __future__ import annotations
 

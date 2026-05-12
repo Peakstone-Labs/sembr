@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for sembr.maintenance.qdrant_ttl (S3 + S4 + S11 + D4)."""
+"""Unit tests for sembr.maintenance.qdrant_ttl."""
 
 from __future__ import annotations
 

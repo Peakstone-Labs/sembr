@@ -54,7 +54,7 @@ async def test_send_error_constructs_subject_with_intent_and_template_name() -> 
     subject = captured_msgs[0]["Subject"]
     assert "crypto-alerts" in subject
     assert "crypto_zh" in subject
-    # D11: subject must include the short reason
+    # Subject must include the short reason
     assert "not found" in subject
 
 

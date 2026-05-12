@@ -61,7 +61,7 @@ def prompts_dir(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# GET /api/prompts/templates — rich shape per D6
+# GET /api/prompts/templates — rich shape (file metadata + intent references)
 # ---------------------------------------------------------------------------
 
 

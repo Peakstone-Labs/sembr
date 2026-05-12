@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for DD2: FeedFilter JSON round-trip."""
+"""Unit tests for FeedFilter JSON round-trip."""
 
 from __future__ import annotations
 

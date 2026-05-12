@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Reconcile S10: insert_article_pending must emit an INFO log when an article
-body exceeds the 1MB cap and gets truncated.
+"""insert_article_pending must emit an INFO log when an article body exceeds
+the 1MB cap and gets truncated.
 
-Targets the existing log site at sembr/db/articles.py:106-110 — design D8
-explicitly avoids new code here, only the missing assertion.
+Targets the existing log site at sembr/db/articles.py — this test adds the
+missing assertion against the existing code, not new behaviour.
 """
 
 from __future__ import annotations

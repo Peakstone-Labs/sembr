@@ -99,7 +99,7 @@ async def test_lifespan_timeout_triggers_log_no_exit(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """When graceful shutdown times out but restart was NOT requested, do NOT
-    call _force_exit — let Docker's SIGKILL handle it (design.md R8)."""
+    call _force_exit — let Docker's SIGKILL handle it."""
     calls: list[int] = []
     monkeypatch.setattr(settings_restart, "_force_exit", lambda code: calls.append(code))
 

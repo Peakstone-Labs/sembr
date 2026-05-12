@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for DD10: CronTrigger scheduling in jobs.py.
+"""Unit tests for CronTrigger scheduling in jobs.py.
 
 Verifies that register_intent_job correctly translates CronSchedule
 {preset, hour, minute, weekday} + timezone into APScheduler CronTrigger,
@@ -116,7 +116,7 @@ def test_build_cron_trigger_weekly_mon_utc() -> None:
 
 
 def test_register_event_schedule_returns_without_adding_job() -> None:
-    """D8: EventSchedule intents must not be registered with APScheduler."""
+    """EventSchedule intents must not be registered with APScheduler."""
     intent = _make_intent(schedule=EventSchedule(trigger_count=3, max_wait_seconds=1800))
     scheduler = MagicMock()
 

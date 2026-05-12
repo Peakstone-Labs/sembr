@@ -1,20 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for ``SummaryPipeline.compute_summary`` + ``handle`` (refactor
-introduced by external-fire-api feature).
+introduced by the external-fire-api feature).
 
-Coverage map (design.md → AC#):
-  * D-A7 contract — empty-matches / empty intent_text / budget-deficit /
-    template error / LLM error / happy path branches of ``compute_summary``;
-  * D17 / R7 — ``handle`` catch order: TemplateError dispatched to
-    ``on_template_error`` (still works after refactor), generic Exception
-    swallowed, never raises;
+Coverage map:
+  * compute_summary contract — empty-matches / empty intent_text /
+    budget-deficit / template error / LLM error / happy path;
+  * ``handle`` catch order: TemplateError dispatched to ``on_template_error``
+    (still works after the refactor), generic Exception swallowed, never raises;
   * regression — ``handle`` is the previous on_match contract; cron-mode
     callers must keep observing it.
 
 Existing tests in ``tests/summarizer/test_pipeline_template_errors.py`` and
 ``tests/test_summarizer.py`` still cover the cron happy path; this file
-focuses on the new public API surface and the catch-order assertion the
-review/grep stage will check.
+focuses on the new public API surface and the catch-order AST assertion.
 """
 
 from __future__ import annotations
@@ -79,7 +77,7 @@ async def test_compute_summary_returns_none_for_empty_matches(prompts_dir: Path)
 
 @pytest.mark.asyncio
 async def test_compute_summary_returns_none_for_empty_intent_text(prompts_dir: Path) -> None:
-    """D-A7 / D-A8 / D15: empty intent_text → return None (not raise)."""
+    """Empty intent_text → return None (not raise)."""
     llm = _make_llm()
 
     async def ctx(iid):
@@ -168,7 +166,7 @@ async def test_compute_summary_returns_summary_result(prompts_dir: Path) -> None
 
 
 # ---------------------------------------------------------------------------
-# handle — never-raise contract + template error dispatch (R7 / D17)
+# handle — never-raise contract + template error dispatch
 # ---------------------------------------------------------------------------
 
 
@@ -188,8 +186,8 @@ async def test_handle_still_never_raises_after_refactor(prompts_dir: Path) -> No
 
 @pytest.mark.asyncio
 async def test_handle_calls_on_template_error_on_render_fail(prompts_dir: Path) -> None:
-    """R7 / D17: template error path still routes to on_template_error after
-    the compute_summary/handle split."""
+    """Template error path still routes to on_template_error after the
+    compute_summary/handle split."""
     (prompts_dir / "instruction" / "bad.md").write_text(
         "Summary: {intent_text} {bad_key}", encoding="utf-8"
     )
@@ -333,12 +331,12 @@ async def test_handle_dispatches_system_render_error_correctly(
 
 
 def test_handle_catch_order_template_before_generic() -> None:
-    """R7 / D17: AST-level assertion on the OUTER try/except in
-    ``SummaryPipeline.handle`` — TemplateError catch must lexically precede
-    the bare-Exception catch. Reversing the two would let LLM/random errors
-    masquerade as template errors and break the on_template_error → email
-    path. AST (not substring) is used so docstring/comment matches don't
-    cause false positives or negatives.
+    """AST-level assertion on the OUTER try/except in ``SummaryPipeline.handle``
+    — TemplateError catch must lexically precede the bare-Exception catch.
+    Reversing the two would let LLM/random errors masquerade as template
+    errors and break the on_template_error → email path. AST (not substring)
+    is used so docstring/comment matches don't cause false positives or
+    negatives.
     """
     import ast  # noqa: PLC0415
     import textwrap  # noqa: PLC0415
@@ -368,5 +366,5 @@ def test_handle_catch_order_template_before_generic() -> None:
     assert "generic" in handler_kinds, "handle() lost its generic Exception clause"
     assert handler_kinds.index("template") < handler_kinds.index("generic"), (
         f"handle() catch order regressed: got {handler_kinds!r}; "
-        "TemplateError must be caught BEFORE bare Exception (R7 / D17)"
+        "TemplateError must be caught BEFORE bare Exception"
     )

@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-"""D11/R6 tests: FeedCreate.url validator branches by source_type.
+"""FeedCreate.url validator branches by source_type.
 
 * RSS keeps the existing http(s):// scheme requirement.
 * newsapi expects a bare hostname; normalize_source_uri runs on write so the
   feeds.url UNIQUE constraint catches scheme/case/www-prefix duplicates.
 * newsapi feeds get poll_interval_minutes coerced to settings to keep the
-  list-row column consistent with the global master-tick interval (R6).
+  list-row column consistent with the global master-tick interval.
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ def test_frontend_hostname_regex_mirrors_backend() -> None:
 
 
 def test_feed_create_newsapi_coerces_poll_interval_to_settings(monkeypatch) -> None:
-    """R6: front-end disables the field but a stale form may still POST 30;
+    """Front-end disables the field but a stale form may still POST 30;
     backend forces it to the settings value so the list view stays consistent."""
     monkeypatch.setenv("NEWSAPI_POLL_INTERVAL_MINUTES", "60")
     get_settings.cache_clear()

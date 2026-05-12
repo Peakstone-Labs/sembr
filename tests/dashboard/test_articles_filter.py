@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for /api/dashboard/articles?bucket=qdrant&... filter (D7).
+"""Unit tests for /api/dashboard/articles?bucket=qdrant&... filter.
 
 Three concerns:
 1. Filter params are stitched into a qdrant ``Filter(must=[...])`` with the

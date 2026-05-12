@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for `list_template_refs` and `rename_intent_template` (D2/D4/D15)."""
+"""Tests for `list_template_refs` and `rename_intent_template`."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ async def test_list_template_refs_orders_by_intent_id() -> None:
         assert [pair[0] for pair in refs[("system", "default")]] == [a, b, c]
 
 
-# --- rename_intent_template (D2/D15) -----------------------------------------
+# --- rename_intent_template --------------------------------------------------
 
 
 @pytest.mark.asyncio

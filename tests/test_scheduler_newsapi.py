@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""D1 / D6 / D9 / D10: scheduler-side wiring for newsapi feeds.
+"""Scheduler-side wiring for newsapi feeds.
 
 Verifies:
 * SOURCE_REGISTRY exposes 'newsapi' so /api/dashboard/sources/schemas works
@@ -70,7 +70,7 @@ async def _setup_inmem_db_with_feeds(rows: list[dict]) -> aiosqlite.Connection:
 
 
 # ---------------------------------------------------------------------------
-# D1: SOURCE_REGISTRY
+# SOURCE_REGISTRY
 # ---------------------------------------------------------------------------
 
 
@@ -86,7 +86,7 @@ def test_source_registry_exposes_newsapi() -> None:
 
 
 # ---------------------------------------------------------------------------
-# D10: add_feed_job branches by source_type
+# add_feed_job branches by source_type
 # ---------------------------------------------------------------------------
 
 
@@ -124,7 +124,7 @@ async def test_add_feed_job_rss_keeps_per_feed_job() -> None:
 
 
 # ---------------------------------------------------------------------------
-# D10: remove_feed_job + maybe_drop_newsapi_master_job
+# remove_feed_job + maybe_drop_newsapi_master_job
 # ---------------------------------------------------------------------------
 
 
@@ -252,7 +252,7 @@ async def test_remove_rss_feed_does_not_touch_master(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# D9: ensure_newsapi_master_job is idempotent (replace_existing)
+# ensure_newsapi_master_job is idempotent (replace_existing)
 # ---------------------------------------------------------------------------
 
 

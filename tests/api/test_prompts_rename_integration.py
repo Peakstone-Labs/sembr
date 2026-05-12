@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Integration tests for the rename endpoint (D2 / D15).
+"""Integration tests for the rename endpoint.
 
 These exercise the full 3-step orchestration in `rename_template_endpoint`:
 filesystem `os.rename` → SQLite cascade UPDATE inside `db.transaction()`,
 plus the reverse-rename rollback path when the UPDATE raises.
 
-Distinct from `test_prompts_crud.py`'s SC#6 happy path: this file targets
-the cross-boundary atomicity guarantees (file + DB stay in sync, even on
-the SQLite-side failure path).
+Distinct from `test_prompts_crud.py`'s happy path: this file targets the
+cross-boundary atomicity guarantees (file + DB stay in sync, even on the
+SQLite-side failure path).
 """
 
 from __future__ import annotations

@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Integration test: build_snapshot reads SystemMetricsCollector via D6 wiring.
+"""Integration test: build_snapshot reads SystemMetricsCollector via dependency injection.
 
 Verifies that:
 - ``build_snapshot(conn, qdrant, embedder, collector)`` calls
   ``collector.read()`` and embeds the result into ``SnapshotResponse``.
 - ``collector=None`` (no metrics_collector on app.state) → ``system_metrics:
-  None`` in the response, no exception (D5 graceful degradation).
+  None`` in the response, no exception (graceful degradation).
 - A docker-unavailable collector returns ``system_metrics: None`` and the
   rest of the snapshot fields are unaffected.
 """
@@ -94,14 +94,14 @@ def test_build_snapshot_collector_none_returns_null_metrics(tmp_path):
 
     snap = asyncio.run(run())
     assert snap.system_metrics is None
-    # Sanity: rest of snapshot still computed (D5 graceful)
+    # Sanity: rest of snapshot still computed (graceful degradation)
     assert snap.articles.pending_count == 0
     assert snap.articles.dead_count == 0
 
 
 def test_build_snapshot_collector_unavailable_returns_null_metrics(tmp_path):
     """Docker socket lost mid-run → collector flips to unavailable; snapshot
-    still 200, system_metrics: None (matches D5 contract)."""
+    still 200, system_metrics: None (graceful-degradation contract)."""
 
     async def run():
         await _setup(tmp_path)

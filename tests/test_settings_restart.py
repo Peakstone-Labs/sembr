@@ -61,7 +61,7 @@ async def test_restart_rsshub_invokes_compose_subprocess() -> None:
     assert "--force-recreate" in cmd
     assert "--no-deps" in cmd
     assert RSSHUB_SERVICE_NAME in cmd  # service name "rsshub", not container name "sembr-rsshub"
-    # D6: timeout=60 must be passed (design.md guarantees 4× headroom)
+    # timeout=60 must be passed (4× headroom over typical recreate wall time)
     assert kwargs.get("timeout") == 60
     assert kwargs.get("capture_output") is True
 

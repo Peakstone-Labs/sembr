@@ -13,7 +13,7 @@ Checks:
   8. Recent match activity (match_seen)
   9. Stuck / dead articles
 
-Usage (run from project root on Mac Mini):
+Usage (run from project root on the deployment host):
     python scripts/diagnose.py
     python scripts/diagnose.py --db /app/data/sembr.db        # custom DB path
     python scripts/diagnose.py --api http://localhost:8000     # custom API base

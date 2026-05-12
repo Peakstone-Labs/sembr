@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for DD4: FireTask in-memory state store."""
+"""Unit tests for the FireTask in-memory state store."""
 
 from __future__ import annotations
 

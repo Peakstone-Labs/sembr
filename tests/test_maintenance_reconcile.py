@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for sembr.maintenance.reconcile (S1 + Risk row 1 + D3)."""
+"""Unit tests for sembr.maintenance.reconcile."""
 
 from __future__ import annotations
 

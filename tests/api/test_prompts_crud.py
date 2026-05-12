@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-"""End-to-end CRUD tests for /api/prompts/templates (SC #1–#10).
+"""End-to-end CRUD tests for /api/prompts/templates.
 
-Mirrors the test pyramid in design.md §"Concrete Acceptance Tests": exercises
-list, create, update, delete, rename via TestClient against an in-memory
-aiosqlite. Filesystem layer is the actual on-disk one (tmp_path) — atomic
-write semantics and TOCTOU pre-check are verified for real, not mocked.
+Exercises list, create, update, delete, rename via TestClient against an
+in-memory aiosqlite. The filesystem layer is the actual on-disk one
+(tmp_path) — atomic write semantics and TOCTOU pre-check are verified for
+real, not mocked.
 """
 
 from __future__ import annotations
@@ -181,7 +181,7 @@ def test_put_updates_content_and_size(prompts_dir: Path) -> None:
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["size_bytes"] == len(new_content.encode("utf-8"))
-    assert body["mtime"] >= old_mtime  # SC #3 — non-decreasing per D21
+    assert body["mtime"] >= old_mtime  # mtime must be non-decreasing across writes
     assert (prompts_dir / "instruction" / "crypto_zh.md").read_text(encoding="utf-8") == new_content
 
 
@@ -332,7 +332,7 @@ def test_oversize_returns_422(prompts_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Additional: target collision on POST (D14 step 4)
+# Additional: target collision on POST
 # ---------------------------------------------------------------------------
 
 
@@ -355,7 +355,7 @@ def test_create_missing_source_returns_422(prompts_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Additional: rename to existing target → 422 (D2 step a pre-check)
+# Additional: rename to existing target → 422 (pre-check)
 # ---------------------------------------------------------------------------
 
 

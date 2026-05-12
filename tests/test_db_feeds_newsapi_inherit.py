@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-"""D32 v1.1 — create_feed inherits last_collected_at from existing newsapi feeds.
+"""create_feed inherits last_collected_at from existing newsapi feeds.
 
 A newly-added newsapi feed must NOT pull a 24h bootstrap window on its first
 master tick — that would burn extra tokens and pollute an already-aligned
 cohort. Tested in two regimes:
 
-1. SC5: existing enabled newsapi feed in the DB → new newsapi feed copies
-   the existing last_collected_at.
-2. SC6: empty DB → new newsapi feed gets NULL (bootstrap path via
-   _date_window now-1d).
+1. Existing enabled newsapi feed in the DB → new newsapi feed copies the
+   existing last_collected_at.
+2. Empty DB → new newsapi feed gets NULL (bootstrap path via _date_window
+   now-1d).
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ from sembr.db.feeds import create_feed, init_feed_tables
 
 @pytest.mark.asyncio
 async def test_create_feed_newsapi_inherits_last_collected() -> None:
-    """SC5: with an existing enabled newsapi feed having last_collected_at,
-    a freshly created newsapi feed must inherit that timestamp so the
-    'all enabled newsapi feeds share the same cursor' invariant (v1.0 D7)
-    is preserved on insert."""
+    """With an existing enabled newsapi feed having last_collected_at, a
+    freshly created newsapi feed must inherit that timestamp so the 'all
+    enabled newsapi feeds share the same cursor' invariant is preserved
+    on insert."""
     conn = await aiosqlite.connect(":memory:")
     _sqlite_mod._conn = conn
     _sqlite_mod._WRITE_LOCK = asyncio.Lock()
@@ -81,8 +81,8 @@ async def test_create_feed_newsapi_first_in_db_keeps_null() -> None:
 
 @pytest.mark.asyncio
 async def test_create_feed_newsapi_skips_disabled_existing() -> None:
-    """D32: only enabled+last_collected_at-NOT-NULL feeds are eligible
-    donors. A disabled stale row must not seed the new feed.
+    """Only enabled + last_collected_at-NOT-NULL feeds are eligible donors.
+    A disabled stale row must not seed the new feed.
     """
     conn = await aiosqlite.connect(":memory:")
     _sqlite_mod._conn = conn
@@ -153,7 +153,7 @@ async def test_create_feed_newsapi_picks_max_when_cohort_desynced() -> None:
 @pytest.mark.asyncio
 async def test_create_feed_rss_unaffected_by_newsapi_donor() -> None:
     """Regression guard: rss feeds must not inherit a newsapi cursor — the
-    D32 branch is gated on source_type=='newsapi'."""
+    inherit branch is gated on source_type=='newsapi'."""
     conn = await aiosqlite.connect(":memory:")
     _sqlite_mod._conn = conn
     _sqlite_mod._WRITE_LOCK = asyncio.Lock()

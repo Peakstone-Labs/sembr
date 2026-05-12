@@ -113,7 +113,7 @@ async def test_on_delete_cascade(mem_conn) -> None:
 
 
 # ---------------------------------------------------------------------------
-# embedder/scheduler._to_point: ingested_at_ts field (D14)
+# embedder/scheduler._to_point: ingested_at_ts field
 # ---------------------------------------------------------------------------
 
 
@@ -309,7 +309,7 @@ async def test_scan_dedup_no_repeated_callback(mem_conn) -> None:
 
 
 # ---------------------------------------------------------------------------
-# lifespan startup: register_all_enabled wires up jobs for enabled intents (D18)
+# lifespan startup: register_all_enabled wires up jobs for enabled intents
 # ---------------------------------------------------------------------------
 
 
@@ -368,7 +368,7 @@ async def test_register_all_enabled_skips_vector_less_intent(mem_conn) -> None:
 
 
 # ---------------------------------------------------------------------------
-# POST rollback: register_job failure → Qdrant + SQLite both rolled back (D8)
+# POST rollback: register_job failure → Qdrant + SQLite both rolled back
 # ---------------------------------------------------------------------------
 
 

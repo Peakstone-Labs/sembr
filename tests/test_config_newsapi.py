@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""D12 / D25: Settings.newsapi_categories validator + category_uris property."""
+"""Settings.newsapi_categories validator + category_uris property."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def test_newsapi_categories_csv_with_spaces_trimmed() -> None:
 
 
 def test_newsapi_categories_empty_csv_rejected() -> None:
-    """D25: empty CSV would unset categoryUri server-side → 422."""
+    """Empty CSV would unset categoryUri server-side → 422."""
     with pytest.raises(ValidationError):
         Settings(newsapi_categories="")
 
@@ -78,7 +78,7 @@ def test_newsapi_valid_categories_constant_matches_multiselect() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SC9 v1.1: newsapi_max_pages bounds (D26)
+# newsapi_max_pages bounds
 # ---------------------------------------------------------------------------
 
 

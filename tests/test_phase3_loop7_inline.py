@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Focused inline tests for Phase 3 — Loop 7 QA.
+"""Focused inline tests for the PUT/POST intent paths and embedder guard.
 
-Tests: _extract_vector variants, POST defensive copy,
-PUT re-enable 500, D16 mode-immutable 422, embedder_worker app=None guard.
+Tests: _extract_vector variants, POST defensive copy, PUT re-enable 500,
+schedule-mode immutable 422, embedder_worker app=None guard.
 """
 
 import asyncio
@@ -66,11 +66,10 @@ def test_post_defensive_copy():
 async def test_put_reenable_500_on_missing_vector():
     """PUT enabling an event-mode intent where Qdrant returns empty → HTTP 500.
 
-    Loop 2 update: PUT now writes intents row + sub_texts inside one
-    transaction() (🔴-1 fix), so we patch the in-txn helper and the
-    transaction context manager instead of the old `update_intent`.
-    `get_intent` returns existing snapshot first, then post-writeback
-    state (D22 step 5 re-read), matching the new flow.
+    PUT writes the intents row + sub_texts inside a single transaction(), so
+    we patch the in-txn helper and the transaction context manager rather
+    than the old `update_intent`. `get_intent` returns the existing snapshot
+    first, then the post-writeback state (re-read), matching the actual flow.
     """
     import fastapi
     import contextlib
@@ -114,7 +113,7 @@ async def test_put_reenable_500_on_missing_vector():
 
     body = IntentUpdate(enabled=True)
 
-    # D22 step 1 snapshot vs step 5 re-read return different states
+    # Snapshot at entry vs re-read after writeback return different states
     get_intent_mock = AsyncMock(side_effect=[existing_intent, updated_intent])
 
     @contextlib.asynccontextmanager
@@ -137,7 +136,7 @@ async def test_put_reenable_500_on_missing_vector():
     assert "vector missing" in exc_info.value.detail
 
 
-# ── f. D16 mode-immutable 422 ─────────────────────────────────────────────────
+# ── f. schedule.mode immutable → 422 ─────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_d16_mode_immutable_422():
     """PUT changing schedule.mode from cron→event must yield 422 with 'immutable'."""

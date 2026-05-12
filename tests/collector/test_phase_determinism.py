@@ -49,10 +49,10 @@ def test_five_feeds_combined_phase_plus_jitter_window() -> None:
     30-min period.
 
     Pure phase can collide (md5 over 5 samples occasionally clusters within
-    30s — design R3); the jitter range guarantees that across consecutive
-    fires, the *effective* fire times spread by at least `derive_jitter_seconds`,
-    which for a 30-min period = 60s. So even worst-case phase clusters
-    desync via jitter on every tick. (Loop 1 review #💡-2 / loop 2 disposition.)
+    30s); the jitter range guarantees that across consecutive fires the
+    *effective* fire times spread by at least `derive_jitter_seconds`, which
+    for a 30-min period = 60s. So even worst-case phase clusters desync via
+    jitter on every tick.
     """
     period = 1800
     jitter_band = derive_jitter_seconds(period)  # 60s for 30-min period

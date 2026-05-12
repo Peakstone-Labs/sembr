@@ -3,7 +3,8 @@
 
 Cover NewsApiSource.fetch single-source path, NewsApiMaster.tick aggregation
 path, normalize_source_uri parity with FeedCreate.url validator, and the
-edge cases enumerated in design.md Test Strategy table.
+documented edge cases (pagination cap / watermark stop / integral rollback /
+since-cut / cohort cursor inherit).
 """
 
 from __future__ import annotations

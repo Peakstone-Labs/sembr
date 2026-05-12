@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for sembr.dashboard.system_metrics (design D2/D3/D4/D5).
+"""Unit tests for sembr.dashboard.system_metrics.
 
 Covers:
 - ``SystemMetricsCollector`` rolling-window behaviour (maxlen, available flag)
@@ -117,7 +117,7 @@ def test_cpu_percent_standard_formula():
 
 def test_cpu_percent_first_sample_returns_none():
     """Daemon with no prior baseline → precpu_stats empty → CPU% must be
-    None, not 0% (UX: 'first ~20s blank' is documented in design R3)."""
+    None, not 0% (UX: first ~20s blank until a second sample lands)."""
     stats = {
         "cpu_stats": {
             "cpu_usage": {"total_usage": 120},
@@ -202,7 +202,7 @@ def _fake_container(name: str, *, started: datetime | None = None, stats: dict |
 def test_take_docker_sample_returns_none_on_docker_unavailable(monkeypatch):
     """``docker.from_env()`` raises DockerException when the socket is missing
     or the daemon is unreachable. Sampler must return None — the caller flips
-    the collector to unavailable (D5)."""
+    the collector to unavailable."""
     from docker.errors import DockerException
 
     fake_docker = MagicMock()
@@ -212,7 +212,7 @@ def test_take_docker_sample_returns_none_on_docker_unavailable(monkeypatch):
 
 
 def test_take_docker_sample_uses_compose_label_filter(monkeypatch):
-    """D3: discovery filter must pin to the docker-compose project label."""
+    """Discovery filter must pin to the docker-compose project label."""
     fake_client = MagicMock()
     fake_client.containers.list.return_value = [
         _fake_container("sembr-api", started=datetime(2026, 5, 8, tzinfo=timezone.utc))

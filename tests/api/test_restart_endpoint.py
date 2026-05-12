@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for sembr.api.restart — POST /api/dashboard/restart (design D1).
+"""Unit tests for sembr.api.restart — POST /api/dashboard/restart.
 
 Auth model and response shape mirror /api/settings/save:
 - Header-only auth (Depends(require_header_token)) — defends against
@@ -69,8 +69,8 @@ def test_restart_calls_rsshub_then_self_restart(
 def test_restart_rsshub_failure_returns_200_with_flag(
     app: FastAPI, fake_rc: MagicMock, monkeypatch: pytest.MonkeyPatch
 ):
-    """Per D1: rsshub failure becomes 200 + flag (not 500). The api self-restart
-    must still proceed so disk + process state converge regardless of rsshub."""
+    """rsshub failure becomes 200 + flag (not 500). The api self-restart must
+    still proceed so disk + process state converge regardless of rsshub."""
 
     async def _fail(*a, **k):
         raise RuntimeError("compose recreate timed out")

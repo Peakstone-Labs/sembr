@@ -265,7 +265,7 @@ def test_put_text_field_reembeds() -> None:
     assert resp.json()["text"] == "new monitor topic"
     embedder.aembed.assert_called_once_with(["new monitor topic"])
     vs["upsert"].assert_called_once()
-    assert vs["upsert"].call_args.args[1] == intent_id  # point_id == SQLite id (D2)
+    assert vs["upsert"].call_args.args[1] == intent_id  # point_id == SQLite id
 
 
 # ---------------------------------------------------------------------------
@@ -412,12 +412,12 @@ def test_put_text_change_rollback_on_upsert_failure() -> None:
 
 
 # ---------------------------------------------------------------------------
-# I4 — ensure_intents_collection: collection config (D3) and alias (D4) verified
+# ensure_intents_collection: collection config + alias verified on fresh install
 # ---------------------------------------------------------------------------
 
 
 async def test_ensure_intents_collection_creates_with_correct_config() -> None:
-    """intent-match-enhancement D2/D3: named-vector layout `_mv` collection on fresh install."""
+    """Named-vector layout `_mv` collection on fresh install."""
     from sembr.vector_store.intents import (  # noqa: PLC0415
         ALIAS_NAME,
         ensure_intents_collection,
@@ -464,7 +464,7 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
         assert set(create_kwargs["vectors_config"].keys()) == {"main", "alt_0", "alt_1", "alt_2"}
         assert "quantization_config" not in create_kwargs  # no quantization for intents
 
-        # Alias intents_current → _mv collection (D3 step 5)
+        # Alias intents_current → _mv collection
         mock_client.update_collection_aliases.assert_called_once()
 
         # Idempotency: second call with named-vec collection + alias already in place → no-op
@@ -564,19 +564,19 @@ def test_put_intent_schedule_invalid() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 🔴-fix: PUT enabled+text combination must clear match_seen (D4 + D3 overlap)
+# Regression: PUT enabled+text combination must clear match_seen
 # ---------------------------------------------------------------------------
 
 
 def test_put_reenable_with_text_change_clears_match_seen() -> None:
-    """Re-enabling a disabled intent with new text must clear match_seen (D4 fix).
+    """Re-enabling a disabled intent with new text must clear match_seen.
 
-    Regression test for the loop-1 review 🔴 issue: when enabled_changed=True AND
-    text_changed=True, clear_intent was skipped because the enabled_changed branch
-    short-circuited the elif block containing clear_intent.
+    Regression test: when enabled_changed=True AND text_changed=True, clear_intent
+    was skipped because the enabled_changed branch short-circuited the elif block
+    containing clear_intent.
     """
     # Now test via the API: PUT {enabled: true, text: "new text"} on a disabled intent
-    # must clear match_seen via the D4 path even though enabled_changed is True.
+    # must clear match_seen via the text-changed path even though enabled_changed is True.
     conn_holder: dict = {}
 
     @asynccontextmanager
@@ -635,7 +635,7 @@ def test_put_reenable_with_text_change_clears_match_seen() -> None:
             resp = http.put(f"/intents/{iid}", json={"enabled": True, "text": "new text"})
             assert resp.status_code == 200
 
-    # clear_intent must have been called because text changed (D4), even though
+    # clear_intent must have been called because text changed, even though
     # enabled_changed was also True (the old bug caused clear to be skipped here).
     mock_clear.assert_awaited_once()
 
@@ -757,7 +757,7 @@ def test_put_sub_texts_split_brain_rolled_back() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Loop 2 🟡-1: R1 partial-migration recovery detects ID divergence (not just count)
+# Partial-migration recovery detects ID divergence (not just count)
 # ---------------------------------------------------------------------------
 
 
