@@ -7,6 +7,7 @@ Covers:
 - ``add_system_metrics_job`` registers with coalesce=True + replace_existing=True
   and never passes next_run_time (memory: feedback_apscheduler_next_run_time)
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -174,20 +175,26 @@ def _fake_container(name: str, *, started: datetime | None = None, stats: dict |
     c = MagicMock()
     c.name = name
     c.id = "0123456789abcdef" * 4
-    c.attrs = {"State": {"StartedAt": started.isoformat().replace("+00:00", "Z") + "0"}}\
-        if started else {"State": {}}
-    c.stats = MagicMock(return_value=stats or {
-        "cpu_stats": {
-            "cpu_usage": {"total_usage": 120},
-            "system_cpu_usage": 200,
-            "online_cpus": 1,
-        },
-        "precpu_stats": {
-            "cpu_usage": {"total_usage": 100},
-            "system_cpu_usage": 100,
-        },
-        "memory_stats": {"usage": 1_000_000, "limit": 4_000_000_000},
-    })
+    c.attrs = (
+        {"State": {"StartedAt": started.isoformat().replace("+00:00", "Z") + "0"}}
+        if started
+        else {"State": {}}
+    )
+    c.stats = MagicMock(
+        return_value=stats
+        or {
+            "cpu_stats": {
+                "cpu_usage": {"total_usage": 120},
+                "system_cpu_usage": 200,
+                "online_cpus": 1,
+            },
+            "precpu_stats": {
+                "cpu_usage": {"total_usage": 100},
+                "system_cpu_usage": 100,
+            },
+            "memory_stats": {"usage": 1_000_000, "limit": 4_000_000_000},
+        }
+    )
     return c
 
 
@@ -250,7 +257,8 @@ def test_take_docker_sample_warns_once_when_zero_containers(monkeypatch, caplog)
     assert sample1 is not None and sample1.containers == []
     assert sample2 is not None and sample2.containers == []
     misconfig_warnings = [
-        r for r in caplog.records
+        r
+        for r in caplog.records
         if r.levelno == _log.WARNING and "0 containers match label" in r.message
     ]
     assert len(misconfig_warnings) == 1, "warning must fire exactly once per process"

@@ -1,4 +1,5 @@
 """Verify DB migration: custom_prompt column is dropped; new template columns exist with defaults."""
+
 from __future__ import annotations
 
 import asyncio

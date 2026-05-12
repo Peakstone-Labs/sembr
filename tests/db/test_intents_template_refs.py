@@ -1,4 +1,5 @@
 """Tests for `list_template_refs` and `rename_intent_template` (D2/D4/D15)."""
+
 from __future__ import annotations
 
 import json
@@ -38,8 +39,16 @@ async def _seed_intent(
             system_template,
             instruction_template,
             "null",
-            json.dumps({"mode": "cron", "preset": "daily", "hour": 9, "minute": 0,
-                        "lookback_seconds": 86400, "skip_seen": True}),
+            json.dumps(
+                {
+                    "mode": "cron",
+                    "preset": "daily",
+                    "hour": 9,
+                    "minute": 0,
+                    "lookback_seconds": 86400,
+                    "skip_seen": True,
+                }
+            ),
             "UTC",
             "zh",
             _now(),
@@ -66,9 +75,15 @@ async def test_list_template_refs_empty_when_no_intents() -> None:
 async def test_list_template_refs_groups_by_kind_and_name() -> None:
     async with aiosqlite.connect(":memory:") as conn:
         await init_intent_tables(conn)
-        i1 = await _seed_intent(conn, "alpha", system_template="default", instruction_template="crypto_zh")
-        i2 = await _seed_intent(conn, "beta",  system_template="default", instruction_template="crypto_zh")
-        i3 = await _seed_intent(conn, "gamma", system_template="custom_sys", instruction_template="default")
+        i1 = await _seed_intent(
+            conn, "alpha", system_template="default", instruction_template="crypto_zh"
+        )
+        i2 = await _seed_intent(
+            conn, "beta", system_template="default", instruction_template="crypto_zh"
+        )
+        i3 = await _seed_intent(
+            conn, "gamma", system_template="custom_sys", instruction_template="default"
+        )
 
         refs = await list_template_refs(conn)
 
@@ -149,17 +164,13 @@ async def test_rename_intent_template_bumps_updated_at() -> None:
     async with aiosqlite.connect(":memory:") as conn:
         await init_intent_tables(conn)
         intent_id = await _seed_intent(conn, "x", instruction_template="crypto_zh")
-        async with conn.execute(
-            "SELECT updated_at FROM intents WHERE id = ?", (intent_id,)
-        ) as cur:
+        async with conn.execute("SELECT updated_at FROM intents WHERE id = ?", (intent_id,)) as cur:
             (before,) = (await cur.fetchone()) or (None,)
 
         await rename_intent_template(conn, "instruction", "crypto_zh", "crypto_zh_v2")
         await conn.commit()
 
-        async with conn.execute(
-            "SELECT updated_at FROM intents WHERE id = ?", (intent_id,)
-        ) as cur:
+        async with conn.execute("SELECT updated_at FROM intents WHERE id = ?", (intent_id,)) as cur:
             (after,) = (await cur.fetchone()) or (None,)
         # `updated_at` is a UTC ISO-Z string; lexicographic comparison is correct.
         assert before is not None and after is not None

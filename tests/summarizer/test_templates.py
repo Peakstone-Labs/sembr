@@ -1,4 +1,5 @@
 """Unit tests for sembr.summarizer.templates."""
+
 from __future__ import annotations
 
 import pytest
@@ -37,6 +38,7 @@ def prompts_dir(tmp_path: Path) -> Path:
 
 # --- template_exists ---
 
+
 def test_template_exists_true(prompts_dir: Path) -> None:
     assert template_exists(prompts_dir, "system", "default") is True
 
@@ -56,10 +58,12 @@ def test_validate_name_rejects_embedded_double_dot(prompts_dir: Path) -> None:
     assert template_exists(prompts_dir, "system", "foo..") is False
     with pytest.raises(ValueError):
         from sembr.summarizer.templates import _validate_name
+
         _validate_name("a..b")
 
 
 # --- list_templates ---
+
 
 def test_list_templates_returns_sorted(prompts_dir: Path) -> None:
     (prompts_dir / "system" / "beta.md").write_text("x", encoding="utf-8")
@@ -81,6 +85,7 @@ def test_list_templates_excludes_hidden_files(prompts_dir: Path) -> None:
 
 
 # --- load_template ---
+
 
 def test_load_template_reads_content(prompts_dir: Path) -> None:
     content = load_template(prompts_dir, "system", "default")
@@ -114,15 +119,14 @@ def test_load_template_leading_dot_raises(prompts_dir: Path) -> None:
 
 # --- render_system ---
 
+
 def test_render_system_injects_language(prompts_dir: Path) -> None:
     result = render_system(prompts_dir, "default", language="English")
     assert "Language: English" in result
 
 
 def test_render_system_unknown_placeholder(prompts_dir: Path) -> None:
-    (prompts_dir / "system" / "bad.md").write_text(
-        "Hello {published_at}", encoding="utf-8"
-    )
+    (prompts_dir / "system" / "bad.md").write_text("Hello {published_at}", encoding="utf-8")
     with pytest.raises(TemplateRenderError) as exc_info:
         render_system(prompts_dir, "bad", language="English")
     assert "published_at" in str(exc_info.value)
@@ -136,9 +140,11 @@ def test_render_system_missing_raises(prompts_dir: Path) -> None:
 
 # --- render_instruction ---
 
+
 def test_render_instruction_injects_both(prompts_dir: Path) -> None:
     result = render_instruction(
-        prompts_dir, "default",
+        prompts_dir,
+        "default",
         intent_text="AI news",
         articles="[1] Article one\n[2] Article two",
     )
@@ -152,7 +158,8 @@ def test_render_instruction_unknown_placeholder(prompts_dir: Path) -> None:
     )
     with pytest.raises(TemplateRenderError) as exc_info:
         render_instruction(
-            prompts_dir, "bad",
+            prompts_dir,
+            "bad",
             intent_text="AI news",
             articles="...",
         )
@@ -167,12 +174,14 @@ def test_render_instruction_missing_raises(prompts_dir: Path) -> None:
 
 # --- Unicode filename ---
 
+
 def test_unicode_filename_loads(prompts_dir: Path) -> None:
     (prompts_dir / "instruction" / "加密货币.md").write_text(
         "{intent_text} — {articles}", encoding="utf-8"
     )
     result = render_instruction(
-        prompts_dir, "加密货币",
+        prompts_dir,
+        "加密货币",
         intent_text="BTC",
         articles="news",
     )
@@ -236,7 +245,9 @@ def test_try_render_rejects_invalid_kind() -> None:
 
 
 def test_save_template_atomic_writes_content(prompts_dir: Path) -> None:
-    out = save_template_atomic(prompts_dir, "instruction", "crypto_zh", "Topic: {intent_text}\n{articles}")
+    out = save_template_atomic(
+        prompts_dir, "instruction", "crypto_zh", "Topic: {intent_text}\n{articles}"
+    )
     assert out == prompts_dir / "instruction" / "crypto_zh.md"
     assert out.read_text(encoding="utf-8") == "Topic: {intent_text}\n{articles}"
 
@@ -244,7 +255,9 @@ def test_save_template_atomic_writes_content(prompts_dir: Path) -> None:
 def test_save_template_atomic_overwrites(prompts_dir: Path) -> None:
     save_template_atomic(prompts_dir, "system", "default", "First version {language}")
     save_template_atomic(prompts_dir, "system", "default", "Second version {language}")
-    assert (prompts_dir / "system" / "default.md").read_text(encoding="utf-8") == "Second version {language}"
+    assert (prompts_dir / "system" / "default.md").read_text(
+        encoding="utf-8"
+    ) == "Second version {language}"
 
 
 def test_save_template_atomic_no_orphan_tmp_files(prompts_dir: Path) -> None:

@@ -8,6 +8,7 @@ Verifies that:
 - A docker-unavailable collector returns ``system_metrics: None`` and the
   rest of the snapshot fields are unaffected.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -49,6 +50,7 @@ def _embedder():
 
 def test_build_snapshot_includes_system_metrics(tmp_path):
     """Collector with one sample → snapshot.system_metrics is populated."""
+
     async def run():
         await _setup(tmp_path)
         collector = sm.SystemMetricsCollector(interval_seconds=10)
@@ -82,6 +84,7 @@ def test_build_snapshot_includes_system_metrics(tmp_path):
 
 def test_build_snapshot_collector_none_returns_null_metrics(tmp_path):
     """No collector → system_metrics: None; rest of snapshot still valid."""
+
     async def run():
         await _setup(tmp_path)
         snap = await build_snapshot(get_conn(), _qdrant_handle(), _embedder(), None)
@@ -98,6 +101,7 @@ def test_build_snapshot_collector_none_returns_null_metrics(tmp_path):
 def test_build_snapshot_collector_unavailable_returns_null_metrics(tmp_path):
     """Docker socket lost mid-run → collector flips to unavailable; snapshot
     still 200, system_metrics: None (matches D5 contract)."""
+
     async def run():
         await _setup(tmp_path)
         collector = sm.SystemMetricsCollector(interval_seconds=10)
@@ -113,6 +117,7 @@ def test_build_snapshot_collector_unavailable_returns_null_metrics(tmp_path):
 def test_build_snapshot_default_collector_arg_is_none(tmp_path):
     """Backwards-compat sanity: existing callers without the new arg still work
     (collector defaults to None → system_metrics: None)."""
+
     async def run():
         await _setup(tmp_path)
         snap = await build_snapshot(get_conn(), _qdrant_handle(), _embedder())

@@ -6,6 +6,7 @@ Verifies that:
 2. schedule_self_restart correctly wires up call_later + sets _RESTART_REQUESTED
    when the callback fires.
 """
+
 from __future__ import annotations
 
 import asyncio

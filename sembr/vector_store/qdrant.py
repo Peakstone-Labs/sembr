@@ -4,6 +4,7 @@ The lifespan owns one `AsyncQdrantClient` per process; `/health` calls `ping()`.
 This module does not assume any particular collection layout — collection
 bootstrap lives in `vector_store.intents` and `vector_store.news`.
 """
+
 from __future__ import annotations
 
 from qdrant_client import AsyncQdrantClient

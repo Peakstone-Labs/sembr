@@ -9,6 +9,7 @@ cohort. Tested in two regimes:
 2. SC6: empty DB → new newsapi feed gets NULL (bootstrap path via
    _date_window now-1d).
 """
+
 from __future__ import annotations
 
 import asyncio

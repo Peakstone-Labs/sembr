@@ -6,6 +6,7 @@ delete ≤ SQLite delete" (so a Qdrant failure can never leave SQLite-orphan
 ``feed_items`` rows). We scroll first, delete from Qdrant in a batched loop,
 then cascade SQLite in chunks. See design D4.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -32,9 +33,7 @@ _QDRANT_DELETE_BATCH = 1000
 _SQLITE_DELETE_CHUNK = 500
 
 
-async def _scroll_expired_uuids(
-    qdrant_handle: "QdrantHandle", cutoff_ts: int
-) -> list[str]:
+async def _scroll_expired_uuids(qdrant_handle: "QdrantHandle", cutoff_ts: int) -> list[str]:
     """Scroll ``news_current`` and collect IDs of points with
     ``ingested_at_ts < cutoff_ts``.
 
@@ -50,9 +49,11 @@ async def _scroll_expired_uuids(
         Range,
     )
 
-    qfilter = Filter(must=[
-        FieldCondition(key="ingested_at_ts", range=Range(lt=cutoff_ts)),
-    ])
+    qfilter = Filter(
+        must=[
+            FieldCondition(key="ingested_at_ts", range=Range(lt=cutoff_ts)),
+        ]
+    )
 
     purge_uuids: list[str] = []
     next_offset = None
@@ -71,9 +72,7 @@ async def _scroll_expired_uuids(
     return purge_uuids
 
 
-async def _delete_qdrant_points(
-    qdrant_handle: "QdrantHandle", uuids: list[str]
-) -> None:
+async def _delete_qdrant_points(qdrant_handle: "QdrantHandle", uuids: list[str]) -> None:
     from qdrant_client.models import PointIdsList  # noqa: PLC0415
 
     for i in range(0, len(uuids), _QDRANT_DELETE_BATCH):
@@ -109,9 +108,7 @@ async def _cascade_delete_sqlite(uuids: list[str]) -> tuple[int, int]:
         chunk_uuid = [u for _, u in pairs]
         async with transaction() as txn:
             ph_md5 = ",".join("?" * len(chunk_md5))
-            await txn.execute(
-                f"DELETE FROM feed_items WHERE md5 IN ({ph_md5})", chunk_md5
-            )
+            await txn.execute(f"DELETE FROM feed_items WHERE md5 IN ({ph_md5})", chunk_md5)
             # Each DELETE needs its own SELECT changes() — SQLite's changes()
             # only reflects the LAST DML on the connection, so a single read
             # at txn end would silently lose the feed_items count (D4).
@@ -128,9 +125,7 @@ async def _cascade_delete_sqlite(uuids: list[str]) -> tuple[int, int]:
     return deleted_fi, deleted_ms
 
 
-async def _run_qdrant_ttl(
-    qdrant_handle: "QdrantHandle", settings: Settings
-) -> None:
+async def _run_qdrant_ttl(qdrant_handle: "QdrantHandle", settings: Settings) -> None:
     started_at = monotonic()
     cutoff_ts = int(time.time()) - settings.qdrant_news_retention_days * 86400
 
@@ -145,7 +140,9 @@ async def _run_qdrant_ttl(
         logger.info(
             "qdrant_ttl run: cutoff_ts=%d deleted_qdrant=0 deleted_feed_items=0 "
             "deleted_match_seen=0 elapsed_ms=%d interval_hours=%d",
-            cutoff_ts, elapsed_ms, settings.maintenance_interval_hours,
+            cutoff_ts,
+            elapsed_ms,
+            settings.maintenance_interval_hours,
         )
         return
 
@@ -160,7 +157,11 @@ async def _run_qdrant_ttl(
     logger.info(
         "qdrant_ttl run: cutoff_ts=%d deleted_qdrant=%d deleted_feed_items=%d "
         "deleted_match_seen=%d elapsed_ms=%d interval_hours=%d",
-        cutoff_ts, len(purge_uuids), deleted_fi, deleted_ms, elapsed_ms,
+        cutoff_ts,
+        len(purge_uuids),
+        deleted_fi,
+        deleted_ms,
+        elapsed_ms,
         settings.maintenance_interval_hours,
     )
 

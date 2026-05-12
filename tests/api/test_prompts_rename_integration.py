@@ -8,6 +8,7 @@ Distinct from `test_prompts_crud.py`'s SC#6 happy path: this file targets
 the cross-boundary atomicity guarantees (file + DB stay in sync, even on
 the SQLite-side failure path).
 """
+
 from __future__ import annotations
 
 import json
@@ -70,14 +71,27 @@ async def _seed(conn: aiosqlite.Connection, name: str, *, instruction_template: 
                 feed_filter, schedule, timezone, language, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            name, "x",
+            name,
+            "x",
             json.dumps([{"type": "email", "to": ["a@b.com"]}]),
             json.dumps([]),
-            "default", instruction_template,
+            "default",
+            instruction_template,
             "null",
-            json.dumps({"mode": "cron", "preset": "daily", "hour": 9, "minute": 0,
-                        "lookback_seconds": 86400, "skip_seen": True}),
-            "UTC", "zh", _now(), _now(),
+            json.dumps(
+                {
+                    "mode": "cron",
+                    "preset": "daily",
+                    "hour": 9,
+                    "minute": 0,
+                    "lookback_seconds": 86400,
+                    "skip_seen": True,
+                }
+            ),
+            "UTC",
+            "zh",
+            _now(),
+            _now(),
         ),
     )
     await conn.commit()
@@ -87,6 +101,7 @@ async def _seed(conn: aiosqlite.Connection, name: str, *, instruction_template: 
 
 def _seed_via(conn_holder, name, *, instruction_template):
     import asyncio  # noqa: PLC0415
+
     return asyncio.get_event_loop().run_until_complete(
         _seed(conn_holder["conn"], name, instruction_template=instruction_template)
     )
@@ -104,7 +119,7 @@ def test_rename_e2e_file_and_intents(prompts_dir: Path) -> None:
 
         # Seed 2 referencing intents + 1 unrelated
         i1 = _seed_via(conn_holder, "alpha", instruction_template="crypto_zh")
-        i2 = _seed_via(conn_holder, "beta",  instruction_template="crypto_zh")
+        i2 = _seed_via(conn_holder, "beta", instruction_template="crypto_zh")
         i3 = _seed_via(conn_holder, "gamma", instruction_template="default")
 
         # Single-request rename
@@ -127,7 +142,8 @@ def test_rename_e2e_file_and_intents(prompts_dir: Path) -> None:
         v2 = rows["crypto_zh_v2"]
         assert v2["ref_count"] == 2
         assert {(r["id"], r["name"]) for r in v2["ref_intents"]} == {
-            (i1, "alpha"), (i2, "beta"),
+            (i1, "alpha"),
+            (i2, "beta"),
         }
         # Unrelated intent (`gamma`) still on `default`
         default_row = rows["default"]
@@ -210,7 +226,9 @@ def test_rename_nonexistent_source_404(prompts_dir: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_rename_cancellation_reverts_filesystem_and_propagates(prompts_dir: Path, tmp_path: Path) -> None:
+async def test_rename_cancellation_reverts_filesystem_and_propagates(
+    prompts_dir: Path, tmp_path: Path
+) -> None:
     """If `rename_intent_template` raises `CancelledError`, the API reverses the
     filesystem rename AND re-raises the cancellation (does not return 500).
 
@@ -243,8 +261,10 @@ async def test_rename_cancellation_reverts_filesystem_and_propagates(prompts_dir
         request = MagicMock()
         body = TemplateRenameRequest(new_name="crypto_zh_v2")
 
-        with patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir), \
-             patch("sembr.api.prompts.rename_intent_template", side_effect=cancelled):
+        with (
+            patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir),
+            patch("sembr.api.prompts.rename_intent_template", side_effect=cancelled),
+        ):
             with pytest.raises(asyncio.CancelledError):
                 await rename_template_endpoint("instruction", "crypto_zh", body, request)
 

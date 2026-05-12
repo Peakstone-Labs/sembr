@@ -5,6 +5,7 @@ process-local dict keyed by uuid4 task_id, swept on a periodic APScheduler
 job. Task state is intentionally not persisted — same trade-off as feed/intent
 fire tasks. State machine: planning → planned → applying → done | error.
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,9 +38,7 @@ class ManualPruneTask:
     plan_summary: dict | None = None
     result_summary: dict | None = None
     error: str | None = None
-    _created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    _created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 _manual_prune_tasks: dict[str, ManualPruneTask] = {}
@@ -52,9 +51,7 @@ _manual_prune_tasks: dict[str, ManualPruneTask] = {}
 #   - applying : real delete in progress (140k apply can take minutes)
 # A user who wandered off after dry-run, or a slow apply, must NOT see a
 # phantom 404 mid-poll because sweep cleared their task entry.
-_NON_TERMINAL_STATUSES: frozenset[str] = frozenset(
-    {"planning", "planned", "applying"}
-)
+_NON_TERMINAL_STATUSES: frozenset[str] = frozenset({"planning", "planned", "applying"})
 
 # Pin terminal statuses explicitly so future Literal additions can't silently
 # slide into either partition; the assert tying both sets back to ManualPruneStatus
@@ -112,9 +109,7 @@ def sweep_expired(ttl_seconds: int = _TASK_TTL_SECONDS) -> int:
     for k in to_remove:
         del _manual_prune_tasks[k]
     if to_remove:
-        logger.debug(
-            "manual_prune sweep_expired: removed %d expired tasks", len(to_remove)
-        )
+        logger.debug("manual_prune sweep_expired: removed %d expired tasks", len(to_remove))
     return len(to_remove)
 
 

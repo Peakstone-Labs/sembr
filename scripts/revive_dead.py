@@ -9,6 +9,7 @@ Usage (run inside api container):
     docker compose exec -T api python scripts/revive_dead.py --confirm
     docker compose exec -T api python scripts/revive_dead.py --confirm --since "2026-04-30 03:00:00"
 """
+
 import argparse
 import sqlite3
 import sys
@@ -17,8 +18,11 @@ import sys
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--db", default="/app/data/sembr.db")
-    p.add_argument("--since", default=None,
-                   help="Only revive rows with failed_at >= this timestamp (ISO format)")
+    p.add_argument(
+        "--since",
+        default=None,
+        help="Only revive rows with failed_at >= this timestamp (ISO format)",
+    )
     p.add_argument("--confirm", action="store_true", help="Apply changes (default is dry-run)")
     p.add_argument("--dry-run", action="store_true", help="Explicit dry-run flag")
     args = p.parse_args()
@@ -49,10 +53,12 @@ def main() -> None:
 
     print(f"found {len(rows)} dead_articles to revive:")
     for r in rows[:10]:
-        print(f"  {r['failed_at'][:19]}  feed={r['feed_id']:>3}  body={len(r['body']):>6}  "
-              f"err={r['err']!r}  | {r['title'][:50]}")
+        print(
+            f"  {r['failed_at'][:19]}  feed={r['feed_id']:>3}  body={len(r['body']):>6}  "
+            f"err={r['err']!r}  | {r['title'][:50]}"
+        )
     if len(rows) > 10:
-        print(f"  ... and {len(rows)-10} more")
+        print(f"  ... and {len(rows) - 10} more")
 
     if not args.confirm:
         print("\n(dry-run) pass --confirm to actually move these rows back to pending")
@@ -76,8 +82,9 @@ def main() -> None:
 
     con.commit()
     con.close()
-    print(f"\nrevived {revived} rows from dead_articles → pending_articles "
-          f"(retry_count reset to 0)")
+    print(
+        f"\nrevived {revived} rows from dead_articles → pending_articles (retry_count reset to 0)"
+    )
 
 
 if __name__ == "__main__":

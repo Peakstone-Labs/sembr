@@ -6,6 +6,7 @@ Cache is loaded from Qdrant at lifespan startup; kept in sync by POST/PUT/DELETE
 intent-match-enhancement D11: each entry now carries `vectors: dict[str, list[float]]`
 keyed by slot name {main, alt_0, alt_1, alt_2} instead of a single `vector`.
 """
+
 from __future__ import annotations
 
 import logging

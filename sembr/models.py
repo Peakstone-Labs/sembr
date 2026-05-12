@@ -1,4 +1,5 @@
 """Domain models."""
+
 from __future__ import annotations
 
 import re
@@ -42,7 +43,9 @@ class CronSchedule(BaseModel):
         if self.preset != "weekly" and self.weekday is not None:
             raise ValueError("weekday must be None when preset is not 'weekly'")
         if self.preset == "hourly" and self.hour != 0:
-            raise ValueError("hour is ignored for preset='hourly'; set preset='daily' to schedule a specific hour")
+            raise ValueError(
+                "hour is ignored for preset='hourly'; set preset='daily' to schedule a specific hour"
+            )
         return self
 
 
@@ -95,6 +98,7 @@ class FeedCreate(BaseModel):
             # 🟢-1: lazy import the canonical normalizer from collector.newsapi
             # (collector imports from models, not vice versa, so no cycle).
             from sembr.collector.newsapi import normalize_source_uri  # noqa: PLC0415
+
             normalized = normalize_source_uri(self.url)
             if not _NEWSAPI_HOSTNAME_RE.match(normalized):
                 raise ValueError(
@@ -110,6 +114,7 @@ class FeedCreate(BaseModel):
             # the dashboard list. Imported lazily to keep models.py free of
             # import-time side effects (Settings reads .env on first call).
             from sembr.config import get_settings  # noqa: PLC0415
+
             self.poll_interval_minutes = get_settings().newsapi_poll_interval_minutes
         else:
             if not self.url.lower().startswith(("http://", "https://")):
@@ -198,7 +203,9 @@ def _validate_language_safe(v: str) -> str:
     if len(v) > 32:
         raise ValueError("language must be ≤ 32 chars")
     if not _LANGUAGE_SAFE_RE.fullmatch(v):
-        raise ValueError("language must start with a letter and contain only letters, digits, hyphens, underscores, or spaces")
+        raise ValueError(
+            "language must start with a letter and contain only letters, digits, hyphens, underscores, or spaces"
+        )
     return v
 
 

@@ -1,4 +1,5 @@
 """POST/GET/DELETE /feeds router."""
+
 from __future__ import annotations
 
 import logging
@@ -32,7 +33,9 @@ async def post_feed(body: FeedCreate, request: Request) -> Feed:
             tags=body.tags,
         )
     except sqlite3.IntegrityError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="feed URL already exists") from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="feed URL already exists"
+        ) from exc
 
     scheduler = request.app.state.scheduler
     try:
@@ -49,7 +52,9 @@ async def post_feed(body: FeedCreate, request: Request) -> Feed:
             await remove_feed_job(scheduler, feed.id)
         except Exception:
             pass
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="failed to schedule feed") from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="failed to schedule feed"
+        ) from exc
 
     return feed
 

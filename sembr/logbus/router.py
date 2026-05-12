@@ -1,4 +1,5 @@
 """Maps logging record names to dashboard UI tags."""
+
 from __future__ import annotations
 
 import logging
@@ -7,22 +8,22 @@ import logging
 # walks this list sorted by prefix length descending so the longest match always
 # wins regardless of how entries are written below.
 TAG_PREFIX_MAP: list[tuple[str, str]] = [
-    ("sembr.collector",    "collector"),
-    ("sembr.embedder",     "embedder"),
-    ("sembr.matcher",      "matcher"),
-    ("sembr.summarizer",   "matcher"),
-    ("sembr.notifier",     "notifier"),
-    ("sembr.api",          "api"),
-    ("sembr.dashboard",    "api"),
-    ("sembr.db",           "api"),
+    ("sembr.collector", "collector"),
+    ("sembr.embedder", "embedder"),
+    ("sembr.matcher", "matcher"),
+    ("sembr.summarizer", "matcher"),
+    ("sembr.notifier", "notifier"),
+    ("sembr.api", "api"),
+    ("sembr.dashboard", "api"),
+    ("sembr.db", "api"),
     ("sembr.vector_store", "embedder"),
-    ("apscheduler",        "scheduler"),
-    ("uvicorn.access",     "http"),
-    ("uvicorn.error",      "api"),
-    ("uvicorn",            "api"),
-    ("httpx",              "http"),
-    ("httpcore",           "http"),
-    ("sembr",              "api"),
+    ("apscheduler", "scheduler"),
+    ("uvicorn.access", "http"),
+    ("uvicorn.error", "api"),
+    ("uvicorn", "api"),
+    ("httpx", "http"),
+    ("httpcore", "http"),
+    ("sembr", "api"),
 ]
 
 _TAG_PREFIX_MAP_SORTED: tuple[tuple[str, str], ...] = tuple(
@@ -32,7 +33,13 @@ _TAG_PREFIX_MAP_SORTED: tuple[tuple[str, str], ...] = tuple(
 _DEFAULT_TAG = "api"
 
 ALL_TAGS: tuple[str, ...] = (
-    "collector", "embedder", "matcher", "notifier", "api", "scheduler", "http"
+    "collector",
+    "embedder",
+    "matcher",
+    "notifier",
+    "api",
+    "scheduler",
+    "http",
 )
 
 # Single source of truth for third-party stdlib loggers whose level must follow

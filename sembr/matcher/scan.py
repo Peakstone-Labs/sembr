@@ -12,6 +12,7 @@ Flow per tick (post intent-match-enhancement):
   8. Build Match list for new article_ids
   9. If non-empty: await app.state.on_match(matches) (D12, D13)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -113,9 +114,7 @@ async def scan_once(
             )
             return []
 
-        lookback_cutoff_ts = (
-            int(datetime.now(timezone.utc).timestamp()) - options.lookback_seconds
-        )
+        lookback_cutoff_ts = int(datetime.now(timezone.utc).timestamp()) - options.lookback_seconds
 
         must_conditions: list = [
             FieldCondition(
@@ -162,7 +161,9 @@ async def scan_once(
                     raise resp
                 logger.warning(
                     "intent_id=%d slot=%s query_points failed: %s",
-                    intent.id, slot, resp,
+                    intent.id,
+                    slot,
+                    resp,
                 )
                 continue
             for pt in resp.points:
@@ -258,9 +259,7 @@ async def scan_once(
     # D20: exclude articles with enabled=False (retention hook; currently always True
     # because news points don't carry an 'enabled' payload field at MVP)
     hits_by_id = {
-        aid: triple
-        for aid, triple in hits_by_id.items()
-        if triple[1].get("enabled", True)
+        aid: triple for aid, triple in hits_by_id.items() if triple[1].get("enabled", True)
     }
     logger.info(
         "intent_id=%d scan_once: %d unique hits across slots (after enabled-filter)",

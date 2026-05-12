@@ -5,6 +5,7 @@ Routes (all under /api/dashboard/logs):
   GET  /stream?tag=   → SSE text/event-stream (cookie auth — EventSource can't send headers)
   PUT  /level         → change per-tag level in LogBus (process-memory only, no persistence)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,30 +26,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard/logs", tags=["logs"])
 
 _LEVEL_MAP: dict[str, int] = {
-    "DEBUG":   logging.DEBUG,
-    "INFO":    logging.INFO,
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
     "WARNING": logging.WARNING,
-    "ERROR":   logging.ERROR,
+    "ERROR": logging.ERROR,
 }
 
 _LEVEL_NAMES = list(_LEVEL_MAP.keys())
 
 
 class LevelEnum(str, Enum):
-    DEBUG   = "DEBUG"
-    INFO    = "INFO"
+    DEBUG = "DEBUG"
+    INFO = "INFO"
     WARNING = "WARNING"
-    ERROR   = "ERROR"
+    ERROR = "ERROR"
 
 
 class TagName(str, Enum):
     collector = "collector"
-    embedder  = "embedder"
-    matcher   = "matcher"
-    notifier  = "notifier"
-    api       = "api"
+    embedder = "embedder"
+    matcher = "matcher"
+    notifier = "notifier"
+    api = "api"
     scheduler = "scheduler"
-    http      = "http"
+    http = "http"
 
 
 class LevelRequest(BaseModel):
@@ -59,6 +60,7 @@ class LevelRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # GET /tags
 # ---------------------------------------------------------------------------
+
 
 @router.get("/tags")
 async def get_tags() -> dict[str, Any]:
@@ -71,6 +73,7 @@ async def get_tags() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # PUT /level
 # ---------------------------------------------------------------------------
+
 
 @router.put("/level")
 async def put_level(body: LevelRequest) -> Response:
@@ -92,6 +95,7 @@ async def put_level(body: LevelRequest) -> Response:
 # GET /stream   (SSE)
 # ---------------------------------------------------------------------------
 
+
 @router.get("/stream")
 async def stream_logs(request: Request, tag: str = Query(default="api")) -> StreamingResponse:
     if tag not in ALL_TAGS:
@@ -107,8 +111,8 @@ async def stream_logs(request: Request, tag: str = Query(default="api")) -> Stre
     )
 
 
-_PING_INTERVAL = 15.0   # seconds between SSE keepalive comments
-_POLL_INTERVAL = 1.0    # disconnect-check granularity inside the ping window
+_PING_INTERVAL = 15.0  # seconds between SSE keepalive comments
+_POLL_INTERVAL = 1.0  # disconnect-check granularity inside the ping window
 
 
 async def _log_generator(tag: str, request: Request) -> AsyncGenerator[str, None]:

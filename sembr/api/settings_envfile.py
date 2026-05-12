@@ -9,6 +9,7 @@ and drops grouping comments; `.env.example` ships with section headers
 (`# ── API server ──`) that users rely on for navigation, so preserving line
 order verbatim is a hard requirement (design.md O4a).
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,9 @@ KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 # rather than silently mis-parsing).
 _KV_LINE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$")
 
-USER_ADDITIONS_HEADER = "# ── User additions ──────────────────────────────────────────────────────────"
+USER_ADDITIONS_HEADER = (
+    "# ── User additions ──────────────────────────────────────────────────────────"
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,7 @@ class EnvLine:
         verbatim if untouched on write).
       - a comment / blank line: ``key is None``, ``raw`` is the original text.
     """
+
     raw: str
     key: str | None
     value: str | None
@@ -196,15 +200,17 @@ class EnvFile:
     def delete(self, key: str) -> bool:
         """Remove all lines for ``key``. Returns True iff any line was removed."""
         before = len(self._lines)
-        self._lines = [
-            ln for ln in self._lines if not (ln.is_kv and ln.key == key)
-        ]
+        self._lines = [ln for ln in self._lines if not (ln.is_kv and ln.key == key)]
         return len(self._lines) != before
 
     def _append_to_user_additions(self, key: str, value: str) -> None:
         # Locate (or create) the user-additions section header.
         header_idx = next(
-            (i for i, ln in enumerate(self._lines) if ln.raw.strip() == USER_ADDITIONS_HEADER.strip()),
+            (
+                i
+                for i, ln in enumerate(self._lines)
+                if ln.raw.strip() == USER_ADDITIONS_HEADER.strip()
+            ),
             None,
         )
         new_kv = EnvLine(raw=f"{key}={_quote_for_write(value)}", key=key, value=value)
@@ -246,7 +252,11 @@ class EnvFile:
             )
 
         if target.exists() and target.is_file():
-            backup_path = target.with_suffix(target.suffix + ".bak") if target.suffix else target.with_name(target.name + ".bak")
+            backup_path = (
+                target.with_suffix(target.suffix + ".bak")
+                if target.suffix
+                else target.with_name(target.name + ".bak")
+            )
             backup_path.write_bytes(target.read_bytes())
 
         payload = self.render().encode("utf-8")

@@ -4,6 +4,7 @@ Parallel to sembr.matcher.fire_tasks but scoped to feeds. Tasks are stored in a
 module-level dict; TTL sweep runs every 5 minutes via APScheduler. Process-local,
 not persisted — same trade-off as intent fire tasks.
 """
+
 from __future__ import annotations
 
 import logging
@@ -69,7 +70,8 @@ def sweep_expired(ttl_seconds: int = _TASK_TTL_SECONDS) -> int:
     """Remove tasks older than ttl_seconds. APScheduler calls this every 5 minutes."""
     now = datetime.now(timezone.utc)
     to_remove = [
-        k for k, v in _feed_fire_tasks.items()
+        k
+        for k, v in _feed_fire_tasks.items()
         if (now - v._created_at).total_seconds() > ttl_seconds
     ]
     for k in to_remove:

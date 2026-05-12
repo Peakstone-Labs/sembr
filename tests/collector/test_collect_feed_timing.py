@@ -1,6 +1,7 @@
 """Loop 2 regression: started_at must reflect actual fetch start, not queue-wait
 time. (#🟡-2 in dashboard-feeds-tab review.md)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,6 +31,7 @@ async def test_started_at_excludes_queue_wait(monkeypatch) -> None:
     class StubSource:
         def __init__(self, url, timeout=30.0):
             pass
+
         async def fetch(self, since=None):
             return []
 

@@ -16,6 +16,7 @@ Response shape mirrors ``SaveResponse``: rsshub failure becomes a 200 with
 still proceeds and the frontend can surface a non-blocking warning toast —
 matches the contract the dashboard already speaks to ``/api/settings/save``.
 """
+
 from __future__ import annotations
 
 import logging

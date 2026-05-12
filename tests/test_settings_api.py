@@ -1,4 +1,5 @@
 """Tests for sembr.api.settings router (FastAPI TestClient + monkeypatched envfile)."""
+
 from __future__ import annotations
 
 import os
@@ -96,7 +97,12 @@ def test_schema_returns_sembr_fields_and_passthrough(client: TestClient) -> None
     assert "TWITTER_" in body["passthrough_prefixes"]
     assert "GITHUB_" in body["passthrough_prefixes"]
     rec_keys = {r["key"] for r in body["passthrough_recommended"]}
-    assert {"TWITTER_AUTH_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_SESSION", "GITHUB_ACCESS_TOKEN"} <= rec_keys
+    assert {
+        "TWITTER_AUTH_TOKEN",
+        "TELEGRAM_TOKEN",
+        "TELEGRAM_SESSION",
+        "GITHUB_ACCESS_TOKEN",
+    } <= rec_keys
 
 
 # ── /values ───────────────────────────────────────────────────────────────
@@ -113,9 +119,7 @@ def test_values_masks_sensitive_fields(client: TestClient) -> None:
     assert body["values"]["TWITTER_AUTH_TOKEN"] == SENSITIVE_MASK
 
 
-def test_values_hidden_fields_not_returned(
-    client: TestClient, env_file: Path
-) -> None:
+def test_values_hidden_fields_not_returned(client: TestClient, env_file: Path) -> None:
     """Hidden-from-UI sembr fields must not appear in /values either —
     otherwise the frontend mis-classifies them as passthrough keys
     (since schema also excludes them, frontend sees no sembr-key match)."""
@@ -166,8 +170,8 @@ def test_values_partial_override_only_flags_changed_keys(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Mixed scenario: same-value injection on one key, true override on another."""
-    monkeypatch.setenv("QDRANT_URL", "http://qdrant:6333")     # matches .env → not overridden
-    monkeypatch.setenv("DASHBOARD_LOG_RETENTION_DAYS", "30")   # differs from .env=7 → overridden
+    monkeypatch.setenv("QDRANT_URL", "http://qdrant:6333")  # matches .env → not overridden
+    monkeypatch.setenv("DASHBOARD_LOG_RETENTION_DAYS", "30")  # differs from .env=7 → overridden
     r = client.get("/api/settings/values")
     body = r.json()
     assert "QDRANT_URL" not in body["overridden_by_shell_env"]
@@ -185,7 +189,9 @@ def test_values_empty_secret_not_masked(client: TestClient) -> None:
 
 
 def test_save_requires_confirmed_true(client: TestClient) -> None:
-    r = client.post("/api/settings/save", json={"changes": {"QDRANT_URL": "http://q:6333"}, "confirmed": False})
+    r = client.post(
+        "/api/settings/save", json={"changes": {"QDRANT_URL": "http://q:6333"}, "confirmed": False}
+    )
     assert r.status_code == 422
 
 
@@ -230,9 +236,7 @@ def test_save_passthrough_addition_targets_both(
 
 
 # 🔴-1: addition with mask sentinel must be rejected as 422.
-def test_save_addition_with_mask_sentinel_rejected(
-    client: TestClient, env_file: Path
-) -> None:
+def test_save_addition_with_mask_sentinel_rejected(client: TestClient, env_file: Path) -> None:
     original = env_file.read_text(encoding="utf-8")
     r = client.post(
         "/api/settings/save",
@@ -250,6 +254,7 @@ def test_save_rsshub_failure_downgrades_to_warning(
 ) -> None:
     async def boom(*a, **k):
         raise RuntimeError("docker daemon unreachable")
+
     fake_rc.restart_rsshub.side_effect = boom
 
     r = client.post(
@@ -285,9 +290,7 @@ def test_save_passthrough_schedules_self_restart_after_rsshub(
     )
 
 
-def test_save_rejects_non_whitelist_key(
-    client: TestClient, env_file: Path
-) -> None:
+def test_save_rejects_non_whitelist_key(client: TestClient, env_file: Path) -> None:
     original = env_file.read_text(encoding="utf-8")
     r = client.post(
         "/api/settings/save",
@@ -306,6 +309,7 @@ def test_save_rejects_non_whitelist_key(
 # Settings validator dry-run: invalid sembr-class values must 422 and NOT
 # write .env. Otherwise the bad value would crash the next force-recreate's
 # Settings() construction in lifespan startup, causing a restart loop.
+
 
 def test_save_rejects_invalid_newsapi_categories(
     client: TestClient, env_file: Path, fake_rc: MagicMock
@@ -417,9 +421,7 @@ def test_save_mask_sentinel_does_not_overwrite_secret(
     assert "QDRANT_URL" in body["saved_keys"]
 
 
-def test_save_real_secret_value_overwrites(
-    client: TestClient, env_file: Path
-) -> None:
+def test_save_real_secret_value_overwrites(client: TestClient, env_file: Path) -> None:
     r = client.post(
         "/api/settings/save",
         json={"changes": {"EMBEDDER_API_KEY": "sk-newvalue"}, "confirmed": True},
@@ -442,9 +444,7 @@ def test_save_deletions(client: TestClient, env_file: Path) -> None:
     assert "TWITTER_AUTH_TOKEN" not in text
 
 
-def test_save_no_op_returns_empty_targets(
-    client: TestClient, fake_rc: MagicMock
-) -> None:
+def test_save_no_op_returns_empty_targets(client: TestClient, fake_rc: MagicMock) -> None:
     r = client.post("/api/settings/save", json={"confirmed": True})
     assert r.status_code == 200
     body = r.json()
@@ -467,9 +467,7 @@ def test_save_creates_bak(client: TestClient, env_file: Path) -> None:
 # ── auth ──────────────────────────────────────────────────────────────────
 
 
-def test_auth_required_when_token_set(
-    monkeypatch: pytest.MonkeyPatch, app: FastAPI
-) -> None:
+def test_auth_required_when_token_set(monkeypatch: pytest.MonkeyPatch, app: FastAPI) -> None:
     monkeypatch.setenv("DASHBOARD_TOKEN", "supersecret")
     get_settings.cache_clear()
 
@@ -481,9 +479,7 @@ def test_auth_required_when_token_set(
     assert r2.status_code == 200
 
 
-def test_auth_rejects_cookie_only(
-    monkeypatch: pytest.MonkeyPatch, app: FastAPI
-) -> None:
+def test_auth_rejects_cookie_only(monkeypatch: pytest.MonkeyPatch, app: FastAPI) -> None:
     """Cookie alone must not authenticate /api/settings/* (CSRF protection)."""
     monkeypatch.setenv("DASHBOARD_TOKEN", "supersecret")
     get_settings.cache_clear()
@@ -503,6 +499,7 @@ def test_auth_passthrough_when_no_token_configured(client: TestClient) -> None:
 # 🟡-3: with the real DashboardTokenMiddleware mounted, cookie-only requests
 # pass middleware but must still be rejected by the router's header dependency.
 # This is the actual CSRF threat model for Decision #15.
+
 
 @pytest.fixture
 def app_with_middleware(env_file: Path) -> FastAPI:

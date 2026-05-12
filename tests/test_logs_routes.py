@@ -1,4 +1,5 @@
 """Tests for /api/dashboard/logs/* endpoints."""
+
 from __future__ import annotations
 
 import asyncio
@@ -36,6 +37,7 @@ def client(fresh_bus):
 # GET /tags
 # ---------------------------------------------------------------------------
 
+
 def test_get_tags_returns_7(client) -> None:
     resp = client.get("/api/dashboard/logs/tags")
     assert resp.status_code == 200
@@ -51,6 +53,7 @@ def test_get_tags_returns_7(client) -> None:
 # ---------------------------------------------------------------------------
 # PUT /level
 # ---------------------------------------------------------------------------
+
 
 def test_put_level_changes_tag_level(client, fresh_bus) -> None:
     resp = client.put(
@@ -100,6 +103,7 @@ def test_put_level_http_syncs_third_party_loggers(client) -> None:
 # install_logbus — stderr StreamHandler stays at INFO after root lowered to DEBUG (🟡-2 regression)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_install_logbus_stderr_stays_info(fresh_bus) -> None:
     """install_logbus must pin existing StreamHandlers at INFO before lowering root to DEBUG."""
@@ -123,6 +127,7 @@ async def test_install_logbus_stderr_stays_info(fresh_bus) -> None:
         root.setLevel(original_root_level)
         # Remove the RingBufferHandler installed by install_logbus to avoid side effects
         from sembr.logbus.handler import RingBufferHandler
+
         for h in root.handlers[:]:
             if isinstance(h, RingBufferHandler):
                 root.removeHandler(h)
@@ -133,6 +138,7 @@ async def test_install_logbus_stderr_stays_info(fresh_bus) -> None:
 # GET /stream  — route-level check (no SSE body drain)
 # ---------------------------------------------------------------------------
 
+
 def test_stream_invalid_tag_422(client) -> None:
     resp = client.get("/api/dashboard/logs/stream?tag=bogus")
     assert resp.status_code == 422
@@ -141,6 +147,7 @@ def test_stream_invalid_tag_422(client) -> None:
 # ---------------------------------------------------------------------------
 # _log_generator unit tests (async, no HTTP layer)
 # ---------------------------------------------------------------------------
+
 
 class _MockRequest:
     """Minimal stand-in for starlette.requests.Request in generator tests."""
@@ -174,10 +181,18 @@ async def test_stream_generator_history_and_history_end(fresh_bus) -> None:
     fresh_bus.set_loop(asyncio.get_event_loop())
 
     for i in range(3):
-        fresh_bus.emit("api", {
-            "ts": i, "level": "INFO", "level_no": logging.INFO,
-            "logger": "sembr.api", "tag": "api", "message": f"msg{i}", "exc": None,
-        })
+        fresh_bus.emit(
+            "api",
+            {
+                "ts": i,
+                "level": "INFO",
+                "level_no": logging.INFO,
+                "logger": "sembr.api",
+                "tag": "api",
+                "message": f"msg{i}",
+                "exc": None,
+            },
+        )
 
     req = _MockRequest(disconnect_after=0)  # disconnect immediately after history
     lines = await _collect_generator("api", req, max_chunks=50)
@@ -196,17 +211,25 @@ async def test_stream_generator_filters_by_tag(fresh_bus) -> None:
     fresh_bus.set_loop(asyncio.get_event_loop())
 
     for tag in ("api", "embedder"):
-        fresh_bus.emit(tag, {
-            "ts": 1, "level": "INFO", "level_no": logging.INFO,
-            "logger": "test", "tag": tag, "message": tag, "exc": None,
-        })
+        fresh_bus.emit(
+            tag,
+            {
+                "ts": 1,
+                "level": "INFO",
+                "level_no": logging.INFO,
+                "logger": "test",
+                "tag": tag,
+                "message": tag,
+                "exc": None,
+            },
+        )
 
     req = _MockRequest(disconnect_after=0)
     lines = await _collect_generator("api", req, max_chunks=50)
     data_lines = [l for l in lines if l.startswith("data:") and l != "data: {}"]
 
     for dl in data_lines:
-        payload = json.loads(dl[len("data:"):].strip())
+        payload = json.loads(dl[len("data:") :].strip())
         assert payload["tag"] == "api", f"unexpected tag: {payload}"
 
 
@@ -223,11 +246,18 @@ async def test_stream_generator_live_entry_after_history_end(fresh_bus) -> None:
 
     async def _emit_live():
         await asyncio.sleep(0.05)
-        fresh_bus.emit("collector", {
-            "ts": 999, "level": "INFO", "level_no": logging.INFO,
-            "logger": "sembr.collector", "tag": "collector",
-            "message": "live_entry", "exc": None,
-        })
+        fresh_bus.emit(
+            "collector",
+            {
+                "ts": 999,
+                "level": "INFO",
+                "level_no": logging.INFO,
+                "logger": "sembr.collector",
+                "tag": "collector",
+                "message": "live_entry",
+                "exc": None,
+            },
+        )
 
     task = asyncio.create_task(_emit_live())
     # max_chunks=3: history-end chunk + live-entry chunk + one more; generator stops on disconnect
@@ -237,6 +267,6 @@ async def test_stream_generator_live_entry_after_history_end(fresh_bus) -> None:
     messages = []
     for l in lines:
         if l.startswith("data:") and "live_entry" in l:
-            messages.append(json.loads(l[len("data:"):].strip())["message"])
+            messages.append(json.loads(l[len("data:") :].strip())["message"])
 
     assert "live_entry" in messages, f"live entry not found in lines: {lines}"

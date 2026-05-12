@@ -1,4 +1,5 @@
 """SC#5 (a)(b): hash phase is deterministic and spreads feeds apart."""
+
 from __future__ import annotations
 
 import pytest

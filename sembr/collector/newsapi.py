@@ -23,6 +23,7 @@ both the cursor advance and the fetch_event row, matching ``collect_feed``'s
 ``FetchError`` semantics so a failed tick doesn't lose articles in the next
 window. See D6 / D20.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -64,7 +65,7 @@ _NEWSAPI_REQUEST_FIXED: dict[str, Any] = {
     "articlesSortBy": "date",
     "resultType": "articles",
     "dataType": "news",
-    "articleBodyLen": -1,           # -1 = full body
+    "articleBodyLen": -1,  # -1 = full body
     # `keepAll`: do NOT collapse cross-source near-duplicates server-side.
     # Master tick bundles ~20 sourceUris into one call; `skipDuplicates` was
     # silently dropping Reuters/BBC/NYT coverage of the same event in favor
@@ -81,38 +82,38 @@ _NEWSAPI_REQUEST_FIXED: dict[str, Any] = {
 # Forbes / Nature) are intentionally absent.
 RECOMMENDED_SOURCES: list[dict[str, Any]] = [
     # High-volume general news (>100 articles/day)
-    {"uri": "reuters.com",        "title": "Reuters",          "paywalled": False},
-    {"uri": "bbc.com",            "title": "BBC",              "paywalled": False},
-    {"uri": "independent.co.uk",  "title": "The Independent",  "paywalled": False},
-    {"uri": "cbsnews.com",        "title": "CBS News",         "paywalled": False},
-    {"uri": "bloomberg.com",      "title": "Bloomberg",        "paywalled": True},
-    {"uri": "wsj.com",            "title": "WSJ",              "paywalled": True},
+    {"uri": "reuters.com", "title": "Reuters", "paywalled": False},
+    {"uri": "bbc.com", "title": "BBC", "paywalled": False},
+    {"uri": "independent.co.uk", "title": "The Independent", "paywalled": False},
+    {"uri": "cbsnews.com", "title": "CBS News", "paywalled": False},
+    {"uri": "bloomberg.com", "title": "Bloomberg", "paywalled": True},
+    {"uri": "wsj.com", "title": "WSJ", "paywalled": True},
     # Mid-volume (50–100/day)
-    {"uri": "theguardian.com",    "title": "The Guardian",     "paywalled": False},
-    {"uri": "nytimes.com",        "title": "NYT",              "paywalled": False},
-    {"uri": "foxnews.com",        "title": "Fox News",         "paywalled": False},
-    {"uri": "ft.com",             "title": "Financial Times",  "paywalled": False},
-    {"uri": "cnbc.com",           "title": "CNBC",             "paywalled": False},
-    {"uri": "apnews.com",         "title": "AP News",          "paywalled": False},
+    {"uri": "theguardian.com", "title": "The Guardian", "paywalled": False},
+    {"uri": "nytimes.com", "title": "NYT", "paywalled": False},
+    {"uri": "foxnews.com", "title": "Fox News", "paywalled": False},
+    {"uri": "ft.com", "title": "Financial Times", "paywalled": False},
+    {"uri": "cnbc.com", "title": "CNBC", "paywalled": False},
+    {"uri": "apnews.com", "title": "AP News", "paywalled": False},
     # Lower-volume (<50/day)
     {"uri": "businessinsider.com", "title": "Business Insider", "paywalled": False},
-    {"uri": "latimes.com",        "title": "LA Times",         "paywalled": False},
-    {"uri": "axios.com",          "title": "Axios",            "paywalled": False},
-    {"uri": "chicagotribune.com", "title": "Chicago Tribune",  "paywalled": False},
-    {"uri": "politico.com",       "title": "Politico",         "paywalled": False},
-    {"uri": "nbcnews.com",        "title": "NBC News",         "paywalled": False},
-    {"uri": "usatoday.com",       "title": "USA Today",        "paywalled": False},
-    {"uri": "seattletimes.com",   "title": "Seattle Times",    "paywalled": False},
-    {"uri": "techcrunch.com",     "title": "TechCrunch",       "paywalled": False},
-    {"uri": "npr.org",            "title": "NPR",              "paywalled": False},
-    {"uri": "theverge.com",       "title": "The Verge",        "paywalled": False},
-    {"uri": "wired.com",          "title": "Wired",            "paywalled": False},
-    {"uri": "washingtonpost.com", "title": "Washington Post",  "paywalled": False},
-    {"uri": "arstechnica.com",    "title": "Ars Technica",     "paywalled": False},
-    {"uri": "economist.com",      "title": "The Economist",    "paywalled": False},
-    {"uri": "theatlantic.com",    "title": "The Atlantic",     "paywalled": False},
-    {"uri": "newyorker.com",      "title": "New Yorker",       "paywalled": False},
-    {"uri": "vox.com",            "title": "Vox",              "paywalled": False},
+    {"uri": "latimes.com", "title": "LA Times", "paywalled": False},
+    {"uri": "axios.com", "title": "Axios", "paywalled": False},
+    {"uri": "chicagotribune.com", "title": "Chicago Tribune", "paywalled": False},
+    {"uri": "politico.com", "title": "Politico", "paywalled": False},
+    {"uri": "nbcnews.com", "title": "NBC News", "paywalled": False},
+    {"uri": "usatoday.com", "title": "USA Today", "paywalled": False},
+    {"uri": "seattletimes.com", "title": "Seattle Times", "paywalled": False},
+    {"uri": "techcrunch.com", "title": "TechCrunch", "paywalled": False},
+    {"uri": "npr.org", "title": "NPR", "paywalled": False},
+    {"uri": "theverge.com", "title": "The Verge", "paywalled": False},
+    {"uri": "wired.com", "title": "Wired", "paywalled": False},
+    {"uri": "washingtonpost.com", "title": "Washington Post", "paywalled": False},
+    {"uri": "arstechnica.com", "title": "Ars Technica", "paywalled": False},
+    {"uri": "economist.com", "title": "The Economist", "paywalled": False},
+    {"uri": "theatlantic.com", "title": "The Atlantic", "paywalled": False},
+    {"uri": "newyorker.com", "title": "New Yorker", "paywalled": False},
+    {"uri": "vox.com", "title": "Vox", "paywalled": False},
 ]
 
 
@@ -124,7 +125,7 @@ def normalize_source_uri(s: str) -> str:
     out = s.strip().lower()
     for prefix in ("https://", "http://"):
         if out.startswith(prefix):
-            out = out[len(prefix):]
+            out = out[len(prefix) :]
     if out.startswith("www."):
         out = out[4:]
     return out.rstrip("/")
@@ -160,8 +161,9 @@ def _parse_date_time(raw: str) -> datetime:
 @dataclass
 class _PerFeedSince:
     """Cursor + bookkeeping for a single feed within one master tick."""
+
     feed_id: int
-    since: datetime | None     # last_collected_at parsed (None on first pull)
+    since: datetime | None  # last_collected_at parsed (None on first pull)
     items_seen: int = 0
     items_new: int = 0
 
@@ -268,8 +270,7 @@ class NewsApiSource(BaseSource):
                 # FetchError branch fires (no cursor advance, fetch_event ok=False)
                 # for both source types — D5 / D20 / review-loop1 🔴-1.
                 raise FetchError(
-                    f"newsapi HTTP error for {self._url!r}: "
-                    f"{type(exc).__name__}: {exc!s}"
+                    f"newsapi HTTP error for {self._url!r}: {type(exc).__name__}: {exc!s}"
                 ) from exc
             # 🟢-3: log token usage as soon as the response is in hand so even a
             # JSON parse failure leaves a breadcrumb for the spent token.
@@ -277,16 +278,18 @@ class NewsApiSource(BaseSource):
             try:
                 data = resp.json()
             except ValueError as exc:
-                raise FetchError(
-                    f"newsapi JSON parse failed for {self._url!r}: {exc}"
-                ) from exc
+                raise FetchError(f"newsapi JSON parse failed for {self._url!r}: {exc}") from exc
         results = _extract_results(data)
         articles: list[RawArticle] = []
         for raw in results:
             article = _to_raw_article(raw)
             if article is None:
                 continue
-            if since is not None and article.published_at is not None and article.published_at <= since:
+            if (
+                since is not None
+                and article.published_at is not None
+                and article.published_at <= since
+            ):
                 continue
             articles.append(article)
         return articles
@@ -329,8 +332,7 @@ class NewsApiMaster:
 
         conn = get_conn()
         async with conn.execute(
-            "SELECT id, url, last_collected_at FROM feeds "
-            "WHERE source_type='newsapi' AND enabled=1"
+            "SELECT id, url, last_collected_at FROM feeds WHERE source_type='newsapi' AND enabled=1"
         ) as cur:
             rows = await cur.fetchall()
 
@@ -378,9 +380,7 @@ class NewsApiMaster:
         # failed *attempt* in the log table. Mirrors collect_feed's RSS
         # failure-row pattern.
         async def _emit_failure_logs(error_class: str, error_message: str) -> None:
-            elapsed_ms = int(
-                (datetime.now(timezone.utc) - started_at).total_seconds() * 1000
-            )
+            elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
             for slot in per_feed.values():
                 try:
                     await log_fetch_event(
@@ -396,7 +396,9 @@ class NewsApiMaster:
                 except Exception as exc:
                     logger.warning(
                         "log_fetch_event(ok=False, %s) failed for newsapi feed_id=%d: %s",
-                        error_class, slot.feed_id, exc,
+                        error_class,
+                        slot.feed_id,
+                        exc,
                     )
 
         # D29 v1.1: B-1 atomic semantics — accumulate all pages' results in
@@ -419,16 +421,17 @@ class NewsApiMaster:
                         page=page,  # D31 v1.1
                     )
                     try:
-                        resp = await client.post(
-                            _NEWSAPI_BASE_URL + _GET_ARTICLES_PATH, json=body
-                        )
+                        resp = await client.post(_NEWSAPI_BASE_URL + _GET_ARTICLES_PATH, json=body)
                         resp.raise_for_status()
                     except httpx.HTTPError as exc:
                         # D20 / D29: any page HTTP failure → integral rollback.
                         # No dispatch yet, no cursor advance.
                         logger.warning(
                             "newsapi master tick: page=%d HTTP failed (%d feeds, since=%s): %s",
-                            page, len(per_feed), date_start, exc,
+                            page,
+                            len(per_feed),
+                            date_start,
+                            exc,
                         )
                         await _emit_failure_logs(
                             "http_error",
@@ -444,7 +447,8 @@ class NewsApiMaster:
                     except ValueError as exc:
                         logger.warning(
                             "newsapi master tick: page=%d JSON parse failed: %s",
-                            page, exc,
+                            page,
+                            exc,
                         )
                         await _emit_failure_logs(
                             "json_error",
@@ -492,7 +496,9 @@ class NewsApiMaster:
                     logger.warning(
                         "newsapi master tick: max_pages=%d cap reached "
                         "(since=%s, %d feeds); dropping tick to retry next cycle",
-                        max_pages, universal_since, len(per_feed),
+                        max_pages,
+                        universal_since,
+                        len(per_feed),
                     )
                     await _emit_failure_logs(
                         "cap_reached",
@@ -514,7 +520,8 @@ class NewsApiMaster:
                 # source.uri is unusual but not fatal — drop with a breadcrumb.
                 logger.warning(
                     "newsapi master tick: source.uri %r not in uri_map; dropped article %r",
-                    src_uri, raw.get("url"),
+                    src_uri,
+                    raw.get("url"),
                 )
                 continue
 
@@ -527,7 +534,11 @@ class NewsApiMaster:
             # (see §A2), so same-day re-ticks return overlapping articles.
             # MD5 dedup catches the duplicate writes, but early-dropping here
             # also saves a pending_articles INSERT round-trip.
-            if slot.since is not None and article.published_at is not None and article.published_at <= slot.since:
+            if (
+                slot.since is not None
+                and article.published_at is not None
+                and article.published_at <= slot.since
+            ):
                 continue
             try:
                 is_new = await insert_article_pending(conn, article, slot.feed_id)
@@ -538,7 +549,10 @@ class NewsApiMaster:
                 # keep going (matches collect_feed's per-article try/except).
                 logger.error(
                     "newsapi master tick: insert_article_pending failed feed_id=%d url=%r: %s",
-                    slot.feed_id, article.url, exc, exc_info=True,
+                    slot.feed_id,
+                    article.url,
+                    exc,
+                    exc_info=True,
                 )
 
         # D7: every enabled feed (including 0-hit ones) gets cursor advance
@@ -562,7 +576,8 @@ class NewsApiMaster:
             except Exception as exc:
                 logger.warning(
                     "log_fetch_event failed for newsapi feed_id=%d: %s",
-                    slot.feed_id, exc,
+                    slot.feed_id,
+                    exc,
                 )
 
 
@@ -675,5 +690,6 @@ async def newsapi_master_tick() -> None:
     """APScheduler job target. Pulls the host limiter from the scheduler-time
     module ref so unit tests that bypass lifespan still work."""
     from sembr.collector.scheduler import get_host_limiter  # noqa: PLC0415
+
     master = NewsApiMaster(host_limiter=get_host_limiter())
     await master.tick()

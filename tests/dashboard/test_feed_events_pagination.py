@@ -2,6 +2,7 @@
 
 Companion to the Feeds tab UI change that limits drill-down to 10 rows + prev/next.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -20,9 +21,7 @@ async def db(tmp_path):
     conn = await init_sqlite(path)
     await init_feed_tables(conn)
     await init_event_log_tables(conn)
-    await conn.execute(
-        "INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://example.com')"
-    )
+    await conn.execute("INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://example.com')")
     await conn.commit()
     # Seed 25 fetch events; ORDER BY id DESC → newest first.
     for i in range(25):

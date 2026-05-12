@@ -9,6 +9,7 @@ errors), and re-raises TemplateError / LLM exceptions so synchronous callers
 (e.g. external fire endpoint) can surface them. `handle` wraps it as the
 never-raise on_match callback used by the cron scheduler.
 """
+
 from __future__ import annotations
 
 import logging
@@ -88,9 +89,7 @@ def _water_fill_cap(body_lens: list[int], budget: int) -> int | None:
     return None  # unreachable given the sum-fits-budget short-circuit above
 
 
-def _build_articles_text(
-    matches: list[Match], body_budget: int
-) -> tuple[str, int, int]:
+def _build_articles_text(matches: list[Match], body_budget: int) -> tuple[str, int, int]:
     """Assemble the articles block; water-fill bodies into body_budget.
 
     Returns (assembled_text, n_truncated, longest_truncated_to). When
@@ -127,9 +126,8 @@ def _to_citation(m: Match, feed_name_map: dict[int, str] | None = None) -> Citat
 
 
 class IntentPromptCtxFetcher(Protocol):
-    async def __call__(
-        self, intent_id: int
-    ) -> tuple[str, str, str, str]: ...
+    async def __call__(self, intent_id: int) -> tuple[str, str, str, str]: ...
+
     # Returns: (system_template_name, instruction_template_name, intent_text, language)
 
 
@@ -211,9 +209,12 @@ class SummaryPipeline:
         language: str = "zh"
         if self._get_intent_prompt_ctx is not None:
             try:
-                system_tpl_name, instruction_tpl_name, intent_text, language = (
-                    await self._get_intent_prompt_ctx(intent_id)
-                )
+                (
+                    system_tpl_name,
+                    instruction_tpl_name,
+                    intent_text,
+                    language,
+                ) = await self._get_intent_prompt_ctx(intent_id)
             except Exception:
                 logger.warning(
                     "SummaryPipeline: could not fetch prompt ctx for intent_id=%d, skipping tick",
@@ -280,14 +281,10 @@ class SummaryPipeline:
 
         n_articles = len(ordered)
         per_entry_overhead = sum(
-            _entry_overhead(
-                i, m.payload.get("title", ""), m.payload.get("url", "")
-            )
+            _entry_overhead(i, m.payload.get("title", ""), m.payload.get("url", ""))
             for i, m in enumerate(ordered, 1)
         )
-        separator_overhead = (
-            (n_articles - 1) * len(_ENTRY_SEPARATOR) if n_articles > 1 else 0
-        )
+        separator_overhead = (n_articles - 1) * len(_ENTRY_SEPARATOR) if n_articles > 1 else 0
         total_budget = int(self._llm.max_prompt_chars * _BUDGET_SAFETY_RATIO)
         body_budget = (
             total_budget
@@ -302,7 +299,10 @@ class SummaryPipeline:
                 "SummaryPipeline: intent_id=%d max_prompt_chars=%d cannot fit "
                 "system+instruction+%d article headers (deficit=%d chars); "
                 "skipping tick. Reduce template size or raise SEMBR_LLM_MAX_PROMPT_CHARS.",
-                intent_id, self._llm.max_prompt_chars, n_articles, -body_budget,
+                intent_id,
+                self._llm.max_prompt_chars,
+                n_articles,
+                -body_budget,
             )
             return None
 
@@ -311,8 +311,11 @@ class SummaryPipeline:
             logger.warning(
                 "SummaryPipeline: intent_id=%d batch_size=%d truncated %d article "
                 "body/bodies to fit max_prompt_chars=%d (water-fill cap=%d chars)",
-                intent_id, n_articles, n_truncated,
-                self._llm.max_prompt_chars, longest_cap,
+                intent_id,
+                n_articles,
+                n_truncated,
+                self._llm.max_prompt_chars,
+                longest_cap,
             )
 
         try:

@@ -4,6 +4,7 @@ Idempotent: checks existence before creating collection and alias.
 Alias switching for model upgrades is out of scope here — owned by a future
 model-upgrade flow, not bootstrap.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,9 +47,7 @@ def collection_name(model_version: str) -> str:
     return f"news_{model_version}"
 
 
-async def ensure_news_collection(
-    client: "AsyncQdrantClient", embedder: "BaseEmbedder"
-) -> None:
+async def ensure_news_collection(client: "AsyncQdrantClient", embedder: "BaseEmbedder") -> None:
     """Create the news collection and alias if either is missing. Idempotent.
 
     Collection name and vector dim are derived from the embedder so a backend swap

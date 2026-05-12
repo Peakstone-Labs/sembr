@@ -3,6 +3,7 @@
 Low-level DB helpers for the event-driven intent matching path.
 Business logic (absorb / flush) lives in sembr/matcher/event_buffer.py.
 """
+
 from __future__ import annotations
 
 import sqlite3

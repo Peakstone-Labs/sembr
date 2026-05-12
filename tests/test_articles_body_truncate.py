@@ -4,6 +4,7 @@ body exceeds the 1MB cap and gets truncated.
 Targets the existing log site at sembr/db/articles.py:106-110 — design D8
 explicitly avoids new code here, only the missing assertion.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -62,10 +63,7 @@ async def test_body_truncate_emits_info_log_with_required_fields(caplog):
     assert result is True
 
     # Find the truncation log line and assert all four required fields are present.
-    matches = [
-        r for r in caplog.records
-        if "article body truncated" in r.getMessage()
-    ]
+    matches = [r for r in caplog.records if "article body truncated" in r.getMessage()]
     assert matches, "expected a body-truncate INFO log line, got none"
     msg = matches[0].getMessage()
     assert f"feed_id={feed_id}" in msg
@@ -74,9 +72,7 @@ async def test_body_truncate_emits_info_log_with_required_fields(caplog):
     assert f"cap={_BODY_CAP_BYTES}" in msg
 
     # Verify the row actually got the truncated body, not the full one.
-    async with conn.execute(
-        "SELECT length(body) FROM pending_articles WHERE md5=?", (md5,)
-    ) as cur:
+    async with conn.execute("SELECT length(body) FROM pending_articles WHERE md5=?", (md5,)) as cur:
         stored_len = (await cur.fetchone())[0]
     assert stored_len == _BODY_CAP_BYTES
 
@@ -95,9 +91,7 @@ async def test_body_at_or_below_cap_emits_no_truncate_log(caplog):
     with caplog.at_level("INFO", logger="sembr.db.articles"):
         await insert_article_pending(conn, _make_article(md5, body), feed_id)
 
-    assert not any(
-        "article body truncated" in r.getMessage() for r in caplog.records
-    )
+    assert not any("article body truncated" in r.getMessage() for r in caplog.records)
 
     await conn.close()
     _sqlite_mod._conn = None

@@ -9,6 +9,7 @@ the create/edit form can call it before the intent is persisted. Errors:
 Translation prompt is hardcoded here (D7), not pulled from prompts/templates.
 Temperature / max_tokens are not passed (D16); the backend's defaults govern.
 """
+
 from __future__ import annotations
 
 import logging

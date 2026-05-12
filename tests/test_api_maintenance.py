@@ -1,4 +1,5 @@
 """Tests for POST/GET /api/dashboard/maintenance/* (S6 + S7 + S8)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -62,6 +63,7 @@ def _build_test_app(path: str, qdrant_handle, *, with_auth: bool = False) -> Fas
         # Drain still-running BG planning/applying tasks before
         # close_sqlite so they don't observe a torn-down connection.
         from sembr.api.maintenance import _BG_TASKS
+
         if _BG_TASKS:
             await asyncio.gather(*list(_BG_TASKS), return_exceptions=True)
         await close_sqlite()
@@ -74,6 +76,7 @@ def _build_test_app(path: str, qdrant_handle, *, with_auth: bool = False) -> Fas
         # paths are gated. add_middleware uses LIFO ordering, so this is the
         # outermost wrapper.
         from sembr.dashboard.auth import DashboardTokenMiddleware
+
         app.add_middleware(DashboardTokenMiddleware)
     return app
 
@@ -111,6 +114,7 @@ def app_with_auth_factory(monkeypatch):
 
     monkeypatch.setenv("DASHBOARD_TOKEN", "secret-test-token")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
 
     def _build(qdrant_handle):
@@ -130,17 +134,13 @@ def app_with_auth_factory(monkeypatch):
                 pass
 
 
-def _wait_for_status(
-    client: TestClient, task_id: str, target: str, timeout: float = 5.0
-) -> dict:
+def _wait_for_status(client: TestClient, task_id: str, target: str, timeout: float = 5.0) -> dict:
     """Poll the status endpoint (sync, via TestClient) until task.status == target."""
     deadline = time.monotonic() + timeout
     last_status = None
     data: dict = {}
     while time.monotonic() < deadline:
-        resp = client.get(
-            f"/api/dashboard/maintenance/manual_prune/{task_id}"
-        )
+        resp = client.get(f"/api/dashboard/maintenance/manual_prune/{task_id}")
         assert resp.status_code == 200, resp.text
         data = resp.json()
         last_status = data["status"]
@@ -166,9 +166,11 @@ def test_feed_universe_alive_and_deleted(app_factory):
     with TestClient(app) as c:
         # Seed feed 6, 12 in SQLite; 99 only in Qdrant → "deleted"
         from sembr.db.feeds import init_feed_tables  # already inited in lifespan
+
         # Insert via raw conn since there's no public seed helper here
         async def _seed():
             from sembr.db.sqlite import get_conn
+
             conn = get_conn()
             await conn.execute(
                 "INSERT INTO feeds (id, name, url, poll_interval_minutes) "
@@ -190,9 +192,7 @@ def test_feed_universe_alive_and_deleted(app_factory):
         assert alive_ids == {6, 12}
         assert deleted_ids == {99}
         # name carried for alive, None for deleted
-        assert {f["id"]: f["name"] for f in data["alive"]} == {
-            6: "CNN", 12: "Econ"
-        }
+        assert {f["id"]: f["name"] for f in data["alive"]} == {6: "CNN", 12: "Econ"}
 
 
 # ---------------------------------------------------------------------------
@@ -213,17 +213,17 @@ def test_manual_prune_news_planning_to_done(app_factory):
 
     app = app_factory(qdrant)
     with TestClient(app) as c:
+
         async def _seed():
             from sembr.db.sqlite import get_conn
+
             conn = get_conn()
             await conn.execute(
                 "INSERT INTO feeds (id, name, url, poll_interval_minutes) "
                 "VALUES (6, 'CNN', 'http://cnn', 30)"
             )
             for m in md5s:
-                await conn.execute(
-                    "INSERT INTO feed_items (md5, feed_id) VALUES (?, 6)", (m,)
-                )
+                await conn.execute("INSERT INTO feed_items (md5, feed_id) VALUES (?, 6)", (m,))
             await conn.commit()
 
         asyncio.run(_seed())
@@ -231,7 +231,9 @@ def test_manual_prune_news_planning_to_done(app_factory):
         resp = c.post(
             "/api/dashboard/maintenance/manual_prune",
             json={
-                "target": "news", "feed_ids": [6], "older_than_days": 35,
+                "target": "news",
+                "feed_ids": [6],
+                "older_than_days": 35,
             },
         )
         assert resp.status_code == 202, resp.text
@@ -243,9 +245,7 @@ def test_manual_prune_news_planning_to_done(app_factory):
         assert planned["plan_summary"]["target"] == "news"
         assert planned["plan_summary"]["total_would_delete"] == 3
 
-        confirm = c.post(
-            f"/api/dashboard/maintenance/manual_prune/{task_id}/confirm"
-        )
+        confirm = c.post(f"/api/dashboard/maintenance/manual_prune/{task_id}/confirm")
         assert confirm.status_code == 202, confirm.text
         assert confirm.json()["status"] == "applying"
 
@@ -272,8 +272,10 @@ def test_manual_prune_confirm_wrong_state_returns_409(app_factory):
 
     app = app_factory(qdrant)
     with TestClient(app) as c:
+
         async def _seed():
             from sembr.db.sqlite import get_conn
+
             conn = get_conn()
             await conn.execute(
                 "INSERT INTO feeds (id, name, url, poll_interval_minutes) "
@@ -290,9 +292,7 @@ def test_manual_prune_confirm_wrong_state_returns_409(app_factory):
         task_id = resp.json()["task_id"]
 
         # Status is still 'planning' — confirm must 409
-        confirm = c.post(
-            f"/api/dashboard/maintenance/manual_prune/{task_id}/confirm"
-        )
+        confirm = c.post(f"/api/dashboard/maintenance/manual_prune/{task_id}/confirm")
         assert confirm.status_code == 409, confirm.text
         assert "planned" in confirm.json()["detail"]
 
@@ -307,9 +307,7 @@ def test_manual_prune_get_404(app_factory):
     qdrant = _make_qdrant({})
     app = app_factory(qdrant)
     with TestClient(app) as c:
-        resp = c.get(
-            "/api/dashboard/maintenance/manual_prune/does-not-exist"
-        )
+        resp = c.get("/api/dashboard/maintenance/manual_prune/does-not-exist")
         assert resp.status_code == 404
 
 
@@ -329,9 +327,11 @@ def test_manual_prune_dead_path_does_not_call_qdrant(app_factory):
     qdrant = _make_qdrant({})
     app = app_factory(qdrant)
     with TestClient(app) as c:
+
         async def _seed():
             from datetime import datetime, timedelta, timezone
             from sembr.db.sqlite import get_conn
+
             conn = get_conn()
             await conn.execute(
                 "INSERT INTO feeds (id, name, url, poll_interval_minutes) "
@@ -358,9 +358,7 @@ def test_manual_prune_dead_path_does_not_call_qdrant(app_factory):
         planned = _wait_for_status(c, task_id, "planned")
         assert planned["plan_summary"]["total_would_delete"] == 3
 
-        confirm = c.post(
-            f"/api/dashboard/maintenance/manual_prune/{task_id}/confirm"
-        )
+        confirm = c.post(f"/api/dashboard/maintenance/manual_prune/{task_id}/confirm")
         assert confirm.status_code == 202
         done = _wait_for_status(c, task_id, "done")
         assert done["result_summary"]["deleted_dead_articles"] == 3
@@ -427,9 +425,7 @@ def test_manual_prune_status_get_unauthenticated_returns_401(app_with_auth_facto
     qdrant = _make_qdrant({})
     app = app_with_auth_factory(qdrant)
     with TestClient(app) as c:
-        resp = c.get(
-            "/api/dashboard/maintenance/manual_prune/any-task-id"
-        )
+        resp = c.get("/api/dashboard/maintenance/manual_prune/any-task-id")
         assert resp.status_code == 401, resp.text
 
 
@@ -439,7 +435,5 @@ def test_manual_prune_confirm_unauthenticated_returns_401(app_with_auth_factory)
     qdrant = _make_qdrant({})
     app = app_with_auth_factory(qdrant)
     with TestClient(app) as c:
-        resp = c.post(
-            "/api/dashboard/maintenance/manual_prune/any-task-id/confirm"
-        )
+        resp = c.post("/api/dashboard/maintenance/manual_prune/any-task-id/confirm")
         assert resp.status_code == 401, resp.text

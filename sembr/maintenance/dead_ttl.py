@@ -4,6 +4,7 @@
 Independent of Qdrant retention (D2): dead rows are forensic state for
 post-mortem of embedder failures, not vector-store lifecycle.
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,15 +23,12 @@ logger = logging.getLogger(__name__)
 async def _run_dead_ttl(settings: Settings) -> None:
     started_at = monotonic()
     cutoff_iso = (
-        datetime.now(timezone.utc)
-        - timedelta(days=settings.dead_articles_retention_days)
+        datetime.now(timezone.utc) - timedelta(days=settings.dead_articles_retention_days)
     ).isoformat()
     deleted = 0
     try:
         async with transaction() as txn:
-            await txn.execute(
-                "DELETE FROM dead_articles WHERE failed_at < ?", (cutoff_iso,)
-            )
+            await txn.execute("DELETE FROM dead_articles WHERE failed_at < ?", (cutoff_iso,))
             # SELECT changes() must run inside the same txn so a concurrent
             # writer can't slip its rowcount in between COMMIT and the read
             # (memory: feedback_sqlite_pragmas#3).
@@ -42,7 +40,10 @@ async def _run_dead_ttl(settings: Settings) -> None:
     elapsed_ms = int((monotonic() - started_at) * 1000)
     logger.info(
         "dead_ttl run: cutoff=%s deleted=%d elapsed_ms=%d interval_hours=%d",
-        cutoff_iso, deleted, elapsed_ms, settings.maintenance_interval_hours,
+        cutoff_iso,
+        deleted,
+        elapsed_ms,
+        settings.maintenance_interval_hours,
     )
 
 

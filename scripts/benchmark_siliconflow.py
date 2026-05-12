@@ -20,6 +20,7 @@ Environment: reads EMBEDDER_API_KEY and EMBEDDER_API_BASE_URL from the same
 env vars the running embedder uses (see .env.example). Run inside the api
 container so these are already set.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -86,15 +87,15 @@ async def _bench(
         # Warmup: 1 short call so connection pool / TLS handshake doesn't
         # skew the smallest-batch measurement.
         try:
-            warm_t, warm_status = await _call_once(
-                client, api_key, base_url, model, ["warmup"]
-            )
+            warm_t, warm_status = await _call_once(client, api_key, base_url, model, ["warmup"])
             print(f"warmup: {warm_t:.2f}s status={warm_status}\n")
         except Exception as exc:
             print(f"warmup failed: {type(exc).__name__}: {exc!r}")
             return
 
-        print(f"{'batch':>5} {'total_chars':>12} {'elapsed':>10} {'chars/sec':>11} {'sec/item':>10}  status")
+        print(
+            f"{'batch':>5} {'total_chars':>12} {'elapsed':>10} {'chars/sec':>11} {'sec/item':>10}  status"
+        )
         print("-" * 70)
         for n in batch_sizes:
             if n > len(articles):
@@ -108,14 +109,9 @@ async def _bench(
             last_status = 0
             for _ in range(runs):
                 try:
-                    elapsed, status = await _call_once(
-                        client, api_key, base_url, model, texts
-                    )
+                    elapsed, status = await _call_once(client, api_key, base_url, model, texts)
                 except Exception as exc:
-                    print(
-                        f"{n:>5} {total_chars:>12} {'ERROR':>10}  "
-                        f"{type(exc).__name__}: {exc!r}"
-                    )
+                    print(f"{n:>5} {total_chars:>12} {'ERROR':>10}  {type(exc).__name__}: {exc!r}")
                     last_status = -1
                     break
                 elapsed_runs.append(elapsed)
@@ -128,7 +124,8 @@ async def _bench(
             tag = "" if last_status == 200 else f" !!! HTTP {last_status}"
             extra = (
                 f"  (runs={runs}, min={min(elapsed_runs):.2f}s, max={max(elapsed_runs):.2f}s)"
-                if runs > 1 else ""
+                if runs > 1
+                else ""
             )
             print(
                 f"{n:>5} {total_chars:>12} {avg:>9.2f}s {cps:>11,.0f} {spi:>9.2f}s  "
@@ -160,9 +157,7 @@ def main() -> None:
     )
     p.add_argument(
         "--base-url",
-        default=os.environ.get(
-            "EMBEDDER_API_BASE_URL", "https://api.siliconflow.cn/v1"
-        ),
+        default=os.environ.get("EMBEDDER_API_BASE_URL", "https://api.siliconflow.cn/v1"),
     )
     p.add_argument("--model", default="BAAI/bge-m3")
     args = p.parse_args()
@@ -170,8 +165,7 @@ def main() -> None:
     api_key = os.environ.get(args.api_key_env)
     if not api_key:
         print(
-            f"ERROR: {args.api_key_env} not set in env "
-            "(run inside the api container)",
+            f"ERROR: {args.api_key_env} not set in env (run inside the api container)",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -183,15 +177,14 @@ def main() -> None:
         sys.exit(2)
     if len(articles) < max_n:
         print(
-            f"warning: only {len(articles)} articles available, "
-            f"largest batches will be skipped",
+            f"warning: only {len(articles)} articles available, largest batches will be skipped",
             file=sys.stderr,
         )
 
     char_lens = [len(_truncate(t, b)) for t, b in articles]
     print(
         f"loaded {len(articles)} articles from {args.source}_articles\n"
-        f"  per-text chars: min={min(char_lens)} avg={int(sum(char_lens)/len(char_lens))} "
+        f"  per-text chars: min={min(char_lens)} avg={int(sum(char_lens) / len(char_lens))} "
         f"max={max(char_lens)} (capped at {_EMBED_CHARS_MAX})\n"
         f"  base_url={args.base_url}  model={args.model}\n"
     )

@@ -4,6 +4,7 @@
 before the first write — aiosqlite serialises writes internally, so a shared connection
 is safe and avoids re-applying pragmas per request.
 """
+
 from __future__ import annotations
 
 import asyncio

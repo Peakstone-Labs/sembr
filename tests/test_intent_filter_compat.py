@@ -3,6 +3,7 @@ RSS feeds by Intent.feed_filter — feed_filter only stores integer feed_ids,
 so the source_type column is opaque to it. This test pins that invariant
 so future refactors don't accidentally couple feed_filter to source_type.
 """
+
 from __future__ import annotations
 
 import aiosqlite
@@ -24,6 +25,7 @@ async def mem_conn(monkeypatch):
     monkeypatch.setenv("NEWSAPI_API_KEY", "k")
     monkeypatch.setenv("NEWSAPI_POLL_INTERVAL_MINUTES", "30")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     conn = await aiosqlite.connect(":memory:")
     await conn.execute("PRAGMA foreign_keys=ON")

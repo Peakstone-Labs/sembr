@@ -4,6 +4,7 @@ Implements BaseEmbedder for remote API backends that speak the OpenAI embeddings
 protocol. SiliconFlowEmbedder is the concrete subclass for this MVP; the class
 name `openai_compat` leaves room for future Voyage/Jina backends in the same file.
 """
+
 from __future__ import annotations
 
 import logging
@@ -129,9 +130,7 @@ class SiliconFlowEmbedder(BaseEmbedder):
             self._status = "error"
             logger.error("siliconflow probe failed: %s", exc, exc_info=True)
 
-    async def _call(
-        self, texts: list[str], *, timeout: float | None = None
-    ) -> list[list[float]]:
+    async def _call(self, texts: list[str], *, timeout: float | None = None) -> list[list[float]]:
         if self._client is None:
             raise RuntimeError("call load() before _call()")
         request_timeout: httpx.Timeout | None = (
@@ -162,16 +161,12 @@ class SiliconFlowEmbedder(BaseEmbedder):
         data = response.json()
         items = data.get("data")
         if not isinstance(items, list):
-            raise EmbedderSchemaError(
-                f"unexpected payload, missing 'data' list: {str(data)[:200]}"
-            )
+            raise EmbedderSchemaError(f"unexpected payload, missing 'data' list: {str(data)[:200]}")
         out: list[list[float]] = []
         for it in items:
             emb = it.get("embedding") if isinstance(it, dict) else None
             if not isinstance(emb, list) or not emb or not isinstance(emb[0], (int, float)):
-                raise EmbedderSchemaError(
-                    f"unexpected embedding shape: {type(emb).__name__}"
-                )
+                raise EmbedderSchemaError(f"unexpected embedding shape: {type(emb).__name__}")
             out.append(emb)
         if len(out) != len(texts):
             raise EmbedderSchemaError(
@@ -191,9 +186,7 @@ class SiliconFlowEmbedder(BaseEmbedder):
     def embed(self, texts: list[str]) -> list[list[float]]:
         raise NotImplementedError("SiliconFlowEmbedder is async-only; use aembed()")
 
-    async def aembed(
-        self, texts: list[str], *, timeout: float | None = None
-    ) -> list[list[float]]:
+    async def aembed(self, texts: list[str], *, timeout: float | None = None) -> list[list[float]]:
         if self._status != "ok":
             raise RuntimeError("embedder not loaded")
         if not texts:

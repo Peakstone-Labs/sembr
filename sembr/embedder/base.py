@@ -5,6 +5,7 @@ Subclasses MAY add async / batching variants without breaking callers — the on
 required override is `embed`; `aembed` has a thread-pool fallback that suits local
 backends, while remote backends (e.g. SiliconFlow) override `aembed` directly.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -57,9 +58,7 @@ class BaseEmbedder(ABC):
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Synchronous inference. Consumers must call `await aembed(...)` instead."""
 
-    async def aembed(
-        self, texts: list[str], *, timeout: float | None = None
-    ) -> list[list[float]]:
+    async def aembed(self, texts: list[str], *, timeout: float | None = None) -> list[list[float]]:
         """Async wrapper that offloads sync `embed` to a thread pool.
 
         Remote/async backends can override this directly without changing the

@@ -1,4 +1,5 @@
 """Tests for PATCH /feeds/{id} — Toggle + Edit behaviors (SC#1–5)."""
+
 from __future__ import annotations
 
 import os
@@ -49,7 +50,9 @@ def client():
             pass
 
 
-def _create_feed(client: TestClient, name: str = "Test", url: str = "https://example.com/rss") -> dict:
+def _create_feed(
+    client: TestClient, name: str = "Test", url: str = "https://example.com/rss"
+) -> dict:
     resp = client.post("/feeds", json={"name": name, "url": url})
     assert resp.status_code == 201, resp.text
     return resp.json()

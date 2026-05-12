@@ -12,6 +12,7 @@ external programs. Distinct from the internal async ``/intents/{id}/fire``:
 See ``sembr-dev-docs/development/external-fire-api/design.md`` for decisions
 D1–D17 and the exception/return-value contract for ``compute_summary``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -114,9 +115,7 @@ async def post_external_fire(
     conn = get_conn()
     intent = await get_intent(conn, intent_id)
     if intent is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="intent not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
 
     if not isinstance(intent.schedule, CronSchedule):
         # D9: distinct wording from /intents/{id}/fire so 409 logs make the
@@ -155,9 +154,7 @@ async def post_external_fire(
         matches = await scan_once(intent, options, conn, qdrant_client)
     except Exception:
         # D12: hide internal exception detail from external callers.
-        logger.exception(
-            "external_fire intent_id=%d scan_once Qdrant failure", intent_id
-        )
+        logger.exception("external_fire intent_id=%d scan_once Qdrant failure", intent_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="qdrant query failed",
@@ -177,9 +174,7 @@ async def post_external_fire(
     if pipeline is None:
         # Defensive: lifespan should always wire this. AttributeError-style 500
         # is preferable to a silent ``summary: null`` masquerading as success.
-        logger.error(
-            "external_fire intent_id=%d: app.state.summary_pipeline is missing", intent_id
-        )
+        logger.error("external_fire intent_id=%d: app.state.summary_pipeline is missing", intent_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="summary pipeline unavailable",

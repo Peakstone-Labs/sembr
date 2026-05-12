@@ -12,6 +12,7 @@ Rendering uses ``str.format_map`` with a strict whitelist of placeholders:
 - instruction templates: ``{intent_text}``, ``{articles}``
 Any other ``{...}`` key in the file raises ``TemplateRenderError``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -72,9 +73,7 @@ def template_path(prompts_dir: Path, kind: str, name: str) -> Path:
     _validate_name(name)
     candidate = (prompts_dir / kind / f"{name}.md").resolve()
     if not candidate.is_relative_to(prompts_dir.resolve()):
-        raise ValueError(
-            f"Template path {candidate} escapes prompts_dir {prompts_dir}"
-        )
+        raise ValueError(f"Template path {candidate} escapes prompts_dir {prompts_dir}")
     return candidate
 
 
@@ -91,7 +90,9 @@ def list_templates(prompts_dir: Path, kind: str) -> list[str]:
     kind_dir = prompts_dir / kind
     if not kind_dir.is_dir():
         return []
-    return sorted(p.stem for p in kind_dir.glob("*.md") if p.is_file() and not p.name.startswith("."))
+    return sorted(
+        p.stem for p in kind_dir.glob("*.md") if p.is_file() and not p.name.startswith(".")
+    )
 
 
 def load_template(prompts_dir: Path, kind: str, name: str) -> str:
@@ -103,9 +104,7 @@ def load_template(prompts_dir: Path, kind: str, name: str) -> str:
     """
     path = template_path(prompts_dir, kind, name)
     if not path.is_file():
-        raise TemplateNotFoundError(
-            f"Template '{kind}/{name}' not found at {path}"
-        )
+        raise TemplateNotFoundError(f"Template '{kind}/{name}' not found at {path}")
     return path.read_text(encoding="utf-8")
 
 

@@ -3,6 +3,7 @@
 D10: composite PK (intent_id, article_id) with ON DELETE CASCADE keeps cleanup trivial.
 D11: INSERT OR IGNORE + RETURNING identifies newly inserted rows in a single statement.
 """
+
 from __future__ import annotations
 
 import aiosqlite
@@ -25,8 +26,7 @@ CREATE TABLE IF NOT EXISTS match_seen (
 # seconds, monopolising _WRITE_LOCK and stalling the ingest pipeline. See
 # reconcile design D11.
 _CREATE_IDX_MATCH_SEEN_ARTICLE = (
-    "CREATE INDEX IF NOT EXISTS idx_match_seen_article_id "
-    "ON match_seen(article_id)"
+    "CREATE INDEX IF NOT EXISTS idx_match_seen_article_id ON match_seen(article_id)"
 )
 
 

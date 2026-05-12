@@ -8,6 +8,7 @@ Design:
   - Embedder mocked via AsyncMock
   - ensure_intents_collection tested separately by patching sys.modules (mirrors news collection test)
 """
+
 from __future__ import annotations
 
 import sys
@@ -344,7 +345,7 @@ def test_enabled_toggle_no_vector_change() -> None:
         assert resp_on.json()["enabled"] is True
 
     assert vs["upsert"].call_count == upsert_after_create  # no re-upsert after create
-    assert vs["update_payload"].call_count == 2             # one per toggle
+    assert vs["update_payload"].call_count == 2  # one per toggle
 
     calls = vs["update_payload"].call_args_list
     assert calls[0].kwargs["payload"]["enabled"] is False
@@ -442,7 +443,9 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
     mock_client.update_collection_aliases = AsyncMock()
 
     mock_qdrant_models = MagicMock()
-    with patch.dict(sys.modules, {"qdrant_client": MagicMock(), "qdrant_client.models": mock_qdrant_models}):
+    with patch.dict(
+        sys.modules, {"qdrant_client": MagicMock(), "qdrant_client.models": mock_qdrant_models}
+    ):
         # conn=None — no SQLite rows to re-embed; fresh install branch
         await ensure_intents_collection(mock_client, mock_embedder, conn=None)
 
@@ -479,7 +482,12 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
 
         # Layout probe: get_collection must return a named-vec dict layout
         col_info = MagicMock()
-        col_info.config.params.vectors = {"main": MagicMock(), "alt_0": MagicMock(), "alt_1": MagicMock(), "alt_2": MagicMock()}
+        col_info.config.params.vectors = {
+            "main": MagicMock(),
+            "alt_0": MagicMock(),
+            "alt_1": MagicMock(),
+            "alt_2": MagicMock(),
+        }
         mock_client.get_collection = AsyncMock(return_value=col_info)
 
         mock_client.create_collection.reset_mock()
@@ -497,12 +505,12 @@ async def test_ensure_intents_collection_creates_with_correct_config() -> None:
 
 _NEW_FIELD_INVALID_BODIES = [
     # EventSchedule trigger_count out of range
-    {**VALID_BODY, "schedule": {"mode": "event", "trigger_count": 0}},     # below minimum
-    {**VALID_BODY, "schedule": {"mode": "event", "trigger_count": 11}},    # above maximum
+    {**VALID_BODY, "schedule": {"mode": "event", "trigger_count": 0}},  # below minimum
+    {**VALID_BODY, "schedule": {"mode": "event", "trigger_count": 11}},  # above maximum
     # CronSchedule weekly without weekday
     {**VALID_BODY, "schedule": {"mode": "cron", "preset": "weekly", "hour": 9}},
     # EventSchedule max_wait_seconds out of range
-    {**VALID_BODY, "schedule": {"mode": "event", "max_wait_seconds": 59}},     # below minimum
+    {**VALID_BODY, "schedule": {"mode": "event", "max_wait_seconds": 59}},  # below minimum
     {**VALID_BODY, "schedule": {"mode": "event", "max_wait_seconds": 86401}},  # above maximum
 ]
 
@@ -534,7 +542,9 @@ def test_put_intent_schedule_fields() -> None:
     """PUT schedule updates the stored value."""
     with _client() as (http, _):
         intent_id = http.post("/intents", json=VALID_BODY).json()["id"]
-        resp = http.put(f"/intents/{intent_id}", json={"schedule": {"mode": "cron", "preset": "hourly"}})
+        resp = http.put(
+            f"/intents/{intent_id}", json={"schedule": {"mode": "cron", "preset": "hourly"}}
+        )
 
     assert resp.status_code == 200
     assert resp.json()["schedule"]["mode"] == "cron"
@@ -545,7 +555,9 @@ def test_put_intent_schedule_invalid() -> None:
     """PUT with invalid schedule → 422."""
     with _client() as (http, _):
         intent_id = http.post("/intents", json=VALID_BODY).json()["id"]
-        resp = http.put(f"/intents/{intent_id}", json={"schedule": {"mode": "cron", "preset": "weekly"}})
+        resp = http.put(
+            f"/intents/{intent_id}", json={"schedule": {"mode": "cron", "preset": "weekly"}}
+        )
 
     assert resp.status_code == 422
 
@@ -696,6 +708,7 @@ def test_put_text_change_clear_intent_failure_not_silent() -> None:
 # Loop 2 🔴-1: PUT sub_texts write must be atomic with intents row write
 # ---------------------------------------------------------------------------
 
+
 def test_put_sub_texts_split_brain_rolled_back() -> None:
     """🔴-1: when the sub_texts write fails inside the PUT transaction, the
     intents row must NOT be left with the new values. The single-transaction
@@ -737,8 +750,7 @@ def test_put_sub_texts_split_brain_rolled_back() -> None:
         assert get_resp.status_code == 200
         data = get_resp.json()
         assert data["text"] == "ORIGINAL TEXT", (
-            "PUT split-brain regression: intents row updated despite "
-            "sub_texts write failure"
+            "PUT split-brain regression: intents row updated despite sub_texts write failure"
         )
         assert data["sub_texts"] == []
 
@@ -746,6 +758,7 @@ def test_put_sub_texts_split_brain_rolled_back() -> None:
 # ---------------------------------------------------------------------------
 # Loop 2 🟡-1: R1 partial-migration recovery detects ID divergence (not just count)
 # ---------------------------------------------------------------------------
+
 
 async def test_lifespan_recovery_id_mismatch() -> None:
     """🟡-1: when _mv collection has the right row count but the ID set has
@@ -782,8 +795,12 @@ async def test_lifespan_recovery_id_mismatch() -> None:
 
     # Layout probe succeeds: _mv has named-vec layout
     col_info = MagicMock()
-    col_info.config.params.vectors = {"main": MagicMock(), "alt_0": MagicMock(),
-                                       "alt_1": MagicMock(), "alt_2": MagicMock()}
+    col_info.config.params.vectors = {
+        "main": MagicMock(),
+        "alt_0": MagicMock(),
+        "alt_1": MagicMock(),
+        "alt_2": MagicMock(),
+    }
     mock_client.get_collection = AsyncMock(return_value=col_info)
 
     # Count probe says 3 — same as SQLite (the count-only check would pass!)
@@ -810,8 +827,9 @@ async def test_lifespan_recovery_id_mismatch() -> None:
     mock_conn.execute = MagicMock(return_value=cursor)
 
     mock_qdrant_models = MagicMock()
-    with patch.dict(sys.modules, {"qdrant_client": MagicMock(),
-                                  "qdrant_client.models": mock_qdrant_models}):
+    with patch.dict(
+        sys.modules, {"qdrant_client": MagicMock(), "qdrant_client.models": mock_qdrant_models}
+    ):
         await ensure_intents_collection(mock_client, mock_embedder, conn=mock_conn)
 
     # Critical assertion: delete_collection must have been called because the

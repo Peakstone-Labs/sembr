@@ -4,6 +4,7 @@ D11: event_match_batch — called after each Qdrant upsert in embedder_worker.
 D18: no match_seen writes on this path.
 Risk 7: top-level try/except — event path failure must not abort ingestion.
 """
+
 from __future__ import annotations
 
 import logging
@@ -113,13 +114,15 @@ async def _event_match_batch_inner(
 
         logger.debug(
             "event_match: intent_id=%d batch_hits=%d",
-            intent_id, len(hits),
+            intent_id,
+            len(hits),
         )
 
         should_flush = await absorb(conn, intent_id, hits, entry.schedule)
         if should_flush:
             logger.info(
                 "event_match: intent_id=%d reached trigger_count=%d → flushing",
-                intent_id, entry.schedule.trigger_count,
+                intent_id,
+                entry.schedule.trigger_count,
             )
             await flush(conn, app, intent_id)

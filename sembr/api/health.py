@@ -3,6 +3,7 @@
 设计决策 #5 / #6: real-time probe (no cache); 200 iff (qdrant_ok ∧ sqlite_ok ∧ embedder_ok).
 Embedder reports three states: "loading" | "ok" | "error" (D18).
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, Response, status
@@ -20,7 +21,10 @@ async def health(request: Request, response: Response) -> dict:
     embedder = getattr(request.app.state, "embedder", None)
     if qdrant is None or embedder is None:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        return {"status": "starting", "components": {"qdrant": "starting", "sqlite": "starting", "embedder": "starting"}}
+        return {
+            "status": "starting",
+            "components": {"qdrant": "starting", "sqlite": "starting", "embedder": "starting"},
+        }
 
     qdrant_ok = await qdrant.ping()
 
@@ -35,7 +39,5 @@ async def health(request: Request, response: Response) -> dict:
         "embedder": embedder_status,
     }
     overall_ok = qdrant_ok and sqlite_ok_value and embedder_ok
-    response.status_code = (
-        status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE
-    )
+    response.status_code = status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE
     return {"status": "ok" if overall_ok else "degraded", "components": components}

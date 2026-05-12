@@ -1,4 +1,5 @@
 """Unit tests for sembr.maintenance.qdrant_ttl (S3 + S4 + S11 + D4)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -39,9 +40,7 @@ async def _insert_feed(conn) -> int:
 
 
 async def _seed_feed_item(conn, md5: str, feed_id: int) -> None:
-    await conn.execute(
-        "INSERT INTO feed_items (md5, feed_id) VALUES (?, ?)", (md5, feed_id)
-    )
+    await conn.execute("INSERT INTO feed_items (md5, feed_id) VALUES (?, ?)", (md5, feed_id))
     await conn.commit()
 
 
@@ -130,8 +129,8 @@ async def test_qdrant_ttl_no_expired(caplog):
     async with conn.execute("SELECT COUNT(*) FROM feed_items") as cur:
         assert (await cur.fetchone())[0] == 1
     assert any(
-        "deleted_qdrant=0 deleted_feed_items=0 deleted_match_seen=0"
-        in r.getMessage() for r in caplog.records
+        "deleted_qdrant=0 deleted_feed_items=0 deleted_match_seen=0" in r.getMessage()
+        for r in caplog.records
     )
 
     await conn.close()
@@ -161,9 +160,7 @@ async def test_qdrant_ttl_match_seen_only_for_targets():
 
     await _run_qdrant_ttl(qdrant, Settings())
 
-    async with conn.execute(
-        "SELECT article_id FROM match_seen WHERE intent_id=1"
-    ) as cur:
+    async with conn.execute("SELECT article_id FROM match_seen WHERE intent_id=1") as cur:
         kept = {r[0] for r in await cur.fetchall()}
     assert kept == {u_keep}
 

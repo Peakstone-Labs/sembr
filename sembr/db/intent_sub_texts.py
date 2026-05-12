@@ -5,6 +5,7 @@ Mirrors db/match_seen.py's child-table-with-ON-DELETE-CASCADE pattern (D1, D10):
   - CASCADE wipes sub_texts on intent delete; no manual cleanup in delete_intent.
   - slot CHECK (0,1,2) hard-caps at 3; Pydantic max_length=3 also enforces (defense in depth).
 """
+
 from __future__ import annotations
 
 import aiosqlite

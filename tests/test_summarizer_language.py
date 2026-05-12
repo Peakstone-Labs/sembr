@@ -1,4 +1,5 @@
 """Unit tests for language injection into LLM system prompt."""
+
 from __future__ import annotations
 
 from pathlib import Path

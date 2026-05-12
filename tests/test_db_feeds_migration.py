@@ -1,4 +1,5 @@
 """Tests for feeds DB migration — enabled column idempotent add (C1)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -69,7 +70,9 @@ async def test_migration_adds_enabled_to_old_db() -> None:
             cols = {row[1] for row in await cur.fetchall()}
         assert "enabled" in cols
 
-        async with conn.execute("SELECT enabled FROM feeds WHERE url=?", ("https://example.com/rss",)) as cur:
+        async with conn.execute(
+            "SELECT enabled FROM feeds WHERE url=?", ("https://example.com/rss",)
+        ) as cur:
             row = await cur.fetchone()
         assert row is not None
         assert row[0] == 1

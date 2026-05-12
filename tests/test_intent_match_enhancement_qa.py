@@ -26,6 +26,7 @@ Coverage map vs design table:
 NOTE: test_fire_intent_with_sub_text_matches_more requires prod data (id=13, 28) —
       marked MANUAL / out-of-scope; see scripts/qa_sub_text_recall.py.
 """
+
 from __future__ import annotations
 
 import sys
@@ -57,9 +58,15 @@ def _ensure_qdrant_stub() -> None:
         sys.modules["qdrant_client.models"] = models
 
     models = sys.modules["qdrant_client.models"]
-    for cls_name in ("VectorParams", "Distance", "VectorsConfig",
-                     "CreateCollection", "UpdateCollection",
-                     "PointStruct", "PointVectors"):
+    for cls_name in (
+        "VectorParams",
+        "Distance",
+        "VectorsConfig",
+        "CreateCollection",
+        "UpdateCollection",
+        "PointStruct",
+        "PointVectors",
+    ):
         if not hasattr(models, cls_name):
             setattr(models, cls_name, MagicMock())
 
@@ -245,10 +252,12 @@ def test_put_modify_sub_text_text_clears_match_seen() -> None:
     """PUT that changes a sub_text's .text must clear match_seen (sub_texts_edited=True)."""
     embedder = _make_embedder(extra_vecs=1)
     # initial embed: main + sub
-    embedder.aembed = AsyncMock(side_effect=[
-        [FAKE_VECTOR, FAKE_VECTOR2],  # POST embed
-        [FAKE_VECTOR, [0.3] * 1024],  # PUT embed (text changed)
-    ])
+    embedder.aembed = AsyncMock(
+        side_effect=[
+            [FAKE_VECTOR, FAKE_VECTOR2],  # POST embed
+            [FAKE_VECTOR, [0.3] * 1024],  # PUT embed (text changed)
+        ]
+    )
     vs = _make_vs()
     clear_mock = AsyncMock()
 
@@ -257,7 +266,12 @@ def test_put_modify_sub_text_text_clears_match_seen() -> None:
         "sub_texts": [{"language": "en", "text": "original sub text"}],
     }
 
-    with _client(embedder=embedder, vs=vs, clear_intent_mock=clear_mock) as (http, vs, _, clear_mock):
+    with _client(embedder=embedder, vs=vs, clear_intent_mock=clear_mock) as (
+        http,
+        vs,
+        _,
+        clear_mock,
+    ):
         resp = http.post("/intents", json=body)
         assert resp.status_code == 201
         iid = resp.json()["id"]
@@ -293,7 +307,12 @@ def test_put_modify_sub_text_label_only_keeps_match_seen() -> None:
         "sub_texts": [{"language": "en", "text": "same sub text"}],
     }
 
-    with _client(embedder=embedder, vs=vs, clear_intent_mock=clear_mock) as (http, vs, _, clear_mock):
+    with _client(embedder=embedder, vs=vs, clear_intent_mock=clear_mock) as (
+        http,
+        vs,
+        _,
+        clear_mock,
+    ):
         resp = http.post("/intents", json=body)
         assert resp.status_code == 201
         iid = resp.json()["id"]
@@ -332,7 +351,12 @@ def test_put_delete_sub_text_keeps_match_seen() -> None:
         "sub_texts": [{"language": "en", "text": "sub to delete"}],
     }
 
-    with _client(embedder=embedder, vs=vs, clear_intent_mock=clear_mock) as (http, vs, _, clear_mock):
+    with _client(embedder=embedder, vs=vs, clear_intent_mock=clear_mock) as (
+        http,
+        vs,
+        _,
+        clear_mock,
+    ):
         resp = http.post("/intents", json=body)
         assert resp.status_code == 201
         iid = resp.json()["id"]
@@ -386,7 +410,9 @@ def test_put_clear_all_sub_texts_calls_delete_vectors() -> None:
     vs["delete_vectors"].assert_awaited_once()
     _, call_kwargs = vs["delete_vectors"].call_args.args, vs["delete_vectors"].call_args.kwargs
     # Verify "alt_0" was in the deleted vectors list (either via args or kwargs)
-    all_args = list(vs["delete_vectors"].call_args.args) + list(vs["delete_vectors"].call_args.kwargs.values())
+    all_args = list(vs["delete_vectors"].call_args.args) + list(
+        vs["delete_vectors"].call_args.kwargs.values()
+    )
     # collect flat arguments for inspection
     flat_args = str(vs["delete_vectors"].call_args)
     assert "alt_0" in flat_args, (
@@ -579,9 +605,7 @@ def test_translate_llm_failure_502() -> None:
     from sembr.summarizer.llm.base import LLMError  # noqa: PLC0415
 
     llm_mock = MagicMock()
-    llm_mock.summarize = AsyncMock(
-        side_effect=LLMError("upstream LLM timeout after 60s")
-    )
+    llm_mock.summarize = AsyncMock(side_effect=LLMError("upstream LLM timeout after 60s"))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -668,6 +692,7 @@ def test_summarizer_only_sees_main_text() -> None:
         )
         # Simulate _get_intent_prompt_ctx from main.py (line 114-118)
         from sembr.db.intents import get_intent  # noqa: PLC0415
+
         loaded = await get_intent(conn, intent.id)
         await conn.close()
         assert loaded is not None
@@ -675,7 +700,7 @@ def test_summarizer_only_sees_main_text() -> None:
         return (
             loaded.system_template,
             loaded.instruction_template,
-            loaded.text,          # ← this is what _get_intent_prompt_ctx returns
+            loaded.text,  # ← this is what _get_intent_prompt_ctx returns
             loaded.language,
         )
 
@@ -734,14 +759,17 @@ async def test_lifespan_migrates_existing_intents() -> None:
     mock_conn.execute = MagicMock(return_value=cursor)
 
     mock_qdrant_models = MagicMock()
-    with patch.dict(sys.modules, {"qdrant_client": MagicMock(),
-                                  "qdrant_client.models": mock_qdrant_models}):
+    with patch.dict(
+        sys.modules, {"qdrant_client": MagicMock(), "qdrant_client.models": mock_qdrant_models}
+    ):
         await ensure_intents_collection(mock_client, mock_embedder, conn=mock_conn)
 
     # _mv collection must be created
     mock_client.create_collection.assert_called_once()
     create_call_kwargs = str(mock_client.create_collection.call_args)
-    assert mv_name in create_call_kwargs, f"create_collection must use {mv_name!r}; got {create_call_kwargs}"
+    assert mv_name in create_call_kwargs, (
+        f"create_collection must use {mv_name!r}; got {create_call_kwargs}"
+    )
 
     # embedder.aembed called with the 3 intent texts
     mock_embedder.aembed.assert_awaited_once_with(["text1", "text2", "text3"])
@@ -795,7 +823,10 @@ async def test_lifespan_idempotent_second_run() -> None:
     # Layout probe: already named-vec with main slot
     col_info = MagicMock()
     col_info.config.params.vectors = {
-        "main": MagicMock(), "alt_0": MagicMock(), "alt_1": MagicMock(), "alt_2": MagicMock()
+        "main": MagicMock(),
+        "alt_0": MagicMock(),
+        "alt_1": MagicMock(),
+        "alt_2": MagicMock(),
     }
     mock_client.get_collection = AsyncMock(return_value=col_info)
 
@@ -822,8 +853,9 @@ async def test_lifespan_idempotent_second_run() -> None:
     mock_conn.execute = MagicMock(return_value=cursor)
 
     mock_qdrant_models = MagicMock()
-    with patch.dict(sys.modules, {"qdrant_client": MagicMock(),
-                                  "qdrant_client.models": mock_qdrant_models}):
+    with patch.dict(
+        sys.modules, {"qdrant_client": MagicMock(), "qdrant_client.models": mock_qdrant_models}
+    ):
         await ensure_intents_collection(mock_client, mock_embedder, conn=mock_conn)
 
     # No re-creation, no re-embed, no alias flip on second run
@@ -885,6 +917,7 @@ async def test_lifespan_assert_named_vec_layout() -> None:
 
     class FakeVectorsConfig:
         """Simulates the old unnamed-vector layout (VectorParams, not dict)."""
+
         pass
 
     class FakeCollectionInfo:

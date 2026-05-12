@@ -10,6 +10,7 @@ Cover:
   (g) /dashboard/login.html is always reachable
   (h) /api/dashboard/config is always reachable (frontend bootstrap)
 """
+
 from __future__ import annotations
 
 from fastapi import FastAPI

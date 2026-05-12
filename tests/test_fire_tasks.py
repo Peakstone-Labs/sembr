@@ -1,4 +1,5 @@
 """Unit tests for DD4: FireTask in-memory state store."""
+
 from __future__ import annotations
 
 import asyncio
@@ -180,4 +181,5 @@ def test_check_and_record_fire_sync_signature() -> None:
     """D-A9 hard constraint: must remain a sync function. Adding async/await
     re-opens the TOCTOU window the helper was created to close."""
     import asyncio  # noqa: PLC0415
+
     assert not asyncio.iscoroutinefunction(check_and_record_fire)

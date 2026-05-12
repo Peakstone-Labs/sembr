@@ -4,6 +4,7 @@ Cover NewsApiSource.fetch single-source path, NewsApiMaster.tick aggregation
 path, normalize_source_uri parity with FeedCreate.url validator, and the
 edge cases enumerated in design.md Test Strategy table.
 """
+
 from __future__ import annotations
 
 import json
@@ -74,7 +75,7 @@ def test_recommended_sources_are_already_normalized() -> None:
         (50, "title_only"),
         (100, "title_only"),
         (101, "stub"),
-        (300, "stub"),       # paywalled bloomberg/wsj range
+        (300, "stub"),  # paywalled bloomberg/wsj range
         (501, "summary"),
         (2000, "summary"),
         (2001, "full"),
@@ -143,17 +144,19 @@ def test_to_raw_article_uses_url_not_uri() -> None:
 def test_to_raw_article_classifies_lengths() -> None:
     cases = [
         ("x" * 3000, "full"),
-        ("x" * 300, "stub"),       # paywalled-style
+        ("x" * 300, "stub"),  # paywalled-style
         ("x" * 50, "title_only"),
     ]
     for body, expected in cases:
-        article = _to_raw_article({
-            "url": "https://example.com/a",
-            "title": "T",
-            "body": body,
-            "dateTime": "2026-05-08T00:00:00Z",
-            "source": {"uri": "example.com"},
-        })
+        article = _to_raw_article(
+            {
+                "url": "https://example.com/a",
+                "title": "T",
+                "body": body,
+                "dateTime": "2026-05-08T00:00:00Z",
+                "source": {"uri": "example.com"},
+            }
+        )
         assert article is not None
         assert article.content_quality == expected
 
@@ -208,6 +211,7 @@ async def test_news_api_source_fetch_single_source(monkeypatch) -> None:
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     # Force fresh Settings (don't leak module-level cache)
     from sembr.config import get_settings
+
     get_settings.cache_clear()
 
     payload = {
@@ -241,6 +245,7 @@ async def test_news_api_source_fetch_no_api_key_raises(monkeypatch) -> None:
     collect_feed's FetchError branch fires (no cursor advance)."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     src = NewsApiSource("reuters.com")
     with pytest.raises(FetchError, match="NEWSAPI_API_KEY"):
@@ -253,6 +258,7 @@ async def test_news_api_source_fetch_http_error_raises(monkeypatch) -> None:
     """🔴-1 fix: HTTP 4xx/5xx must raise FetchError (mirrors RSSSource)."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "k")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
         return_value=httpx.Response(401, json={"error": "bad key"})
@@ -269,6 +275,7 @@ async def test_news_api_source_fetch_json_parse_error_raises(monkeypatch) -> Non
     log_token_usage runs before the parse so the spend is still recorded)."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "k")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
         return_value=httpx.Response(200, content=b"not json", headers={"req-tokens": "1.000"})
@@ -341,6 +348,7 @@ def patched_get_conn():
 
     def _patch(conn):
         from sembr.db.sqlite import install_for_test
+
         install_for_test(conn)
         return conn
 
@@ -352,32 +360,38 @@ def patched_get_conn():
 async def test_master_tick_dispatch_to_feed_ids(monkeypatch, patched_get_conn) -> None:
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
 
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com"},
-        {"id": 2, "url": "bbc.com"},
-        {"id": 3, "url": "wsj.com"},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com"},
+            {"id": 2, "url": "bbc.com"},
+            {"id": 3, "url": "wsj.com"},
+        ]
+    )
     patched_get_conn(conn)
 
     payload = {
         "articles": {
             "results": [
                 {
-                    "url": "https://r.com/a", "title": "T1",
+                    "url": "https://r.com/a",
+                    "title": "T1",
                     "body": "x" * 3000,
                     "dateTime": "2026-05-08T10:00:00Z",
                     "source": {"uri": "reuters.com"},
                 },
                 {
-                    "url": "https://b.com/a", "title": "T2",
+                    "url": "https://b.com/a",
+                    "title": "T2",
                     "body": "x" * 600,
                     "dateTime": "2026-05-08T10:00:00Z",
                     "source": {"uri": "bbc.com"},
                 },
                 {
-                    "url": "https://wsj.com/a", "title": "T3",
+                    "url": "https://wsj.com/a",
+                    "title": "T3",
                     "body": "x" * 250,
                     "dateTime": "2026-05-08T10:00:00Z",
                     "source": {"uri": "wsj.com"},
@@ -414,18 +428,24 @@ async def test_master_tick_zero_articles_advances_cursor(monkeypatch, patched_ge
     AND a fetch_log row with ok=True."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
 
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com"},
-        {"id": 2, "url": "bbc.com"},
-        {"id": 3, "url": "techcrunch.com"},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com"},
+            {"id": 2, "url": "bbc.com"},
+            {"id": 3, "url": "techcrunch.com"},
+        ]
+    )
     patched_get_conn(conn)
 
     respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
-        return_value=httpx.Response(200, json={"articles": {"results": [], "totalResults": 0}},
-                                    headers={"req-tokens": "1.000"})
+        return_value=httpx.Response(
+            200,
+            json={"articles": {"results": [], "totalResults": 0}},
+            headers={"req-tokens": "1.000"},
+        )
     )
 
     await NewsApiMaster().tick()
@@ -436,9 +456,7 @@ async def test_master_tick_zero_articles_advances_cursor(monkeypatch, patched_ge
         rows = await cur.fetchall()
     assert all(r[1] is not None for r in rows), rows
 
-    async with conn.execute(
-        "SELECT feed_id, ok FROM feed_fetch_log ORDER BY feed_id"
-    ) as cur:
+    async with conn.execute("SELECT feed_id, ok FROM feed_fetch_log ORDER BY feed_id") as cur:
         log_rows = await cur.fetchall()
     assert {r[0] for r in log_rows} == {1, 2, 3}
     assert all(r[1] == 1 for r in log_rows)
@@ -450,22 +468,30 @@ async def test_master_tick_zero_articles_advances_cursor(monkeypatch, patched_ge
 async def test_master_tick_token_header_logged(monkeypatch, patched_get_conn, caplog) -> None:
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     conn = await _setup_inmem_db_with_feeds([{"id": 1, "url": "reuters.com"}])
     patched_get_conn(conn)
     respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
-        return_value=httpx.Response(200, json={"articles": {"results": [], "totalResults": 0}},
-                                    headers={"req-tokens": "1.000"})
+        return_value=httpx.Response(
+            200,
+            json={"articles": {"results": [], "totalResults": 0}},
+            headers={"req-tokens": "1.000"},
+        )
     )
     with caplog.at_level(logging.INFO, logger="sembr.collector.newsapi"):
         await NewsApiMaster().tick()
-    assert any("req-tokens=1.0" in r.getMessage() for r in caplog.records), [r.getMessage() for r in caplog.records]
+    assert any("req-tokens=1.0" in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records
+    ]
     await conn.close()
 
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_master_tick_total_results_overflow_warns(monkeypatch, patched_get_conn, caplog) -> None:
+async def test_master_tick_total_results_overflow_warns(
+    monkeypatch, patched_get_conn, caplog
+) -> None:
     """D33 v1.1: file name preserved (git-diff-friendly) but body rewritten.
 
     v1.0 asserted only-warn 'exceeds articlesCount=100'; v1.1 replaces the
@@ -476,38 +502,59 @@ async def test_master_tick_total_results_overflow_warns(monkeypatch, patched_get
     """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     now = datetime.now(timezone.utc)
     cut = (now - timedelta(hours=2)).isoformat()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+        ]
+    )
     patched_get_conn(conn)
-    page1 = {"articles": {"results": [
-        {
-            "url": "https://r.com/p1", "title": "Page1",
-            "body": "x" * 600,
-            "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "source": {"uri": "reuters.com"},
-        },
-    ], "totalResults": 150}}
+    page1 = {
+        "articles": {
+            "results": [
+                {
+                    "url": "https://r.com/p1",
+                    "title": "Page1",
+                    "body": "x" * 600,
+                    "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "source": {"uri": "reuters.com"},
+                },
+            ],
+            "totalResults": 150,
+        }
+    }
     # page 2 oldest is older than universal_since cut → watermark stop
-    page2 = {"articles": {"results": [
-        {
-            "url": "https://r.com/p2-old", "title": "Page2Old",
-            "body": "x" * 600,
-            "dateTime": (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "source": {"uri": "reuters.com"},
-        },
-    ], "totalResults": 150}}
-    page3 = {"articles": {"results": [
-        {
-            "url": "https://r.com/p3", "title": "ShouldNotFetch",
-            "body": "x" * 600,
-            "dateTime": (now - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "source": {"uri": "reuters.com"},
-        },
-    ], "totalResults": 150}}
+    page2 = {
+        "articles": {
+            "results": [
+                {
+                    "url": "https://r.com/p2-old",
+                    "title": "Page2Old",
+                    "body": "x" * 600,
+                    "dateTime": (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "source": {"uri": "reuters.com"},
+                },
+            ],
+            "totalResults": 150,
+        }
+    }
+    page3 = {
+        "articles": {
+            "results": [
+                {
+                    "url": "https://r.com/p3",
+                    "title": "ShouldNotFetch",
+                    "body": "x" * 600,
+                    "dateTime": (now - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "source": {"uri": "reuters.com"},
+                },
+            ],
+            "totalResults": 150,
+        }
+    }
     route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
         side_effect=[
             httpx.Response(200, json=page1, headers={"req-tokens": "1.000"}),
@@ -532,9 +579,12 @@ async def test_master_tick_total_results_overflow_warns(monkeypatch, patched_get
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_master_tick_dispatch_unknown_source_dropped(monkeypatch, patched_get_conn, caplog) -> None:
+async def test_master_tick_dispatch_unknown_source_dropped(
+    monkeypatch, patched_get_conn, caplog
+) -> None:
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     conn = await _setup_inmem_db_with_feeds([{"id": 1, "url": "reuters.com"}])
     patched_get_conn(conn)
@@ -542,7 +592,8 @@ async def test_master_tick_dispatch_unknown_source_dropped(monkeypatch, patched_
         "articles": {
             "results": [
                 {
-                    "url": "https://vox.com/a", "title": "Mystery",
+                    "url": "https://vox.com/a",
+                    "title": "Mystery",
                     "body": "x" * 200,
                     "dateTime": "2026-05-08T10:00:00Z",
                     "source": {"uri": "vox.com"},
@@ -575,39 +626,49 @@ async def test_master_tick_since_client_side_cut(monkeypatch, patched_get_conn) 
     """D22: published_at <= feed.last_collected_at → drop the article."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     now = datetime.now(timezone.utc)
     cut = (now - timedelta(minutes=30)).isoformat()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+        ]
+    )
     patched_get_conn(conn)
     respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
-        return_value=httpx.Response(200, json={
-            "articles": {
-                "results": [
-                    {
-                        "url": "https://r.com/now", "title": "Fresh",
-                        "body": "x" * 600,
-                        "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "source": {"uri": "reuters.com"},
-                    },
-                    {
-                        "url": "https://r.com/old1", "title": "Older1",
-                        "body": "x" * 600,
-                        "dateTime": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "source": {"uri": "reuters.com"},
-                    },
-                    {
-                        "url": "https://r.com/old2", "title": "Older2",
-                        "body": "x" * 600,
-                        "dateTime": (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "source": {"uri": "reuters.com"},
-                    },
-                ],
-                "totalResults": 3,
-            }
-        }, headers={"req-tokens": "1.000"})
+        return_value=httpx.Response(
+            200,
+            json={
+                "articles": {
+                    "results": [
+                        {
+                            "url": "https://r.com/now",
+                            "title": "Fresh",
+                            "body": "x" * 600,
+                            "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "source": {"uri": "reuters.com"},
+                        },
+                        {
+                            "url": "https://r.com/old1",
+                            "title": "Older1",
+                            "body": "x" * 600,
+                            "dateTime": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "source": {"uri": "reuters.com"},
+                        },
+                        {
+                            "url": "https://r.com/old2",
+                            "title": "Older2",
+                            "body": "x" * 600,
+                            "dateTime": (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "source": {"uri": "reuters.com"},
+                        },
+                    ],
+                    "totalResults": 3,
+                }
+            },
+            headers={"req-tokens": "1.000"},
+        )
     )
     await NewsApiMaster().tick()
     async with conn.execute("SELECT title FROM pending_articles") as cur:
@@ -618,9 +679,12 @@ async def test_master_tick_since_client_side_cut(monkeypatch, patched_get_conn) 
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_master_tick_http_error_does_not_advance_cursor(monkeypatch, patched_get_conn) -> None:
+async def test_master_tick_http_error_does_not_advance_cursor(
+    monkeypatch, patched_get_conn
+) -> None:
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     conn = await _setup_inmem_db_with_feeds([{"id": 1, "url": "reuters.com"}])
     patched_get_conn(conn)
@@ -628,9 +692,7 @@ async def test_master_tick_http_error_does_not_advance_cursor(monkeypatch, patch
         return_value=httpx.Response(500, text="upstream broke")
     )
     await NewsApiMaster().tick()
-    async with conn.execute(
-        "SELECT last_collected_at FROM feeds WHERE id=1"
-    ) as cur:
+    async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
         row = await cur.fetchone()
     assert row[0] is None  # D20: no cursor advance on failure
     # Loop 6 🟡-1 v1.1: HTTP failure now also emits an ok=False fetch_log
@@ -653,6 +715,7 @@ async def test_master_tick_http_error_does_not_advance_cursor(monkeypatch, patch
 async def test_master_tick_no_enabled_feeds_skips_silently(monkeypatch, patched_get_conn) -> None:
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     conn = await _setup_inmem_db_with_feeds([])
     patched_get_conn(conn)
@@ -690,7 +753,11 @@ def test_should_stop_paginating_orientation_robust() -> None:
     now = datetime.now(timezone.utc)
     cut = now - timedelta(hours=2)
     # 3 articles: now, now-1h, now-3h. Oldest (now-3h) <= cut → stop.
-    arts = [_mk_article(now), _mk_article(now - timedelta(hours=1)), _mk_article(now - timedelta(hours=3))]
+    arts = [
+        _mk_article(now),
+        _mk_article(now - timedelta(hours=1)),
+        _mk_article(now - timedelta(hours=3)),
+    ]
     assert _should_stop_paginating(arts, cut) is True
     assert _should_stop_paginating(list(reversed(arts)), cut) is True
 
@@ -761,40 +828,72 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
     ≥ since portion of pages 1+2."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     now = datetime.now(timezone.utc)
     cut = (now - timedelta(hours=4)).isoformat()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+        ]
+    )
     patched_get_conn(conn)
 
     # page 1: newest (now) + (now-1h) — both > cut
-    page1 = _page_envelope([
-        {"url": "https://r.com/p1a", "title": "P1A", "body": "x" * 300,
-         "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "source": {"uri": "reuters.com"}},
-        {"url": "https://r.com/p1b", "title": "P1B", "body": "x" * 300,
-         "dateTime": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "source": {"uri": "reuters.com"}},
-    ], total=250)
+    page1 = _page_envelope(
+        [
+            {
+                "url": "https://r.com/p1a",
+                "title": "P1A",
+                "body": "x" * 300,
+                "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "source": {"uri": "reuters.com"},
+            },
+            {
+                "url": "https://r.com/p1b",
+                "title": "P1B",
+                "body": "x" * 300,
+                "dateTime": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "source": {"uri": "reuters.com"},
+            },
+        ],
+        total=250,
+    )
     # page 2: (now-3h, now-5h) — oldest ≤ cut(now-4h) → watermark stop
     # The article at now-5h is still loaded into all_results, but the
     # per-article since-cut (D22) drops it during dispatch.
-    page2 = _page_envelope([
-        {"url": "https://r.com/p2a", "title": "P2A", "body": "x" * 300,
-         "dateTime": (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "source": {"uri": "reuters.com"}},
-        {"url": "https://r.com/p2b-old", "title": "P2BOld", "body": "x" * 300,
-         "dateTime": (now - timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "source": {"uri": "reuters.com"}},
-    ], total=250)
+    page2 = _page_envelope(
+        [
+            {
+                "url": "https://r.com/p2a",
+                "title": "P2A",
+                "body": "x" * 300,
+                "dateTime": (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "source": {"uri": "reuters.com"},
+            },
+            {
+                "url": "https://r.com/p2b-old",
+                "title": "P2BOld",
+                "body": "x" * 300,
+                "dateTime": (now - timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "source": {"uri": "reuters.com"},
+            },
+        ],
+        total=250,
+    )
     # page 3: must NEVER be hit; if respx side_effect runs out it raises.
-    page3 = _page_envelope([
-        {"url": "https://r.com/p3", "title": "P3SHOULDNOTFETCH", "body": "x" * 300,
-         "dateTime": (now - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "source": {"uri": "reuters.com"}},
-    ], total=250)
+    page3 = _page_envelope(
+        [
+            {
+                "url": "https://r.com/p3",
+                "title": "P3SHOULDNOTFETCH",
+                "body": "x" * 300,
+                "dateTime": (now - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "source": {"uri": "reuters.com"},
+            },
+        ],
+        total=250,
+    )
     route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
         side_effect=[
             httpx.Response(200, json=page1, headers={"req-tokens": "1.000"}),
@@ -808,9 +907,7 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
     # Exactly 2 HTTP calls (watermark stop on page 2).
     assert route.call_count == 2
 
-    async with conn.execute(
-        "SELECT title FROM pending_articles ORDER BY title"
-    ) as cur:
+    async with conn.execute("SELECT title FROM pending_articles ORDER BY title") as cur:
         rows = await cur.fetchall()
     titles = {r[0] for r in rows}
     # P1A, P1B, P2A landed (all > cut). P2BOld dropped by D22 since-cut.
@@ -821,9 +918,7 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
     assert "P2BOld" not in titles
     assert "P3SHOULDNOTFETCH" not in titles
 
-    async with conn.execute(
-        "SELECT feed_id, ok, items_seen FROM feed_fetch_log"
-    ) as cur:
+    async with conn.execute("SELECT feed_id, ok, items_seen FROM feed_fetch_log") as cur:
         log_rows = await cur.fetchall()
     assert len(log_rows) == 1
     assert log_rows[0][0] == 1
@@ -831,9 +926,7 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
     # items_seen counts pages 1+2 = 4 (cross-page accumulation, D29).
     assert log_rows[0][2] == 4
 
-    async with conn.execute(
-        "SELECT last_collected_at FROM feeds WHERE id=1"
-    ) as cur:
+    async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
         row = await cur.fetchone()
     assert row[0] is not None  # cursor advanced (watermark stop = success)
     await conn.close()
@@ -848,24 +941,34 @@ async def test_master_tick_pagination_cap_dropped(monkeypatch, patched_get_conn,
     """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     now = datetime.now(timezone.utc)
     cut = (now - timedelta(days=30)).isoformat()  # very far back
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+        ]
+    )
     patched_get_conn(conn)
 
     # Each of the 10 pages returns articles all dated within last hour
     # (well above cut). Watermark stop never fires; cap fires after page 10.
     def _fresh_page(idx: int) -> dict:
-        return _page_envelope([
-            {"url": f"https://r.com/p{idx}-{i}", "title": f"P{idx}-{i}",
-             "body": "x" * 200,
-             "dateTime": (now - timedelta(minutes=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-             "source": {"uri": "reuters.com"}}
-            for i in range(2)
-        ], total=2000)
+        return _page_envelope(
+            [
+                {
+                    "url": f"https://r.com/p{idx}-{i}",
+                    "title": f"P{idx}-{i}",
+                    "body": "x" * 200,
+                    "dateTime": (now - timedelta(minutes=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "source": {"uri": "reuters.com"},
+                }
+                for i in range(2)
+            ],
+            total=2000,
+        )
+
     side_effects = [
         httpx.Response(200, json=_fresh_page(p), headers={"req-tokens": "1.000"})
         for p in range(1, 11)
@@ -914,19 +1017,29 @@ async def test_master_tick_pagination_mid_failure_atomic(monkeypatch, patched_ge
     pending_articles=0, last_collected_at unchanged, no fetch_event."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     now = datetime.now(timezone.utc)
     cut = (now - timedelta(days=30)).isoformat()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+        ]
+    )
     patched_get_conn(conn)
 
-    page1 = _page_envelope([
-        {"url": "https://r.com/p1", "title": "P1WOULDLAND", "body": "x" * 300,
-         "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "source": {"uri": "reuters.com"}},
-    ], total=300)
+    page1 = _page_envelope(
+        [
+            {
+                "url": "https://r.com/p1",
+                "title": "P1WOULDLAND",
+                "body": "x" * 300,
+                "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "source": {"uri": "reuters.com"},
+            },
+        ],
+        total=300,
+    )
     respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
         side_effect=[
             httpx.Response(200, json=page1, headers={"req-tokens": "1.000"}),
@@ -967,24 +1080,38 @@ async def test_master_tick_steady_state_one_token(monkeypatch, patched_get_conn,
     multiple pages."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     now = datetime.now(timezone.utc)
     cut = (now - timedelta(hours=1)).isoformat()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com", "last_collected_at": cut},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+        ]
+    )
     patched_get_conn(conn)
 
     # Page 1 contains an article at now-2h (older than cut) so watermark
     # stop fires on page 1.
-    page1 = _page_envelope([
-        {"url": "https://r.com/a", "title": "A", "body": "x" * 300,
-         "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "source": {"uri": "reuters.com"}},
-        {"url": "https://r.com/b-old", "title": "BOld", "body": "x" * 300,
-         "dateTime": (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "source": {"uri": "reuters.com"}},
-    ], total=80)
+    page1 = _page_envelope(
+        [
+            {
+                "url": "https://r.com/a",
+                "title": "A",
+                "body": "x" * 300,
+                "dateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "source": {"uri": "reuters.com"},
+            },
+            {
+                "url": "https://r.com/b-old",
+                "title": "BOld",
+                "body": "x" * 300,
+                "dateTime": (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "source": {"uri": "reuters.com"},
+            },
+        ],
+        total=80,
+    )
     route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
         side_effect=[
             httpx.Response(200, json=page1, headers={"req-tokens": "1.000"}),
@@ -1009,11 +1136,14 @@ async def test_master_tick_json_parse_failure_emits_log(monkeypatch, patched_get
     (atomicity preserved — no cursor advance, no pending inserts)."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com"},
-        {"id": 2, "url": "bbc.com"},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com"},
+            {"id": 2, "url": "bbc.com"},
+        ]
+    )
     patched_get_conn(conn)
     respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
         return_value=httpx.Response(200, content=b"not json", headers={"req-tokens": "1.000"})
@@ -1025,7 +1155,8 @@ async def test_master_tick_json_parse_failure_emits_log(monkeypatch, patched_get
     ) as cur:
         rows = await cur.fetchall()
     assert {(r[0], r[1], r[2]) for r in rows} == {
-        (1, 0, "json_error"), (2, 0, "json_error"),
+        (1, 0, "json_error"),
+        (2, 0, "json_error"),
     }
     async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
         assert (await cur.fetchone())[0] == 0
@@ -1039,6 +1170,7 @@ async def test_master_tick_bad_articles_block_emits_log(monkeypatch, patched_get
     ok=False fetch_log per feed; cursor unchanged."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
+
     get_settings.cache_clear()
     conn = await _setup_inmem_db_with_feeds([{"id": 1, "url": "reuters.com"}])
     patched_get_conn(conn)
@@ -1051,9 +1183,7 @@ async def test_master_tick_bad_articles_block_emits_log(monkeypatch, patched_get
     )
     await NewsApiMaster().tick()
 
-    async with conn.execute(
-        "SELECT feed_id, ok, error_class FROM feed_fetch_log"
-    ) as cur:
+    async with conn.execute("SELECT feed_id, ok, error_class FROM feed_fetch_log") as cur:
         rows = await cur.fetchall()
     assert len(rows) == 1
     assert rows[0] == (1, 0, "bad_response")

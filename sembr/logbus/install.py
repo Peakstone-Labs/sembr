@@ -1,4 +1,5 @@
 """Install the RingBufferHandler on the root logger at lifespan start."""
+
 from __future__ import annotations
 
 import asyncio

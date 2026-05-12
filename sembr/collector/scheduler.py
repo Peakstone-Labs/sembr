@@ -3,6 +3,7 @@
 Uses APScheduler 3.11.2 (NOT 4.0 — API is incompatible).
 Each feed gets its own IntervalTrigger job so poll_interval_minutes is exact.
 """
+
 from __future__ import annotations
 
 import logging
@@ -42,6 +43,7 @@ def get_host_limiter() -> HostLimiter | None:
     per-host concurrency budget."""
     return _LIMITER_REF.get("limiter")
 
+
 logger = logging.getLogger(__name__)
 
 SOURCE_REGISTRY: dict[str, type[BaseSource]] = {
@@ -72,9 +74,7 @@ async def _emit_fetch_event(
 ) -> None:
     """Best-effort wrapper: observability faults must never poison collect_feed."""
     try:
-        elapsed_ms = int(
-            (datetime.now(timezone.utc) - started_at).total_seconds() * 1000
-        )
+        elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
         await log_fetch_event(
             feed_id=feed_id,
             started_at=started_at,
@@ -89,7 +89,9 @@ async def _emit_fetch_event(
         logger.warning("log_fetch_event failed for feed_id=%d: %s", feed_id, exc)
 
 
-async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type: str, config: dict) -> tuple[int, int, list[dict]]:
+async def collect_feed(
+    feed_id: int, feed_name: str, feed_url: str, source_type: str, config: dict
+) -> tuple[int, int, list[dict]]:
     """Run one collection pass. Returns (items_seen, items_new, articles).
 
     `articles` is one dict per fetched article with title/url/published_at/status
@@ -111,7 +113,9 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
 
     since: datetime | None = None
     if source_type != "newsapi":
-        async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=?", (feed_id,)) as cur:
+        async with conn.execute(
+            "SELECT last_collected_at FROM feeds WHERE id=?", (feed_id,)
+        ) as cur:
             row = await cur.fetchone()
         if row and row[0]:
             try:
@@ -127,9 +131,7 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
     # skip the gate so tests don't need to wire app.state.
     limiter: HostLimiter | None = _LIMITER_REF.get("limiter")
     fetch_ctx = (
-        limiter.acquire(limiter.group_key_for(feed_url))
-        if limiter is not None
-        else nullcontext()
+        limiter.acquire(limiter.group_key_for(feed_url)) if limiter is not None else nullcontext()
     )
     # Two timestamps so feed_fetch_log.elapsed_ms reflects ACTUAL fetch time, not
     # queue-wait time; SC#5 / SC#6 dashboard evidence depends on this distinction.
@@ -148,17 +150,31 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
         # same since window so articles published during the outage aren't lost.
         logger.error("fetch failed for feed %r (id=%d): %s", feed_name, feed_id, exc)
         await _emit_fetch_event(
-            feed_id=feed_id, started_at=started_at, ok=False,
-            items_seen=0, items_new=0,
-            error_class="FetchError", error_message=str(exc),
+            feed_id=feed_id,
+            started_at=started_at,
+            ok=False,
+            items_seen=0,
+            items_new=0,
+            error_class="FetchError",
+            error_message=str(exc),
         )
         return 0, 0, []
     except Exception as exc:
-        logger.error("unexpected error in collect_feed for %r (id=%d): %s", feed_name, feed_id, exc, exc_info=True)
+        logger.error(
+            "unexpected error in collect_feed for %r (id=%d): %s",
+            feed_name,
+            feed_id,
+            exc,
+            exc_info=True,
+        )
         await _emit_fetch_event(
-            feed_id=feed_id, started_at=started_at, ok=False,
-            items_seen=0, items_new=0,
-            error_class=exc.__class__.__name__, error_message=str(exc),
+            feed_id=feed_id,
+            started_at=started_at,
+            ok=False,
+            items_seen=0,
+            items_new=0,
+            error_class=exc.__class__.__name__,
+            error_message=str(exc),
         )
         return 0, 0, []
 
@@ -181,21 +197,33 @@ async def collect_feed(feed_id: int, feed_name: str, feed_url: str, source_type:
                 exc,
                 exc_info=True,
             )
-        article_results.append({
-            "title": article.title,
-            "url": article.url,
-            "published_at": article.published_at.isoformat() if article.published_at else None,
-            "status": "NEW" if is_new else "DUP",
-        })
+        article_results.append(
+            {
+                "title": article.title,
+                "url": article.url,
+                "published_at": article.published_at.isoformat() if article.published_at else None,
+                "status": "NEW" if is_new else "DUP",
+            }
+        )
 
     if source_type != "newsapi":
         await update_last_collected(conn, feed_id)
 
-    logger.info("fetched %d new items from %r (feed_id=%d, total_seen=%d)", new_count, feed_name, feed_id, len(articles))
+    logger.info(
+        "fetched %d new items from %r (feed_id=%d, total_seen=%d)",
+        new_count,
+        feed_name,
+        feed_id,
+        len(articles),
+    )
     await _emit_fetch_event(
-        feed_id=feed_id, started_at=started_at, ok=True,
-        items_seen=len(articles), items_new=new_count,
-        error_class=None, error_message=None,
+        feed_id=feed_id,
+        started_at=started_at,
+        ok=True,
+        items_seen=len(articles),
+        items_new=new_count,
+        error_class=None,
+        error_message=None,
     )
     return len(articles), new_count, article_results
 

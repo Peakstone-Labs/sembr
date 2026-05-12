@@ -6,6 +6,7 @@ Cover:
   - both feed_fetch_log and embed_call_log respect age cap
   - prune does not raise even if SQLite errors (best-effort)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -115,8 +116,7 @@ def test_prune_enforces_per_feed_max(tmp_path):
         await _prune_logs(_settings(retention_days=7, max_per_feed=1000))
 
         async with conn.execute(
-            "SELECT feed_id, COUNT(*) FROM feed_fetch_log GROUP BY feed_id "
-            "ORDER BY feed_id"
+            "SELECT feed_id, COUNT(*) FROM feed_fetch_log GROUP BY feed_id ORDER BY feed_id"
         ) as cur:
             rows = await cur.fetchall()
         await close_sqlite()
@@ -125,7 +125,7 @@ def test_prune_enforces_per_feed_max(tmp_path):
     rows = asyncio.run(run())
     counts = dict(rows)
     assert counts[1] == 1000  # capped
-    assert counts[2] == 50    # untouched (under cap)
+    assert counts[2] == 50  # untouched (under cap)
 
 
 def test_prune_swallows_db_errors(tmp_path):

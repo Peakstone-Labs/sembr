@@ -8,6 +8,7 @@ Layout: named-vector dict {main, alt_0, alt_1, alt_2} per point (D2). The "_mv"
 suffix on the collection name marks the layout version orthogonally to
 embedder.model_version (D13).
 """
+
 from __future__ import annotations
 
 import logging

@@ -9,6 +9,7 @@ Three concerns:
 3. ``ingested_from`` / ``ingested_to`` map YYYY-MM-DD to a half-open
    ``[from, to+1d)`` ts range — bad date strings yield 422.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -59,9 +60,7 @@ def app(tmp_path, captured_scroll: dict) -> FastAPI:
     return app
 
 
-def test_articles_qdrant_no_filter_passes_no_filter(
-    app: FastAPI, captured_scroll: dict
-):
+def test_articles_qdrant_no_filter_passes_no_filter(app: FastAPI, captured_scroll: dict):
     with TestClient(app) as client:
         r = client.get("/api/dashboard/articles?bucket=qdrant&limit=5")
     assert r.status_code == 200, r.text
@@ -70,9 +69,7 @@ def test_articles_qdrant_no_filter_passes_no_filter(
     assert "scroll_filter" not in captured_scroll["call_args"]
 
 
-def test_articles_qdrant_full_filter_set_passed_through(
-    app: FastAPI, captured_scroll: dict
-):
+def test_articles_qdrant_full_filter_set_passed_through(app: FastAPI, captured_scroll: dict):
     """All four filter fields combine into a single must list."""
     with TestClient(app) as client:
         r = client.get(
@@ -93,7 +90,7 @@ def test_articles_qdrant_full_filter_set_passed_through(
     # gte = 2026-01-01 00:00 UTC, lt = 2026-02-01 00:00 UTC (end-of-day +1d)
     range_cond = next(c for c in qfilter.must if c.key == "ingested_at_ts")
     expected_gte = 1767225600  # 2026-01-01 00:00 UTC
-    expected_lt = 1769904000   # 2026-02-01 00:00 UTC
+    expected_lt = 1769904000  # 2026-02-01 00:00 UTC
     assert range_cond.range.gte == expected_gte
     assert range_cond.range.lt == expected_lt
 
@@ -122,18 +119,14 @@ def test_articles_dead_with_title_q_returns_422(app: FastAPI):
 
 def test_articles_qdrant_invalid_date_returns_422(app: FastAPI):
     with TestClient(app) as client:
-        r = client.get(
-            "/api/dashboard/articles?bucket=qdrant&ingested_from=not-a-date"
-        )
+        r = client.get("/api/dashboard/articles?bucket=qdrant&ingested_from=not-a-date")
     assert r.status_code == 422
     assert "invalid date" in r.json()["detail"]
 
 
 def test_articles_qdrant_invalid_feed_id_returns_422(app: FastAPI):
     with TestClient(app) as client:
-        r = client.get(
-            "/api/dashboard/articles?bucket=qdrant&feed_id=not-an-int"
-        )
+        r = client.get("/api/dashboard/articles?bucket=qdrant&feed_id=not-an-int")
     assert r.status_code == 422
 
 
@@ -152,8 +145,13 @@ def test_articles_qdrant_paginates_via_start_from_and_must_not_has_id(tmp_path):
     page1 = [
         SimpleNamespace(
             id=f"p{i}",
-            payload={"ingested_at_ts": 1000 - i, "title": f"t{i}", "url": "u",
-                     "feed_id": 1, "published_at": None},
+            payload={
+                "ingested_at_ts": 1000 - i,
+                "title": f"t{i}",
+                "url": "u",
+                "feed_id": 1,
+                "published_at": None,
+            },
         )
         for i in range(60)
     ]
@@ -162,8 +160,13 @@ def test_articles_qdrant_paginates_via_start_from_and_must_not_has_id(tmp_path):
     page2 = [
         SimpleNamespace(
             id=f"q{i}",
-            payload={"ingested_at_ts": 940 - i, "title": f"q{i}", "url": "u",
-                     "feed_id": 1, "published_at": None},
+            payload={
+                "ingested_at_ts": 940 - i,
+                "title": f"q{i}",
+                "url": "u",
+                "feed_id": 1,
+                "published_at": None,
+            },
         )
         for i in range(5)
     ]

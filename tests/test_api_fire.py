@@ -1,4 +1,5 @@
 """Tests for POST /intents/{id}/fire and GET /intents/{id}/fire/{task_id} (DD8)."""
+
 from __future__ import annotations
 
 import asyncio

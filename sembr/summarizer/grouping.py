@@ -7,6 +7,7 @@ Cost: O(n²) ratio() calls per intent per tick. Worst case bounded by
 matcher's _SEARCH_LIMIT=100 ⇒ ≤4950 comparisons (<10ms in practice).
 Design.md target was n≤20; n=100 is the safety ceiling.
 """
+
 from __future__ import annotations
 
 import re

@@ -1,4 +1,5 @@
 """Tests: template errors route to on_template_error; LLM is never called."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -58,7 +59,7 @@ async def test_missing_instruction_template_calls_on_template_error(prompts_dir:
 
     on_template_error.assert_awaited_once()
     args = on_template_error.call_args.args
-    assert args[0] == 1         # intent_id
+    assert args[0] == 1  # intent_id
     assert args[1] == "instruction"
     assert args[2] == "ghost"
     llm.summarize.assert_not_called()

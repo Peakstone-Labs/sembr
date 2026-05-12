@@ -2,6 +2,7 @@
 
 Uses respx to mock httpx and aiosqlite in-memory for DB tests.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -29,7 +30,8 @@ from sembr.models import FeedCreate
 # Feed XML fixtures
 # ---------------------------------------------------------------------------
 
-_STUB_FEED = dedent("""
+_STUB_FEED = (
+    dedent("""
     <?xml version="1.0" encoding="UTF-8"?>
     <rss version="2.0">
       <channel>
@@ -41,9 +43,13 @@ _STUB_FEED = dedent("""
         </item>
       </channel>
     </rss>
-""").strip().encode()
+""")
+    .strip()
+    .encode()
+)
 
-_MIXED_FEED = dedent("""
+_MIXED_FEED = (
+    dedent("""
     <?xml version="1.0" encoding="UTF-8"?>
     <rss version="2.0">
       <channel>
@@ -62,7 +68,10 @@ _MIXED_FEED = dedent("""
         </item>
       </channel>
     </rss>
-""").strip().encode()
+""")
+    .strip()
+    .encode()
+)
 
 _HTML_PAGE = b"<html><body>Not RSS</body></html>"
 
@@ -71,21 +80,27 @@ _HTML_PAGE = b"<html><body>Not RSS</body></html>"
 # Tests: _strip_html
 # ---------------------------------------------------------------------------
 
+
 def test_strip_html_removes_tags():
     assert _strip_html("<p>Hello <strong>world</strong></p>") == "Hello world"
+
 
 def test_strip_html_removes_img_tags():
     html = '<p>Text<img src="https://example.com/img.jpg" style="height:auto"/></p>'
     assert _strip_html(html) == "Text"
 
+
 def test_strip_html_collapses_whitespace():
     assert _strip_html("<p>foo</p>\n\n<p>bar</p>") == "foo bar"
+
 
 def test_strip_html_plain_text_unchanged():
     assert _strip_html("No tags here") == "No tags here"
 
+
 def test_strip_html_empty_string():
     assert _strip_html("") == ""
+
 
 def test_strip_html_entities_decoded():
     assert _strip_html("AT&amp;T &lt;rocks&gt;") == "AT&T <rocks>"
@@ -95,11 +110,13 @@ def test_strip_html_entities_decoded():
 # Test: HTML in feed body is stripped on fetch
 # ---------------------------------------------------------------------------
 
+
 @respx.mock
 @pytest.mark.asyncio
 async def test_rss_fetch_strips_html_from_description():
     """HTML tags in <description> must be stripped before storing body."""
-    feed_xml = dedent("""
+    feed_xml = (
+        dedent("""
         <?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0">
           <channel>
@@ -112,7 +129,10 @@ async def test_rss_fetch_strips_html_from_description():
             </item>
           </channel>
         </rss>
-    """).strip().encode()
+    """)
+        .strip()
+        .encode()
+    )
 
     respx.get("https://example-html.com/rss").mock(
         return_value=httpx.Response(200, content=feed_xml)
@@ -126,11 +146,14 @@ async def test_rss_fetch_strips_html_from_description():
 # Test: RSSSource.fetch — FULL content
 # ---------------------------------------------------------------------------
 
+
 @respx.mock
 @pytest.mark.asyncio
 async def test_rss_source_fetch_full():
     """Guardian-style source with full body → content_quality='full'."""
-    feed_xml = dedent("""
+    feed_xml = (
+        dedent(
+            """
         <?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
           <channel>
@@ -139,12 +162,18 @@ async def test_rss_source_fetch_full():
               <title>Deep investigation piece</title>
               <link>https://guardian.com/story-1</link>
               <pubDate>Mon, 27 Apr 2026 10:00:00 +0000</pubDate>
-              <content:encoded>""" + ("Long article body. " * 40) + """</content:encoded>
+              <content:encoded>"""
+            + ("Long article body. " * 40)
+            + """</content:encoded>
               <description>Short intro.</description>
             </item>
           </channel>
         </rss>
-    """).strip().encode()
+    """
+        )
+        .strip()
+        .encode()
+    )
 
     respx.get("https://example-full.com/rss").mock(
         return_value=httpx.Response(200, content=feed_xml)
@@ -159,6 +188,7 @@ async def test_rss_source_fetch_full():
 # ---------------------------------------------------------------------------
 # Test: RSSSource.fetch — title_only (stub)
 # ---------------------------------------------------------------------------
+
 
 @respx.mock
 @pytest.mark.asyncio
@@ -178,6 +208,7 @@ async def test_rss_source_fetch_stub():
 # Test: RSSSource.fetch — since filter
 # ---------------------------------------------------------------------------
 
+
 @respx.mock
 @pytest.mark.asyncio
 async def test_rss_source_fetch_since_filter():
@@ -196,6 +227,7 @@ async def test_rss_source_fetch_since_filter():
 # Test: RSSSource.fetch — bozo raises FetchError (🟡-8 regression)
 # ---------------------------------------------------------------------------
 
+
 @respx.mock
 @pytest.mark.asyncio
 async def test_rss_source_bozo_raises():
@@ -212,13 +244,12 @@ async def test_rss_source_bozo_raises():
 # Test: RSSSource.fetch — HTTP error raises FetchError (🟡-8 regression)
 # ---------------------------------------------------------------------------
 
+
 @respx.mock
 @pytest.mark.asyncio
 async def test_rss_source_http_error_raises():
     """HTTP 4xx/5xx → FetchError raised so caller knows fetch failed."""
-    respx.get("https://example-err.com/rss").mock(
-        return_value=httpx.Response(503)
-    )
+    respx.get("https://example-err.com/rss").mock(return_value=httpx.Response(503))
     src = RSSSource("https://example-err.com/rss")
     with pytest.raises(FetchError):
         await src.fetch()
@@ -227,6 +258,7 @@ async def test_rss_source_http_error_raises():
 # ---------------------------------------------------------------------------
 # Test: seed_initial_feeds — idempotent
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_seed_idempotent():
@@ -257,12 +289,11 @@ async def test_seed_idempotent():
 async def test_seed_inserts_newsapi_source_type():
     """All 30 RECOMMENDED_SOURCES seeded with source_type='newsapi'."""
     from sembr.collector.newsapi import RECOMMENDED_SOURCES
+
     async with aiosqlite.connect(":memory:") as conn:
         await init_feed_tables(conn)
         await seed_initial_feeds(conn)
-        async with conn.execute(
-            "SELECT COUNT(*) FROM feeds WHERE source_type='newsapi'"
-        ) as cur:
+        async with conn.execute("SELECT COUNT(*) FROM feeds WHERE source_type='newsapi'") as cur:
             n = (await cur.fetchone())[0]
     assert n == len(RECOMMENDED_SOURCES) == 30
 
@@ -270,6 +301,7 @@ async def test_seed_inserts_newsapi_source_type():
 # ---------------------------------------------------------------------------
 # Test: seed_initial_feeds — respects deletion (SC3)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_seed_respects_deletion():
@@ -295,6 +327,7 @@ async def test_seed_respects_deletion():
 # ---------------------------------------------------------------------------
 # Test: collect_feed deduplication
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_collect_feed_dedup():
@@ -323,6 +356,7 @@ async def test_collect_feed_dedup():
 # Test: MD5 fingerprint determinism
 # ---------------------------------------------------------------------------
 
+
 def test_md5_fingerprint():
     """_compute_md5(url, title) must be deterministic and match manual MD5."""
     url = "https://example.com/article"
@@ -335,6 +369,7 @@ def test_md5_fingerprint():
 # ---------------------------------------------------------------------------
 # Test: ON DELETE CASCADE clears feed_items (🔴-1 regression)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_delete_feed_cascades_fingerprints():
@@ -356,13 +391,17 @@ async def test_delete_feed_cascades_fingerprints():
         await insert_fingerprint(conn, "aaa", feed_id)
         await insert_fingerprint(conn, "bbb", feed_id)
 
-        async with conn.execute("SELECT COUNT(*) FROM feed_items WHERE feed_id=?", (feed_id,)) as cur:
+        async with conn.execute(
+            "SELECT COUNT(*) FROM feed_items WHERE feed_id=?", (feed_id,)
+        ) as cur:
             before = (await cur.fetchone())[0]
 
         await conn.execute("DELETE FROM feeds WHERE id=?", (feed_id,))
         await conn.commit()
 
-        async with conn.execute("SELECT COUNT(*) FROM feed_items WHERE feed_id=?", (feed_id,)) as cur:
+        async with conn.execute(
+            "SELECT COUNT(*) FROM feed_items WHERE feed_id=?", (feed_id,)
+        ) as cur:
             after = (await cur.fetchone())[0]
 
     assert before == 2
@@ -373,6 +412,7 @@ async def test_delete_feed_cascades_fingerprints():
 # Test: _WAL_PRAGMAS contains foreign_keys=ON (Minor-3 — locks the 🔴-1 fix)
 # ---------------------------------------------------------------------------
 
+
 def test_wal_pragmas_include_foreign_keys():
     """_WAL_PRAGMAS must include PRAGMA foreign_keys=ON.
 
@@ -380,12 +420,14 @@ def test_wal_pragmas_include_foreign_keys():
     the pragma and would stay green even if _WAL_PRAGMAS lost it.
     """
     from sembr.db.sqlite import _WAL_PRAGMAS
+
     assert any("foreign_keys=ON" in p for p in _WAL_PRAGMAS)
 
 
 # ---------------------------------------------------------------------------
 # Test: FeedCreate.url scheme validation (🟡-6 regression)
 # ---------------------------------------------------------------------------
+
 
 def test_feed_create_invalid_url_raises():
     """FeedCreate must reject URLs without http:// or https:// scheme."""

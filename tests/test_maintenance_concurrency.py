@@ -10,6 +10,7 @@ Covers two design.md Test Strategy entries that earlier loops missed:
   collect_feed-style writer must drain in well under the perceived-lockup
   threshold.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,8 +45,7 @@ async def _make_conn() -> aiosqlite.Connection:
 
 async def _seed_feed(conn) -> int:
     await conn.execute(
-        "INSERT INTO feeds (name, url, poll_interval_minutes) "
-        "VALUES ('T', 'http://t', 30)"
+        "INSERT INTO feeds (name, url, poll_interval_minutes) VALUES ('T', 'http://t', 30)"
     )
     await conn.commit()
     async with conn.execute("SELECT id FROM feeds LIMIT 1") as cur:
@@ -57,9 +57,7 @@ async def _seed_feed_items(conn, md5s: list[str], feed_id: int) -> None:
     async with conn.execute("BEGIN"):
         pass
     for m in md5s:
-        await conn.execute(
-            "INSERT INTO feed_items (md5, feed_id) VALUES (?, ?)", (m, feed_id)
-        )
+        await conn.execute("INSERT INTO feed_items (md5, feed_id) VALUES (?, ?)", (m, feed_id))
     await conn.commit()
 
 
@@ -111,6 +109,7 @@ async def test_reconcile_changes_count_not_polluted_by_concurrent_writer(caplog)
 
     # Capture the original transaction context manager so we can wrap it.
     from sembr.db import sqlite as _sqlite
+
     original_transaction = _sqlite.transaction
     chunks_seen = 0
     inserted_during_race = "f" * 32
@@ -134,6 +133,7 @@ async def test_reconcile_changes_count_not_polluted_by_concurrent_writer(caplog)
 
     # Patch the reconcile module's `transaction` symbol (imported at top).
     import sembr.maintenance.reconcile as recon_mod
+
     recon_mod.transaction = racing_transaction
     try:
         with caplog.at_level("INFO", logger="sembr.maintenance.reconcile"):
@@ -142,9 +142,7 @@ async def test_reconcile_changes_count_not_polluted_by_concurrent_writer(caplog)
         recon_mod.transaction = original_transaction
 
     # (1) Snapshot semantics — racer survives, originally-orphan rows are gone.
-    async with conn.execute(
-        "SELECT md5 FROM feed_items"
-    ) as cur:
+    async with conn.execute("SELECT md5 FROM feed_items") as cur:
         remaining = {r[0] for r in await cur.fetchall()}
     assert remaining == {inserted_during_race}, (
         "the racer's INSERT must survive; reconcile must touch only the "
@@ -155,9 +153,7 @@ async def test_reconcile_changes_count_not_polluted_by_concurrent_writer(caplog)
     #     equal exactly the snapshot size (700). Any value > 700 means
     #     SELECT changes() leaked a concurrent writer's rowcount.
     log_lines = [r.getMessage() for r in caplog.records]
-    matches = [m for line in log_lines for m in re.findall(
-        r"orphan_deleted=(\d+)", line
-    )]
+    matches = [m for line in log_lines for m in re.findall(r"orphan_deleted=(\d+)", line)]
     assert matches, f"no orphan_deleted= count in reconcile log; got {log_lines!r}"
     deleted_reported = int(matches[-1])
     assert deleted_reported == 700, (
@@ -211,14 +207,12 @@ async def test_concurrent_writer_not_starved_during_qdrant_ttl():
     uuids = [md5_to_uuid(m) for m in md5s]
     async with conn.execute("BEGIN"):
         pass
-    for u in uuids[:5000 // 1]:
+    for u in uuids[: 5000 // 1]:
         # 1 intent × 1000 articles × 5 ≈ 5000 match_seen rows is overkill —
         # one row per article keeps the test fast yet exercises the join.
         if uuids.index(u) >= 1000:
             break
-        await conn.execute(
-            "INSERT INTO match_seen (intent_id, article_id) VALUES (1, ?)", (u,)
-        )
+        await conn.execute("INSERT INTO match_seen (intent_id, article_id) VALUES (1, ?)", (u,))
     await conn.commit()
 
     # qdrant_ttl scroll returns all 1000 uuids (one page).
@@ -237,6 +231,7 @@ async def test_concurrent_writer_not_starved_during_qdrant_ttl():
 
     async def racing_writer():
         from sembr.db.sqlite import transaction
+
         # Wait one tick so qdrant_ttl can take the lock first.
         await asyncio.sleep(0.05)
         writer_started_at.append(time.monotonic())

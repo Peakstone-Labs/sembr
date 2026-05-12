@@ -4,6 +4,7 @@ DDL is idempotent (CREATE TABLE IF NOT EXISTS).  All functions accept the
 global aiosqlite connection returned by get_conn() so callers don't open
 their own connections.
 """
+
 from __future__ import annotations
 
 import json
@@ -63,9 +64,7 @@ async def _ensure_enabled_column(conn: aiosqlite.Connection) -> None:
     async with conn.execute("PRAGMA table_info(feeds)") as cur:
         cols = {row[1] for row in await cur.fetchall()}
     if "enabled" not in cols:
-        await conn.execute(
-            "ALTER TABLE feeds ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1"
-        )
+        await conn.execute("ALTER TABLE feeds ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
         await conn.commit()
 
 
@@ -116,6 +115,7 @@ def _row_to_feed(row: tuple) -> Feed:
         enabled=bool(row[8]),
     )
 
+
 _SELECT_FEEDS = "SELECT id,name,url,source_type,config,poll_interval_minutes,last_collected_at,created_at,enabled FROM feeds"
 
 
@@ -159,7 +159,14 @@ async def create_feed(
         cursor = await txn.execute(
             """INSERT INTO feeds (name, url, source_type, config, poll_interval_minutes, last_collected_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (name, url, source_type, json.dumps(config or {}), poll_interval_minutes, last_collected_at),
+            (
+                name,
+                url,
+                source_type,
+                json.dumps(config or {}),
+                poll_interval_minutes,
+                last_collected_at,
+            ),
         )
         feed_id = cursor.lastrowid
         if tags:
@@ -191,9 +198,7 @@ async def list_feeds_with_tags(conn: aiosqlite.Connection) -> list[Feed]:
     return feeds
 
 
-async def get_feed_names(
-    conn: aiosqlite.Connection, feed_ids: list[int]
-) -> dict[int, str]:
+async def get_feed_names(conn: aiosqlite.Connection, feed_ids: list[int]) -> dict[int, str]:
     """Resolve feed_ids → feed.name. Missing ids are simply absent from the result."""
     if not feed_ids:
         return {}
@@ -282,9 +287,7 @@ async def update_feed(
                 for col, val in fields.items():
                     values.append(json.dumps(val) if col == "config" else val)
                 values.append(feed_id)
-                await txn.execute(
-                    f"UPDATE feeds SET {set_clauses} WHERE id=?", values
-                )
+                await txn.execute(f"UPDATE feeds SET {set_clauses} WHERE id=?", values)
             if tags is not None:
                 await txn.execute("DELETE FROM feed_tags WHERE feed_id=?", (feed_id,))
                 if tags:

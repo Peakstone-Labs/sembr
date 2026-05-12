@@ -15,6 +15,7 @@ Existing tests in ``tests/summarizer/test_pipeline_template_errors.py`` and
 focuses on the new public API surface and the catch-order assertion the
 review/grep stage will check.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -83,9 +84,7 @@ async def test_compute_summary_returns_none_for_empty_intent_text(prompts_dir: P
     async def ctx(iid):
         return "default", "default", "", "zh"
 
-    pipeline = SummaryPipeline(
-        llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir
-    )
+    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     result = await pipeline.compute_summary([_match()])
     assert result is None
     llm.summarize.assert_not_called()
@@ -99,9 +98,7 @@ async def test_compute_summary_returns_none_when_ctx_fetch_raises(prompts_dir: P
     async def bad_ctx(iid):
         raise RuntimeError("db down")
 
-    pipeline = SummaryPipeline(
-        llm=llm, get_intent_prompt_ctx=bad_ctx, prompts_dir=prompts_dir
-    )
+    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=bad_ctx, prompts_dir=prompts_dir)
     assert await pipeline.compute_summary([_match()]) is None
     llm.summarize.assert_not_called()
 
@@ -115,9 +112,7 @@ async def test_compute_summary_returns_none_for_budget_deficit(prompts_dir: Path
     async def ctx(iid):
         return "default", "default", "AI news", "zh"
 
-    pipeline = SummaryPipeline(
-        llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir
-    )
+    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     result = await pipeline.compute_summary([_match()])
     assert result is None
     llm.summarize.assert_not_called()
@@ -136,9 +131,7 @@ async def test_compute_summary_raises_template_not_found(prompts_dir: Path) -> N
     async def ctx(iid):
         return "default", "ghost", "topic", "zh"
 
-    pipeline = SummaryPipeline(
-        llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir
-    )
+    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     with pytest.raises(TemplateNotFoundError):
         await pipeline.compute_summary([_match()])
     llm.summarize.assert_not_called()
@@ -153,9 +146,7 @@ async def test_compute_summary_raises_on_llm_error(prompts_dir: Path) -> None:
     async def ctx(iid):
         return "default", "default", "AI news", "zh"
 
-    pipeline = SummaryPipeline(
-        llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir
-    )
+    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     with pytest.raises(httpx.TimeoutException):
         await pipeline.compute_summary([_match()])
 
@@ -167,9 +158,7 @@ async def test_compute_summary_returns_summary_result(prompts_dir: Path) -> None
     async def ctx(iid):
         return "default", "default", "AI news", "zh"
 
-    pipeline = SummaryPipeline(
-        llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir
-    )
+    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     result = await pipeline.compute_summary([_match()])
     assert result is not None
     assert result.summary == "the digest"
@@ -191,9 +180,7 @@ async def test_handle_still_never_raises_after_refactor(prompts_dir: Path) -> No
     async def ctx(iid):
         return "default", "default", "AI news", "zh"
 
-    pipeline = SummaryPipeline(
-        llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir
-    )
+    pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     # Must not raise.
     await pipeline.handle([_match()])
 
@@ -221,7 +208,7 @@ async def test_handle_calls_on_template_error_on_render_fail(prompts_dir: Path) 
 
     on_template_error.assert_awaited_once()
     args = on_template_error.call_args.args
-    assert args[0] == 1               # intent_id
+    assert args[0] == 1  # intent_id
     assert args[1] == "instruction"
     assert args[2] == "bad"
     llm.summarize.assert_not_called()

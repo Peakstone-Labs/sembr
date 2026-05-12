@@ -15,6 +15,7 @@ comparison (retention cutoff, sparkline window) would silently break across
 formats. The snapshot response field `generated_at` may use the `Z` shorthand
 because it's response-only, never a query input.
 """
+
 from __future__ import annotations
 
 import logging
@@ -47,8 +48,7 @@ _CREATE_FEED_FETCH_IDX_FEED_STARTED = (
     "ON feed_fetch_log(feed_id, started_at DESC)"
 )
 _CREATE_FEED_FETCH_IDX_STARTED = (
-    "CREATE INDEX IF NOT EXISTS idx_feed_fetch_log_started "
-    "ON feed_fetch_log(started_at)"
+    "CREATE INDEX IF NOT EXISTS idx_feed_fetch_log_started ON feed_fetch_log(started_at)"
 )
 
 _CREATE_EMBED_CALL_LOG = """
@@ -66,8 +66,7 @@ CREATE TABLE IF NOT EXISTS embed_call_log (
 """
 
 _CREATE_EMBED_CALL_IDX_STARTED = (
-    "CREATE INDEX IF NOT EXISTS idx_embed_call_log_started "
-    "ON embed_call_log(started_at)"
+    "CREATE INDEX IF NOT EXISTS idx_embed_call_log_started ON embed_call_log(started_at)"
 )
 
 

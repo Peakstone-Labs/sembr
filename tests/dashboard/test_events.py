@@ -6,6 +6,7 @@ Cover:
   (c) ok=True / ok=False stored as 1 / 0
   (d) write failure surfaces to caller (caller wraps in try/except)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,9 +30,7 @@ async def _setup_db(path: str) -> None:
     await init_feed_tables(conn)
     await init_event_log_tables(conn)
     # one feed row so feed_id FK has a target
-    await conn.execute(
-        "INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://example.com')"
-    )
+    await conn.execute("INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://example.com')")
     await conn.commit()
 
 
@@ -44,8 +43,7 @@ def test_init_event_log_tables_is_idempotent(tmp_path):
         await init_event_log_tables(conn)
         await init_event_log_tables(conn)  # second invocation must not raise
         async with conn.execute(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='index' AND name LIKE 'idx_feed_fetch_log_%'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_feed_fetch_log_%'"
         ) as cur:
             rows = await cur.fetchall()
         await close_sqlite()
@@ -103,8 +101,7 @@ def test_log_fetch_event_success_row(tmp_path):
         )
         conn = get_conn()
         async with conn.execute(
-            "SELECT ok, items_seen, items_new, error_class, error_message "
-            "FROM feed_fetch_log"
+            "SELECT ok, items_seen, items_new, error_class, error_message FROM feed_fetch_log"
         ) as cur:
             row = await cur.fetchone()
         await close_sqlite()

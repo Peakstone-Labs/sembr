@@ -4,6 +4,7 @@ Process-local dict[group_key -> asyncio.Semaphore]. Lazy-create on first
 acquire. Single-process sembr deployment (CLAUDE.md) makes this sufficient;
 multi-worker requires a distributed primitive (Open Question logged in design R4).
 """
+
 from __future__ import annotations
 
 import asyncio

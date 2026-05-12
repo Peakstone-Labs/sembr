@@ -6,6 +6,7 @@ config — channel-specific params shouldn't leak into a common ABC.
 
 The dispatcher in main.py routes by `isinstance(config, SomeConfig)`.
 """
+
 from __future__ import annotations
 
 from abc import ABC

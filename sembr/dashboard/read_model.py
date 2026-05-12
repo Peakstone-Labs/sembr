@@ -9,6 +9,7 @@ inside the few helpers that need them — Windows dev machines may not have
 qdrant_client installed and we want this module to import cleanly there.
 The AsyncQdrantClient is always handed in by the caller, never constructed here.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -54,10 +55,7 @@ def _utcnow() -> datetime:
 def _hour_buckets_back(now: datetime, hours: int = _SPARKLINE_BUCKETS) -> list[str]:
     """List of N hour-keys 'YYYY-MM-DD HH', oldest → newest, ending at now."""
     base = now.replace(minute=0, second=0, microsecond=0)
-    return [
-        (base - timedelta(hours=h)).strftime("%Y-%m-%d %H")
-        for h in range(hours - 1, -1, -1)
-    ]
+    return [(base - timedelta(hours=h)).strftime("%Y-%m-%d %H") for h in range(hours - 1, -1, -1)]
 
 
 # Max rows per feed scanned for last_outcome / consecutive_failures. Large enough
@@ -116,9 +114,7 @@ async def _fetch_24h_all_feeds(
     ) as cur:
         recent_rows = await cur.fetchall()
 
-    recent_by_feed: dict[int, list[tuple[int, str | None]]] = {
-        fid: [] for fid in feed_ids
-    }
+    recent_by_feed: dict[int, list[tuple[int, str | None]]] = {fid: [] for fid in feed_ids}
     for fid, ok, err in recent_rows:
         if fid in recent_by_feed:
             recent_by_feed[fid].append((int(ok), err))
@@ -158,9 +154,7 @@ async def _fetch_24h_all_feeds(
     return out
 
 
-async def _embedder_calls_24h(
-    conn: aiosqlite.Connection, now: datetime
-) -> EmbedderCalls24h:
+async def _embedder_calls_24h(conn: aiosqlite.Connection, now: datetime) -> EmbedderCalls24h:
     cutoff = (now - timedelta(hours=_SPARKLINE_BUCKETS)).isoformat()
     async with conn.execute(
         "SELECT COUNT(*), "
@@ -230,9 +224,7 @@ async def _qdrant_count(qdrant_client: Any | None) -> int:
         return -1
 
 
-async def _component_status(
-    qdrant_handle: Any | None, embedder: Any | None
-) -> ComponentsBlock:
+async def _component_status(qdrant_handle: Any | None, embedder: Any | None) -> ComponentsBlock:
     sqlite_status = "ok" if await sqlite_ok() else "down"
     if qdrant_handle is None:
         qdrant_status = "down"
@@ -242,9 +234,7 @@ async def _component_status(
         except asyncio.TimeoutError:
             ok = False
         qdrant_status = "ok" if ok else "down"
-    embedder_status = (
-        getattr(embedder, "status", "error") if embedder is not None else "error"
-    )
+    embedder_status = getattr(embedder, "status", "error") if embedder is not None else "error"
     return ComponentsBlock(
         qdrant=qdrant_status,  # type: ignore[arg-type]
         sqlite=sqlite_status,  # type: ignore[arg-type]
@@ -268,25 +258,19 @@ async def build_snapshot(
     ``request.app.state``.
     """
     now = _utcnow()
-    qdrant_client = (
-        getattr(qdrant_handle, "client", None) if qdrant_handle is not None else None
-    )
+    qdrant_client = getattr(qdrant_handle, "client", None) if qdrant_handle is not None else None
     # Fire Qdrant network tasks immediately so they run while SQLite queries execute.
     component_task = asyncio.create_task(_component_status(qdrant_handle, embedder))
     qdrant_count_task = asyncio.create_task(_qdrant_count(qdrant_client))
     try:
         feeds_list = await list_feeds(conn)
-        fetch_blocks = await _fetch_24h_all_feeds(
-            conn, [f.id for f in feeds_list], now
-        )
+        fetch_blocks = await _fetch_24h_all_feeds(conn, [f.id for f in feeds_list], now)
         calls = await _embedder_calls_24h(conn, now)
         async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
             pending_count = int((await cur.fetchone())[0])
         async with conn.execute("SELECT COUNT(*) FROM dead_articles") as cur:
             dead_count = int((await cur.fetchone())[0])
-        components, qdrant_count_value = await asyncio.gather(
-            component_task, qdrant_count_task
-        )
+        components, qdrant_count_value = await asyncio.gather(component_task, qdrant_count_task)
     except BaseException:
         component_task.cancel()
         qdrant_count_task.cancel()
@@ -308,9 +292,7 @@ async def build_snapshot(
         model_version=getattr(embedder, "model_version", None) if embedder else None,
         calls_24h=calls,
     )
-    system_metrics = (
-        metrics_collector.read() if metrics_collector is not None else None
-    )
+    system_metrics = metrics_collector.read() if metrics_collector is not None else None
     return SnapshotResponse(
         schema_version=1,
         generated_at=now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
@@ -329,6 +311,7 @@ async def build_snapshot(
 # ---------------------------------------------------------------------------
 # Drill-down readers
 # ---------------------------------------------------------------------------
+
 
 async def list_feed_events(
     conn: aiosqlite.Connection, feed_id: int, limit: int, offset: int = 0
@@ -356,9 +339,7 @@ async def list_feed_events(
     ]
 
 
-async def list_embed_events(
-    conn: aiosqlite.Connection, limit: int
-) -> list[EmbedCallEvent]:
+async def list_embed_events(conn: aiosqlite.Connection, limit: int) -> list[EmbedCallEvent]:
     async with conn.execute(
         "SELECT id, started_at, elapsed_ms, ok, batch_size, total_chars, "
         "       timeout_seconds, error_class, error_message "
@@ -394,8 +375,13 @@ async def list_articles_pending(
         rows = await cur.fetchall()
     return [
         ArticleListItem(
-            md5=r[0], feed_id=r[1], url=r[2], title=r[3],
-            published_at=r[4], retry_count=r[5], bucket="pending",
+            md5=r[0],
+            feed_id=r[1],
+            url=r[2],
+            title=r[3],
+            published_at=r[4],
+            retry_count=r[5],
+            bucket="pending",
         )
         for r in rows
     ]
@@ -412,8 +398,13 @@ async def list_articles_dead(
         rows = await cur.fetchall()
     return [
         ArticleListItem(
-            md5=r[0], feed_id=r[1], url=r[2], title=r[3],
-            published_at=r[4], error_message=r[5], failed_at=r[6],
+            md5=r[0],
+            feed_id=r[1],
+            url=r[2],
+            title=r[3],
+            published_at=r[4],
+            error_message=r[5],
+            failed_at=r[6],
             bucket="dead",
         )
         for r in rows
@@ -553,9 +544,7 @@ async def list_articles_qdrant(
     if qdrant_client is None:
         return []
 
-    has_filter = any(
-        v is not None for v in (ingested_from, ingested_to, feed_id, title_q)
-    )
+    has_filter = any(v is not None for v in (ingested_from, ingested_to, feed_id, title_q))
     if not has_filter:
         return await _scroll_articles_qdrant(
             qdrant_client, limit=limit, offset=offset, log_label="(all)"
@@ -581,9 +570,7 @@ async def list_articles_qdrant(
             )
         )
     if feed_id is not None:
-        must.append(
-            FieldCondition(key="feed_id", match=MatchValue(value=int(feed_id)))
-        )
+        must.append(FieldCondition(key="feed_id", match=MatchValue(value=int(feed_id))))
     if title_q:
         must.append(FieldCondition(key="title", match=MatchText(text=title_q)))
 
@@ -613,8 +600,14 @@ async def get_article_detail(
         if row is None:
             return None
         return ArticleDetail(
-            md5=row[0], feed_id=row[1], url=row[2], title=row[3], body=row[4],
-            published_at=row[5], retry_count=row[6], bucket="pending",
+            md5=row[0],
+            feed_id=row[1],
+            url=row[2],
+            title=row[3],
+            body=row[4],
+            published_at=row[5],
+            retry_count=row[6],
+            bucket="pending",
         )
     if bucket == "dead":
         async with conn.execute(
@@ -627,8 +620,14 @@ async def get_article_detail(
         if row is None:
             return None
         return ArticleDetail(
-            md5=row[0], feed_id=row[1], url=row[2], title=row[3], body=row[4],
-            published_at=row[5], error_message=row[6], failed_at=row[7],
+            md5=row[0],
+            feed_id=row[1],
+            url=row[2],
+            title=row[3],
+            body=row[4],
+            published_at=row[5],
+            error_message=row[6],
+            failed_at=row[7],
             bucket="dead",
         )
     # bucket == "qdrant"
@@ -691,9 +690,7 @@ async def list_feeds_with_meta(
         params.append(tag.lower())
     where_sql = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
-    async with conn.execute(
-        f"SELECT COUNT(*) FROM feeds{where_sql}", params
-    ) as cur:
+    async with conn.execute(f"SELECT COUNT(*) FROM feeds{where_sql}", params) as cur:
         total = (await cur.fetchone())[0]
 
     async with conn.execute(
@@ -720,10 +717,7 @@ async def list_feeds_with_meta(
                 # D17: newsapi feeds collapse onto a singleton master job, so
                 # all of them share the same next_run_iso (the master tick's
                 # next firing). RSS keeps the per-feed lookup.
-                job_id = (
-                    "source_newsapi_master" if source_type == "newsapi"
-                    else f"feed_{fid}"
-                )
+                job_id = "source_newsapi_master" if source_type == "newsapi" else f"feed_{fid}"
                 job = scheduler.get_job(job_id)
                 if job is not None and job.next_run_time is not None:
                     next_run_iso = job.next_run_time.astimezone(timezone.utc).isoformat()
@@ -742,10 +736,15 @@ async def list_feeds_with_meta(
                 config=config,
                 poll_interval_minutes=poll_min,
                 last_collected_at=last_collected,
-                fetch_24h=fetch_map.get(fid) or Fetch24hBlock(
-                    total=0, ok=0, fail=0,
-                    last_outcome="never", last_error_message=None,
-                    consecutive_failures=0, sparkline_buckets=[0] * _SPARKLINE_BUCKETS,
+                fetch_24h=fetch_map.get(fid)
+                or Fetch24hBlock(
+                    total=0,
+                    ok=0,
+                    fail=0,
+                    last_outcome="never",
+                    last_error_message=None,
+                    consecutive_failures=0,
+                    sparkline_buckets=[0] * _SPARKLINE_BUCKETS,
                 ),
                 tags=tag_map.get(fid, []),
                 enabled=bool(enabled),
@@ -755,8 +754,7 @@ async def list_feeds_with_meta(
                 # urlparse-based grouping (no scheme → parsed.hostname=None
                 # → empty key), so the special-case is also a correctness fix.
                 group_key=(
-                    "newsapi" if source_type == "newsapi"
-                    else derive_group_key(url, proxy_hosts)
+                    "newsapi" if source_type == "newsapi" else derive_group_key(url, proxy_hosts)
                 ),
                 next_run_iso=next_run_iso,
                 created_at=created_at,
@@ -782,9 +780,7 @@ async def list_feed_articles_qdrant(
         MatchValue,
     )
 
-    qfilter = Filter(
-        must=[FieldCondition(key="feed_id", match=MatchValue(value=int(feed_id)))]
-    )
+    qfilter = Filter(must=[FieldCondition(key="feed_id", match=MatchValue(value=int(feed_id)))])
     return await _scroll_articles_qdrant(
         qdrant_client,
         limit=limit,

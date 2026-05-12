@@ -6,6 +6,7 @@ field_schema sent to qdrant is type=text + tokenizer=MULTILINGUAL + lowercase=Tr
 The MULTILINGUAL tokenizer is required for CJK title search — WORD treats a
 Chinese title as a single token that ``max_token_len`` then drops.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -21,14 +22,10 @@ async def test_ensure_news_collection_creates_title_text_index():
     fake_client = MagicMock()
 
     # collection doesn't exist yet → create_collection is invoked once
-    fake_client.get_collections = AsyncMock(
-        return_value=SimpleNamespace(collections=[])
-    )
+    fake_client.get_collections = AsyncMock(return_value=SimpleNamespace(collections=[]))
     fake_client.create_collection = AsyncMock()
     fake_client.create_payload_index = AsyncMock()
-    fake_client.get_aliases = AsyncMock(
-        return_value=SimpleNamespace(aliases=[])
-    )
+    fake_client.get_aliases = AsyncMock(return_value=SimpleNamespace(aliases=[]))
     fake_client.update_collection_aliases = AsyncMock()
 
     embedder = SimpleNamespace(model_version="bge-m3", dim=1024)
@@ -38,7 +35,8 @@ async def test_ensure_news_collection_creates_title_text_index():
     assert fake_client.create_payload_index.call_count == 3
 
     title_call = next(
-        c for c in fake_client.create_payload_index.call_args_list
+        c
+        for c in fake_client.create_payload_index.call_args_list
         if c.kwargs.get("field_name") == "title"
     )
     schema = title_call.kwargs["field_schema"]
@@ -48,9 +46,7 @@ async def test_ensure_news_collection_creates_title_text_index():
     # accept either the enum or its lowercase string form.
     tokenizer = getattr(schema, "tokenizer", None)
     assert tokenizer is not None
-    tokenizer_str = (
-        tokenizer.value if hasattr(tokenizer, "value") else str(tokenizer)
-    )
+    tokenizer_str = tokenizer.value if hasattr(tokenizer, "value") else str(tokenizer)
     assert "multilingual" in tokenizer_str.lower()
     assert schema.lowercase is True
     assert schema.min_token_len == 1
@@ -66,19 +62,13 @@ async def test_ensure_news_collection_idempotent_when_collection_exists():
 
     # Collection already exists → create_collection NOT called
     fake_client.get_collections = AsyncMock(
-        return_value=SimpleNamespace(
-            collections=[SimpleNamespace(name="news_bge-m3")]
-        )
+        return_value=SimpleNamespace(collections=[SimpleNamespace(name="news_bge-m3")])
     )
     fake_client.create_collection = AsyncMock()
     fake_client.create_payload_index = AsyncMock()
     fake_client.get_aliases = AsyncMock(
         return_value=SimpleNamespace(
-            aliases=[
-                SimpleNamespace(
-                    alias_name="news_current", collection_name="news_bge-m3"
-                )
-            ]
+            aliases=[SimpleNamespace(alias_name="news_current", collection_name="news_bge-m3")]
         )
     )
     fake_client.update_collection_aliases = AsyncMock()

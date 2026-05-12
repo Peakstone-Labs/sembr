@@ -4,6 +4,7 @@ Verifies that init_intent_tables is idempotent and correctly migrates
 old interval-mode rows into cron-mode schedule JSON, and sinks
 lookback_seconds / skip_seen from top-level columns into schedule JSON.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -141,7 +142,9 @@ async def test_migration_multiple_old_rows() -> None:
             assert "lookback_seconds" in sched, f"intent {name} missing lookback_seconds"
 
         # Verify no NULL schedule values remain
-        async with conn.execute("SELECT count(*) FROM intents WHERE json_extract(schedule,'$.mode') IS NULL") as cur:
+        async with conn.execute(
+            "SELECT count(*) FROM intents WHERE json_extract(schedule,'$.mode') IS NULL"
+        ) as cur:
             row = await cur.fetchone()
         assert row[0] == 0
 

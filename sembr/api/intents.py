@@ -1,4 +1,5 @@
 """POST/GET/PUT/DELETE /intents router."""
+
 from __future__ import annotations
 
 import logging
@@ -86,9 +87,7 @@ def _slot_set(sub_text_count: int) -> set[str]:
     return {"main"} | {f"alt_{i}" for i in range(sub_text_count)}
 
 
-def _diff_sub_texts(
-    old: list[SubTextSpec], new: list[SubTextSpec]
-) -> tuple[bool, bool, bool]:
+def _diff_sub_texts(old: list[SubTextSpec], new: list[SubTextSpec]) -> tuple[bool, bool, bool]:
     """R6 / D23: position-aligned diff. Returns (added, edited, deleted).
 
     `sub_text_label_only_changed` from the design's R6 truth table is implicit:
@@ -114,11 +113,15 @@ def _diff_sub_texts(
 async def post_intent(body: IntentCreate, request: Request) -> Intent:
     embedder = request.app.state.embedder
     if not embedder.is_loaded:  # D5: fast-fail before any DB write
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="embedder not ready")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="embedder not ready"
+        )
     _validate_templates(body.system_template, body.instruction_template)
 
     conn = get_conn()
-    intent = await create_intent(conn, body)  # D1: SQLite first (intents row + sub_texts atomically)
+    intent = await create_intent(
+        conn, body
+    )  # D1: SQLite first (intents row + sub_texts atomically)
 
     qdrant_client = request.app.state.qdrant.client
     qdrant_written = False
@@ -146,7 +149,9 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
             )
         # D8: register_job last; failure rolls back Qdrant + SQLite (no-op for event-mode)
         if body.enabled:
-            register_intent_job(request.app.state.scheduler, intent, request.app, fire_immediately=True)
+            register_intent_job(
+                request.app.state.scheduler, intent, request.app, fire_immediately=True
+            )
     except Exception as exc:
         # Rollback in reverse order: cache, job (already failed/not-registered), Qdrant, SQLite
         # delete_intent CASCADES sub_texts via FK ON DELETE CASCADE — no separate cleanup needed.
@@ -156,15 +161,17 @@ async def post_intent(body: IntentCreate, request: Request) -> Intent:
             try:
                 await delete_intent_point(qdrant_client, intent.id)
             except Exception as del_exc:
-                logger.error(
-                    "POST Qdrant rollback failed for intent_id=%d: %s", intent.id, del_exc
-                )
+                logger.error("POST Qdrant rollback failed for intent_id=%d: %s", intent.id, del_exc)
         try:
             deleted = await delete_intent(conn, intent.id)
             if not deleted:
-                logger.warning("POST rollback no-op for intent_id=%d: row already absent", intent.id)
+                logger.warning(
+                    "POST rollback no-op for intent_id=%d: row already absent", intent.id
+                )
         except Exception as rollback_exc:
-            logger.error("POST SQLite rollback failed for intent_id=%d: %s", intent.id, rollback_exc)
+            logger.error(
+                "POST SQLite rollback failed for intent_id=%d: %s", intent.id, rollback_exc
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="failed to persist intent vector",
@@ -197,9 +204,8 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     # D22 step 2: compute diff booleans against the snapshot (NOT against `updated.*`).
     text_changed = body.text is not None and body.text.strip() != current.text.strip()
     enabled_changed = body.enabled is not None and body.enabled != current.enabled
-    schedule_changed = (
-        (body.schedule is not None and body.schedule != current.schedule)
-        or (body.timezone is not None and body.timezone != current.timezone)
+    schedule_changed = (body.schedule is not None and body.schedule != current.schedule) or (
+        body.timezone is not None and body.timezone != current.timezone
     )
 
     if body.sub_texts is not None:
@@ -213,10 +219,18 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
 
     embedder = request.app.state.embedder
     if needs_reembed and not embedder.is_loaded:  # D5: only gate when re-embed needed
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="embedder not ready")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="embedder not ready"
+        )
     # Validate template existence only when the field is actually being changed.
-    effective_system = body.system_template if body.system_template is not None else current.system_template
-    effective_instruction = body.instruction_template if body.instruction_template is not None else current.instruction_template
+    effective_system = (
+        body.system_template if body.system_template is not None else current.system_template
+    )
+    effective_instruction = (
+        body.instruction_template
+        if body.instruction_template is not None
+        else current.instruction_template
+    )
     if body.system_template is not None or body.instruction_template is not None:
         _validate_templates(effective_system, effective_instruction)
 
@@ -247,8 +261,12 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     # D22 step 5: re-read once after the transaction commits so `updated.sub_texts`
     # reflects post-writeback state (also picks up any default-touched fields like updated_at).
     re_read = await get_intent(conn, intent_id)
-    if re_read is None:  # pragma: no cover — concurrent delete; the UPDATE above would have errored first
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="intent vanished mid-update")
+    if (
+        re_read is None
+    ):  # pragma: no cover — concurrent delete; the UPDATE above would have errored first
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="intent vanished mid-update"
+        )
     updated = re_read
 
     # Slots gone after the update (D17 + reembed cleanup): when sub_texts shrank,

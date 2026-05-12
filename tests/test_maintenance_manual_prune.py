@@ -1,4 +1,5 @@
 """Unit tests for manual prune state machine (S6 + S7 + S8 + correctness)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -32,16 +33,13 @@ async def _make_conn() -> aiosqlite.Connection:
 
 async def _seed_feed(conn, feed_id: int, name: str = "F") -> None:
     await conn.execute(
-        "INSERT INTO feeds (id, name, url, poll_interval_minutes) "
-        "VALUES (?, ?, ?, 30)",
+        "INSERT INTO feeds (id, name, url, poll_interval_minutes) VALUES (?, ?, ?, 30)",
         (feed_id, name, f"http://x/{feed_id}"),
     )
     await conn.commit()
 
 
-async def _seed_dead_row(
-    conn, md5: str, feed_id: int | None, failed_at_iso: str
-) -> None:
+async def _seed_dead_row(conn, md5: str, feed_id: int | None, failed_at_iso: str) -> None:
     await conn.execute(
         "INSERT INTO dead_articles "
         "(md5, feed_id, url, title, body, published_at, error_message, failed_at) "
@@ -188,9 +186,7 @@ async def test_apply_news_deletes_qdrant_and_cascade():
 
     md5s = [f"{i:032x}" for i in range(3)]
     for m in md5s:
-        await conn.execute(
-            "INSERT INTO feed_items (md5, feed_id) VALUES (?, ?)", (m, 6)
-        )
+        await conn.execute("INSERT INTO feed_items (md5, feed_id) VALUES (?, ?)", (m, 6))
     await conn.commit()
 
     expired_uuids = [md5_to_uuid(m) for m in md5s]
@@ -275,8 +271,10 @@ def test_sweep_skips_planned_task_awaiting_user_confirm():
     task = mp_tasks.create_task("news", [6], 35)
     task.status = "planned"
     task.plan_summary = {
-        "target": "news", "older_than_days": 35,
-        "feeds": [], "total_would_delete": 0,
+        "target": "news",
+        "older_than_days": 35,
+        "feeds": [],
+        "total_would_delete": 0,
     }
     task._created_at = datetime.now(timezone.utc) - timedelta(seconds=10000)
     n = mp_tasks.sweep_expired(ttl_seconds=300)

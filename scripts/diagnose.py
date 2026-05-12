@@ -33,14 +33,16 @@ from pathlib import Path
 
 # ── colour helpers ────────────────────────────────────────────────────────────
 
+
 def _c(code: str, text: str) -> str:
     return f"\033[{code}m{text}\033[0m" if sys.stdout.isatty() else text
 
-OK   = lambda t: _c("32", t)   # noqa: E731
-WARN = lambda t: _c("33", t)   # noqa: E731
-ERR  = lambda t: _c("31", t)   # noqa: E731
-BOLD = lambda t: _c("1",  t)   # noqa: E731
-DIM  = lambda t: _c("2",  t)   # noqa: E731
+
+OK = lambda t: _c("32", t)  # noqa: E731
+WARN = lambda t: _c("33", t)  # noqa: E731
+ERR = lambda t: _c("31", t)  # noqa: E731
+BOLD = lambda t: _c("1", t)  # noqa: E731
+DIM = lambda t: _c("2", t)  # noqa: E731
 
 
 def section(title: str) -> None:
@@ -53,6 +55,7 @@ def row(label: str, value: str, status: str = "ok") -> None:
 
 
 # ── 1. docker compose ps ──────────────────────────────────────────────────────
+
 
 def check_containers(inside: bool) -> None:
     section("Container status")
@@ -72,10 +75,10 @@ def check_containers(inside: bool) -> None:
             return
         for ln in lines:
             svc = json.loads(ln)
-            name   = svc.get("Service") or svc.get("Name", "?")
-            state  = svc.get("State", "?")
+            name = svc.get("Service") or svc.get("Name", "?")
+            state = svc.get("State", "?")
             health = svc.get("Health", "")
-            label  = f"{name} ({health})" if health else name
+            label = f"{name} ({health})" if health else name
             if state == "running":
                 row(label, state, "ok")
             else:
@@ -85,6 +88,7 @@ def check_containers(inside: bool) -> None:
 
 
 # ── 2. /health API ────────────────────────────────────────────────────────────
+
 
 def check_api(base: str) -> None:
     section("API /health")
@@ -104,6 +108,7 @@ def check_api(base: str) -> None:
 
 # ── 3-7. SQLite checks ────────────────────────────────────────────────────────
 
+
 def check_sqlite(db_path: str, stale_hours: float) -> None:
     if not Path(db_path).exists():
         section("SQLite")
@@ -116,12 +121,12 @@ def check_sqlite(db_path: str, stale_hours: float) -> None:
     # ── pipeline counts ──
     section("Article pipeline (SQLite)")
     counts = {
-        "feeds":            "SELECT COUNT(*) FROM feeds",
+        "feeds": "SELECT COUNT(*) FROM feeds",
         "feed_items (dedup fingerprints)": "SELECT COUNT(*) FROM feed_items",
         "pending_articles": "SELECT COUNT(*) FROM pending_articles",
-        "dead_articles":    "SELECT COUNT(*) FROM dead_articles",
-        "intents":          "SELECT COUNT(*) FROM intents",
-        "match_seen":       "SELECT COUNT(*) FROM match_seen",
+        "dead_articles": "SELECT COUNT(*) FROM dead_articles",
+        "intents": "SELECT COUNT(*) FROM intents",
+        "match_seen": "SELECT COUNT(*) FROM match_seen",
     }
     for label, sql in counts.items():
         try:
@@ -154,7 +159,7 @@ def check_sqlite(db_path: str, stale_hours: float) -> None:
                         ts = ts.replace(tzinfo=timezone.utc)
                     hours_ago = (now - ts).total_seconds() / 3600
                     label = f"{name[:38]}"
-                    val   = f"{hours_ago:.1f}h ago  ({last[:19]})"
+                    val = f"{hours_ago:.1f}h ago  ({last[:19]})"
                     status = "err" if hours_ago > stale_hours else "ok"
                     row(label, val, status)
                 except ValueError:
@@ -181,7 +186,12 @@ def check_sqlite(db_path: str, stale_hours: float) -> None:
             """
         ).fetchall()
         for r in rows:
-            name, last_24h, total, first_seen = r["name"], r["last_24h"], r["total"], r["first_seen"]
+            name, last_24h, total, first_seen = (
+                r["name"],
+                r["last_24h"],
+                r["total"],
+                r["first_seen"],
+            )
             if total == 0 or not first_seen:
                 row(name[:38], "no items collected yet", "warn")
                 continue
@@ -189,7 +199,9 @@ def check_sqlite(db_path: str, stale_hours: float) -> None:
                 first_ts = datetime.fromisoformat(first_seen.replace("Z", "+00:00"))
                 if first_ts.tzinfo is None:
                     first_ts = first_ts.replace(tzinfo=timezone.utc)
-                age_days = max((datetime.now(timezone.utc) - first_ts).total_seconds() / 86400, 1/24)
+                age_days = max(
+                    (datetime.now(timezone.utc) - first_ts).total_seconds() / 86400, 1 / 24
+                )
                 avg_per_day = total / age_days
             except ValueError:
                 avg_per_day = 0.0
@@ -272,6 +284,7 @@ def check_sqlite(db_path: str, stale_hours: float) -> None:
 
 # ── 5. Qdrant vector counts ───────────────────────────────────────────────────
 
+
 async def check_qdrant_async() -> list[tuple[str, str, str]]:
     try:
         from qdrant_client import AsyncQdrantClient  # type: ignore
@@ -303,16 +316,28 @@ def check_qdrant() -> None:
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="sembr runtime diagnostic")
-    parser.add_argument("--db",               default="/app/data/sembr.db",
-                        help="Path to sembr.db (default: /app/data/sembr.db)")
-    parser.add_argument("--api",              default="http://localhost:8000",
-                        help="API base URL (default: http://localhost:8000)")
-    parser.add_argument("--stale-hours",      type=float, default=2.0,
-                        help="Hours without collection before marking a feed stale (default: 2)")
-    parser.add_argument("--inside-container", action="store_true",
-                        help="Skip 'docker compose ps' (run from inside the api container)")
+    parser.add_argument(
+        "--db", default="/app/data/sembr.db", help="Path to sembr.db (default: /app/data/sembr.db)"
+    )
+    parser.add_argument(
+        "--api",
+        default="http://localhost:8000",
+        help="API base URL (default: http://localhost:8000)",
+    )
+    parser.add_argument(
+        "--stale-hours",
+        type=float,
+        default=2.0,
+        help="Hours without collection before marking a feed stale (default: 2)",
+    )
+    parser.add_argument(
+        "--inside-container",
+        action="store_true",
+        help="Skip 'docker compose ps' (run from inside the api container)",
+    )
     args = parser.parse_args()
 
     print(BOLD(f"\nsembr diagnostic — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"))

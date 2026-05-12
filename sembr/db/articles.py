@@ -3,6 +3,7 @@
 Row presence in pending_articles is the *only* state indicator — no status column.
 Dead articles are kept for forensics even after their feed is deleted (no FK cascade).
 """
+
 from __future__ import annotations
 
 import logging
@@ -106,7 +107,10 @@ async def insert_article_pending(
         if len(article.body) > _BODY_CAP_BYTES:
             logger.info(
                 "article body truncated: feed_id=%d md5=%s original=%d bytes cap=%d",
-                feed_id, article.feed_md5, len(article.body), _BODY_CAP_BYTES,
+                feed_id,
+                article.feed_md5,
+                len(article.body),
+                _BODY_CAP_BYTES,
             )
         body_capped = article.body[:_BODY_CAP_BYTES]
         await conn.execute(
@@ -159,9 +163,7 @@ async def delete_pending(conn: aiosqlite.Connection, md5s: list[str]) -> None:
         )
 
 
-async def demote_to_dead(
-    conn: aiosqlite.Connection, max_retry: int, error_message: str
-) -> int:
+async def demote_to_dead(conn: aiosqlite.Connection, max_retry: int, error_message: str) -> int:
     """Atomically move ALL rows with retry_count >= max_retry to dead_articles.
 
     Use demote_md5s_to_dead when you need per-batch error attribution.

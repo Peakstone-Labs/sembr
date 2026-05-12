@@ -1,4 +1,5 @@
 """Unit tests for Schedule discriminated union (CronSchedule / EventSchedule)."""
+
 from __future__ import annotations
 
 import pytest

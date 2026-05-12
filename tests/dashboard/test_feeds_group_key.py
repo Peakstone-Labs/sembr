@@ -1,4 +1,5 @@
 """SC#7: derive_group_key URL table — direct hosts vs proxy hosts."""
+
 from __future__ import annotations
 
 import pytest

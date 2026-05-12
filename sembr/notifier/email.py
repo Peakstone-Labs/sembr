@@ -1,4 +1,5 @@
 """EmailChannel: Jinja2 HTML rendering + smtplib executor delivery."""
+
 from __future__ import annotations
 
 import asyncio
@@ -39,6 +40,7 @@ class EmailChannelConfig(BaseModel):
     cc: list[EmailStr] = Field(default_factory=list, max_length=20)
     bcc: list[EmailStr] = Field(default_factory=list, max_length=20)
 
+
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -51,7 +53,9 @@ _LOGO_CID = "sembr-logo"
 try:
     _LOGO_BYTES: bytes | None = _LOGO_PATH.read_bytes()
 except (FileNotFoundError, OSError) as _logo_exc:
-    logger.warning("logo not found at %s (%s); emails will render without a logo", _LOGO_PATH, _logo_exc)
+    logger.warning(
+        "logo not found at %s (%s); emails will render without a logo", _LOGO_PATH, _logo_exc
+    )
     _LOGO_BYTES = None
 
 # LLM output sometimes inlines ATX headings or list bullets without a leading
@@ -130,9 +134,7 @@ def _format_score(score: float | None) -> str:
     return f"{score:.2f}"
 
 
-def _build_rendered_citations(
-    citations: list[Citation], tz: ZoneInfo
-) -> list[_RenderedCitation]:
+def _build_rendered_citations(citations: list[Citation], tz: ZoneInfo) -> list[_RenderedCitation]:
     return [
         _RenderedCitation(
             index=i,
@@ -353,4 +355,3 @@ class EmailChannel(BaseChannel):
                 server.quit()
             except smtplib.SMTPException:
                 pass
-

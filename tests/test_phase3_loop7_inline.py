@@ -3,6 +3,7 @@
 Tests: _extract_vector variants, POST defensive copy,
 PUT re-enable 500, D16 mode-immutable 422, embedder_worker app=None guard.
 """
+
 import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # ── a. _extract_vector: single-vector list ────────────────────────────────────
 def test_extract_vector_single_list():
     from sembr.vector_store.qdrant import extract_point_vector as _extract_vector
+
     point = MagicMock()
     point.vector = [1.0, 2.0]
     assert _extract_vector(point) == [1.0, 2.0]
@@ -19,6 +21,7 @@ def test_extract_vector_single_list():
 # ── b. _extract_vector: named-vector dict ─────────────────────────────────────
 def test_extract_vector_named_dict():
     from sembr.vector_store.qdrant import extract_point_vector as _extract_vector
+
     point = MagicMock()
     point.vector = {"default": [1.0, 2.0]}
     assert _extract_vector(point) == [1.0, 2.0]
@@ -27,6 +30,7 @@ def test_extract_vector_named_dict():
 # ── c. _extract_vector: None vector ──────────────────────────────────────────
 def test_extract_vector_none():
     from sembr.vector_store.qdrant import extract_point_vector as _extract_vector
+
     point = MagicMock()
     point.vector = None
     assert _extract_vector(point) is None
@@ -116,14 +120,16 @@ async def test_put_reenable_500_on_missing_vector():
     async def fake_transaction():
         yield MagicMock()  # txn handle is unused by mocked _update_intent_in_txn
 
-    with patch("sembr.api.intents.get_conn", return_value=MagicMock()), \
-         patch("sembr.api.intents.get_intent", get_intent_mock), \
-         patch("sembr.api.intents._update_intent_in_txn", AsyncMock()), \
-         patch("sembr.api.intents.transaction", fake_transaction), \
-         patch("sembr.api.intents.update_intent_payload", AsyncMock()), \
-         patch("sembr.api.intents.template_exists", return_value=True), \
-         patch("sembr.api.intents.unregister_intent_job"), \
-         patch("sembr.api.intents.register_intent_job"):
+    with (
+        patch("sembr.api.intents.get_conn", return_value=MagicMock()),
+        patch("sembr.api.intents.get_intent", get_intent_mock),
+        patch("sembr.api.intents._update_intent_in_txn", AsyncMock()),
+        patch("sembr.api.intents.transaction", fake_transaction),
+        patch("sembr.api.intents.update_intent_payload", AsyncMock()),
+        patch("sembr.api.intents.template_exists", return_value=True),
+        patch("sembr.api.intents.unregister_intent_job"),
+        patch("sembr.api.intents.register_intent_job"),
+    ):
         with pytest.raises(fastapi.HTTPException) as exc_info:
             await put_intent(intent_id, body, mock_request)
     assert exc_info.value.status_code == 500
@@ -154,9 +160,11 @@ async def test_d16_mode_immutable_422():
 
     body = IntentUpdate(schedule=EventSchedule(trigger_count=5))
 
-    with patch("sembr.api.intents.get_conn", return_value=MagicMock()), \
-         patch("sembr.api.intents.get_intent", AsyncMock(return_value=existing_intent)), \
-         patch("sembr.api.intents.template_exists", return_value=True):
+    with (
+        patch("sembr.api.intents.get_conn", return_value=MagicMock()),
+        patch("sembr.api.intents.get_intent", AsyncMock(return_value=existing_intent)),
+        patch("sembr.api.intents.template_exists", return_value=True),
+    ):
         with pytest.raises(fastapi.HTTPException) as exc_info:
             await put_intent(7, body, mock_request)
     assert exc_info.value.status_code == 422
@@ -180,18 +188,25 @@ async def test_embedder_worker_app_none_no_event_match():
     mock_qdrant.client.upsert = AsyncMock()
 
     fake_row = PendingRow(
-        md5="a" * 32, url="http://x.com", title="T", body="B",
-        published_at="2026-01-01T00:00:00", feed_id=1, retry_count=0,
+        md5="a" * 32,
+        url="http://x.com",
+        title="T",
+        body="B",
+        published_at="2026-01-01T00:00:00",
+        feed_id=1,
+        retry_count=0,
     )
 
     event_match_mock = AsyncMock()
 
-    with patch("sembr.embedder.scheduler.pull_pending_batch", AsyncMock(return_value=[fake_row])), \
-         patch("sembr.embedder.scheduler.delete_pending", AsyncMock()), \
-         patch("sembr.embedder.scheduler.increment_retry", AsyncMock()), \
-         patch("sembr.embedder.scheduler.log_embed_event", AsyncMock()), \
-         patch("sembr.embedder.scheduler.get_conn", MagicMock()), \
-         patch("sembr.matcher.event_match.event_match_batch", event_match_mock):
+    with (
+        patch("sembr.embedder.scheduler.pull_pending_batch", AsyncMock(return_value=[fake_row])),
+        patch("sembr.embedder.scheduler.delete_pending", AsyncMock()),
+        patch("sembr.embedder.scheduler.increment_retry", AsyncMock()),
+        patch("sembr.embedder.scheduler.log_embed_event", AsyncMock()),
+        patch("sembr.embedder.scheduler.get_conn", MagicMock()),
+        patch("sembr.matcher.event_match.event_match_batch", event_match_mock),
+    ):
         await embedder_worker(mock_embedder, mock_qdrant, app=None)
 
     event_match_mock.assert_not_called()

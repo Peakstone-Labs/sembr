@@ -1,4 +1,5 @@
 """D12 / D25: Settings.newsapi_categories validator + category_uris property."""
+
 from __future__ import annotations
 
 import pytest
@@ -70,6 +71,7 @@ def test_newsapi_valid_categories_constant_matches_multiselect() -> None:
     config.NEWSAPI_VALID_CATEGORIES and api.settings._MULTISELECT_FIELDS."""
     from sembr.config import NEWSAPI_VALID_CATEGORIES
     from sembr.api.settings import _MULTISELECT_FIELDS
+
     assert _MULTISELECT_FIELDS["newsapi_categories"] == list(NEWSAPI_VALID_CATEGORIES)
     assert len(NEWSAPI_VALID_CATEGORIES) == 8
 

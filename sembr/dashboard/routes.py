@@ -8,6 +8,7 @@ Endpoints:
   GET /api/dashboard/articles/{md5}?bucket=                single article detail
   GET /api/dashboard/config                                public: poll cadence + auth flag
 """
+
 from __future__ import annotations
 
 import logging
@@ -59,9 +60,7 @@ async def get_snapshot(request: Request) -> SnapshotResponse:
     qdrant = getattr(request.app.state, "qdrant", None)
     embedder = getattr(request.app.state, "embedder", None)
     metrics_collector = getattr(request.app.state, "metrics_collector", None)
-    return await read_model.build_snapshot(
-        get_conn(), qdrant, embedder, metrics_collector
-    )
+    return await read_model.build_snapshot(get_conn(), qdrant, embedder, metrics_collector)
 
 
 @router.get("/feeds", response_model=FeedListResponse)
@@ -110,9 +109,7 @@ async def get_feed_articles(
             raise HTTPException(status_code=404, detail="feed not found")
     qdrant = getattr(request.app.state, "qdrant", None)
     qclient = getattr(qdrant, "client", None) if qdrant is not None else None
-    return await read_model.list_feed_articles_qdrant(
-        qclient, feed_id, limit=limit, offset=offset
-    )
+    return await read_model.list_feed_articles_qdrant(qclient, feed_id, limit=limit, offset=offset)
 
 
 @router.get("/sources/newsapi/recommended_sources")

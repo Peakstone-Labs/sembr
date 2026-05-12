@@ -7,6 +7,7 @@ Cover (per test plan):
   (d) pending/dead counts read straight from articles tables
   (e) qdrant ping/count/scroll mocked at boundary
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -65,9 +66,7 @@ def test_build_snapshot_empty_db_does_not_raise(tmp_path):
 def test_build_snapshot_feed_sparkline_has_24_buckets(tmp_path):
     async def run():
         conn = await _setup(tmp_path)
-        await conn.execute(
-            "INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')"
-        )
+        await conn.execute("INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')")
         # one ok event 1h ago
         ts = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
         await conn.execute(
@@ -92,9 +91,7 @@ def test_build_snapshot_feed_sparkline_has_24_buckets(tmp_path):
 def test_build_snapshot_consecutive_failures_three_fail_then_ok_resets(tmp_path):
     async def run():
         conn = await _setup(tmp_path)
-        await conn.execute(
-            "INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')"
-        )
+        await conn.execute("INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')")
         # Insert oldest first; row id is monotonic so DESC(id) == newest-first.
         # Order from oldest → newest: fail, fail, fail, ok. Latest is ok ⇒ streak=0.
         now = datetime.now(timezone.utc)
@@ -126,9 +123,7 @@ def test_build_snapshot_consecutive_failures_three_fail_then_ok_resets(tmp_path)
 def test_build_snapshot_consecutive_failures_four_fail(tmp_path):
     async def run():
         conn = await _setup(tmp_path)
-        await conn.execute(
-            "INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')"
-        )
+        await conn.execute("INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')")
         now = datetime.now(timezone.utc)
         for i in range(4):
             ts = (now - timedelta(minutes=10 * (4 - i))).isoformat()
@@ -155,9 +150,7 @@ def test_build_snapshot_consecutive_failures_four_fail(tmp_path):
 def test_build_snapshot_articles_counts(tmp_path):
     async def run():
         conn = await _setup(tmp_path)
-        await conn.execute(
-            "INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')"
-        )
+        await conn.execute("INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')")
         for i in range(3):
             await conn.execute(
                 "INSERT INTO pending_articles "
@@ -172,9 +165,7 @@ def test_build_snapshot_articles_counts(tmp_path):
                 (f"d{i:031x}",),
             )
         await conn.commit()
-        snap = await build_snapshot(
-            get_conn(), _qdrant_handle(count=42), _embedder()
-        )
+        snap = await build_snapshot(get_conn(), _qdrant_handle(count=42), _embedder())
         await close_sqlite()
         return snap
 
@@ -218,10 +209,7 @@ def test_fetch_24h_all_feeds_uses_two_queries_regardless_of_feed_count(tmp_path)
                 (fid, f"f{fid}", f"http://example.com/{fid}"),
             )
             for j in range(3):
-                ts = (
-                    datetime.now(timezone.utc)
-                    - timedelta(minutes=10 * (3 - j))
-                ).isoformat()
+                ts = (datetime.now(timezone.utc) - timedelta(minutes=10 * (3 - j))).isoformat()
                 await conn.execute(
                     "INSERT INTO feed_fetch_log "
                     "(feed_id, started_at, elapsed_ms, ok, items_seen, items_new, "
@@ -265,6 +253,7 @@ def test_fetch_24h_all_feeds_uses_two_queries_regardless_of_feed_count(tmp_path)
 def test_build_snapshot_when_qdrant_handle_none(tmp_path):
     """Lifespan probe arrives before app.state.qdrant is assigned — must degrade,
     not crash, returning components.qdrant == 'down' and qdrant_count == 0."""
+
     async def run():
         await _setup(tmp_path)
         snap = await build_snapshot(get_conn(), None, _embedder())

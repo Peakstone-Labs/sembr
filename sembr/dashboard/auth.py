@@ -4,6 +4,7 @@ Single shared token via env DASHBOARD_TOKEN. Empty token = pass-through (no auth
 Token comparison uses secrets.compare_digest (timing-safe). Login page and vendor
 JS are always exempt so the user can bootstrap the cookie.
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,14 +34,16 @@ _PROTECTED_PREFIXES = (
     "/intents/",
     "/feeds/",
 )
-_PROTECTED_EXACT = frozenset({
-    "/dashboard",
-    "/api/dashboard",
-    "/api/prompts",
-    "/api/settings",
-    "/intents",
-    "/feeds",
-})
+_PROTECTED_EXACT = frozenset(
+    {
+        "/dashboard",
+        "/api/dashboard",
+        "/api/prompts",
+        "/api/settings",
+        "/intents",
+        "/feeds",
+    }
+)
 # Endpoints that must remain reachable without a token to bootstrap the UI:
 #   /api/dashboard/config — frontend calls it on first load to know whether
 #   auth is required and what poll interval to use.

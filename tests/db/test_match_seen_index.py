@@ -2,6 +2,7 @@
 index, otherwise TTL-driven `DELETE WHERE article_id IN (...)` falls back to a
 full scan and stalls the global write lock.
 """
+
 from __future__ import annotations
 
 import aiosqlite

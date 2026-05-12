@@ -11,6 +11,7 @@ Endpoints (prefix `/api/dashboard/maintenance`, gated by
 The planning + applying paths run in background tasks held by ``_BG_TASKS``
 so a slow Qdrant doesn't block the HTTP request.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -47,9 +48,7 @@ def _serialise_task(task: mp_tasks.ManualPruneTask) -> dict[str, Any]:
         "older_than_days": task.older_than_days,
         "status": task.status,
         "started_at": task.started_at.isoformat(),
-        "finished_at": (
-            task.finished_at.isoformat() if task.finished_at else None
-        ),
+        "finished_at": (task.finished_at.isoformat() if task.finished_at else None),
         "plan_summary": task.plan_summary,
         "result_summary": task.result_summary,
         "error": task.error,
@@ -102,17 +101,13 @@ async def get_feed_universe(request: Request) -> dict[str, Any]:
         if fid in sqlite_feeds
     ]
     deleted = [
-        {"id": fid, "name": None}
-        for fid in sorted(qdrant_feed_ids)
-        if fid not in sqlite_feeds
+        {"id": fid, "name": None} for fid in sorted(qdrant_feed_ids) if fid not in sqlite_feeds
     ]
     return {"alive": alive, "deleted": deleted}
 
 
 @router.post("/manual_prune", status_code=status.HTTP_202_ACCEPTED)
-async def post_manual_prune(
-    request: Request, body: ManualPruneRequest
-) -> dict[str, Any]:
+async def post_manual_prune(request: Request, body: ManualPruneRequest) -> dict[str, Any]:
     qdrant = getattr(request.app.state, "qdrant", None)
     if body.target == "news" and qdrant is None:
         raise HTTPException(
@@ -135,9 +130,7 @@ async def post_manual_prune(
 async def get_manual_prune_status(task_id: str) -> dict[str, Any]:
     task = mp_tasks.get_task(task_id)
     if task is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="task not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found")
     return _serialise_task(task)
 
 
@@ -145,14 +138,10 @@ async def get_manual_prune_status(task_id: str) -> dict[str, Any]:
     "/manual_prune/{task_id}/confirm",
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def post_manual_prune_confirm(
-    request: Request, task_id: str
-) -> dict[str, Any]:
+async def post_manual_prune_confirm(request: Request, task_id: str) -> dict[str, Any]:
     task = mp_tasks.get_task(task_id)
     if task is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="task not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found")
     if task.status != "planned":
         # 409 Conflict is the right code: the resource exists but is in a
         # state that does not permit confirm. The client should re-poll or

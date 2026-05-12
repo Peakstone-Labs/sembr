@@ -7,6 +7,7 @@ Pydantic body schema → builtin-name guard → source-template existence
 Rename is the only endpoint that touches SQLite (cascade UPDATE on the
 intents table per D2/D15); POST/PUT/DELETE are filesystem-only.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -217,9 +218,7 @@ async def get_template(kind: str, name: str, request: Request) -> TemplateDetail
         path = template_path(prompts_dir, kind, name)
         content = load_template(prompts_dir, kind, name)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except TemplateNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -249,9 +248,7 @@ async def get_template(kind: str, name: str, request: Request) -> TemplateDetail
     response_model=TemplateInfo,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_template(
-    kind: str, body: TemplateCreateRequest, request: Request
-) -> TemplateInfo:
+async def create_template(kind: str, body: TemplateCreateRequest, request: Request) -> TemplateInfo:
     _ensure_kind(kind)
     # D14 step 2 — builtin guard applies to *target* only (allows `source: default`).
     _builtin_block(body.name)
@@ -309,7 +306,9 @@ async def create_template(
         save_template_atomic(prompts_dir, kind, body.name, source_content)
     except OSError as exc:
         logger.error("create_template save failed: kind=%s name=%s: %s", kind, body.name, exc)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="save failed") from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="save failed"
+        ) from exc
 
     refs = await _refs_index()
     return _build_info(prompts_dir, kind, body.name, refs)
@@ -331,9 +330,7 @@ async def update_template(
     try:
         target_path = template_path(prompts_dir, kind, name)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if not target_path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -353,7 +350,9 @@ async def update_template(
         save_template_atomic(prompts_dir, kind, name, body.content)
     except OSError as exc:
         logger.error("update_template save failed: kind=%s name=%s: %s", kind, name, exc)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="save failed") from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="save failed"
+        ) from exc
 
     refs = await _refs_index()
     return _build_info(prompts_dir, kind, name, refs)
@@ -375,7 +374,9 @@ async def delete_template_endpoint(kind: str, name: str, request: Request):
     if intents:
         logger.info(
             "delete_template_endpoint blocked by refs: kind=%s name=%s ref_count=%d",
-            kind, name, len(intents),
+            kind,
+            name,
+            len(intents),
         )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -391,9 +392,7 @@ async def delete_template_endpoint(kind: str, name: str, request: Request):
     try:
         delete_template(prompts_dir, kind, name)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except TemplateNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -413,17 +412,15 @@ async def rename_template_endpoint(
     kind: str, name: str, body: TemplateRenameRequest, request: Request
 ) -> TemplateInfo:
     _ensure_kind(kind)
-    _builtin_write_guard(name)            # 403: cannot rename builtin source
-    _builtin_block(body.new_name)         # 422: cannot rename to reserved name
+    _builtin_write_guard(name)  # 403: cannot rename builtin source
+    _builtin_block(body.new_name)  # 422: cannot rename to reserved name
 
     prompts_dir: Path = _templates.PROMPTS_DIR
     try:
         old_path = template_path(prompts_dir, kind, name)
         new_path = template_path(prompts_dir, kind, body.new_name)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     # D2 step (a) — pre-existence check on target; rejects the common collision.
     if not old_path.is_file():
@@ -452,13 +449,14 @@ async def rename_template_endpoint(
         rename_template(prompts_dir, kind, name, body.new_name)
     except (ValueError, TemplateNotFoundError) as exc:
         # ValueError already covered by template_path above; keep a defensive arm.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except OSError as exc:
         logger.error(
             "rename_template os.rename failed: kind=%s old=%s new=%s: %s",
-            kind, name, body.new_name, exc,
+            kind,
+            name,
+            body.new_name,
+            exc,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -478,7 +476,10 @@ async def rename_template_endpoint(
         except OSError as rev_exc:
             logger.error(
                 "rename rollback during cancellation: kind=%s old=%s new=%s reverse_err=%r",
-                kind, name, body.new_name, rev_exc,
+                kind,
+                name,
+                body.new_name,
+                rev_exc,
             )
         raise
     except Exception as db_exc:
@@ -488,7 +489,11 @@ async def rename_template_endpoint(
         except OSError as rev_exc:
             logger.error(
                 "rename rollback failed: kind=%s old=%s new=%s db_err=%r reverse_err=%r",
-                kind, name, body.new_name, db_exc, rev_exc,
+                kind,
+                name,
+                body.new_name,
+                db_exc,
+                rev_exc,
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -499,7 +504,10 @@ async def rename_template_endpoint(
             ) from db_exc
         logger.error(
             "rename SQLite UPDATE failed, filesystem reversed: kind=%s old=%s new=%s err=%r",
-            kind, name, body.new_name, db_exc,
+            kind,
+            name,
+            body.new_name,
+            db_exc,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

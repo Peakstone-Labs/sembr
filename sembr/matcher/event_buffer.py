@@ -4,6 +4,7 @@ D13: absorb() — explicit BEGIN IMMEDIATE transaction; merges batch_groups into
 D14: flush() — DELETE ... RETURNING (atomic read+delete); on_match called after commit.
 D15: sweep_timed_out() — called by event_y_sweeper APScheduler job every 30s.
 """
+
 from __future__ import annotations
 
 import json
@@ -61,7 +62,7 @@ async def absorb(
         for gid, rep_norm, members_raw in existing_rows:
             existing.append((gid, rep_norm, json.loads(members_raw)))
 
-        next_gid = (max((g[0] for g in existing), default=-1) + 1)
+        next_gid = max((g[0] for g in existing), default=-1) + 1
         now = _now_utc()
 
         for batch_group in batch_groups:
@@ -139,7 +140,10 @@ async def absorb(
     should_flush = group_count >= schedule.trigger_count
     logger.debug(
         "absorb intent_id=%d groups=%d trigger_count=%d should_flush=%s",
-        intent_id, group_count, schedule.trigger_count, should_flush,
+        intent_id,
+        group_count,
+        schedule.trigger_count,
+        should_flush,
     )
     return should_flush
 
@@ -196,7 +200,9 @@ async def flush(conn: aiosqlite.Connection, app, intent_id: int) -> None:
     except Exception as exc:
         logger.warning(
             "flush intent_id=%d: on_match raised (buffer already cleared): %s",
-            intent_id, exc, exc_info=True,
+            intent_id,
+            exc,
+            exc_info=True,
         )
 
 
@@ -217,8 +223,7 @@ async def sweep_timed_out(
     now = datetime.now(timezone.utc)
 
     async with conn.execute(
-        "SELECT intent_id, MIN(created_at) AS earliest "
-        "FROM event_pending GROUP BY intent_id"
+        "SELECT intent_id, MIN(created_at) AS earliest FROM event_pending GROUP BY intent_id"
     ) as cur:
         rows = await cur.fetchall()
 
@@ -243,9 +248,13 @@ async def sweep_timed_out(
         if age_seconds >= max_wait:
             logger.info(
                 "sweep: intent_id=%d oldest_group_age=%.0fs >= max_wait=%ds → flushing",
-                intent_id, age_seconds, max_wait,
+                intent_id,
+                age_seconds,
+                max_wait,
             )
             try:
                 await flush(conn, app, intent_id)
             except Exception as exc:
-                logger.warning("sweep: flush intent_id=%d failed: %s", intent_id, exc, exc_info=True)
+                logger.warning(
+                    "sweep: flush intent_id=%d failed: %s", intent_id, exc, exc_info=True
+                )

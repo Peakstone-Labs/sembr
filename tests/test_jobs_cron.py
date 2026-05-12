@@ -4,6 +4,7 @@ Verifies that register_intent_job correctly translates CronSchedule
 {preset, hour, minute, weekday} + timezone into APScheduler CronTrigger,
 and that the next_fire_time is computed correctly.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

@@ -1,4 +1,5 @@
 """Unit tests for EmailChannel rendering, TZ conversion, citation anchors, SMTP."""
+
 from __future__ import annotations
 
 import smtplib
@@ -80,6 +81,7 @@ def _make_channel(
     display_timezone: str = "UTC",
 ):
     from sembr.notifier.email import EmailChannel
+
     return EmailChannel(_make_settings(smtp_host=smtp_host, display_timezone=display_timezone))
 
 
@@ -211,7 +213,9 @@ async def test_unknown_intent_timezone_falls_back_to_utc() -> None:
 def test_summary_inline_refs_render_as_anchors() -> None:
     from sembr.notifier.email import _summary_to_html
 
-    html = str(_summary_to_html("Iran proposes reopening [1]. Multiple sources [2][3].", num_citations=3))
+    html = str(
+        _summary_to_html("Iran proposes reopening [1]. Multiple sources [2][3].", num_citations=3)
+    )
     assert 'href="#cite-1"' in html
     assert 'href="#cite-2"' in html
     assert 'href="#cite-3"' in html
@@ -237,10 +241,20 @@ def test_summary_out_of_range_refs_are_dropped() -> None:
 async def test_render_includes_indexed_sources() -> None:
     ch = _make_channel(display_timezone="UTC")
     citations = [
-        _citation("a", title="Article One", url="https://ex.com/1",
-                  published_at="2026-01-01T00:00:00Z", source_name="Reuters"),
-        _citation("b", title="Article Two", url="https://ex.com/2",
-                  published_at="2026-01-02T00:00:00Z", source_name="BBC"),
+        _citation(
+            "a",
+            title="Article One",
+            url="https://ex.com/1",
+            published_at="2026-01-01T00:00:00Z",
+            source_name="Reuters",
+        ),
+        _citation(
+            "b",
+            title="Article Two",
+            url="https://ex.com/2",
+            published_at="2026-01-02T00:00:00Z",
+            source_name="BBC",
+        ),
     ]
     result = _result(citations, summary="First fact [1]. Second fact [2].")
 
@@ -250,7 +264,9 @@ async def test_render_includes_indexed_sources() -> None:
         captured.append(msg)
 
     with patch.object(ch, "_send_sync", side_effect=fake_send_sync):
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="My Intent", intent_timezone="UTC")
+        await ch.send(
+            result, config=_cfg("x@example.com"), intent_name="My Intent", intent_timezone="UTC"
+        )
 
     assert len(captured) == 1
     body = _extract_html(captured[0])
@@ -277,7 +293,9 @@ async def test_logo_embedded_as_inline_image() -> None:
 
     captured: list = []
     with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent", intent_timezone="UTC")
+        await ch.send(
+            result, config=_cfg("x@example.com"), intent_name="Intent", intent_timezone="UTC"
+        )
 
     msg = captured[0]
     assert msg.is_multipart(), "expected multipart/related when logo present"
@@ -303,7 +321,9 @@ async def test_render_xss_escape_in_title() -> None:
 
     captured: list[MIMEText] = []
     with patch.object(ch, "_send_sync", side_effect=lambda m, _r: captured.append(m)):
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent", intent_timezone="UTC")
+        await ch.send(
+            result, config=_cfg("x@example.com"), intent_name="Intent", intent_timezone="UTC"
+        )
 
     body = _extract_html(captured[0])
     assert "<script>" not in body
@@ -336,12 +356,14 @@ async def test_multi_recipient_to_cc_bcc() -> None:
         )
         await ch.send(result, config=cfg, intent_name="Multi", intent_timezone="UTC")
 
-    assert captured_rcpts == [[
-        "primary@example.com",
-        "second@example.com",
-        "watcher@example.com",
-        "secret@example.com",
-    ]]
+    assert captured_rcpts == [
+        [
+            "primary@example.com",
+            "second@example.com",
+            "watcher@example.com",
+            "secret@example.com",
+        ]
+    ]
     msg = captured_msgs[0]
     assert "primary@example.com" in msg["To"] and "second@example.com" in msg["To"]
     assert "watcher@example.com" in msg["Cc"]
@@ -354,12 +376,14 @@ async def test_multi_recipient_to_cc_bcc() -> None:
 def test_email_channel_config_rejects_invalid_email() -> None:
     """RFC validation at the model boundary, not at SMTP send time."""
     import pydantic
+
     with pytest.raises(pydantic.ValidationError):
         EmailChannelConfig(to=["not-an-email"])
 
 
 def test_email_channel_config_requires_at_least_one_to() -> None:
     import pydantic
+
     with pytest.raises(pydantic.ValidationError):
         EmailChannelConfig(to=[])
 
@@ -373,8 +397,10 @@ def test_email_channel_config_requires_at_least_one_to() -> None:
 async def test_smtp_failure_does_not_reraise() -> None:
     ch = _make_channel()
 
-    with patch("smtplib.SMTP") as mock_smtp_cls, \
-         patch("sembr.notifier.email.logger") as mock_logger:
+    with (
+        patch("smtplib.SMTP") as mock_smtp_cls,
+        patch("sembr.notifier.email.logger") as mock_logger,
+    ):
         instance = MagicMock()
         instance.starttls = MagicMock()
         instance.login = MagicMock(side_effect=smtplib.SMTPAuthenticationError(535, b"auth failed"))
@@ -383,7 +409,9 @@ async def test_smtp_failure_does_not_reraise() -> None:
         mock_smtp_cls.return_value = instance
 
         result = _result([_citation("a", published_at="2026-01-01T00:00:00Z")])
-        await ch.send(result, config=_cfg("dest@example.com"), intent_name="Test", intent_timezone="UTC")
+        await ch.send(
+            result, config=_cfg("dest@example.com"), intent_name="Test", intent_timezone="UTC"
+        )
 
     mock_logger.error.assert_called_once()
     instance.quit.assert_called_once()
@@ -398,10 +426,11 @@ async def test_smtp_failure_does_not_reraise() -> None:
 async def test_empty_smtp_host_skips_send() -> None:
     ch = _make_channel(smtp_host="")
 
-    with patch("smtplib.SMTP") as mock_smtp_cls, \
-         patch("smtplib.SMTP_SSL") as mock_ssl_cls:
+    with patch("smtplib.SMTP") as mock_smtp_cls, patch("smtplib.SMTP_SSL") as mock_ssl_cls:
         result = _result([_citation("a")])
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="Intent", intent_timezone="UTC")
+        await ch.send(
+            result, config=_cfg("x@example.com"), intent_name="Intent", intent_timezone="UTC"
+        )
 
     mock_smtp_cls.assert_not_called()
     mock_ssl_cls.assert_not_called()
@@ -426,11 +455,11 @@ async def test_subject_format(n: int) -> None:
         captured_msgs.append(msg)
 
     with patch.object(ch, "_send_sync", side_effect=fake_send_sync):
-        citations = [
-            _citation(str(i), published_at="2026-01-01T00:00:00Z") for i in range(n)
-        ]
+        citations = [_citation(str(i), published_at="2026-01-01T00:00:00Z") for i in range(n)]
         result = _result(citations)
-        await ch.send(result, config=_cfg("x@example.com"), intent_name="My Intent", intent_timezone="UTC")
+        await ch.send(
+            result, config=_cfg("x@example.com"), intent_name="My Intent", intent_timezone="UTC"
+        )
 
     expected_date = datetime.now(ZoneInfo("UTC")).strftime("%Y%m%d")
     assert len(captured_msgs) == 1
@@ -445,6 +474,7 @@ async def test_subject_format(n: int) -> None:
 @pytest.mark.asyncio
 async def test_smtp_ssl_branch_uses_smtp_ssl() -> None:
     from sembr.notifier.email import EmailChannel
+
     settings = _make_settings()
     settings.smtp_use_ssl = True
     settings.smtp_use_starttls = False

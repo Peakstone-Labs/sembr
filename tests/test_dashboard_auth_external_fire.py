@@ -4,6 +4,7 @@ Per design test-strategy: this file ONLY covers whether the prefix is gated by
 ``DashboardTokenMiddleware`` — endpoint behaviour (404/409/429/500) lives in
 ``test_api_external_fire.py``.
 """
+
 from __future__ import annotations
 
 import pytest

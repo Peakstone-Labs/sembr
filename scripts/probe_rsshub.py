@@ -30,36 +30,29 @@ import httpx
 
 RSSHUB_CANDIDATES = [
     # General news -- typically have paywalls or summary-only RSS
-    ("Reuters Tech",      "https://www.reutersagency.com/feed/?best-topics=tech",
-     "/reuters/category/tech"),
-    ("BBC News",          "http://feeds.bbci.co.uk/news/rss.xml",
-     "/bbc/news"),
-    ("The Guardian",      "https://www.theguardian.com/uk/rss",
-     "/theguardian/uk"),
-    ("CNN Edition",       "http://rss.cnn.com/rss/edition.rss",
-     "/cnn/edition"),
-    ("Al Jazeera",        "https://www.aljazeera.com/xml/rss/all.xml",
-     "/aljazeera/feed"),
-    ("SCMP",              "https://www.scmp.com/rss/91/feed",
-     "/scmp/91"),
-
+    (
+        "Reuters Tech",
+        "https://www.reutersagency.com/feed/?best-topics=tech",
+        "/reuters/category/tech",
+    ),
+    ("BBC News", "http://feeds.bbci.co.uk/news/rss.xml", "/bbc/news"),
+    ("The Guardian", "https://www.theguardian.com/uk/rss", "/theguardian/uk"),
+    ("CNN Edition", "http://rss.cnn.com/rss/edition.rss", "/cnn/edition"),
+    ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml", "/aljazeera/feed"),
+    ("SCMP", "https://www.scmp.com/rss/91/feed", "/scmp/91"),
     # Finance -- most have heavy paywalls, full-text less likely via RSSHub
-    ("Financial Times",   "https://www.ft.com/?format=rss",
-     "/ft/myft/daily-digest"),          # may 403
-    ("The Economist",     "https://www.economist.com/latest/rss.xml",
-     "/economist/latest"),
-    ("Forbes",            "https://www.forbes.com/real-time/feed/",
-     "/forbes/latest"),
-    ("MarketWatch",       "https://www.marketwatch.com/rss/topstories",
-     "/marketwatch/articles"),
-    ("Seeking Alpha",     "https://seekingalpha.com/feed.xml",
-     "/seekingalpha/news"),
+    ("Financial Times", "https://www.ft.com/?format=rss", "/ft/myft/daily-digest"),  # may 403
+    ("The Economist", "https://www.economist.com/latest/rss.xml", "/economist/latest"),
+    ("Forbes", "https://www.forbes.com/real-time/feed/", "/forbes/latest"),
+    ("MarketWatch", "https://www.marketwatch.com/rss/topstories", "/marketwatch/articles"),
+    ("Seeking Alpha", "https://seekingalpha.com/feed.xml", "/seekingalpha/news"),
 ]
 
 
 # ---------------------------------------------------------------------------
 # Data
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class CompareResult:
@@ -72,13 +65,14 @@ class CompareResult:
     rsshub_status: Optional[int] = None
     orig_error: Optional[str] = None
     rsshub_error: Optional[str] = None
-    improvement: float = 0.0   # rsshub_avg / orig_avg
+    improvement: float = 0.0  # rsshub_avg / orig_avg
     recommendation: str = ""
 
 
 # ---------------------------------------------------------------------------
 # Helpers (duplicated from probe_rss for standalone use)
 # ---------------------------------------------------------------------------
+
 
 def _strip_html(text: str) -> str:
     text = html.unescape(text or "")
@@ -99,8 +93,7 @@ def _fetch_avg_len(url: str, timeout: int) -> tuple[Optional[int], Optional[int]
     """Returns (http_status, avg_body_len, error_str)."""
     headers = {
         "User-Agent": (
-            "Mozilla/5.0 (compatible; sembr-probe/0.1; "
-            "+https://github.com/Peakstone-Labs/sembr)"
+            "Mozilla/5.0 (compatible; sembr-probe/0.1; +https://github.com/Peakstone-Labs/sembr)"
         ),
         "Accept": "application/rss+xml, application/xml, text/xml, */*",
     }
@@ -122,8 +115,7 @@ def _fetch_avg_len(url: str, timeout: int) -> tuple[Optional[int], Optional[int]
 
 
 def _compare_one(
-    name: str, orig_url: str, rsshub_path: str,
-    rsshub_base: str, timeout: int
+    name: str, orig_url: str, rsshub_path: str, rsshub_base: str, timeout: int
 ) -> CompareResult:
     rsshub_url = rsshub_base.rstrip("/") + rsshub_path
     r = CompareResult(name=name, orig_url=orig_url, rsshub_url=rsshub_url)
@@ -153,9 +145,8 @@ def _compare_one(
 # Async runner
 # ---------------------------------------------------------------------------
 
-async def _run_all(
-    candidates: list[tuple], rsshub_base: str, timeout: int
-) -> list[CompareResult]:
+
+async def _run_all(candidates: list[tuple], rsshub_base: str, timeout: int) -> list[CompareResult]:
     loop = asyncio.get_event_loop()
     tasks = [
         loop.run_in_executor(None, _compare_one, name, orig, path, rsshub_base, timeout)
@@ -168,23 +159,26 @@ async def _run_all(
 # Report
 # ---------------------------------------------------------------------------
 
+
 def _print_report(results: list[CompareResult]) -> None:
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("  RSSHub vs Original -- full-text conversion comparison")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     col = "{:<22} {:>8} {:>8} {:>6}  {}"
     print(col.format("Feed", "Orig avg", "RSSHub avg", "Ratio", "Recommendation"))
     print("-" * 80)
 
     for r in results:
         ratio = f"{r.improvement:.1f}x" if not r.rsshub_error else "--"
-        print(col.format(
-            r.name[:22],
-            r.orig_avg_len,
-            r.rsshub_avg_len if not r.rsshub_error else f"ERR",
-            ratio,
-            r.recommendation[:50],
-        ))
+        print(
+            col.format(
+                r.name[:22],
+                r.orig_avg_len,
+                r.rsshub_avg_len if not r.rsshub_error else f"ERR",
+                ratio,
+                r.recommendation[:50],
+            )
+        )
 
     # Group recommendations
     use_rsshub = [r for r in results if "USE_RSSHUB" in r.recommendation]
@@ -221,11 +215,13 @@ def _print_report(results: list[CompareResult]) -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="RSSHub full-text conversion probe")
     parser.add_argument(
-        "--rsshub-base", default="https://rsshub.app",
-        help="RSSHub instance base URL (default: https://rsshub.app)"
+        "--rsshub-base",
+        default="https://rsshub.app",
+        help="RSSHub instance base URL (default: https://rsshub.app)",
     )
     parser.add_argument("--timeout", type=int, default=15, help="HTTP timeout (default 15s)")
     args = parser.parse_args()

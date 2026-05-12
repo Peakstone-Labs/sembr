@@ -1,4 +1,5 @@
 """RSS feed collector using httpx + feedparser."""
+
 from __future__ import annotations
 
 import hashlib
@@ -101,9 +102,7 @@ class RSSSource(BaseSource):
                 resp = await client.get(self._url, headers={"User-Agent": _USER_AGENT})
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise FetchError(
-                f"HTTP error: {type(exc).__name__}: {exc!s} | {exc!r}"
-            ) from exc
+            raise FetchError(f"HTTP error: {type(exc).__name__}: {exc!s} | {exc!r}") from exc
 
         feed = feedparser.parse(resp.content)
         # Raise on parse failure: bozo (malformed XML) or unrecognized format (version="")
@@ -150,6 +149,10 @@ class RSSSource(BaseSource):
         return {
             "type": "object",
             "properties": {
-                "timeout": {"type": "number", "default": 30.0, "description": "HTTP timeout in seconds"},
+                "timeout": {
+                    "type": "number",
+                    "default": 30.0,
+                    "description": "HTTP timeout in seconds",
+                },
             },
         }

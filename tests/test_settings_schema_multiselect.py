@@ -1,4 +1,5 @@
 """D13: NEWSAPI_CATEGORIES is exposed as type='multiselect' with the 8-candidate enum."""
+
 from __future__ import annotations
 
 from pathlib import Path

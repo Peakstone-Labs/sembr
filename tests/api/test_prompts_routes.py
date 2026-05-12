@@ -1,4 +1,5 @@
 """Tests for GET /api/prompts/templates routes (post-rewrite shape)."""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager, contextmanager
@@ -51,9 +52,7 @@ def _client(prompts_dir: Path):
 def prompts_dir(tmp_path: Path) -> Path:
     (tmp_path / "system").mkdir()
     (tmp_path / "instruction").mkdir()
-    (tmp_path / "system" / "default.md").write_text(
-        "System prompt {language}", encoding="utf-8"
-    )
+    (tmp_path / "system" / "default.md").write_text("System prompt {language}", encoding="utf-8")
     (tmp_path / "instruction" / "default.md").write_text(
         "Topic: {intent_text}\n{articles}", encoding="utf-8"
     )
@@ -166,8 +165,10 @@ def test_prompts_routes_require_token_when_dashboard_token_set(prompts_dir: Path
     mock_settings = MagicMock()
     mock_settings.dashboard_token.get_secret_value.return_value = "secret-token"
 
-    with patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir), \
-         patch("sembr.dashboard.auth.get_settings", return_value=mock_settings):
+    with (
+        patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir),
+        patch("sembr.dashboard.auth.get_settings", return_value=mock_settings),
+    ):
         with TestClient(app, raise_server_exceptions=False) as http:
             resp = http.get("/api/prompts/templates")
     assert resp.status_code == 401
@@ -176,16 +177,21 @@ def test_prompts_routes_require_token_when_dashboard_token_set(prompts_dir: Path
 @pytest.mark.parametrize(
     "method, path, body",
     [
-        ("POST",   "/api/prompts/templates/instruction",                 {"name": "x"}),
-        ("PUT",    "/api/prompts/templates/instruction/default",         {"content": "Topic: {intent_text}\n{articles}"}),
-        ("DELETE", "/api/prompts/templates/instruction/default",         None),
-        ("POST",   "/api/prompts/templates/instruction/default/rename",  {"new_name": "x"}),
+        ("POST", "/api/prompts/templates/instruction", {"name": "x"}),
+        (
+            "PUT",
+            "/api/prompts/templates/instruction/default",
+            {"content": "Topic: {intent_text}\n{articles}"},
+        ),
+        ("DELETE", "/api/prompts/templates/instruction/default", None),
+        ("POST", "/api/prompts/templates/instruction/default/rename", {"new_name": "x"}),
     ],
 )
 def test_prompts_write_verbs_require_token_when_dashboard_token_set(
     prompts_dir: Path, method: str, path: str, body
 ) -> None:
     """Each write verb is auth-gated by DashboardTokenMiddleware (per-method 401 e2e)."""
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         import aiosqlite  # noqa: PLC0415
@@ -205,8 +211,10 @@ def test_prompts_write_verbs_require_token_when_dashboard_token_set(
     mock_settings = MagicMock()
     mock_settings.dashboard_token.get_secret_value.return_value = "secret-token"
 
-    with patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir), \
-         patch("sembr.dashboard.auth.get_settings", return_value=mock_settings):
+    with (
+        patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir),
+        patch("sembr.dashboard.auth.get_settings", return_value=mock_settings),
+    ):
         with TestClient(app, raise_server_exceptions=False) as http:
             resp = http.request(method, path, json=body)
     assert resp.status_code == 401
@@ -236,8 +244,10 @@ def test_prompts_routes_allow_request_with_valid_token(prompts_dir: Path) -> Non
     mock_settings = MagicMock()
     mock_settings.dashboard_token.get_secret_value.return_value = "secret-token"
 
-    with patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir), \
-         patch("sembr.dashboard.auth.get_settings", return_value=mock_settings):
+    with (
+        patch("sembr.summarizer.templates.PROMPTS_DIR", prompts_dir),
+        patch("sembr.dashboard.auth.get_settings", return_value=mock_settings),
+    ):
         with TestClient(app, raise_server_exceptions=False) as http:
             resp = http.get(
                 "/api/prompts/templates",

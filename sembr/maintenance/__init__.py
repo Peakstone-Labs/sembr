@@ -6,6 +6,7 @@ Three APScheduler jobs run on the cadence configured by
 of 5 / 15 / 25 minutes so they don't all hit Qdrant in the same instant. See
 ``reconcile`` design D1.
 """
+
 from __future__ import annotations
 
 # Re-exported for the maintenance modules' callers — imports route through this

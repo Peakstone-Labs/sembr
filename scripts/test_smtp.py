@@ -1,4 +1,5 @@
 """Quick SMTP smoke test — run once to verify credentials before wiring into the app."""
+
 import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart

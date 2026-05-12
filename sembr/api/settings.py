@@ -11,6 +11,7 @@ Routes:
 - ``GET  /api/settings/values``         current values with sensitive fields masked
 - ``POST /api/settings/save``           atomic write + restart trigger
 """
+
 from __future__ import annotations
 
 import logging
@@ -57,21 +58,34 @@ SENSITIVE_MASK = "••••••"
 # Used to mask values on read and to coalesce a submitted mask back to the
 # stored value on write — keep both call sites pointed at this single tuple.
 _SENSITIVE_SUBSTRINGS: tuple[str, ...] = (
-    "TOKEN", "COOKIE", "SECRET", "KEY", "PASSWORD", "SESSION",
+    "TOKEN",
+    "COOKIE",
+    "SECRET",
+    "KEY",
+    "PASSWORD",
+    "SESSION",
 )
 
 # Well-known RSSHub passthrough variables shown in the UI as starter rows
 # even when absent from `.env`. Lets the user fill them in without first
 # clicking "+ Add". Each entry must match a passthrough prefix.
 _RSSHUB_RECOMMENDED: tuple[dict[str, str], ...] = (
-    {"key": "TWITTER_AUTH_TOKEN",
-     "description": "Twitter/X auth_token cookie value (40-char hex) for user timelines and search. Comma-separate multiple accounts."},
-    {"key": "TELEGRAM_TOKEN",
-     "description": "Telegram bot token (BotFather) for public channel feeds."},
-    {"key": "TELEGRAM_SESSION",
-     "description": "Telegram user session string (Telethon/Pyrogram) for restricted channels."},
-    {"key": "GITHUB_ACCESS_TOKEN",
-     "description": "GitHub PAT — raises API rate limit from 60 to 5000 req/h."},
+    {
+        "key": "TWITTER_AUTH_TOKEN",
+        "description": "Twitter/X auth_token cookie value (40-char hex) for user timelines and search. Comma-separate multiple accounts.",
+    },
+    {
+        "key": "TELEGRAM_TOKEN",
+        "description": "Telegram bot token (BotFather) for public channel feeds.",
+    },
+    {
+        "key": "TELEGRAM_SESSION",
+        "description": "Telegram user session string (Telethon/Pyrogram) for restricted channels.",
+    },
+    {
+        "key": "GITHUB_ACCESS_TOKEN",
+        "description": "GitHub PAT — raises API rate limit from 60 to 5000 req/h.",
+    },
 )
 
 # Settings fields hidden from the UI: declared in Settings but the field is
@@ -363,9 +377,8 @@ def _coalesce_value(key: str, submitted: str, current_raw: str) -> str:
     """If user submitted the mask sentinel for a sensitive field, keep the
     original disk value untouched (design.md Decision #6 / AC4)."""
     sensitive = (
-        (key.lower() in Settings.model_fields and _is_sensitive(Settings.model_fields[key.lower()]))
-        or any(s in key for s in _SENSITIVE_SUBSTRINGS)
-    )
+        key.lower() in Settings.model_fields and _is_sensitive(Settings.model_fields[key.lower()])
+    ) or any(s in key for s in _SENSITIVE_SUBSTRINGS)
     if sensitive and submitted == SENSITIVE_MASK:
         return current_raw
     return submitted
@@ -443,12 +456,8 @@ async def save_settings(body: SaveRequest) -> SaveResponse:
         )
 
     # ── validate ──────────────────────────────────────────────────────────
-    invalid_changes = [
-        k.upper() for k in body.changes if _classify_key(k.upper()) == "invalid"
-    ]
-    invalid_additions = [
-        k.upper() for k in body.additions if _classify_key(k.upper()) == "invalid"
-    ]
+    invalid_changes = [k.upper() for k in body.changes if _classify_key(k.upper()) == "invalid"]
+    invalid_additions = [k.upper() for k in body.additions if _classify_key(k.upper()) == "invalid"]
     if invalid_changes or invalid_additions:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -3,6 +3,7 @@
 Priority chain (low → high) per CLAUDE.md "Configuration":
   defaults  <  sembr.yaml  <  .env  <  shell env vars  <  (runtime API override — out of scope here)
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -120,9 +121,14 @@ class Settings(BaseSettings):
     smtp_port: int = Field(default=587, description="SMTP server port.")
     smtp_username: str = Field(default="", description="SMTP login username.")
     smtp_password: SecretStr = Field(default="", description="SMTP login password.")
-    smtp_from: str = Field(default="", description="From address for outgoing email. Falls back to the SMTP username if empty.")
+    smtp_from: str = Field(
+        default="",
+        description="From address for outgoing email. Falls back to the SMTP username if empty.",
+    )
     smtp_use_starttls: bool = Field(default=True, description="Use STARTTLS (typical port 587).")
-    smtp_use_ssl: bool = Field(default=False, description="Use SMTPS (typical port 465). Overrides STARTTLS when enabled.")
+    smtp_use_ssl: bool = Field(
+        default=False, description="Use SMTPS (typical port 465). Overrides STARTTLS when enabled."
+    )
 
     display_timezone: str = Field(
         default="Asia/Shanghai",
@@ -134,15 +140,21 @@ class Settings(BaseSettings):
         description="Shared token required to access the dashboard. Empty = open access.",
     )
     dashboard_log_retention_days: int = Field(
-        default=7, ge=1, le=90,
+        default=7,
+        ge=1,
+        le=90,
         description="How long (days) to keep feed-fetch and embedder-call history.",
     )
     dashboard_log_max_per_feed: int = Field(
-        default=1000, ge=10, le=100000,
+        default=1000,
+        ge=10,
+        le=100000,
         description="Max fetch records kept per feed (oldest pruned first).",
     )
     dashboard_poll_interval_seconds: int = Field(
-        default=10, ge=2, le=120,
+        default=10,
+        ge=2,
+        le=120,
         description="How often (seconds) the dashboard refreshes its snapshot.",
     )
     dashboard_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
@@ -150,23 +162,31 @@ class Settings(BaseSettings):
         description="Default log level on startup.",
     )
     dashboard_log_buffer_per_tag: int = Field(
-        default=1000, ge=100, le=10000,
+        default=1000,
+        ge=100,
+        le=10000,
         description="Number of log lines kept in memory per category.",
     )
 
     qdrant_news_retention_days: int = Field(
-        default=35, ge=30, le=365,
+        default=35,
+        ge=30,
+        le=365,
         description=(
             "How long (days) to keep ingested article vectors in Qdrant. "
             "Must be at least 30 to cover the maximum intent lookback window."
         ),
     )
     dead_articles_retention_days: int = Field(
-        default=14, ge=1, le=180,
+        default=14,
+        ge=1,
+        le=180,
         description="How long (days) to keep dead-article records (failed-embedder rows kept for debugging).",
     )
     maintenance_interval_hours: int = Field(
-        default=24, ge=1, le=168,
+        default=24,
+        ge=1,
+        le=168,
         description="How often (hours) to run background cleanup jobs.",
     )
 
@@ -183,7 +203,9 @@ class Settings(BaseSettings):
         ),
     )
     newsapi_poll_interval_minutes: int = Field(
-        default=30, ge=5, le=1440,
+        default=30,
+        ge=5,
+        le=1440,
         description=(
             "How often (minutes) to poll NewsAPI. One token per poll is "
             "shared across all NewsAPI feeds; lowering this burns the free "
@@ -203,7 +225,9 @@ class Settings(BaseSettings):
         ),
     )
     newsapi_max_pages: int = Field(
-        default=10, ge=1, le=20,
+        default=10,
+        ge=1,
+        le=20,
         description=(
             "Max pages fetched per NewsAPI poll. Set to 1 to disable "
             "pagination; higher values raise the token cost of each poll."
@@ -258,7 +282,7 @@ class Settings(BaseSettings):
             entry = raw.strip().lower()
             for prefix in ("http://", "https://"):
                 if entry.startswith(prefix):
-                    entry = entry[len(prefix):]
+                    entry = entry[len(prefix) :]
             entry = entry.rstrip("/")
             if entry:
                 out.add(entry)

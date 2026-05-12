@@ -1,4 +1,5 @@
 """Tests for POST /feeds/{id}/fire + GET .../fire/{task_id} (SC#6–9)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -113,6 +114,7 @@ def test_feeds_fire_real_run_writes_log(client: TestClient) -> None:
 
     # Verify task is in the store and is a real (non-dry) run
     from sembr.collector.fire_tasks import get_task as ft_get
+
     task = ft_get(task_id)
     assert task is not None
     assert task.dry_run is False

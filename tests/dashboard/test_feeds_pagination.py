@@ -1,4 +1,5 @@
 """SC#4: GET /api/dashboard/feeds returns the correct page slice + total."""
+
 from __future__ import annotations
 
 import os
@@ -40,6 +41,7 @@ def client():
     app.state.qdrant = None
 
     from unittest.mock import AsyncMock, patch
+
     with patch("sembr.api.feeds.add_feed_job", new=AsyncMock()):
         with TestClient(app) as c:
             yield c

@@ -3,6 +3,7 @@
 Uses a real on-disk SQLite (init_sqlite + WAL) so transaction() works against
 the module-global connection. The scheduler is mocked so no APScheduler runs.
 """
+
 from __future__ import annotations
 
 import os

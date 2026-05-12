@@ -4,6 +4,7 @@
 shutdown reverses order. Qdrant client construction never blocks on server readiness —
 if Qdrant isn't up yet, /health reports 503 and the platform's readiness probe retries.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -136,7 +137,10 @@ async def _dispatch_template_error(
     except Exception:
         logger.error(
             "dispatch_template_error failed for intent_id=%d template=%s/%s",
-            intent_id, kind, name, exc_info=True,
+            intent_id,
+            kind,
+            name,
+            exc_info=True,
         )
 
 
@@ -176,7 +180,7 @@ async def lifespan(app: FastAPI):
             f"Recovery: inspect Qdrant for an `intents_<model>_mv` collection; "
             f"if absent or has wrong layout, restart the container to retry the "
             f"migration. If retry fails repeatedly, delete the partially-built "
-            f"`*_mv` collection (`docker compose exec api python -c \"from "
+            f'`*_mv` collection (`docker compose exec api python -c "from '
             f"qdrant_client import QdrantClient; QdrantClient(url='http://qdrant:6333')"
             f".delete_collection('<NAME>_mv')\"`) and restart so ensure_intents_collection "
             f"rebuilds it from scratch."
@@ -214,6 +218,7 @@ async def lifespan(app: FastAPI):
     add_dead_ttl_job(scheduler, settings)
     # DD4: sweep expired fire tasks every 5 minutes
     from apscheduler.triggers.interval import IntervalTrigger as _IT  # noqa: PLC0415
+
     scheduler.add_job(
         sweep_expired,
         trigger=_IT(minutes=5),
@@ -243,10 +248,13 @@ async def lifespan(app: FastAPI):
     # D9/D22: load event-mode intent vectors into in-process cache (after register_all_enabled)
     event_intent_cache = EventIntentCache()
     await load_event_cache(event_intent_cache, qdrant, conn)
+
     # D15: sweeper flushes timed-out event buffers every 30s
     async def _event_y_sweeper() -> None:
         from sembr.db.sqlite import get_conn as _get_conn  # noqa: PLC0415
+
         await _event_sweep_timed_out(_get_conn(), app, app.state.event_intent_cache)
+
     scheduler.add_job(
         _event_y_sweeper,
         trigger=_IT(seconds=30),
@@ -262,7 +270,9 @@ async def lifespan(app: FastAPI):
         get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(conn, iid),
         get_feed_names=lambda ids: get_feed_names(conn, ids),
         on_summary=lambda r: _dispatch_notification(conn, email_ch, r),
-        on_template_error=lambda iid, k, n, r: _dispatch_template_error(conn, email_ch, iid, k, n, r),
+        on_template_error=lambda iid, k, n, r: _dispatch_template_error(
+            conn, email_ch, iid, k, n, r
+        ),
         prompts_dir=PROMPTS_DIR,
     )
     app.state.on_match = pipeline.handle
@@ -287,6 +297,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+
         async def _shutdown() -> None:
             # wait=False: for AsyncIOScheduler, wait=True only blocks on
             # ThreadPoolExecutor jobs — it does NOT await async coroutines like
@@ -352,6 +363,7 @@ app.include_router(dashboard_router)
 app.include_router(restart_router)
 app.include_router(maintenance_router)
 app.include_router(logs_router)
+
 
 class _NoCacheHTMLStaticFiles(StaticFiles):
     """StaticFiles wrapper that disables disk-caching for HTML responses.

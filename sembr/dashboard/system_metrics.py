@@ -24,6 +24,7 @@ mount, etc.) the collector flips to ``available=False``; subsequent
 ``read()`` calls return ``None`` so ``/snapshot`` reports ``system_metrics:
 null`` and the dashboard falls back to a "—" placeholder.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -84,7 +85,8 @@ def _emit_zero_container_warning(project: str) -> None:
         "%s=%s — sparkline will stay empty. Set COMPOSE_PROJECT_NAME to "
         "the directory `docker compose up` was run from, or rename the "
         "directory to `sembr`.",
-        _COMPOSE_PROJECT_LABEL, project,
+        _COMPOSE_PROJECT_LABEL,
+        project,
     )
     _zero_container_warned = True
 
@@ -189,9 +191,7 @@ class SystemMetricsCollector:
             )
 
         return SystemMetricsBlock(
-            sampled_at=latest.sampled_at.replace(microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            sampled_at=latest.sampled_at.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
             interval_seconds=self._interval_seconds,
             containers=out_containers,
         )
@@ -389,9 +389,7 @@ async def _run_sampler(collector: SystemMetricsCollector) -> None:
             timeout=SAMPLE_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
-        logger.warning(
-            "system metrics: sample timed out after %ss", SAMPLE_TIMEOUT_SECONDS
-        )
+        logger.warning("system metrics: sample timed out after %ss", SAMPLE_TIMEOUT_SECONDS)
         collector.mark_unavailable()
         return
     except Exception as exc:  # noqa: BLE001 — never raise out of a scheduler job

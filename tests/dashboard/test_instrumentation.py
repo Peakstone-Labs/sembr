@@ -6,6 +6,7 @@ Strategy:
   - Mock the source / embedder / qdrant client at module boundaries so the test
     stays Windows-runnable without qdrant_client / SiliconFlow.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -53,6 +54,7 @@ def _fake_source(articles=None, exc: Exception | None = None) -> MagicMock:
 # collect_feed exit branches
 # ---------------------------------------------------------------------------
 
+
 def test_collect_feed_writes_fetch_event_on_fetcherror(tmp_path):
     async def run():
         await _setup_db(tmp_path)
@@ -62,9 +64,7 @@ def test_collect_feed_writes_fetch_event_on_fetcherror(tmp_path):
         ):
             await collect_feed(1, "feed", "http://example.com/rss", "rss", {})
         conn = get_conn()
-        async with conn.execute(
-            "SELECT ok, error_class, error_message FROM feed_fetch_log"
-        ) as cur:
+        async with conn.execute("SELECT ok, error_class, error_message FROM feed_fetch_log") as cur:
             rows = await cur.fetchall()
         await close_sqlite()
         return rows
@@ -86,9 +86,7 @@ def test_collect_feed_writes_fetch_event_on_generic_exception(tmp_path):
         ):
             await collect_feed(1, "feed", "http://example.com/rss", "rss", {})
         conn = get_conn()
-        async with conn.execute(
-            "SELECT ok, error_class FROM feed_fetch_log"
-        ) as cur:
+        async with conn.execute("SELECT ok, error_class FROM feed_fetch_log") as cur:
             rows = await cur.fetchall()
         await close_sqlite()
         return rows
@@ -127,6 +125,7 @@ def test_collect_feed_writes_fetch_event_on_success_empty(tmp_path):
 
 def test_collect_feed_unknown_source_type_writes_no_event(tmp_path):
     """Unknown source_type is a config error, not a fetch attempt — D4 says no row."""
+
     async def run():
         await _setup_db(tmp_path)
         await collect_feed(1, "feed", "http://example.com/rss", "nonsense", {})
@@ -142,6 +141,7 @@ def test_collect_feed_unknown_source_type_writes_no_event(tmp_path):
 # ---------------------------------------------------------------------------
 # embedder_worker exit branches
 # ---------------------------------------------------------------------------
+
 
 def _embedder(*, is_loaded: bool = True, exc: Exception | None = None) -> MagicMock:
     e = MagicMock()
@@ -181,9 +181,7 @@ def test_embedder_worker_writes_event_on_embed_failure(tmp_path):
         await _seed_pending()
         await embedder_worker(_embedder(exc=ValueError("siliconflow 500")), _qdrant())
         conn = get_conn()
-        async with conn.execute(
-            "SELECT ok, error_class, error_message FROM embed_call_log"
-        ) as cur:
+        async with conn.execute("SELECT ok, error_class, error_message FROM embed_call_log") as cur:
             rows = await cur.fetchall()
         await close_sqlite()
         return rows
@@ -205,9 +203,7 @@ def test_embedder_worker_writes_event_on_qdrant_transient(tmp_path):
             _qdrant(exc=httpx.ConnectError("conn refused")),
         )
         conn = get_conn()
-        async with conn.execute(
-            "SELECT ok, error_class FROM embed_call_log"
-        ) as cur:
+        async with conn.execute("SELECT ok, error_class FROM embed_call_log") as cur:
             rows = await cur.fetchall()
         await close_sqlite()
         return rows
@@ -228,9 +224,7 @@ def test_embedder_worker_writes_event_on_qdrant_other_error(tmp_path):
             _qdrant(exc=RuntimeError("collection missing")),
         )
         conn = get_conn()
-        async with conn.execute(
-            "SELECT ok, error_class FROM embed_call_log"
-        ) as cur:
+        async with conn.execute("SELECT ok, error_class FROM embed_call_log") as cur:
             rows = await cur.fetchall()
         await close_sqlite()
         return rows

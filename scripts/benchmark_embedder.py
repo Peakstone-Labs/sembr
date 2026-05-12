@@ -14,6 +14,7 @@ Also validates the worst-case token budget for BATCH_SIZE=32 (design Risk row 5)
 if SiliconFlow rejects the request, prints the error and suggests reducing
 BATCH_SIZE in sembr/embedder/scheduler.py.
 """
+
 from __future__ import annotations
 
 import asyncio

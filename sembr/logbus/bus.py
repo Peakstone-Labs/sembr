@@ -4,6 +4,7 @@ Thread-safety: a single threading.Lock guards deques, subscribers, and
 tag_levels.  The emit() hot path holds the lock for ~µs (dict lookup +
 deque.append + N call_soon_threadsafe calls including fan-out scheduling).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -148,10 +149,7 @@ class LogBus:
 
     def tag_info(self) -> list[dict[str, Any]]:
         with self._lock:
-            return [
-                {"name": tag, "level": self._tag_levels[tag]}
-                for tag in ALL_TAGS
-            ]
+            return [{"name": tag, "level": self._tag_levels[tag]} for tag in ALL_TAGS]
 
 
 # Module-level singleton; swapped out in tests via _reset_for_test().

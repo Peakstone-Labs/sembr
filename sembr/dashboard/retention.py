@@ -6,6 +6,7 @@ Two predicates, applied as a union:
 
 Embed log only enforces (a) — there's a single embedder, so a global age cap is enough.
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,18 +23,13 @@ logger = logging.getLogger(__name__)
 
 async def _prune_logs(settings: Settings) -> None:
     cutoff = (
-        datetime.now(timezone.utc)
-        - timedelta(days=settings.dashboard_log_retention_days)
+        datetime.now(timezone.utc) - timedelta(days=settings.dashboard_log_retention_days)
     ).isoformat()
     max_per_feed = settings.dashboard_log_max_per_feed
     try:
         async with transaction() as conn:
-            await conn.execute(
-                "DELETE FROM feed_fetch_log WHERE started_at < ?", (cutoff,)
-            )
-            await conn.execute(
-                "DELETE FROM embed_call_log WHERE started_at < ?", (cutoff,)
-            )
+            await conn.execute("DELETE FROM feed_fetch_log WHERE started_at < ?", (cutoff,))
+            await conn.execute("DELETE FROM embed_call_log WHERE started_at < ?", (cutoff,))
             # Per-feed FIFO cap via window function (SQLite ≥ 3.25, shipped with
             # Python 3.12). ROW_NUMBER ordered by id DESC: rn=1 is newest, so
             # any row with rn > max_per_feed is older than the kept window.

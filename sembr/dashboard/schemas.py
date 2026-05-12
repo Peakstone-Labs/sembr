@@ -1,4 +1,5 @@
 """Pydantic v2 response models for /api/dashboard endpoints (D5 / D6)."""
+
 from __future__ import annotations
 
 from typing import Literal

@@ -1,4 +1,5 @@
 """Tests for template existence validation on POST/PUT /intents."""
+
 from __future__ import annotations
 
 import tempfile

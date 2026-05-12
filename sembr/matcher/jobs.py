@@ -4,6 +4,7 @@ D15: coalesce=True, max_instances=1, replace_existing=True — project-wide APSc
 D16: job ID = f"matcher-intent-{intent_id}" — stable, enables replace_existing-based reregister.
 D8:  EventSchedule intents skip APScheduler registration (event-driven path).
 """
+
 from __future__ import annotations
 
 import logging

@@ -10,6 +10,7 @@ Covers:
 
 All tests are Windows-runnable (no Docker, no qdrant_client runtime needed).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -171,6 +172,7 @@ async def test_scan_proceeds_when_embedder_not_ready(mem_conn) -> None:
 
     with patch("sembr.matcher.scan.get_conn", return_value=mem_conn):
         from sembr.matcher.scan import run_intent_scan
+
         await run_intent_scan(intent.id, app)
 
     qdrant_client.retrieve.assert_awaited()  # proves scan reached Qdrant despite embedder not loaded
@@ -200,6 +202,7 @@ async def test_scan_skips_on_qdrant_error(mem_conn) -> None:
         ),
     ):
         from sembr.matcher.scan import run_intent_scan
+
         await run_intent_scan(intent.id, app)
 
     on_match.assert_not_called()
@@ -245,9 +248,12 @@ async def test_scan_happy_path_triggers_callback(mem_conn) -> None:
     # inside run_intent_scan resolve to the mock, so no real qdrant_client is needed.
     with (
         patch("sembr.matcher.scan.get_conn", return_value=mem_conn),
-        patch.dict("sys.modules", {"qdrant_client": MagicMock(), "qdrant_client.models": qdrant_models}),
+        patch.dict(
+            "sys.modules", {"qdrant_client": MagicMock(), "qdrant_client.models": qdrant_models}
+        ),
     ):
         from sembr.matcher.scan import run_intent_scan
+
         await run_intent_scan(intent.id, app)
 
     on_match.assert_called_once()
@@ -290,9 +296,12 @@ async def test_scan_dedup_no_repeated_callback(mem_conn) -> None:
     qdrant_models = MagicMock()
     with (
         patch("sembr.matcher.scan.get_conn", return_value=mem_conn),
-        patch.dict("sys.modules", {"qdrant_client": MagicMock(), "qdrant_client.models": qdrant_models}),
+        patch.dict(
+            "sys.modules", {"qdrant_client": MagicMock(), "qdrant_client.models": qdrant_models}
+        ),
     ):
         from sembr.matcher.scan import run_intent_scan
+
         await run_intent_scan(intent.id, app)
 
     on_match.assert_not_called()
@@ -324,6 +333,7 @@ async def test_register_all_enabled_wires_jobs(mem_conn) -> None:
     mock_qdrant.retrieve = AsyncMock(return_value=[MagicMock()])  # vector exists
 
     from sembr.db.intents import list_intents
+
     enabled = await list_intents(mem_conn, enabled=True)
 
     with patch("sembr.matcher.jobs.register_intent_job") as mock_reg:
@@ -347,6 +357,7 @@ async def test_register_all_enabled_skips_vector_less_intent(mem_conn) -> None:
     mock_qdrant.retrieve = AsyncMock(return_value=[])  # no vector
 
     from sembr.db.intents import list_intents
+
     enabled = await list_intents(mem_conn, enabled=True)
 
     with patch("sembr.matcher.jobs.register_intent_job") as mock_reg:
@@ -391,6 +402,7 @@ def test_post_intent_rollback_on_register_job_failure() -> None:
     app.state.scheduler = MagicMock()
     from pathlib import Path as _Path  # noqa: PLC0415
     from unittest.mock import MagicMock as _MM  # noqa: PLC0415
+
     app.state.settings = _MM()
     project_prompts = _Path(__file__).parent.parent / "prompts"
 

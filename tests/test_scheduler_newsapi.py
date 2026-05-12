@@ -9,6 +9,7 @@ Verifies:
 * maybe_drop_newsapi_master_job is conservative — keeps the master when
   any other enabled newsapi feed is present
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -48,14 +49,20 @@ async def _setup_inmem_db_with_feeds(rows: list[dict]) -> aiosqlite.Connection:
     conn = await aiosqlite.connect(":memory:")
     await conn.execute("PRAGMA foreign_keys=ON")
     from sembr.db.feeds import init_feed_tables
+
     await init_feed_tables(conn)
     for r in rows:
         await conn.execute(
             "INSERT INTO feeds (id, name, url, source_type, last_collected_at, enabled) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (r["id"], r.get("name", f"f{r['id']}"), r["url"],
-             r.get("source_type", "newsapi"), r.get("last_collected_at"),
-             int(r.get("enabled", 1))),
+            (
+                r["id"],
+                r.get("name", f"f{r['id']}"),
+                r["url"],
+                r.get("source_type", "newsapi"),
+                r.get("last_collected_at"),
+                int(r.get("enabled", 1)),
+            ),
         )
     await conn.commit()
     return conn
@@ -125,10 +132,13 @@ async def test_remove_last_newsapi_feed_drops_master(monkeypatch) -> None:
     """When the last enabled newsapi feed is removed, the master job is dropped."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "k")
     get_settings.cache_clear()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com"},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com"},
+        ]
+    )
     from sembr.db.sqlite import install_for_test
+
     install_for_test(conn)
 
     sch = AsyncIOScheduler(timezone="UTC")
@@ -153,11 +163,14 @@ async def test_remove_last_newsapi_feed_drops_master(monkeypatch) -> None:
 async def test_master_kept_when_other_newsapi_feeds_remain(monkeypatch) -> None:
     monkeypatch.setenv("NEWSAPI_API_KEY", "k")
     get_settings.cache_clear()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com"},
-        {"id": 2, "url": "bbc.com"},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com"},
+            {"id": 2, "url": "bbc.com"},
+        ]
+    )
     from sembr.db.sqlite import install_for_test
+
     install_for_test(conn)
 
     sch = AsyncIOScheduler(timezone="UTC")
@@ -181,11 +194,14 @@ async def test_master_dropped_when_only_disabled_newsapi_feeds_remain(monkeypatc
     don't keep the master alive."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "k")
     get_settings.cache_clear()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com", "enabled": 0},
-        {"id": 2, "url": "bbc.com", "enabled": 0},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com", "enabled": 0},
+            {"id": 2, "url": "bbc.com", "enabled": 0},
+        ]
+    )
     from sembr.db.sqlite import install_for_test
+
     install_for_test(conn)
 
     sch = AsyncIOScheduler(timezone="UTC")
@@ -204,11 +220,14 @@ async def test_remove_rss_feed_does_not_touch_master(monkeypatch) -> None:
     """RSS deletion path: feed_<id> removed, master left alone iff newsapi feeds exist."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "k")
     get_settings.cache_clear()
-    conn = await _setup_inmem_db_with_feeds([
-        {"id": 1, "url": "reuters.com", "source_type": "newsapi"},
-        {"id": 2, "url": "http://example.com/rss", "source_type": "rss"},
-    ])
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com", "source_type": "newsapi"},
+            {"id": 2, "url": "http://example.com/rss", "source_type": "rss"},
+        ]
+    )
     from sembr.db.sqlite import install_for_test
+
     install_for_test(conn)
 
     sch = AsyncIOScheduler(timezone="UTC")

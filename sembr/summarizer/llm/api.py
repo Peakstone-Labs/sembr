@@ -2,6 +2,7 @@
 
 Reuses the httpx.AsyncClient pattern from SiliconFlowEmbedder (no new deps).
 """
+
 from __future__ import annotations
 
 import logging

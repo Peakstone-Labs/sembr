@@ -5,6 +5,7 @@ list, create, update, delete, rename via TestClient against an in-memory
 aiosqlite. Filesystem layer is the actual on-disk one (tmp_path) — atomic
 write semantics and TOCTOU pre-check are verified for real, not mocked.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,9 +52,7 @@ def _client(prompts_dir: Path):
 def prompts_dir(tmp_path: Path) -> Path:
     (tmp_path / "system").mkdir()
     (tmp_path / "instruction").mkdir()
-    (tmp_path / "system" / "default.md").write_text(
-        "Lang: {language}", encoding="utf-8"
-    )
+    (tmp_path / "system" / "default.md").write_text("Lang: {language}", encoding="utf-8")
     (tmp_path / "instruction" / "default.md").write_text(
         "Topic: {intent_text}\n{articles}", encoding="utf-8"
     )
@@ -77,14 +76,27 @@ async def _seed_intent_async(
                 feed_filter, schedule, timezone, language, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            name, "x",
+            name,
+            "x",
             json.dumps([{"type": "email", "to": ["a@b.com"]}]),
             json.dumps([]),
-            system_template, instruction_template,
+            system_template,
+            instruction_template,
             "null",
-            json.dumps({"mode": "cron", "preset": "daily", "hour": 9, "minute": 0,
-                        "lookback_seconds": 86400, "skip_seen": True}),
-            "UTC", "zh", _now(), _now(),
+            json.dumps(
+                {
+                    "mode": "cron",
+                    "preset": "daily",
+                    "hour": 9,
+                    "minute": 0,
+                    "lookback_seconds": 86400,
+                    "skip_seen": True,
+                }
+            ),
+            "UTC",
+            "zh",
+            _now(),
+            _now(),
         ),
     )
     await conn.commit()
@@ -92,13 +104,16 @@ async def _seed_intent_async(
     return cursor.lastrowid
 
 
-def _seed_intent_via(conn_holder, name, *, system_template="default", instruction_template="default"):
+def _seed_intent_via(
+    conn_holder, name, *, system_template="default", instruction_template="default"
+):
     """Sync wrapper using the TestClient's event loop."""
     import asyncio  # noqa: PLC0415
 
     return asyncio.get_event_loop().run_until_complete(
         _seed_intent_async(
-            conn_holder["conn"], name,
+            conn_holder["conn"],
+            name,
             system_template=system_template,
             instruction_template=instruction_template,
         )
@@ -218,7 +233,7 @@ def test_rename_cascades_to_intents(prompts_dir: Path) -> None:
     with _client(prompts_dir) as (http, conn_holder):
         http.post("/api/prompts/templates/instruction", json={"name": "crypto_zh"})
         i1 = _seed_intent_via(conn_holder, "alpha", instruction_template="crypto_zh")
-        i2 = _seed_intent_via(conn_holder, "beta",  instruction_template="crypto_zh")
+        i2 = _seed_intent_via(conn_holder, "beta", instruction_template="crypto_zh")
 
         resp = http.post(
             "/api/prompts/templates/instruction/crypto_zh/rename",
@@ -290,7 +305,9 @@ def test_duplicate_seeds_from_existing(prompts_dir: Path) -> None:
             json={"name": "crypto_en", "source": "crypto_zh"},
         )
     assert resp.status_code == 201, resp.text
-    assert (prompts_dir / "instruction" / "crypto_en.md").read_text(encoding="utf-8") == custom_content
+    assert (prompts_dir / "instruction" / "crypto_en.md").read_text(
+        encoding="utf-8"
+    ) == custom_content
 
 
 # ---------------------------------------------------------------------------
@@ -363,8 +380,11 @@ def test_rename_existing_target_returns_422(prompts_dir: Path) -> None:
 def test_invalid_kind_400(prompts_dir: Path) -> None:
     with _client(prompts_dir) as (http, _):
         assert http.post("/api/prompts/templates/badkind", json={"name": "x"}).status_code == 400
-        assert http.put("/api/prompts/templates/badkind/x", json={"content": "y"}).status_code == 400
+        assert (
+            http.put("/api/prompts/templates/badkind/x", json={"content": "y"}).status_code == 400
+        )
         assert http.delete("/api/prompts/templates/badkind/x").status_code == 400
-        assert http.post(
-            "/api/prompts/templates/badkind/x/rename", json={"new_name": "y"}
-        ).status_code == 400
+        assert (
+            http.post("/api/prompts/templates/badkind/x/rename", json={"new_name": "y"}).status_code
+            == 400
+        )

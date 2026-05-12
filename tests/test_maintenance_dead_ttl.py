@@ -1,4 +1,5 @@
 """Unit tests for sembr.maintenance.dead_ttl (S5)."""
+
 from __future__ import annotations
 
 import asyncio

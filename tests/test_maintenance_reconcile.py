@@ -1,4 +1,5 @@
 """Unit tests for sembr.maintenance.reconcile (S1 + Risk row 1 + D3)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -35,9 +36,7 @@ async def _insert_feed(conn) -> int:
 
 
 async def _insert_feed_item(conn, md5: str, feed_id: int) -> None:
-    await conn.execute(
-        "INSERT INTO feed_items (md5, feed_id) VALUES (?, ?)", (md5, feed_id)
-    )
+    await conn.execute("INSERT INTO feed_items (md5, feed_id) VALUES (?, ?)", (md5, feed_id))
     await conn.commit()
 
 
@@ -157,10 +156,7 @@ async def test_reconcile_logs_zero_when_empty(caplog):
         await _run_reconcile(qdrant, Settings())
 
     # The "no rows" early-return path emits a log line with all zero counters.
-    assert any(
-        "scanned=0 found=0 orphan_deleted=0" in r.getMessage()
-        for r in caplog.records
-    )
+    assert any("scanned=0 found=0 orphan_deleted=0" in r.getMessage() for r in caplog.records)
 
     await conn.close()
     _sqlite_mod._conn = None

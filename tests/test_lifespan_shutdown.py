@@ -4,6 +4,7 @@ These tests verify the settings_restart module flags and _force_exit helper
 in isolation — no full lifespan startup required, so they run on the Windows
 static test machine without Docker or real service dependencies.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,6 +16,7 @@ from sembr.api import settings_restart
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def reset_restart_flag():
     """Ensure _RESTART_REQUESTED is False before and after every test."""
@@ -24,6 +26,7 @@ def reset_restart_flag():
 
 
 # ── _force_exit / is_restart_requested unit tests ────────────────────────────
+
 
 def test_force_exit_calls_os_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[int] = []
@@ -50,8 +53,10 @@ def test_is_restart_requested_true_after_flag_set() -> None:
 # We replicate that logic in a small async helper to test the conditional
 # without starting the full lifespan (which needs Qdrant / SQLite / etc.).
 
+
 async def _run_conditional_exit(force_exit_mock, timeout: float = 8.0) -> None:
     """Simulate the wait_for + conditional _force_exit block from main.py."""
+
     async def _shutdown():
         pass  # no-op; we're only testing the exit conditional
 
@@ -101,6 +106,7 @@ async def test_lifespan_timeout_triggers_log_no_exit(
         await asyncio.sleep(10)  # longer than our test timeout
 
     import logging
+
     with caplog.at_level(logging.ERROR, logger="sembr.main"):
         try:
             await asyncio.wait_for(_shutdown_that_hangs(), timeout=0.05)

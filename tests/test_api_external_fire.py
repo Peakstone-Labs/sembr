@@ -6,6 +6,7 @@ match_seen write, no on_match invocation, body overrides). Auth-prefix
 integration is handled in ``test_dashboard_auth_external_fire.py`` and is
 NOT duplicated here.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -101,7 +102,9 @@ def _make_app(*, summary_pipeline=None, on_match=None) -> FastAPI:
     app.include_router(external_fire_router)
     app.state.qdrant = MagicMock()
     app.state.qdrant.client = MagicMock()
-    app.state.summary_pipeline = summary_pipeline if summary_pipeline is not None else _make_pipeline()
+    app.state.summary_pipeline = (
+        summary_pipeline if summary_pipeline is not None else _make_pipeline()
+    )
     app.state.on_match = on_match
     return app
 
@@ -390,9 +393,7 @@ def test_empty_feed_ids_returns_zero_matches_without_qdrant() -> None:
         patch("sembr.api.external_fire.scan_once", new=fake_scan_once),
     ):
         client = TestClient(app, raise_server_exceptions=False)
-        resp = client.post(
-            "/api/external/intents/1/fire", json={"feed_ids": []}
-        )
+        resp = client.post("/api/external/intents/1/fire", json={"feed_ids": []})
 
     assert resp.status_code == 200
     body = resp.json()
@@ -573,7 +574,9 @@ def test_template_error_returns_summary_error() -> None:
     matches = [_fake_match()]
     pipeline = MagicMock()
     pipeline.compute_summary = AsyncMock(
-        side_effect=TemplateRenderError("Instruction template 'x' contains undeclared placeholder {bad}")
+        side_effect=TemplateRenderError(
+            "Instruction template 'x' contains undeclared placeholder {bad}"
+        )
     )
 
     app = _make_app(summary_pipeline=pipeline)
@@ -638,8 +641,6 @@ def test_extra_body_field_rejected_with_422() -> None:
         patch("sembr.api.external_fire.get_intent", new=AsyncMock(return_value=intent)),
     ):
         client = TestClient(app, raise_server_exceptions=False)
-        resp = client.post(
-            "/api/external/intents/1/fire", json={"feed_id": [3]}
-        )
+        resp = client.post("/api/external/intents/1/fire", json={"feed_id": [3]})
 
     assert resp.status_code == 422

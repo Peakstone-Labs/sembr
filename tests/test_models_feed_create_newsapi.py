@@ -6,6 +6,7 @@
 * newsapi feeds get poll_interval_minutes coerced to settings to keep the
   list-row column consistent with the global master-tick interval (R6).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -84,6 +85,7 @@ def test_feed_create_newsapi_accepts_all_recommended_sources(monkeypatch) -> Non
     monkeypatch.setenv("NEWSAPI_POLL_INTERVAL_MINUTES", "30")
     get_settings.cache_clear()
     from sembr.collector.newsapi import RECOMMENDED_SOURCES
+
     for s in RECOMMENDED_SOURCES:
         f = FeedCreate(name=s["title"], url=s["uri"], source_type="newsapi")
         assert f.url == s["uri"]
@@ -96,6 +98,7 @@ def test_frontend_hostname_regex_mirrors_backend() -> None:
     import re as _re
     from pathlib import Path
     from sembr.models import _NEWSAPI_HOSTNAME_RE
+
     js_path = Path(__file__).resolve().parent.parent / "web" / "static" / "feeds.js"
     js_src = js_path.read_text(encoding="utf-8")
     # Locate the JS regex literal in submitCreate. The `i` flag is allowed
@@ -190,6 +193,7 @@ def test_feed_read_model_does_not_call_get_settings(monkeypatch) -> None:
     """Reads must not depend on Settings — guards against 🟡-1 regression
     where the Settings cache is bypassed and a malformed .env breaks /feeds."""
     import sembr.config as cfg
+
     calls: list[str] = []
     real = cfg.get_settings
 

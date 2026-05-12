@@ -1,4 +1,5 @@
 """Tests for EmailChannel.send_error."""
+
 from __future__ import annotations
 
 import smtplib
@@ -127,6 +128,7 @@ async def test_send_error_html_contains_fix_hint() -> None:
         payload = raw_payload.decode("utf-8")
     elif isinstance(raw_payload, str):
         import base64
+
         try:
             payload = base64.b64decode(raw_payload).decode("utf-8")
         except Exception:

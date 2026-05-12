@@ -4,6 +4,7 @@ qdrant_client is not installed on the Windows dev machine, so the test shims
 sys.modules with lightweight stubs before scan_once is called. The stubs
 record call arguments so filter construction can be asserted.
 """
+
 from __future__ import annotations
 
 import sys
@@ -239,6 +240,7 @@ async def test_scan_once_skip_seen_true_filters_already_seen(db) -> None:
     intent = await create_intent(db, _INTENT_BODY)
 
     from sembr.db.match_seen import insert_unseen_returning_new  # noqa: PLC0415
+
     await insert_unseen_returning_new(db, intent.id, ["a1"])
 
     hits = [_make_hit("a1"), _make_hit("a2", score=0.9)]
@@ -271,9 +273,7 @@ async def test_scan_once_skip_seen_true_writes_new_to_match_seen(db) -> None:
     matches = await scan_once(intent, options, db, qdrant)
     assert len(matches) == 2
 
-    async with db.execute(
-        "SELECT count(*) FROM match_seen WHERE intent_id=?", (intent.id,)
-    ) as cur:
+    async with db.execute("SELECT count(*) FROM match_seen WHERE intent_id=?", (intent.id,)) as cur:
         row = await cur.fetchone()
     assert row[0] == 2
 
@@ -289,6 +289,7 @@ async def test_scan_once_skip_seen_false_returns_all_writes_match_seen(db) -> No
     intent = await create_intent(db, _INTENT_BODY)
 
     from sembr.db.match_seen import insert_unseen_returning_new  # noqa: PLC0415
+
     await insert_unseen_returning_new(db, intent.id, ["c1"])
 
     hits = [_make_hit("c1"), _make_hit("c2")]

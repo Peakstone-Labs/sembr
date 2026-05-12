@@ -5,6 +5,7 @@ Two reasons combined:
 2. Correctness — feed.url is a bare hostname like 'reuters.com' (no scheme),
    so the urlparse-based derive_group_key would otherwise return ''.
 """
+
 from __future__ import annotations
 
 import aiosqlite
@@ -31,8 +32,13 @@ async def test_newsapi_feeds_collapse_to_newsapi_group_key() -> None:
         await conn.commit()
 
         page = await list_feeds_with_meta(
-            conn, limit=10, offset=0, tag=None, q=None,
-            proxy_hosts=frozenset(), scheduler=None,
+            conn,
+            limit=10,
+            offset=0,
+            tag=None,
+            q=None,
+            proxy_hosts=frozenset(),
+            scheduler=None,
         )
 
     by_name = {it.name: it for it in page.items}

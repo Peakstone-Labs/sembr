@@ -4,6 +4,7 @@ Tasks are stored in a module-level dict. TTL sweep runs every 5 minutes
 via APScheduler, keeping memory bounded to ~1h of recent fire results.
 sembr is single-process / single-instance, so no shared-state concerns.
 """
+
 from __future__ import annotations
 
 import logging
@@ -66,9 +67,7 @@ def throttle_check(intent_id: int, rate_seconds: int = _FIRE_RATE_LIMIT_SECONDS)
     return (datetime.now(timezone.utc) - last).total_seconds() >= rate_seconds
 
 
-def check_and_record_fire(
-    intent_id: int, rate_seconds: int = _FIRE_RATE_LIMIT_SECONDS
-) -> bool:
+def check_and_record_fire(intent_id: int, rate_seconds: int = _FIRE_RATE_LIMIT_SECONDS) -> bool:
     """Atomic check-and-record for the sync external fire path (D-A9).
 
     Returns True (and writes ``_last_fire_at[intent_id]``) when the fire is
@@ -94,8 +93,7 @@ def sweep_expired(ttl_seconds: int = _TASK_TTL_SECONDS) -> int:
     """Remove tasks older than ttl_seconds. APScheduler calls this every 5 minutes."""
     now = datetime.now(timezone.utc)
     to_remove = [
-        k for k, v in _fire_tasks.items()
-        if (now - v._created_at).total_seconds() > ttl_seconds
+        k for k, v in _fire_tasks.items() if (now - v._created_at).total_seconds() > ttl_seconds
     ]
     for k in to_remove:
         del _fire_tasks[k]

@@ -2,6 +2,7 @@
 
 Covers design.md SC1–SC6.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,7 +20,10 @@ from sembr.summarizer.pipeline import SummaryPipeline
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _match(article_id: str, title: str, published_at: str | None = None, intent_id: int = 1) -> Match:
+
+def _match(
+    article_id: str, title: str, published_at: str | None = None, intent_id: int = 1
+) -> Match:
     return Match(
         intent_id=intent_id,
         article_id=article_id,
@@ -118,8 +122,14 @@ def test_grouping_transitive() -> None:
 async def test_citations_ordered_newest_first(prompts_dir: Path) -> None:
     """citations[0] (== primary) must be the article with the latest published_at."""
     matches = [
-        _match("a", "Fed raises interest rates by 25 basis points", published_at="2026-01-01T10:00:00Z"),
-        _match("b", "Fed raises interest rates by 25 basis points in March", published_at="2026-01-01T11:00:00Z"),
+        _match(
+            "a", "Fed raises interest rates by 25 basis points", published_at="2026-01-01T10:00:00Z"
+        ),
+        _match(
+            "b",
+            "Fed raises interest rates by 25 basis points in March",
+            published_at="2026-01-01T11:00:00Z",
+        ),
     ]
     captured = []
 
@@ -147,7 +157,11 @@ async def test_primary_none_published_at_sorts_last(prompts_dir: Path) -> None:
     """Articles with published_at=None should sort after articles with a value."""
     matches = [
         _match("none_a", "Fed raises interest rates by 25 basis points", published_at=None),
-        _match("early", "Fed raises interest rates by 25 basis points today", published_at="2026-01-01T10:00:00Z"),
+        _match(
+            "early",
+            "Fed raises interest rates by 25 basis points today",
+            published_at="2026-01-01T10:00:00Z",
+        ),
     ]
     captured = []
 
@@ -223,7 +237,9 @@ async def test_llm_timeout_no_exception_no_on_summary(prompts_dir: Path) -> None
     llm.summarize = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
     on_summary = AsyncMock()
 
-    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir)
+    pipeline = SummaryPipeline(
+        llm=llm, on_summary=on_summary, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir
+    )
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
 
     # Must not raise
@@ -237,7 +253,9 @@ async def test_llm_generic_error_no_exception_no_on_summary(prompts_dir: Path) -
     llm.summarize = AsyncMock(side_effect=RuntimeError("boom"))
     on_summary = AsyncMock()
 
-    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir)
+    pipeline = SummaryPipeline(
+        llm=llm, on_summary=on_summary, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir
+    )
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
     await pipeline.handle([m])
     on_summary.assert_not_called()
@@ -257,7 +275,13 @@ async def test_pre_push_hook_false_blocks_on_summary(prompts_dir: Path) -> None:
     async def hook(result):
         return result.intent_id != 99
 
-    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, pre_push_hook=hook, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir)
+    pipeline = SummaryPipeline(
+        llm=llm,
+        on_summary=on_summary,
+        pre_push_hook=hook,
+        get_intent_prompt_ctx=_ctx,
+        prompts_dir=prompts_dir,
+    )
 
     m_blocked = _match("x", "headline", published_at="2026-01-01T10:00:00Z", intent_id=99)
     await pipeline.handle([m_blocked])
@@ -272,7 +296,13 @@ async def test_pre_push_hook_true_allows_on_summary(prompts_dir: Path) -> None:
     async def hook(result):
         return result.intent_id != 99
 
-    pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, pre_push_hook=hook, get_intent_prompt_ctx=_ctx, prompts_dir=prompts_dir)
+    pipeline = SummaryPipeline(
+        llm=llm,
+        on_summary=on_summary,
+        pre_push_hook=hook,
+        get_intent_prompt_ctx=_ctx,
+        prompts_dir=prompts_dir,
+    )
 
     m_allowed = _match("y", "headline", published_at="2026-01-01T10:00:00Z", intent_id=1)
     await pipeline.handle([m_allowed])

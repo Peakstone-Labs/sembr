@@ -4,6 +4,7 @@ Fire triggers an immediate intent scan outside the APScheduler tick.
 Results are stored in memory (FireTask) and can be polled via GET.
 The fire path never writes to match_seen (write_match_seen=False).
 """
+
 from __future__ import annotations
 
 import asyncio

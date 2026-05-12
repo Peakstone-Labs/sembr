@@ -1,4 +1,5 @@
 """Tests for sembr.api.settings_envfile."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -39,9 +40,13 @@ def test_parse_preserves_raw_lines(env_path: Path) -> None:
 
     keys = ef.keys()
     assert keys == [
-        "API_HOST", "API_PORT",
-        "EMBEDDER_API_KEY", "EMBEDDER_MODEL",
-        "SMTP_PASSWORD", "NOTE", "EMPTY",
+        "API_HOST",
+        "API_PORT",
+        "EMBEDDER_API_KEY",
+        "EMBEDDER_MODEL",
+        "SMTP_PASSWORD",
+        "NOTE",
+        "EMPTY",
     ]
     values = ef.values()
     assert values["API_HOST"] == "0.0.0.0"

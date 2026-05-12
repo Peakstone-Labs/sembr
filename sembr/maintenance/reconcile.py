@@ -4,6 +4,7 @@ corresponding Qdrant point in ``news_current`` (Option A: forward full scan).
 Runs on the shared maintenance cadence with a 5-minute startup offset (D1).
 Strategy and SQL details: design D3.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -49,8 +50,7 @@ async def _run_reconcile(qdrant_handle: "QdrantHandle", settings: Settings) -> N
     conn = get_conn()
 
     async with conn.execute(
-        "SELECT fi.md5 FROM feed_items fi "
-        "WHERE fi.md5 NOT IN (SELECT md5 FROM pending_articles)"
+        "SELECT fi.md5 FROM feed_items fi WHERE fi.md5 NOT IN (SELECT md5 FROM pending_articles)"
     ) as cur:
         rows = await cur.fetchall()
     md5_list = [r[0] for r in rows]
@@ -58,9 +58,9 @@ async def _run_reconcile(qdrant_handle: "QdrantHandle", settings: Settings) -> N
     if not md5_list:
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info(
-            "reconcile run: scanned=0 found=0 orphan_deleted=0 elapsed_ms=%d "
-            "interval_hours=%d",
-            elapsed_ms, settings.maintenance_interval_hours,
+            "reconcile run: scanned=0 found=0 orphan_deleted=0 elapsed_ms=%d interval_hours=%d",
+            elapsed_ms,
+            settings.maintenance_interval_hours,
         )
         return
 
@@ -99,9 +99,7 @@ async def _run_reconcile(qdrant_handle: "QdrantHandle", settings: Settings) -> N
         chunk = orphan_md5[i : i + _SQLITE_DELETE_CHUNK]
         async with transaction() as txn:
             placeholders = ",".join("?" * len(chunk))
-            await txn.execute(
-                f"DELETE FROM feed_items WHERE md5 IN ({placeholders})", chunk
-            )
+            await txn.execute(f"DELETE FROM feed_items WHERE md5 IN ({placeholders})", chunk)
             # SELECT changes() must be INSIDE the txn — once COMMIT releases the
             # lock another writer can sneak in before we read the count and
             # we'd see THEIR rowcount (memory: feedback_sqlite_pragmas#3).
@@ -113,9 +111,11 @@ async def _run_reconcile(qdrant_handle: "QdrantHandle", settings: Settings) -> N
 
     elapsed_ms = int((monotonic() - started_at) * 1000)
     logger.info(
-        "reconcile run: scanned=%d found=%d orphan_deleted=%d elapsed_ms=%d "
-        "interval_hours=%d",
-        len(md5_list), len(found_ids), deleted, elapsed_ms,
+        "reconcile run: scanned=%d found=%d orphan_deleted=%d elapsed_ms=%d interval_hours=%d",
+        len(md5_list),
+        len(found_ids),
+        deleted,
+        elapsed_ms,
         settings.maintenance_interval_hours,
     )
 

@@ -2,6 +2,7 @@
 
 All DB tests use in-memory SQLite. Embedder and Qdrant calls are mocked.
 """
+
 from __future__ import annotations
 
 import json
@@ -40,6 +41,7 @@ from sembr.vector_store.news import ALIAS_NAME, md5_to_uuid
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 async def _make_conn() -> aiosqlite.Connection:
     """In-memory DB with all tables + foreign_keys=ON.
@@ -84,6 +86,7 @@ def _make_article(md5: str = "a" * 32, body: str = "body text") -> RawArticle:
 # init_article_tables
 # ---------------------------------------------------------------------------
 
+
 async def test_init_article_tables_idempotent():
     conn = await _make_conn()
     await init_article_tables(conn)  # second call must not raise
@@ -94,6 +97,7 @@ async def test_init_article_tables_idempotent():
 # insert_article_pending
 # ---------------------------------------------------------------------------
 
+
 async def test_insert_article_pending_atomic_new():
     conn = await _make_conn()
     feed_id = await _insert_feed(conn)
@@ -102,9 +106,13 @@ async def test_insert_article_pending_atomic_new():
     result = await insert_article_pending(conn, article, feed_id)
 
     assert result is True
-    async with conn.execute("SELECT COUNT(*) FROM feed_items WHERE md5=?", (article.feed_md5,)) as cur:
+    async with conn.execute(
+        "SELECT COUNT(*) FROM feed_items WHERE md5=?", (article.feed_md5,)
+    ) as cur:
         assert (await cur.fetchone())[0] == 1
-    async with conn.execute("SELECT COUNT(*) FROM pending_articles WHERE md5=?", (article.feed_md5,)) as cur:
+    async with conn.execute(
+        "SELECT COUNT(*) FROM pending_articles WHERE md5=?", (article.feed_md5,)
+    ) as cur:
         assert (await cur.fetchone())[0] == 1
     await conn.close()
 
@@ -141,6 +149,7 @@ async def test_insert_article_pending_body_cap():
 # ---------------------------------------------------------------------------
 # pull_pending_batch
 # ---------------------------------------------------------------------------
+
 
 async def test_pull_pending_batch_skips_max_retry():
     conn = await _make_conn()
@@ -190,6 +199,7 @@ async def test_pull_pending_batch_order_by_insertion():
 # ---------------------------------------------------------------------------
 # demote_to_dead
 # ---------------------------------------------------------------------------
+
 
 async def test_demote_to_dead_atomic():
     conn = await _make_conn()
@@ -269,6 +279,7 @@ async def test_demote_md5s_preserves_error_attribution():
 # UUID / point ID
 # ---------------------------------------------------------------------------
 
+
 def test_uuid_from_md5_deterministic():
     md5 = "a" * 32
     uid1 = md5_to_uuid(md5)
@@ -281,6 +292,7 @@ def test_uuid_from_md5_deterministic():
 # ---------------------------------------------------------------------------
 # SiliconFlowEmbedder
 # ---------------------------------------------------------------------------
+
 
 async def test_siliconflow_embedder_load_probe_ok():
     from sembr.embedder.openai_compat import SiliconFlowEmbedder
@@ -478,9 +490,7 @@ async def test_siliconflow_embedder_api_key_redacted_in_error():
     with respx.mock() as mock:
         # Simulate a proxy that echoes the bearer token in error body
         mock.post("https://api.siliconflow.cn/v1/embeddings").mock(
-            return_value=httpx.Response(
-                401, text=f"Unauthorized: Bearer {secret_key} is invalid"
-            )
+            return_value=httpx.Response(401, text=f"Unauthorized: Bearer {secret_key} is invalid")
         )
         embedder = SiliconFlowEmbedder(api_key=secret_key)
         embedder._for_testing_set_loaded()
@@ -505,6 +515,7 @@ def test_build_embedder_whitespace_api_key_raises():
 # build_embedder factory
 # ---------------------------------------------------------------------------
 
+
 def test_build_embedder_returns_siliconflow():
     from sembr.config import Settings
     from sembr.embedder.factory import build_embedder
@@ -527,6 +538,7 @@ def test_build_embedder_missing_api_key_raises():
 # ---------------------------------------------------------------------------
 # embedder_worker
 # ---------------------------------------------------------------------------
+
 
 def _mock_embedder(is_loaded: bool = True, model_version: str = "bge-m3_v1") -> MagicMock:
     e = MagicMock()
@@ -571,6 +583,7 @@ async def test_embedder_worker_phase3b_upsert_then_delete(monkeypatch):
     qdrant = _mock_qdrant()
 
     import sembr.embedder.scheduler as _sched_mod
+
     call_order: list[str] = []
     _real_delete = _sched_mod.delete_pending
 
@@ -586,7 +599,9 @@ async def test_embedder_worker_phase3b_upsert_then_delete(monkeypatch):
 
     await embedder_worker(embedder, qdrant)
 
-    assert call_order == ["upsert", "delete"], f"D2 violation: expected upsert→delete, got {call_order}"
+    assert call_order == ["upsert", "delete"], (
+        f"D2 violation: expected upsert→delete, got {call_order}"
+    )
     qdrant.client.upsert.assert_called_once()
     assert qdrant.client.upsert.call_args.kwargs["collection_name"] == ALIAS_NAME
 
@@ -707,10 +722,14 @@ async def test_embedder_worker_demotes_only_exhausted_rows(monkeypatch):
 
     await embedder_worker(embedder, qdrant)
 
-    async with conn.execute("SELECT COUNT(*) FROM dead_articles WHERE md5=?", (md5_exhausted,)) as cur:
+    async with conn.execute(
+        "SELECT COUNT(*) FROM dead_articles WHERE md5=?", (md5_exhausted,)
+    ) as cur:
         assert (await cur.fetchone())[0] == 1
 
-    async with conn.execute("SELECT retry_count FROM pending_articles WHERE md5=?", (md5_young,)) as cur:
+    async with conn.execute(
+        "SELECT retry_count FROM pending_articles WHERE md5=?", (md5_young,)
+    ) as cur:
         row = await cur.fetchone()
     assert row is not None
     assert row[0] == 1
@@ -756,13 +775,18 @@ def test_embedder_worker_no_more_wait_for_wrap():
     """Static check: _EMBED_TIMEOUT and asyncio.wait_for removed from scheduler.py."""
     source = pathlib.Path(__file__).parent.parent / "sembr" / "embedder" / "scheduler.py"
     content = source.read_text(encoding="utf-8")
-    assert "_EMBED_TIMEOUT" not in content, "_EMBED_TIMEOUT should have been removed from scheduler.py"
-    assert "asyncio.wait_for" not in content, "asyncio.wait_for should have been removed from scheduler.py"
+    assert "_EMBED_TIMEOUT" not in content, (
+        "_EMBED_TIMEOUT should have been removed from scheduler.py"
+    )
+    assert "asyncio.wait_for" not in content, (
+        "asyncio.wait_for should have been removed from scheduler.py"
+    )
 
 
 # ---------------------------------------------------------------------------
 # ensure_news_collection
 # ---------------------------------------------------------------------------
+
 
 async def test_ensure_news_collection_idempotent():
     import sys
@@ -823,6 +847,7 @@ async def test_ensure_news_collection_idempotent():
 # ---------------------------------------------------------------------------
 # /health endpoint
 # ---------------------------------------------------------------------------
+
 
 async def test_health_returns_503_during_loading():
     from fastapi import FastAPI

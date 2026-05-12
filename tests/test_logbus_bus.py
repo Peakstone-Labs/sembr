@@ -1,4 +1,5 @@
 """Tests for sembr.logbus.bus — LogBus ring buffer and fan-out."""
+
 from __future__ import annotations
 
 import asyncio
@@ -36,6 +37,7 @@ def fresh_bus():
 # (a) deque maxlen FIFO
 # ---------------------------------------------------------------------------
 
+
 def test_deque_maxlen_fifo(fresh_bus) -> None:
     bus = fresh_bus
     # buffer_per_tag=5; emit 7 entries; only last 5 should survive
@@ -56,6 +58,7 @@ def test_deque_maxlen_fifo(fresh_bus) -> None:
 # ---------------------------------------------------------------------------
 # (b) per-tag level filter — entries below tag level are dropped
 # ---------------------------------------------------------------------------
+
 
 def test_per_tag_level_filter(fresh_bus) -> None:
     bus = fresh_bus
@@ -79,6 +82,7 @@ def test_per_tag_level_filter(fresh_bus) -> None:
 # ---------------------------------------------------------------------------
 # (c) snapshot + register atomicity (multi-thread emit + main-thread subscribe)
 # ---------------------------------------------------------------------------
+
 
 def test_snapshot_register_atomic(fresh_bus) -> None:
     """No entries should be lost or duplicated between snapshot and live queue."""
@@ -135,6 +139,7 @@ def test_snapshot_register_atomic(fresh_bus) -> None:
 # (d) queue full — oldest drop, emit does not block
 # ---------------------------------------------------------------------------
 
+
 def test_queue_full_no_block(fresh_bus) -> None:
     bus = fresh_bus
     loop = asyncio.new_event_loop()
@@ -159,6 +164,7 @@ def test_queue_full_no_block(fresh_bus) -> None:
 # ---------------------------------------------------------------------------
 # (d-2) queue overflow — oldest dropped, no QueueFull exception raised (🟡-1 regression)
 # ---------------------------------------------------------------------------
+
 
 def test_queue_overflow_drops_oldest_no_exception(fresh_bus) -> None:
     """Fill a subscriber queue to maxsize, then emit more — oldest evicted, no error."""
@@ -187,14 +193,15 @@ def test_queue_overflow_drops_oldest_no_exception(fresh_bus) -> None:
     # Queue should contain the 3 most recent entries (ts=2,3,4)
     assert len(items) == 3
     tss = [e["ts"] for e in items]
-    assert tss == sorted(tss)          # arrived in order
-    assert max(tss) == 4               # newest entry present
-    assert min(tss) >= 2               # oldest entries evicted
+    assert tss == sorted(tss)  # arrived in order
+    assert max(tss) == 4  # newest entry present
+    assert min(tss) >= 2  # oldest entries evicted
 
 
 # ---------------------------------------------------------------------------
 # (e) tag_info returns 7 tags with current level
 # ---------------------------------------------------------------------------
+
 
 def test_tag_info(fresh_bus) -> None:
     bus = fresh_bus
@@ -210,6 +217,7 @@ def test_tag_info(fresh_bus) -> None:
 # ---------------------------------------------------------------------------
 # (f) subscribe(tag=...) — per-subscriber tag filter
 # ---------------------------------------------------------------------------
+
 
 def test_subscribe_tag_filters_snapshot_and_live(fresh_bus) -> None:
     """A subscriber that asks for tag=embedder must not receive other tags."""

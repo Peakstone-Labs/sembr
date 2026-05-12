@@ -1,4 +1,5 @@
 """Tests for sembr.api.settings_restart."""
+
 from __future__ import annotations
 
 import asyncio
@@ -21,6 +22,7 @@ from sembr.api.settings_restart import (
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def _reset_restart_flag():
     settings_restart._RESTART_REQUESTED = False
@@ -30,11 +32,13 @@ def _reset_restart_flag():
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def _ok_runner(cmd, **kwargs):
     return CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
 
 # ── Phase 1: subprocess tests ─────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_restart_rsshub_invokes_compose_subprocess() -> None:
@@ -55,7 +59,7 @@ async def test_restart_rsshub_invokes_compose_subprocess() -> None:
     assert "-d" in cmd
     assert "--force-recreate" in cmd
     assert "--no-deps" in cmd
-    assert RSSHUB_SERVICE_NAME in cmd   # service name "rsshub", not container name "sembr-rsshub"
+    assert RSSHUB_SERVICE_NAME in cmd  # service name "rsshub", not container name "sembr-rsshub"
     # D6: timeout=60 must be passed (design.md guarantees 4× headroom)
     assert kwargs.get("timeout") == 60
     assert kwargs.get("capture_output") is True
@@ -128,15 +132,14 @@ async def test_restart_rsshub_runs_off_event_loop() -> None:
 
 # ── Phase 1: schedule_self_restart ────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_schedule_self_restart_uses_call_later(monkeypatch: pytest.MonkeyPatch) -> None:
     """call_later wires up the spawn helper. Implementation switched from
     SIGTERM-self to docker-compose-force-recreate-self in the env_file fix
     (see settings_restart docstring); the test pins call_later wiring."""
     fired: list[bool] = []
-    monkeypatch.setattr(
-        settings_restart, "_spawn_self_force_recreate", lambda: fired.append(True)
-    )
+    monkeypatch.setattr(settings_restart, "_spawn_self_force_recreate", lambda: fired.append(True))
 
     loop = asyncio.get_running_loop()
     rc = RestartController(loop=loop)
@@ -147,7 +150,9 @@ async def test_schedule_self_restart_uses_call_later(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.asyncio
-async def test_schedule_self_restart_default_delay_argument(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_schedule_self_restart_default_delay_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     captured: list[tuple[float, object]] = []
     loop = asyncio.get_running_loop()
 
@@ -164,15 +169,19 @@ async def test_schedule_self_restart_default_delay_argument(monkeypatch: pytest.
 
 # ── Phase 2: _RESTART_REQUESTED flag ─────────────────────────────────────────
 
+
 def _stub_compose_context(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pretend the api container's labels resolve to a known compose project."""
     monkeypatch.setattr(
-        settings_restart, "_self_compose_context",
+        settings_restart,
+        "_self_compose_context",
         lambda: ("/host/project", "sembr", "sembr-api"),
     )
 
 
-def test_spawn_self_force_recreate_launches_helper_container(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spawn_self_force_recreate_launches_helper_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Helper container reuses our image, mounts docker socket + project dir,
     and runs docker compose with the api service + force-recreate."""
     _stub_compose_context(monkeypatch)
@@ -209,40 +218,45 @@ def test_spawn_self_force_recreate_launches_helper_container(monkeypatch: pytest
 def test_spawn_self_force_recreate_sets_restart_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_compose_context(monkeypatch)
     monkeypatch.setattr(
-        settings_restart.subprocess, "Popen",
+        settings_restart.subprocess,
+        "Popen",
         lambda *a, **k: None,
     )
     settings_restart._spawn_self_force_recreate()
     assert settings_restart.is_restart_requested() is True
 
 
-def test_spawn_self_force_recreate_falls_back_to_sigterm_on_introspection_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spawn_self_force_recreate_falls_back_to_sigterm_on_introspection_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """If we can't introspect our own compose labels, fall back to SIGTERM
     rather than spawning a malformed helper."""
+
     def _boom():
         raise RuntimeError("inspect failed")
+
     monkeypatch.setattr(settings_restart, "_self_compose_context", _boom)
 
     sent: list[tuple[int, int]] = []
-    monkeypatch.setattr(
-        settings_restart.os, "kill", lambda pid, sig: sent.append((pid, sig))
-    )
+    monkeypatch.setattr(settings_restart.os, "kill", lambda pid, sig: sent.append((pid, sig)))
     settings_restart._spawn_self_force_recreate()
     assert len(sent) == 1
     assert sent[0][1] == signal.SIGTERM
 
 
-def test_spawn_self_force_recreate_falls_back_to_sigterm_on_popen_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spawn_self_force_recreate_falls_back_to_sigterm_on_popen_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """If Popen raises (e.g. docker binary missing), fall back to SIGTERM."""
     _stub_compose_context(monkeypatch)
+
     def _boom(*a, **k):
         raise FileNotFoundError("docker not found")
+
     monkeypatch.setattr(settings_restart.subprocess, "Popen", _boom)
 
     sent: list[tuple[int, int]] = []
-    monkeypatch.setattr(
-        settings_restart.os, "kill", lambda pid, sig: sent.append((pid, sig))
-    )
+    monkeypatch.setattr(settings_restart.os, "kill", lambda pid, sig: sent.append((pid, sig)))
     settings_restart._spawn_self_force_recreate()
     assert len(sent) == 1
     assert sent[0][1] == signal.SIGTERM
@@ -250,5 +264,3 @@ def test_spawn_self_force_recreate_falls_back_to_sigterm_on_popen_fail(monkeypat
 
 def test_is_restart_requested_default_false() -> None:
     assert settings_restart.is_restart_requested() is False
-
-

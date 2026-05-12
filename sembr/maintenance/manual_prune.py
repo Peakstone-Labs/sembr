@@ -10,6 +10,7 @@ Two background coroutines per task:
 Both write all error paths to ``task.status = "error"`` + ``task.error`` so
 the status endpoint can surface them.
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,9 +38,7 @@ def _news_cutoff_ts(older_than_days: int) -> int:
 
 
 def _dead_cutoff_iso(older_than_days: int) -> str:
-    return (
-        datetime.now(timezone.utc) - timedelta(days=older_than_days)
-    ).isoformat()
+    return (datetime.now(timezone.utc) - timedelta(days=older_than_days)).isoformat()
 
 
 async def _facet_news_counts(
@@ -61,10 +60,12 @@ async def _facet_news_counts(
 
     if not feed_ids:
         return {}
-    facet_filter = Filter(must=[
-        FieldCondition(key="ingested_at_ts", range=Range(lt=cutoff_ts)),
-        FieldCondition(key="feed_id", match=MatchAny(any=feed_ids)),
-    ])
+    facet_filter = Filter(
+        must=[
+            FieldCondition(key="ingested_at_ts", range=Range(lt=cutoff_ts)),
+            FieldCondition(key="feed_id", match=MatchAny(any=feed_ids)),
+        ]
+    )
     res = await qdrant_handle.client.facet(
         collection_name=ALIAS_NAME,
         key="feed_id",
@@ -98,10 +99,12 @@ async def _scroll_news_uuids(
 
     if not feed_ids:
         return []
-    qfilter = Filter(must=[
-        FieldCondition(key="ingested_at_ts", range=Range(lt=cutoff_ts)),
-        FieldCondition(key="feed_id", match=MatchAny(any=feed_ids)),
-    ])
+    qfilter = Filter(
+        must=[
+            FieldCondition(key="ingested_at_ts", range=Range(lt=cutoff_ts)),
+            FieldCondition(key="feed_id", match=MatchAny(any=feed_ids)),
+        ]
+    )
     out: list[str] = []
     next_offset = None
     while True:
@@ -119,9 +122,7 @@ async def _scroll_news_uuids(
     return out
 
 
-async def _delete_news_points(
-    qdrant_handle: "QdrantHandle", uuids: list[str]
-) -> None:
+async def _delete_news_points(qdrant_handle: "QdrantHandle", uuids: list[str]) -> None:
     from qdrant_client.models import PointIdsList  # noqa: PLC0415
 
     for i in range(0, len(uuids), _QDRANT_DELETE_BATCH):
@@ -132,9 +133,7 @@ async def _delete_news_points(
         )
 
 
-async def _dead_counts_by_feed(
-    feed_ids: list[int], cutoff_iso: str
-) -> dict[int, int]:
+async def _dead_counts_by_feed(feed_ids: list[int], cutoff_iso: str) -> dict[int, int]:
     if not feed_ids:
         return {}
     conn = get_conn()
@@ -164,9 +163,7 @@ async def _resolve_feed_names(feed_ids: list[int]) -> dict[int, str | None]:
     return {fid: found.get(fid) for fid in feed_ids}
 
 
-async def run_planning(
-    task: ManualPruneTask, qdrant_handle: "QdrantHandle | None"
-) -> None:
+async def run_planning(task: ManualPruneTask, qdrant_handle: "QdrantHandle | None") -> None:
     """Compute the dry-run plan_summary and transition the task to ``planned``."""
     try:
         feed_names = await _resolve_feed_names(task.feed_ids)
@@ -175,7 +172,9 @@ async def run_planning(
                 raise RuntimeError("News dry-run requires a Qdrant handle")
             cutoff_ts = _news_cutoff_ts(task.older_than_days)
             counts = await _facet_news_counts(
-                qdrant_handle, task.feed_ids, cutoff_ts,
+                qdrant_handle,
+                task.feed_ids,
+                cutoff_ts,
             )
         else:
             cutoff_iso = _dead_cutoff_iso(task.older_than_days)
@@ -186,12 +185,14 @@ async def run_planning(
         for fid in task.feed_ids:
             name = feed_names.get(fid)
             n = int(counts.get(fid, 0))
-            feeds_summary.append({
-                "feed_id": fid,
-                "feed_name": name,
-                "deleted": name is None,
-                "would_delete": n,
-            })
+            feeds_summary.append(
+                {
+                    "feed_id": fid,
+                    "feed_name": name,
+                    "deleted": name is None,
+                    "would_delete": n,
+                }
+            )
             total += n
         task.plan_summary = {
             "target": task.target,
@@ -201,21 +202,19 @@ async def run_planning(
         }
         task.status = "planned"
     except Exception as exc:
-        logger.exception(
-            "manual_prune planning failed for task_id=%s", task.task_id
-        )
+        logger.exception("manual_prune planning failed for task_id=%s", task.task_id)
         task.status = "error"
         task.error = str(exc)
         task.finished_at = datetime.now(timezone.utc)
 
 
-async def _apply_news(
-    task: ManualPruneTask, qdrant_handle: "QdrantHandle"
-) -> dict:
+async def _apply_news(task: ManualPruneTask, qdrant_handle: "QdrantHandle") -> dict:
     started_at = monotonic()
     cutoff_ts = _news_cutoff_ts(task.older_than_days)
     purge_uuids = await _scroll_news_uuids(
-        qdrant_handle, task.feed_ids, cutoff_ts,
+        qdrant_handle,
+        task.feed_ids,
+        cutoff_ts,
     )
     qdrant_deleted = len(purge_uuids)
     if purge_uuids:
@@ -243,10 +242,7 @@ async def _apply_dead(task: ManualPruneTask) -> dict:
             "elapsed_ms": int((monotonic() - started_at) * 1000),
         }
     placeholders = ",".join("?" * len(task.feed_ids))
-    sql = (
-        f"DELETE FROM dead_articles "
-        f"WHERE failed_at < ? AND feed_id IN ({placeholders})"
-    )
+    sql = f"DELETE FROM dead_articles WHERE failed_at < ? AND feed_id IN ({placeholders})"
     params = [cutoff_iso, *task.feed_ids]
     deleted = 0
     async with transaction() as txn:
@@ -261,9 +257,7 @@ async def _apply_dead(task: ManualPruneTask) -> dict:
     }
 
 
-async def run_applying(
-    task: ManualPruneTask, qdrant_handle: "QdrantHandle | None"
-) -> None:
+async def run_applying(task: ManualPruneTask, qdrant_handle: "QdrantHandle | None") -> None:
     """Execute the real delete and transition the task to ``done``."""
     try:
         if task.target == "news":
@@ -288,7 +282,10 @@ async def run_applying(
                     "manual_prune drift > 10%%: task_id=%s target=%s "
                     "plan_total=%d actual=%d "
                     "(status: /api/dashboard/maintenance/manual_prune/%s)",
-                    task.task_id, task.target, plan_total, actual,
+                    task.task_id,
+                    task.target,
+                    plan_total,
+                    actual,
                     task.task_id,
                 )
 
@@ -296,9 +293,7 @@ async def run_applying(
         task.status = "done"
         task.finished_at = datetime.now(timezone.utc)
     except Exception as exc:
-        logger.exception(
-            "manual_prune apply failed for task_id=%s", task.task_id
-        )
+        logger.exception("manual_prune apply failed for task_id=%s", task.task_id)
         task.status = "error"
         task.error = str(exc)
         task.finished_at = datetime.now(timezone.utc)

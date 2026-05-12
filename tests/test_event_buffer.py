@@ -1,4 +1,5 @@
 """Tests for sembr/matcher/event_buffer.py — absorb, flush, sweep_timed_out."""
+
 from __future__ import annotations
 
 import json
@@ -35,7 +36,13 @@ def _match(article_id: str, title: str = "test title", score: float = 0.85) -> M
         intent_id=1,
         article_id=article_id,
         score=score,
-        payload={"title": title, "url": "https://example.com", "body": "", "feed_id": 1, "published_at": None},
+        payload={
+            "title": title,
+            "url": "https://example.com",
+            "body": "",
+            "feed_id": 1,
+            "published_at": None,
+        },
     )
 
 
@@ -59,10 +66,7 @@ async def test_absorb_empty_buffer_single_batch_creates_one_group():
     """5 matches with similar titles → 1 group in event_pending."""
     conn, intent_id = await _setup_db()
     try:
-        matches = [
-            _match(f"art-{i}", "Apple iPhone 16 launch event announced")
-            for i in range(5)
-        ]
+        matches = [_match(f"art-{i}", "Apple iPhone 16 launch event announced") for i in range(5)]
         should_flush = await absorb(conn, intent_id, matches, _EVENT_SCHEDULE)
         async with conn.execute(
             "SELECT COUNT(*) FROM event_pending WHERE intent_id=?", (intent_id,)
@@ -98,7 +102,9 @@ async def test_absorb_distinct_titles_creates_separate_groups():
     conn, intent_id = await _setup_db()
     try:
         await absorb(conn, intent_id, [_match("art-1", "Apple iPhone event")], _EVENT_SCHEDULE)
-        await absorb(conn, intent_id, [_match("art-2", "TSMC semiconductor fab expansion")], _EVENT_SCHEDULE)
+        await absorb(
+            conn, intent_id, [_match("art-2", "TSMC semiconductor fab expansion")], _EVENT_SCHEDULE
+        )
         async with conn.execute(
             "SELECT COUNT(*) FROM event_pending WHERE intent_id=?", (intent_id,)
         ) as cur:
@@ -263,7 +269,9 @@ async def test_sweep_triggers_flush_when_oldest_group_exceeds_max_wait():
 
     try:
         await absorb(
-            conn, intent_id, [_match("art-1", "Old news")],
+            conn,
+            intent_id,
+            [_match("art-1", "Old news")],
             EventSchedule(trigger_count=10, max_wait_seconds=60),
         )
         # Backdate the created_at to simulate timeout
@@ -302,7 +310,9 @@ async def test_sweep_does_not_flush_when_not_yet_timed_out():
 
     try:
         await absorb(
-            conn, intent_id, [_match("art-1", "Recent news")],
+            conn,
+            intent_id,
+            [_match("art-1", "Recent news")],
             EventSchedule(trigger_count=10, max_wait_seconds=3600),
         )
         await sweep_timed_out(conn, app, cache)
@@ -323,12 +333,14 @@ async def test_sweep_isolates_per_intent_failures():
 
     # Create two intents
     body1 = IntentCreate(
-        name="intent-1", text="topic1",
+        name="intent-1",
+        text="topic1",
         channels=[{"type": "email", "to": ["a@example.com"]}],
         schedule=EventSchedule(trigger_count=10, max_wait_seconds=60),
     )
     body2 = IntentCreate(
-        name="intent-2", text="topic2",
+        name="intent-2",
+        text="topic2",
         channels=[{"type": "email", "to": ["a@example.com"]}],
         schedule=EventSchedule(trigger_count=10, max_wait_seconds=60),
     )
@@ -340,23 +352,27 @@ async def test_sweep_isolates_per_intent_failures():
         cache.add(
             iid,
             EventIntentEntry(
-                vectors={"main": [0.1] * 1024}, threshold=0.75, feed_filter_ids=None,
+                vectors={"main": [0.1] * 1024},
+                threshold=0.75,
+                feed_filter_ids=None,
                 schedule=EventSchedule(trigger_count=10, max_wait_seconds=60),
             ),
         )
 
     # absorb first (each call uses BEGIN IMMEDIATE / COMMIT internally)
     for iid in [i1.id, i2.id]:
-        m = Match(intent_id=iid, article_id=f"art-{iid}", score=0.9,
-                  payload={"title": "Test", "url": "", "body": "", "feed_id": 1, "published_at": None})
+        m = Match(
+            intent_id=iid,
+            article_id=f"art-{iid}",
+            score=0.9,
+            payload={"title": "Test", "url": "", "body": "", "feed_id": 1, "published_at": None},
+        )
         await absorb(conn, iid, [m], EventSchedule(trigger_count=10, max_wait_seconds=60))
 
     # Backdate both in a single transaction after all absorbs are committed
     past = (datetime.now(timezone.utc) - timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
     for iid in [i1.id, i2.id]:
-        await conn.execute(
-            "UPDATE event_pending SET created_at=? WHERE intent_id=?", (past, iid)
-        )
+        await conn.execute("UPDATE event_pending SET created_at=? WHERE intent_id=?", (past, iid))
     await conn.commit()
 
     # First intent on_match raises; second should still fire
@@ -441,8 +457,8 @@ async def test_event_match_batch_swallows_dot_mismatch(caplog):
         with caplog.at_level(logging.WARNING, logger="sembr.matcher.event_match"):
             await event_match_batch(app, [point], conn)
 
-        assert any(
-            rec.levelname == "WARNING" for rec in caplog.records
-        ), "Risk 7: event_match_batch must log WARNING on internal failure"
+        assert any(rec.levelname == "WARNING" for rec in caplog.records), (
+            "Risk 7: event_match_batch must log WARNING on internal failure"
+        )
     finally:
         await conn.close()

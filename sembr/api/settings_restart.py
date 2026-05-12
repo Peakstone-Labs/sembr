@@ -24,6 +24,7 @@ does) and then spawned a *detached* compose CLI inside our own container
 namespace including the in-flight compose CLI between its stop+create
 steps, leaving a Created-but-never-started new container).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,8 +38,8 @@ from typing import Callable
 logger = logging.getLogger(__name__)
 
 DEFAULT_SELF_SHUTDOWN_DELAY = 1.5  # seconds — long enough for an HTTP response to flush
-RSSHUB_SERVICE_NAME = "rsshub"          # docker compose service name (for `compose up`)
-API_SERVICE_NAME = "api"                # docker compose service name for self
+RSSHUB_SERVICE_NAME = "rsshub"  # docker compose service name (for `compose up`)
+API_SERVICE_NAME = "api"  # docker compose service name for self
 COMPOSE_FILE_PATH = "/app/docker-compose.yml"
 
 # Module-level flag: set to True by _spawn_self_force_recreate so the lifespan
@@ -89,23 +90,22 @@ class RestartController:
 
     def _restart_rsshub_sync(self, service_name: str) -> None:
         cmd = [
-            "docker", "compose",
-            "-f", COMPOSE_FILE_PATH,
-            "up", "-d", "--force-recreate", "--no-deps",
+            "docker",
+            "compose",
+            "-f",
+            COMPOSE_FILE_PATH,
+            "up",
+            "-d",
+            "--force-recreate",
+            "--no-deps",
             service_name,
         ]
         try:
-            result = self._subprocess_runner(
-                cmd, capture_output=True, text=True, timeout=60
-            )
+            result = self._subprocess_runner(cmd, capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(
-                f"docker compose recreate timed out after 60s: {exc}"
-            ) from exc
+            raise RuntimeError(f"docker compose recreate timed out after 60s: {exc}") from exc
         if result.returncode != 0:
-            raise RuntimeError(
-                f"docker compose recreate failed: {result.stderr.strip()}"
-            )
+            raise RuntimeError(f"docker compose recreate failed: {result.stderr.strip()}")
         logger.info("rsshub service %s recreated via compose", service_name)
 
     # ── API self-restart ──────────────────────────────────────────────────
@@ -137,19 +137,20 @@ def _self_compose_context() -> tuple[str, str, str]:
     """
     short_id = socket.gethostname()
     fmt = (
-        "{{index .Config.Labels \"com.docker.compose.project.working_dir\"}}"
-        "\t{{index .Config.Labels \"com.docker.compose.project\"}}"
+        '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'
+        '\t{{index .Config.Labels "com.docker.compose.project"}}'
         "\t{{.Config.Image}}"
     )
     result = subprocess.run(
         ["docker", "inspect", "--format", fmt, short_id],
-        capture_output=True, text=True, check=True, timeout=10,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
     )
     parts = result.stdout.strip().split("\t")
     if len(parts) != 3 or not all(parts):
-        raise RuntimeError(
-            f"could not introspect compose context from labels: {result.stdout!r}"
-        )
+        raise RuntimeError(f"could not introspect compose context from labels: {result.stdout!r}")
     return parts[0], parts[1], parts[2]
 
 
@@ -193,17 +194,27 @@ def _spawn_self_force_recreate() -> None:
         f"up -d --force-recreate --no-deps {API_SERVICE_NAME}"
     )
     cmd = [
-        "docker", "run", "-d", "--rm",
-        "--name", f"sembr-api-recreate-{os.getpid()}",
-        "-v", "/var/run/docker.sock:/var/run/docker.sock",
-        "-v", f"{host_wd}:{host_wd}:ro",
-        "--entrypoint", "sh",
+        "docker",
+        "run",
+        "-d",
+        "--rm",
+        "--name",
+        f"sembr-api-recreate-{os.getpid()}",
+        "-v",
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "-v",
+        f"{host_wd}:{host_wd}:ro",
+        "--entrypoint",
+        "sh",
         image,
-        "-c", helper_inner,
+        "-c",
+        helper_inner,
     ]
     logger.info(
         "api self-restart firing now (helper container; project=%s host_wd=%s image=%s)",
-        project_name, host_wd, image,
+        project_name,
+        host_wd,
+        image,
     )
     try:
         subprocess.Popen(  # noqa: S603 — controlled argv, no shell expansion

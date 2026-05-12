@@ -3,6 +3,7 @@
 DDL is idempotent (CREATE TABLE IF NOT EXISTS). All functions accept the
 global aiosqlite connection from get_conn() so callers don't open their own.
 """
+
 from __future__ import annotations
 
 import json
@@ -263,7 +264,9 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
                 now,
             ),
         )
-        assert cursor.lastrowid is not None  # AUTOINCREMENT INSERT on SQLite always sets lastrowid (M2)
+        assert (
+            cursor.lastrowid is not None
+        )  # AUTOINCREMENT INSERT on SQLite always sets lastrowid (M2)
         # Same transaction so the intents row + its sub_texts commit atomically (D1).
         await _sub_texts_replace_in_txn(txn, cursor.lastrowid, body.sub_texts)
     result = await get_intent(conn, cursor.lastrowid)
@@ -320,10 +323,18 @@ async def _update_intent_in_txn(
     new_channels = body.channels if body.channels is not None else current.channels
     new_tags = body.tags if body.tags is not None else current.tags
     new_schedule = body.schedule if body.schedule is not None else current.schedule
-    new_system_template = body.system_template if body.system_template is not None else current.system_template
-    new_instruction_template = body.instruction_template if body.instruction_template is not None else current.instruction_template
+    new_system_template = (
+        body.system_template if body.system_template is not None else current.system_template
+    )
+    new_instruction_template = (
+        body.instruction_template
+        if body.instruction_template is not None
+        else current.instruction_template
+    )
     # Use model_fields_set to distinguish explicit null (clear to full-scan) from omitted (no-op)
-    new_feed_filter = body.feed_filter if "feed_filter" in body.model_fields_set else current.feed_filter
+    new_feed_filter = (
+        body.feed_filter if "feed_filter" in body.model_fields_set else current.feed_filter
+    )
     new_timezone = body.timezone if body.timezone is not None else current.timezone
     new_language = body.language if body.language is not None else current.language
 
@@ -471,7 +482,9 @@ async def rename_intent_template(
     Caller is expected to wrap this call in ``db.sqlite.transaction()`` per D15.
     """
     if kind not in _TEMPLATE_KINDS:
-        raise ValueError(f"invalid template kind {kind!r}; expected one of {sorted(_TEMPLATE_KINDS)}")
+        raise ValueError(
+            f"invalid template kind {kind!r}; expected one of {sorted(_TEMPLATE_KINDS)}"
+        )
     column = f"{kind}_template"
     async with conn.execute(
         f"UPDATE intents SET {column} = ?, updated_at = ? WHERE {column} = ?",

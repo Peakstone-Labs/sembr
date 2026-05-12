@@ -3,6 +3,7 @@
 Fire triggers an immediate feed collection or a dry-run fingerprint check.
 Results are stored in memory (FeedFireTask) and polled via GET.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -32,7 +33,9 @@ router = APIRouter(prefix="/feeds", tags=["feeds"])
 _BG_TASKS: set[asyncio.Task] = set()
 
 
-async def _feed_dry_run(task: FeedFireTask, feed_url: str, source_type: str, config: dict, since: datetime | None) -> None:
+async def _feed_dry_run(
+    task: FeedFireTask, feed_url: str, source_type: str, config: dict, since: datetime | None
+) -> None:
     """Background: fetch articles and classify NEW/DUP without writing to DB.
 
     Reuses _LIMITER_REF for host-rate-limiting (D12) — same path as collect_feed.
@@ -51,9 +54,7 @@ async def _feed_dry_run(task: FeedFireTask, feed_url: str, source_type: str, con
 
     limiter = get_host_limiter()
     fetch_ctx = (
-        limiter.acquire(limiter.group_key_for(feed_url))
-        if limiter is not None
-        else nullcontext()
+        limiter.acquire(limiter.group_key_for(feed_url)) if limiter is not None else nullcontext()
     )
 
     try:
@@ -78,12 +79,14 @@ async def _feed_dry_run(task: FeedFireTask, feed_url: str, source_type: str, con
         status_label = "DUP" if is_dup else "NEW"
         if not is_dup:
             new_count += 1
-        result_articles.append({
-            "title": article.title,
-            "url": article.url,
-            "published_at": article.published_at.isoformat() if article.published_at else None,
-            "status": status_label,
-        })
+        result_articles.append(
+            {
+                "title": article.title,
+                "url": article.url,
+                "published_at": article.published_at.isoformat() if article.published_at else None,
+                "status": status_label,
+            }
+        )
 
     task.articles_fetched = len(articles)
     task.articles_new = new_count
@@ -92,10 +95,14 @@ async def _feed_dry_run(task: FeedFireTask, feed_url: str, source_type: str, con
     task.finished_at = datetime.now(timezone.utc)
 
 
-async def _feed_real_run(task: FeedFireTask, feed_id: int, feed_name: str, feed_url: str, source_type: str, config: dict) -> None:
+async def _feed_real_run(
+    task: FeedFireTask, feed_id: int, feed_name: str, feed_url: str, source_type: str, config: dict
+) -> None:
     """Background: run collect_feed (writes feed_items, pending_articles, feed_fetch_log)."""
     try:
-        items_seen, items_new, article_results = await collect_feed(feed_id, feed_name, feed_url, source_type, config)
+        items_seen, items_new, article_results = await collect_feed(
+            feed_id, feed_name, feed_url, source_type, config
+        )
         task.articles_fetched = items_seen
         task.articles_new = items_new
         task.articles = article_results

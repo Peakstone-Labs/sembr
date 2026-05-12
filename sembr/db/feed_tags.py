@@ -3,6 +3,7 @@
 Composite PK (feed_id, tag) with FK CASCADE on feed_id so DELETE FROM feeds
 auto-cleans tags. PRAGMA foreign_keys=ON is set globally in sqlite.py:19.
 """
+
 from __future__ import annotations
 
 import aiosqlite

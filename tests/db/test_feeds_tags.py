@@ -1,4 +1,5 @@
 """SC#1: feed_tags persist across reconnect; FK CASCADE removes tags on feed delete."""
+
 from __future__ import annotations
 
 import os
@@ -73,9 +74,7 @@ async def test_delete_feed_cascades_tags(tmp_db) -> None:
     assert deleted is True
     # FK CASCADE must have removed all feed_tags rows for this feed.
     assert await get_tags(conn, feed.id) == []
-    async with conn.execute(
-        "SELECT COUNT(*) FROM feed_tags WHERE feed_id=?", (feed.id,)
-    ) as cur:
+    async with conn.execute("SELECT COUNT(*) FROM feed_tags WHERE feed_id=?", (feed.id,)) as cur:
         count = (await cur.fetchone())[0]
     assert count == 0
 

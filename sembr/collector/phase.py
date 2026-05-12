@@ -3,6 +3,7 @@
 D3: phase derived from md5(feed.id) so distribution survives process restarts.
 D11: jitter = max(60, period_seconds // 30), capped at 600s.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,9 +14,7 @@ def derive_phase_seconds(feed_id: int, period_seconds: int) -> int:
         raise ValueError("period_seconds must be positive")
     # MD5 is a deterministic-spread function here, not a security primitive.
     # `usedforsecurity=False` keeps this importable on FIPS-mode systems.
-    digest = hashlib.md5(
-        f"feed-{feed_id}".encode("utf-8"), usedforsecurity=False
-    ).hexdigest()
+    digest = hashlib.md5(f"feed-{feed_id}".encode("utf-8"), usedforsecurity=False).hexdigest()
     return int(digest[:8], 16) % period_seconds
 
 

@@ -6,6 +6,7 @@ Auth model and response shape mirror /api/settings/save:
 - 200 + rsshub_restart_failed flag when rsshub recreate fails (api self-restart
   still proceeds)
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -69,6 +70,7 @@ def test_restart_rsshub_failure_returns_200_with_flag(
 ):
     """Per D1: rsshub failure becomes 200 + flag (not 500). The api self-restart
     must still proceed so disk + process state converge regardless of rsshub."""
+
     async def _fail(*a, **k):
         raise RuntimeError("compose recreate timed out")
 

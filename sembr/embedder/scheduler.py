@@ -3,6 +3,7 @@
 Implements D1 (30s IntervalTrigger), D2 (upsert-then-delete ordering),
 D17 (module constants), D20 (transient Qdrant error handling).
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,6 +27,7 @@ except ImportError:
         id: str
         vector: list
         payload: dict
+
 
 from sembr.dashboard.events import log_embed_event
 from sembr.db.articles import (
@@ -103,9 +105,7 @@ async def _emit_embed_event(
 ) -> None:
     """Best-effort wrapper: observability faults must never poison embedder_worker."""
     try:
-        elapsed_ms = int(
-            (datetime.now(timezone.utc) - started_at).total_seconds() * 1000
-        )
+        elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
         await log_embed_event(
             started_at=started_at,
             elapsed_ms=elapsed_ms,
@@ -147,7 +147,9 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
     embed_timeout = max(30.0, total_chars / 1500)
     logger.info(
         "embed start: batch=%d total_chars=%d timeout=%.1fs",
-        len(batch), total_chars, embed_timeout,
+        len(batch),
+        total_chars,
+        embed_timeout,
     )
 
     started_at = datetime.now(timezone.utc)
@@ -158,17 +160,24 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
         elapsed = time.perf_counter() - t0
         logger.warning(
             "embed failed for batch of %d after %.1fs (timeout=%.1fs): %s",
-            len(batch), elapsed, embed_timeout, exc, exc_info=True,
+            len(batch),
+            elapsed,
+            embed_timeout,
+            exc,
+            exc_info=True,
         )
         await increment_retry(conn, md5s)
         # Demote ONLY the rows from this batch whose error actually exhausted retries (🔴-2)
         if md5s_at_limit:
             await demote_md5s_to_dead(conn, md5s_at_limit, error_message=str(exc))
         await _emit_embed_event(
-            started_at=started_at, ok=False,
-            batch_size=len(batch), total_chars=total_chars,
+            started_at=started_at,
+            ok=False,
+            batch_size=len(batch),
+            total_chars=total_chars,
             timeout_seconds=embed_timeout,
-            error_class=exc.__class__.__name__, error_message=str(exc),
+            error_class=exc.__class__.__name__,
+            error_message=str(exc),
         )
         return
 
@@ -180,10 +189,13 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
         logger.warning("qdrant transient, retrying next tick: %s", exc)
         await _emit_embed_event(
-            started_at=started_at, ok=False,
-            batch_size=len(batch), total_chars=total_chars,
+            started_at=started_at,
+            ok=False,
+            batch_size=len(batch),
+            total_chars=total_chars,
             timeout_seconds=embed_timeout,
-            error_class="qdrant_transient", error_message=str(exc),
+            error_class="qdrant_transient",
+            error_message=str(exc),
         )
         return
     except Exception as exc:
@@ -192,10 +204,13 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
         if md5s_at_limit:
             await demote_md5s_to_dead(conn, md5s_at_limit, error_message=str(exc))
         await _emit_embed_event(
-            started_at=started_at, ok=False,
-            batch_size=len(batch), total_chars=total_chars,
+            started_at=started_at,
+            ok=False,
+            batch_size=len(batch),
+            total_chars=total_chars,
             timeout_seconds=embed_timeout,
-            error_class="qdrant_error", error_message=str(exc),
+            error_class="qdrant_error",
+            error_message=str(exc),
         )
         return
 
@@ -203,10 +218,13 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
     # Logging here ensures throughput metrics are correct even when delete blips (🟡-10).
     logger.info("embedded %d articles, dim=%d", len(batch), len(vectors[0]) if vectors else 0)
     await _emit_embed_event(
-        started_at=started_at, ok=True,
-        batch_size=len(batch), total_chars=total_chars,
+        started_at=started_at,
+        ok=True,
+        batch_size=len(batch),
+        total_chars=total_chars,
         timeout_seconds=embed_timeout,
-        error_class=None, error_message=None,
+        error_class=None,
+        error_message=None,
     )
 
     # D12: event-driven matching — after upsert success, before delete_pending.
@@ -217,6 +235,7 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
     # ../sembr-dev-docs/development/event-driven-intent/.
     if app is not None:
         from sembr.matcher.event_match import event_match_batch  # noqa: PLC0415
+
         await event_match_batch(app, points, conn)
 
     # If delete fails, rows re-embed next tick — idempotent via deterministic UUID (D4).

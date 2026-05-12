@@ -2,6 +2,7 @@
 
 D13: on_match is registered on app.state so Feature 6/7 can replace it at runtime.
 """
+
 from __future__ import annotations
 
 import logging
@@ -32,7 +33,9 @@ async def log_matches(matches: list[Match]) -> None:
         return
     intent_id = matches[0].intent_id
     article_ids = [m.article_id for m in matches]
-    logger.info("on_match intent_id=%d matched %d articles: %s", intent_id, len(matches), article_ids)
+    logger.info(
+        "on_match intent_id=%d matched %d articles: %s", intent_id, len(matches), article_ids
+    )
     for m in matches:
         logger.debug(
             "  article_id=%s score=%.4f title=%r",
