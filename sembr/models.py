@@ -66,7 +66,7 @@ _FEED_TAG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")
 
 
 def _normalize_feed_tags(v: list[str]) -> list[str]:
-    """D10: lowercase + kebab-case, dedup, max 10. Reused by FeedCreate / FeedTagsUpdate."""
+    """Lowercase + kebab-case, dedup, max 10. Reused by FeedCreate / FeedTagsUpdate."""
     norm: list[str] = []
     seen: set[str] = set()
     for t in v:
@@ -90,12 +90,12 @@ class FeedCreate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_url_per_source_type(self) -> "FeedCreate":
-        # D11: source_type='newsapi' uses bare hostnames (matches NewsAPI.ai
+        # source_type='newsapi' uses bare hostnames (matches NewsAPI.ai
         # source.uri format) and requires normalize-on-write so feeds.url's
         # UNIQUE constraint catches case/scheme/www. duplicates client-side.
         # source_type='rss' keeps the historical http(s)://-required scheme.
         if self.source_type == "newsapi":
-            # 🟢-1: lazy import the canonical normalizer from collector.newsapi
+            # Lazy import the canonical normalizer from collector.newsapi
             # (collector imports from models, not vice versa, so no cycle).
             from sembr.collector.newsapi import normalize_source_uri  # noqa: PLC0415
 
@@ -106,13 +106,14 @@ class FeedCreate(BaseModel):
                     f"got {self.url!r} after normalization → {normalized!r}"
                 )
             self.url = normalized
-            # R6: front-end disables the poll_interval input for newsapi feeds,
+            # Front-end disables the poll_interval input for newsapi feeds,
             # but a stale form field or direct API caller may still send a
             # value that differs from settings. Coerce silently so feeds.url
-            # row matches the global interval. Master tick reads the setting
-            # directly, never this column — coercion is purely cosmetic for
-            # the dashboard list. Imported lazily to keep models.py free of
-            # import-time side effects (Settings reads .env on first call).
+            # row matches the global interval. The master scheduler tick
+            # reads the setting directly, never this column — coercion is
+            # purely cosmetic for the dashboard list. Imported lazily to
+            # keep models.py free of import-time side effects (Settings
+            # reads .env on first call).
             from sembr.config import get_settings  # noqa: PLC0415
 
             self.poll_interval_minutes = get_settings().newsapi_poll_interval_minutes
@@ -197,7 +198,7 @@ _LANGUAGE_SAFE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_\- ]*")
 
 
 def _validate_language_safe(v: str) -> str:
-    """Shared by Intent.language, SubTextSpec.language, TranslateRequest.target_language (D14, D21)."""
+    """Shared by Intent.language, SubTextSpec.language, TranslateRequest.target_language."""
     if not v:
         raise ValueError("language must not be empty")
     if len(v) > 32:
@@ -210,11 +211,11 @@ def _validate_language_safe(v: str) -> str:
 
 
 class SubTextSpec(BaseModel):
-    """One auxiliary intent text (副 intent text) for cross-language match recall (D14, D23).
+    """One auxiliary intent text for cross-language match recall.
 
     - `language` is a metadata tag, not a uniqueness key — same language may repeat across slots.
     - `text` shares the main `text` field's `max_length=2000`; embedder truncates further.
-    - Slot identity is positional (list index → Qdrant `alt_0/1/2`); see D23.
+    - Slot identity is positional (list index → Qdrant `alt_0/1/2`).
     """
 
     language: str = Field(min_length=1, max_length=32)
@@ -348,9 +349,9 @@ class Intent(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    """Body of POST /intents/translate (D5, D21).
+    """Body of POST /intents/translate.
 
-    Stateless — no intent_id binding so creation form can call before draft exists.
+    Stateless — no intent_id binding so the creation form can call before a draft exists.
     target_language is freeform; v1 does not enforce BCP 47 compliance.
     """
 
