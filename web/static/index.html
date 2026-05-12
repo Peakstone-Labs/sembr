@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=9">
+<link rel="stylesheet" href="/dashboard/style.css?v=10">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 </head>
@@ -959,7 +959,7 @@
       </p>
       <div class="modal-footer">
         <button @click="closeDelete()">Cancel</button>
-        <button class="danger" @click="runDelete()">Yes, Delete</button>
+        <button class="danger" @click="runDelete()">Yes, delete</button>
       </div>
     </div>
   </div>
@@ -1184,7 +1184,7 @@
     </nav>
     <button class="primary" @click="openCreate(subTab)">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-      New <span x-text="subTab === 'cron' ? 'Cron' : 'Event'"></span> intent
+      New <span x-text="subTab === 'cron' ? 'cron' : 'event'"></span> intent
     </button>
   </div>
 
@@ -1197,7 +1197,7 @@
   <!-- ── Cron sub-tab ── -->
   <div x-show="!loading && subTab==='cron'">
     <div x-show="cronList.length === 0" class="empty-state">
-      No Cron intents yet — click <strong>+ New Cron Intent</strong> to create one.
+      No cron intents yet — click <strong>+ New cron intent</strong> to create one.
     </div>
     <table x-show="cronList.length > 0">
       <thead>
@@ -1256,7 +1256,7 @@
   <!-- ── Event sub-tab ── -->
   <div x-show="!loading && subTab==='event'">
     <div x-show="eventList.length === 0" class="empty-state">
-      No Event intents yet — click <strong>+ New Event Intent</strong> to create one.
+      No event intents yet — click <strong>+ New event intent</strong> to create one.
     </div>
     <table x-show="eventList.length > 0">
       <thead>
@@ -1765,7 +1765,7 @@
       </p>
       <div class="modal-footer">
         <button @click="closeDelete()">Cancel</button>
-        <button class="danger" @click="deleteIntent()">Yes, Delete</button>
+        <button class="danger" @click="deleteIntent()">Yes, delete</button>
       </div>
     </div>
   </div>
@@ -1893,7 +1893,7 @@
   <aside class="panel" style="display:flex; flex-direction:column; min-height:0; padding:16px; overflow:auto;">
     <header style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
       <h3 style="margin:0; font-size:0.78rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-dim);">Templates</h3>
-      <button class="btn" @click="loadList()" title="Reload templates" style="padding:2px 8px; font-size:0.72rem;">↻</button>
+      <button class="btn-icon btn-icon-sm" @click="loadList()" title="Reload templates" aria-label="Reload templates"><svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
     </header>
 
     <template x-if="loading && system.length === 0 && instruction.length === 0">
@@ -1904,7 +1904,7 @@
     <div style="margin-bottom:12px;">
       <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px; margin-bottom:4px;">
         <span style="font-size:0.7rem; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim);">system/</span>
-        <button class="btn" @click="openCreate('system')" title="New system template" aria-label="New system template" class="btn-icon btn-icon-sm"><svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+        <button class="btn-icon btn-icon-sm" @click="openCreate('system')" title="New system template" aria-label="New system template"><svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
       </div>
       <template x-if="system.length === 0 && !loading">
         <div class="muted" style="padding:4px 8px; font-size:0.72rem;">No templates.</div>
@@ -1925,7 +1925,7 @@
     <div>
       <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px; margin-bottom:4px;">
         <span style="font-size:0.7rem; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim);">instruction/</span>
-        <button class="btn" @click="openCreate('instruction')" title="New instruction template" aria-label="New instruction template" class="btn-icon btn-icon-sm"><svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+        <button class="btn-icon btn-icon-sm" @click="openCreate('instruction')" title="New instruction template" aria-label="New instruction template"><svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
       </div>
       <template x-if="instruction.length === 0 && !loading">
         <div class="muted" style="padding:4px 8px; font-size:0.72rem;">No templates.</div>
@@ -1981,7 +1981,7 @@
               Duplicate
             </button>
             <button class="btn" :disabled="isEditorBuiltin" @click="!isEditorBuiltin && openRenameCurrent()" title="Rename">Rename</button>
-            <button class="btn btn-danger" :disabled="isEditorBuiltin" @click="!isEditorBuiltin && openDeleteCurrent()" title="Delete">Delete</button>
+            <button class="danger" :disabled="isEditorBuiltin" @click="!isEditorBuiltin && openDeleteCurrent()" title="Delete">Delete</button>
           </div>
         </header>
 
@@ -2087,7 +2087,7 @@
         <div x-show="del.error" style="color:var(--bad); font-size:0.78rem; margin-top:8px;" x-text="del.error"></div>
         <footer style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
           <button class="btn" @click="closeDelete()">Cancel</button>
-          <button class="btn btn-danger"
+          <button class="danger"
                   :disabled="del.submitting || del.refIntents.length > 0"
                   @click="del.refIntents.length === 0 && submitDelete()"
                   x-text="del.submitting ? 'Deleting…' : 'Delete'"></button>
