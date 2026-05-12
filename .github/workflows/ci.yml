@@ -81,8 +81,10 @@ jobs:
         run: uv sync --extra dev
       - name: pytest
         env:
-          # Stubs so import-time settings validation does not fail.
+          # Stub so import-time settings validation does not fail.
           # Tests that need real credentials should mock at the call site.
+          # DASHBOARD_TOKEN is intentionally left unset (defaults to "" =
+          # open access); setting it activates the dashboard auth middleware
+          # and 401s every /api/* test that does not monkeypatch its own token.
           EMBEDDER_API_KEY: ci-dummy-embedder-key
-          DASHBOARD_TOKEN: ci-dummy-dashboard-token
         run: uv run pytest tests/ -v
