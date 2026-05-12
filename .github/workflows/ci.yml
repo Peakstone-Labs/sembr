@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  format-check:
+    name: ruff format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+      - name: ruff format --check
+        run: uvx ruff@0.15 format --check .
+
+  private-refs:
+    name: No private dev-doc references
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No sembr-dev-docs / design.md references (sembr / scripts / docs)
+        run: |
+          set -e
+          # Scope excludes tests/ until the long-tail cleanup completes.
+          if grep -rnE "sembr-dev-docs|design\.md" \
+            --include="*.py" --include="*.md" \
+            sembr/ scripts/ docs/ 2>/dev/null; then
+            echo "::error::Found private dev-doc references — see lines above."
+            exit 1
+          fi
+
+      - name: No decision-ID references (Dxx / Rxx / DDxx)
+        run: |
+          set -e
+          # `noqa: D[0-9]` carve-out: pydocstyle rule codes are legitimate.
+          # Scope excludes tests/ until the long-tail cleanup completes.
+          hits=$(grep -rnE "\bD[0-9]{1,3}\b|\bR[0-9]{1,3}\b|\bDD[0-9]{1,3}\b" \
+            --include="*.py" --include="*.md" \
+            sembr/ scripts/ docs/ 2>/dev/null | grep -v "noqa: D[0-9]" || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Found decision-ID references (Dxx/Rxx/DDxx):"
+            echo "$hits"
+            exit 1
+          fi
+
+  spdx-headers:
+    name: SPDX-License-Identifier on every .py
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every .py under sembr / tests / scripts must have SPDX header
+        run: |
+          set -e
+          missing=$(grep -rL "SPDX-License-Identifier" \
+            --include="*.py" \
+            sembr/ tests/ scripts/ || true)
+          if [ -n "$missing" ]; then
+            echo "::error::Files missing SPDX-License-Identifier header:"
+            echo "$missing"
+            exit 1
+          fi
+
+  tests:
+    name: pytest
+    runs-on: ubuntu-latest
+    # Allowed to fail at the workflow-level until the baseline is green.
+    # Tracked separately in opensource/02-scans (long-tail follow-up).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+      - name: Install deps (main + dev extras)
+        run: uv sync --extra dev
+      - name: pytest
+        env:
+          # Stubs so import-time settings validation does not fail.
+          # Tests that need real credentials should mock at the call site.
+          EMBEDDER_API_KEY: ci-dummy-embedder-key
+          DASHBOARD_TOKEN: ci-dummy-dashboard-token
+        run: uv run pytest tests/ -v
