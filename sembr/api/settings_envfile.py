@@ -8,7 +8,7 @@ before each write.
 Why hand-rolled (not python-dotenv): `dotenv.set_key` rewrites the whole file
 and drops grouping comments; `.env.example` ships with section headers
 (`# ── API server ──`) that users rely on for navigation, so preserving line
-order verbatim is a hard requirement (design.md O4a).
+order verbatim is a hard requirement.
 """
 
 from __future__ import annotations
@@ -141,7 +141,7 @@ class EnvFile:
         if path.is_dir():
             # `.env` mounted as directory means the host file was missing when
             # docker compose started — surfaces here rather than as a cryptic
-            # `IsADirectoryError` deeper in the stack (design.md Risk row 2).
+            # `IsADirectoryError` deeper in the stack.
             raise IsADirectoryError(
                 f"{path} is a directory, not a file. "
                 "Run `cp .env.example .env` on the host before `docker compose up`."

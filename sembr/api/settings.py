@@ -3,8 +3,7 @@
 
 Reads / writes the host-side `.env` file (bind-mounted to /app/.env) and
 orchestrates the matching container restart(s). All endpoints require an
-``X-Dashboard-Token`` **header** (no cookie fallback) to defend against
-CSRF — see design.md Decision #15.
+``X-Dashboard-Token`` **header** (no cookie fallback) to defend against CSRF.
 
 Routes:
 
@@ -36,7 +35,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 # Container-side `.env` path. Compose bind-mounts host `./.env` here.
 ENV_FILE_PATH = Path("/app/.env")
 
-# RSSHub passthrough whitelist (design.md Decision #5 / O5a).
+# RSSHub passthrough whitelist.
 # Why prefix-matching: lets RSSHub add new sources without sembr code
 # changes, but the strict ALL_CAPS regex defends against unicode-homograph
 # tricks ("ＴＷＩＴＴＥＲ_COOKIE" attempting to bypass the prefix check).
@@ -51,7 +50,7 @@ _RSSHUB_PASSTHROUGH_PREFIXES: tuple[str, ...] = (
 
 # Mask shown in place of any SecretStr value. The exact string also doubles
 # as the sentinel: clients that submit the mask back unmodified mean
-# "leave the existing secret alone" (design.md Decision #6).
+# "leave the existing secret alone".
 SENSITIVE_MASK = "••••••"
 
 # Substrings that mark a passthrough variable as secret-ish when no Settings
@@ -104,9 +103,9 @@ def require_header_token(
 
     Why a separate dependency rather than reusing DashboardTokenMiddleware:
     the middleware accepts cookies, which makes settings POSTs trivially
-    CSRF-able from any logged-in browser tab (design.md Decision #15). This
-    dep enforces an explicit ``X-Dashboard-Token`` header — a value an
-    attacker on a different origin cannot inject from a cross-site form/fetch.
+    CSRF-able from any logged-in browser tab. This dep enforces an explicit
+    ``X-Dashboard-Token`` header — a value an attacker on a different origin
+    cannot inject from a cross-site form/fetch.
     """
     expected = get_settings().dashboard_token.get_secret_value()
     if not expected:
@@ -376,7 +375,7 @@ def _classify_key(key: str) -> Literal["sembr", "passthrough", "invalid"]:
 
 def _coalesce_value(key: str, submitted: str, current_raw: str) -> str:
     """If user submitted the mask sentinel for a sensitive field, keep the
-    original disk value untouched (design.md Decision #6 / AC4)."""
+    original disk value untouched."""
     sensitive = (
         key.lower() in Settings.model_fields and _is_sensitive(Settings.model_fields[key.lower()])
     ) or any(s in key for s in _SENSITIVE_SUBSTRINGS)
