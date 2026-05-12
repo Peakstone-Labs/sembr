@@ -1,4 +1,4 @@
-"""Dashboard restart endpoint — POST /api/dashboard/restart (design D1).
+"""Dashboard restart endpoint — POST /api/dashboard/restart.
 
 Single-purpose router: triggers the same "double restart" (rsshub
 force-recreate + api SIGTERM-self) that ``/api/settings/save`` performs

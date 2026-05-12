@@ -1,4 +1,4 @@
-"""POST /intents/translate — stateless one-shot translation via summarizer LLM (D5/D7/D8/D15/D16).
+"""POST /intents/translate — stateless one-shot translation via the summarizer LLM.
 
 The endpoint is "stateless" in the sense that it does not bind to an intent_id —
 the create/edit form can call it before the intent is persisted. Errors:
@@ -6,8 +6,9 @@ the create/edit form can call it before the intent is persisted. Errors:
 - 502: any LLMError from the backend; body is scrubbed via APIBackend's
        safe_body truncation (no full prompt or API key leakage).
 
-Translation prompt is hardcoded here (D7), not pulled from prompts/templates.
-Temperature / max_tokens are not passed (D16); the backend's defaults govern.
+The translation prompt is a hardcoded module constant (not pulled from
+prompts/templates). Temperature and max_tokens are not passed; the backend's
+defaults govern.
 """
 
 from __future__ import annotations
@@ -22,10 +23,10 @@ from sembr.summarizer.llm.base import LLMError
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/intents", tags=["intents"])
 
-# Translation prompt — hardcoded module constant per D7. {target} is substituted
-# from TranslateRequest.target_language; the validator on that field guarantees
-# the value matches `[A-Za-z][A-Za-z0-9_\\- ]*` so no SQL/format-string injection
-# risk.
+# Translation prompt — hardcoded module constant. {target} is substituted from
+# TranslateRequest.target_language; the validator on that field guarantees the
+# value matches `[A-Za-z][A-Za-z0-9_\\- ]*` so there is no SQL / format-string
+# injection risk.
 _TRANSLATE_SYSTEM_PROMPT = (
     "You are a translator. Translate the user's text into {target}, preserving the original "
     "meaning and tone. Output only the translation, no quotes, no preamble, no commentary."

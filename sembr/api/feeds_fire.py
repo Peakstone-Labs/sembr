@@ -1,4 +1,4 @@
-"""POST /feeds/{id}/fire + GET /feeds/{id}/fire/{task_id} (D7, D10–D13).
+"""POST /feeds/{id}/fire + GET /feeds/{id}/fire/{task_id}.
 
 Fire triggers an immediate feed collection or a dry-run fingerprint check.
 Results are stored in memory (FeedFireTask) and polled via GET.
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/feeds", tags=["feeds"])
 
-# Strong references to in-flight background tasks (GC guard — D10).
+# Strong references to in-flight background tasks so the GC doesn't reap them.
 _BG_TASKS: set[asyncio.Task] = set()
 
 
@@ -38,7 +38,8 @@ async def _feed_dry_run(
 ) -> None:
     """Background: fetch articles and classify NEW/DUP without writing to DB.
 
-    Reuses _LIMITER_REF for host-rate-limiting (D12) — same path as collect_feed.
+    Reuses the module-level host limiter so dry-run shares the same rate-limit
+    budget as collect_feed.
     Does NOT write to feed_items, feed_fetch_log, or pending_articles.
     """
     conn = get_conn()
@@ -125,7 +126,7 @@ async def post_feed_fire(
     if feed is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
 
-    # D8: rate limit only applies to real runs
+    # Rate limit only applies to real runs
     if not dry_run and not throttle_check(feed_id):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -141,7 +142,7 @@ async def post_feed_fire(
             _feed_dry_run(task, str(feed.url), feed.source_type, feed.config, None)
         )
     else:
-        # D10: disabled feeds can also be fired (B2) — use create_task directly, not scheduler
+        # Disabled feeds can also be fired — use create_task directly, not the scheduler
         bg = asyncio.create_task(
             _feed_real_run(task, feed_id, feed.name, str(feed.url), feed.source_type, feed.config)
         )

@@ -1,11 +1,11 @@
 """Prompt template CRUD — list / get / create / update / delete / rename.
 
-All write endpoints follow the design's fail-fast validation order (D14):
+All write endpoints follow the same fail-fast validation order:
 Pydantic body schema → builtin-name guard → source-template existence
 (POST only) → target-template non/existence → strict try-render gate.
 
 Rename is the only endpoint that touches SQLite (cascade UPDATE on the
-intents table per D2/D15); POST/PUT/DELETE are filesystem-only.
+intents table); POST/PUT/DELETE are filesystem-only.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def _validate_ident(v: str, *, field: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Response models (D6 / D20)
+# Response models
 # ---------------------------------------------------------------------------
 
 
@@ -96,7 +96,7 @@ class TemplateDetail(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Request body models (D14)
+# Request body models
 # ---------------------------------------------------------------------------
 
 
@@ -170,8 +170,8 @@ async def _refs_index() -> dict[tuple[str, str], list[tuple[int, str]]]:
 
 def _builtin_block(name: str) -> None:
     if name in BUILTIN_NAMES:
-        # 422 when the *target* name is reserved (D9). The `default` name is the
-        # one and only builtin in 1.0; reserved on both kinds per D17.
+        # 422 when the *target* name is reserved. The `default` name is the
+        # one and only builtin in 1.0; reserved on both kinds.
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"field": "name", "reason": f"name '{name}' is reserved"},
@@ -188,13 +188,13 @@ def _builtin_write_guard(name: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# GET /templates — rich listing per D4 / D6
+# GET /templates — rich listing (file metadata + intent references)
 # ---------------------------------------------------------------------------
 
 
 @router.get("/templates", response_model=TemplateList)
 async def list_all_templates(request: Request) -> TemplateList:
-    """List all on-disk templates with `ref_intents`/`is_builtin` per D4/D6."""
+    """List all on-disk templates with `ref_intents` and `is_builtin`."""
     prompts_dir: Path = _templates.PROMPTS_DIR
     refs = await _refs_index()
     out: dict[str, list[TemplateInfo]] = {"system": [], "instruction": []}
@@ -250,13 +250,13 @@ async def get_template(kind: str, name: str, request: Request) -> TemplateDetail
 )
 async def create_template(kind: str, body: TemplateCreateRequest, request: Request) -> TemplateInfo:
     _ensure_kind(kind)
-    # D14 step 2 — builtin guard applies to *target* only (allows `source: default`).
+    # Step 2 — builtin guard applies to *target* only (allows `source: default`).
     _builtin_block(body.name)
 
     prompts_dir: Path = _templates.PROMPTS_DIR
     source_name = body.source if body.source is not None else "default"
 
-    # D14 step 3 — source-template existence check.
+    # Step 3 — source-template existence check.
     try:
         source_content = load_template(prompts_dir, kind, source_name)
     except ValueError as exc:
@@ -274,7 +274,7 @@ async def create_template(kind: str, body: TemplateCreateRequest, request: Reque
             },
         )
 
-    # D14 step 4 — target non-existence check (creation, not overwrite).
+    # Step 4 — target non-existence check (creation, not overwrite).
     try:
         target_path = template_path(prompts_dir, kind, body.name)
     except ValueError as exc:
@@ -282,15 +282,16 @@ async def create_template(kind: str, body: TemplateCreateRequest, request: Reque
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"field": "name", "value": body.name, "reason": str(exc)},
         ) from exc
-    # R7/D21: TOCTOU pre-check, accepted under R4 single-admin model. POSIX rename(2)
-    # silently overwrites; renameat2(RENAME_NOREPLACE) lacks a portable Python binding.
+    # TOCTOU pre-check, accepted under the single-admin operational model. POSIX
+    # rename(2) silently overwrites; renameat2(RENAME_NOREPLACE) lacks a portable
+    # Python binding.
     if target_path.exists():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"field": "name", "value": body.name, "reason": "target already exists"},
         )
 
-    # D14 step 5 — try_render with empty placeholders (defence-in-depth in case
+    # Step 5 — try_render with empty placeholders (defence-in-depth in case
     # the source contains unknown placeholders too — should not for builtins,
     # but a user duplicating a custom template gets the same gate as PUT).
     try:
@@ -359,7 +360,7 @@ async def update_template(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /templates/{kind}/{name} — guarded by ref_count == 0 (D19)
+# DELETE /templates/{kind}/{name} — guarded by ref_count == 0
 # ---------------------------------------------------------------------------
 
 
@@ -403,7 +404,7 @@ async def delete_template_endpoint(kind: str, name: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# POST /templates/{kind}/{name}/rename — D2 three-step orchestration
+# POST /templates/{kind}/{name}/rename — three-step orchestration (pre-check / fs rename / SQLite cascade)
 # ---------------------------------------------------------------------------
 
 
@@ -422,7 +423,7 @@ async def rename_template_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    # D2 step (a) — pre-existence check on target; rejects the common collision.
+    # Step (a) — pre-existence check on target; rejects the common collision.
     if not old_path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -432,8 +433,9 @@ async def rename_template_endpoint(
         # No-op rename — accept and return the existing row.
         refs = await _refs_index()
         return _build_info(prompts_dir, kind, name, refs)
-    # R7/D21: TOCTOU pre-check, accepted under R4 single-admin model. POSIX rename(2)
-    # silently overwrites; renameat2(RENAME_NOREPLACE) lacks a portable Python binding.
+    # TOCTOU pre-check, accepted under the single-admin operational model. POSIX
+    # rename(2) silently overwrites; renameat2(RENAME_NOREPLACE) lacks a portable
+    # Python binding.
     if new_path.exists():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -444,7 +446,7 @@ async def rename_template_endpoint(
             },
         )
 
-    # D2 step (b) — filesystem rename outside any DB transaction.
+    # Step (b) — filesystem rename outside any DB transaction.
     try:
         rename_template(prompts_dir, kind, name, body.new_name)
     except (ValueError, TemplateNotFoundError) as exc:
@@ -463,7 +465,7 @@ async def rename_template_endpoint(
             detail="rename failed at filesystem layer",
         ) from exc
 
-    # D2 step (c) — SQLite cascade UPDATE inside transaction.
+    # Step (c) — SQLite cascade UPDATE inside transaction.
     try:
         async with transaction() as txn:
             await rename_intent_template(txn, kind, name, body.new_name)

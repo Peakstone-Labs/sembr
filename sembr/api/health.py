@@ -1,7 +1,8 @@
 """GET /health.
 
-设计决策 #5 / #6: real-time probe (no cache); 200 iff (qdrant_ok ∧ sqlite_ok ∧ embedder_ok).
-Embedder reports three states: "loading" | "ok" | "error" (D18).
+Real-time probe (no cache); returns 200 iff
+(qdrant_ok ∧ sqlite_ok ∧ embedder_ok). Embedder reports three states:
+"loading" | "ok" | "error".
 """
 
 from __future__ import annotations

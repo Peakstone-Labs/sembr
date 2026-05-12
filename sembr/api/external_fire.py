@@ -4,13 +4,10 @@ Single-shot HTTP request/response form of the reverse-RAG digest, exposed for
 external programs. Distinct from the internal async ``/intents/{id}/fire``:
 
   * synchronous — caller blocks until summary/error is ready (typically tens
-    of seconds; see Risk R1 in design.md and DASHBOARD_TOKEN client SLO note);
+    of seconds; long-poll clients should set a generous read timeout);
   * never writes ``match_seen`` and never invokes ``app.state.on_match`` (no
     notification side-effects);
   * shares the 1/intent/60s rate-limit bucket with the internal fire endpoint.
-
-See ``sembr-dev-docs/development/external-fire-api/design.md`` for decisions
-D1–D17 and the exception/return-value contract for ``compute_summary``.
 """
 
 from __future__ import annotations
@@ -32,20 +29,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/external", tags=["external-fire"])
 
-# D11 / R5: cap on summary_error length to prevent leaking traceback / paths /
-# provider URLs from str(exc); the API contract is "short string, safe to log".
+# Cap on summary_error length to prevent leaking traceback / paths / provider
+# URLs from str(exc); the API contract is "short string, safe to log".
 _SUMMARY_ERROR_MAX = 200
 
-# Path-separator + whitespace scrub (R5 / constraint #8). httpx exceptions
-# routinely include the upstream URL (``Read timeout for https://api.../v1/chat``)
-# and TemplateNotFoundError carries the on-disk path (``/app/prompts/...``) —
+# Path-separator + whitespace scrub. httpx exceptions routinely include the
+# upstream URL (``Read timeout for https://api.../v1/chat``) and
+# TemplateNotFoundError carries the on-disk path (``/app/prompts/...``) —
 # external callers should never observe these. Replace with a single space so
 # the type-name + remaining context still reads like a sentence.
 _SCRUB_RE = re.compile(r"[/\\\r\n\t]+")
 
 
 class ExternalFireRequest(BaseModel):
-    """Body for POST /api/external/intents/{intent_id}/fire (D2 / D-A2).
+    """Body for POST /api/external/intents/{intent_id}/fire.
 
     All fields optional — when omitted, falls back to the intent's stored
     value. ``feed_ids`` honours the same ``None=all / []=none / [1,3]=subset``
@@ -91,7 +88,7 @@ def _match_to_payload(m: Any) -> ExternalFireMatch:
 
 
 def _format_summary_error(exc: BaseException) -> str:
-    """D11 / R5 / constraint #8: ``"<ExcType>: <scrubbed-str(exc)[:200]>"``.
+    """Format an external-facing error string: ``"<ExcType>: <scrubbed-str(exc)[:200]>"``.
 
     Bounded length, no traceback, and any ``/`` ``\\`` newline / tab is
     collapsed to a space so URLs / file paths / multi-line LLM provider
@@ -118,7 +115,7 @@ async def post_external_fire(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
 
     if not isinstance(intent.schedule, CronSchedule):
-        # D9: distinct wording from /intents/{id}/fire so 409 logs make the
+        # Distinct wording from /intents/{id}/fire so 409 logs make the
         # endpoint of origin obvious.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -145,22 +142,22 @@ async def post_external_fire(
             if body.feed_ids is not None
             else (intent.feed_filter.ids if intent.feed_filter else None)
         ),
-        write_match_seen=False,  # external fire never writes match_seen (D)
-        propagate_qdrant_errors=True,  # D-A6: distinguish "0 hits" from "qdrant down"
+        write_match_seen=False,  # external fire never writes match_seen
+        propagate_qdrant_errors=True,  # distinguish "0 hits" from "qdrant down"
     )
 
     qdrant_client = request.app.state.qdrant.client
     try:
         matches = await scan_once(intent, options, conn, qdrant_client)
     except Exception:
-        # D12: hide internal exception detail from external callers.
+        # Hide internal exception detail from external callers.
         logger.exception("external_fire intent_id=%d scan_once Qdrant failure", intent_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="qdrant query failed",
         )
 
-    # D10: 0 hits → skip LLM entirely; summary stays None.
+    # 0 hits → skip LLM entirely; summary stays None.
     if not matches:
         return ExternalFireResponse(
             intent_id=intent_id,
@@ -185,8 +182,8 @@ async def post_external_fire(
     try:
         result = await pipeline.compute_summary(matches)
     except Exception as exc:
-        # D11 + D14: template + LLM errors all map to summary_error; we don't
-        # leak the distinction to external callers. Server-side log uses
+        # Template + LLM errors all map to summary_error; we don't leak the
+        # distinction to external callers. Server-side log uses
         # ``logger.exception`` so the traceback (which is *not* exposed to
         # the client) is available for debugging upstream LLM failures —
         # otherwise diagnosing a SiliconFlow / DeepSeek outage from the
@@ -199,7 +196,7 @@ async def post_external_fire(
             summary_error,
         )
     else:
-        # D15: result is None for skip-class conditions (empty intent_text /
+        # result is None for skip-class conditions (empty intent_text /
         # body_budget deficit / ctx fetch failed). Surfaced as summary=null,
         # summary_error=null — same as 0 hits but with matches present.
         summary = result.summary if result is not None else None

@@ -1,4 +1,4 @@
-"""POST/GET endpoints for the maintenance Dashboard panel (design D5 + D10).
+"""POST/GET endpoints for the maintenance Dashboard panel.
 
 Endpoints (prefix `/api/dashboard/maintenance`, gated by
 ``DashboardTokenMiddleware``):
@@ -67,8 +67,8 @@ async def get_feed_universe(request: Request) -> dict[str, Any]:
     picker. Source of truth: Qdrant ``feed_id`` facet ∪ SQLite ``feeds``.
 
     Implementation strategy: ``client.facet(... key="feed_id", limit=200,
-    exact=False)`` (D10). ``exact=False`` is fine for picker listings — only
-    the dry-run path needs exact counts.
+    exact=False)``. ``exact=False`` is fine for picker listings — only the
+    dry-run path needs exact counts.
     """
     qdrant = getattr(request.app.state, "qdrant", None)
     if qdrant is None:

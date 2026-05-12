@@ -1,4 +1,4 @@
-"""POST /intents/{id}/fire + GET /intents/{id}/fire/{task_id} (DD8).
+"""POST /intents/{id}/fire + GET /intents/{id}/fire/{task_id}.
 
 Fire triggers an immediate intent scan outside the APScheduler tick.
 Results are stored in memory (FireTask) and can be polled via GET.

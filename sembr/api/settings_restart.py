@@ -5,7 +5,7 @@ Two responsibilities:
 1. **RSSHub** restart — when the user adds/changes a passthrough variable
    (TWITTER_AUTH_TOKEN etc.) the RSSHub container must be restarted to re-read
    the bind-mounted `.env`. We drive this via `docker compose up --force-recreate`
-   using the compose CLI available inside the API container (see design.md D1-D7).
+   using the compose CLI available inside the API container.
 
 2. **API self-restart** — sembr changed its own ``.env`` and needs the new
    values to land in ``os.environ`` (env_file: bakes values at container
@@ -82,9 +82,11 @@ class RestartController:
         """Force-recreate the named compose service.
 
         ``service_name`` is the docker-compose service name (e.g. ``rsshub``),
-        NOT the container name (``sembr-rsshub``).  Runs in a thread so the
-        synchronous subprocess call does not block the event loop (design.md R6).
-        Errors propagate as RuntimeError (router maps to 200+warning per D5).
+        NOT the container name (``sembr-rsshub``). Runs in a thread so the
+        synchronous subprocess call does not block the event loop. Errors
+        propagate as RuntimeError; the router maps that to 200 + warning so the
+        user-facing settings save still reports success even if the optional
+        side-channel restart fails.
         """
         await asyncio.to_thread(self._restart_rsshub_sync, service_name)
 

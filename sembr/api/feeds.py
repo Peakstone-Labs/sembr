@@ -137,7 +137,7 @@ async def remove_feed(feed_id: int, request: Request) -> Response:
         if not await cur.fetchone():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
 
-    # DD3: cascade — remove feed_id from all intent feed_filter.ids (no commit yet)
+    # Cascade — remove feed_id from all intent feed_filter.ids (no commit yet)
     cascaded_intents = await intents_remove_feed_id(conn, feed_id)
     # delete_feed issues conn.commit(), committing both the cascade UPDATE and the DELETE atomically
     await delete_feed(conn, feed_id)
