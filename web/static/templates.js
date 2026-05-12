@@ -234,7 +234,7 @@ function templatesTab() {
     async submitCreate() {
       if (this.create.submitting) return;
       const name = (this.create.name || '').trim();
-      if (!name) { this.create.error = 'name is required'; return; }
+      if (!name) { this.create.error = 'Name is required'; return; }
       this.create.submitting = true;
       this.create.error = '';
       try {
@@ -286,9 +286,9 @@ function templatesTab() {
     async submitRename() {
       if (this.rename.submitting) return;
       const newName = (this.rename.newName || '').trim();
-      if (!newName) { this.rename.error = 'new name is required'; return; }
+      if (!newName) { this.rename.error = 'New name is required'; return; }
       if (newName === this.rename.oldName) {
-        this.rename.error = 'new name is the same as the old one';
+        this.rename.error = 'New name is the same as the old one';
         return;
       }
       this.rename.submitting = true;

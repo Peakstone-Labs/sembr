@@ -186,11 +186,11 @@ function feedsTab() {
       const raw = (this.expanded.tagEdit?.input || '').trim().toLowerCase();
       if (!raw) return;
       if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(raw)) {
-        this.toast(`invalid tag: ${raw}`, 'err');
+        this.toast(`Invalid tag: ${raw}`, 'err');
         return;
       }
       if (this.expanded.tagEdit.tags.length >= 10) {
-        this.toast('max 10 tags', 'err'); return;
+        this.toast('Max 10 tags', 'err'); return;
       }
       if (!this.expanded.tagEdit.tags.includes(raw)) {
         this.expanded.tagEdit.tags.push(raw);
@@ -207,9 +207,9 @@ function feedsTab() {
         // patch the in-place row so we don't have to reload the page.
         feed.tags = updated.tags || [];
         this.expanded.tagEdit = null;
-        this.toast('tags saved', 'ok');
+        this.toast('Tags saved', 'ok');
       } catch (e) {
-        this.toast(`save failed: ${e.message}`, 'err');
+        this.toast(`Save failed: ${e.message}`, 'err');
       }
     },
 
@@ -295,7 +295,7 @@ function feedsTab() {
     async submitCreate() {
       this.create.errors = {};
       if (!this.create.form.name.trim()) {
-        this.create.errors.name = 'required'; return;
+        this.create.errors.name = 'Required'; return;
       }
       const sourceType = this.create.form.source_type;
       let url = this.create.form.url.trim();
@@ -324,7 +324,7 @@ function feedsTab() {
       try {
         await this._api('/feeds', { method: 'POST', body: JSON.stringify(body) });
         this.create.open = false;
-        this.toast('feed created', 'ok');
+        this.toast('Feed created', 'ok');
         this.page = 0;
         await this.refresh();
       } catch (e) {
@@ -341,11 +341,11 @@ function feedsTab() {
       try {
         await this._api(`/feeds/${feed.id}`, { method: 'DELETE' });
         this.del = { open: false, feed: null };
-        this.toast('feed deleted', 'ok');
+        this.toast('Feed deleted', 'ok');
         if (this.expandedFeedId === feed.id) this.collapseRow();
         await this.refresh();
       } catch (e) {
-        this.toast(`delete failed: ${e.message}`, 'err');
+        this.toast(`Delete failed: ${e.message}`, 'err');
       }
     },
 
@@ -359,10 +359,10 @@ function feedsTab() {
           body: JSON.stringify({ enabled: !prev }),
         });
         feed.enabled = updated.enabled;
-        this.toast(feed.enabled ? 'feed enabled' : 'feed disabled', 'ok');
+        this.toast(feed.enabled ? 'Feed enabled' : 'Feed disabled', 'ok');
       } catch (e) {
         feed.enabled = prev;  // rollback
-        this.toast(`toggle failed: ${e.message}`, 'err');
+        this.toast(`Toggle failed: ${e.message}`, 'err');
       }
     },
 
@@ -405,7 +405,7 @@ function feedsTab() {
       const feed = this.edit.feed;
       if (!feed) return;
       if (!this.edit.form.name.trim()) {
-        this.edit.errors.name = 'required'; return;
+        this.edit.errors.name = 'Required'; return;
       }
       const body = {};
       if (this.edit.form.name.trim() !== feed.name)
@@ -431,7 +431,7 @@ function feedsTab() {
           enabled: updated.enabled,
         });
         this.edit.open = false;
-        this.toast('feed updated', 'ok');
+        this.toast('Feed updated', 'ok');
       } catch (e) {
         this.edit.errors._global = String(e.message || e);
       } finally { this.edit.submitting = false; }

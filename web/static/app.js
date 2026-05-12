@@ -344,7 +344,7 @@ function dashboard() {
       // fresh-state applies symmetrically (filter + page state reset).
       this.closeDrawer();
       this.drawer = {
-        kind: 'feed-events', title: `events · ${feedName}`,
+        kind: 'feed-events', title: `Events · ${feedName}`,
         rows: [], detail: null, loading: true,
         bucket: null, page: 0, pageSize: 100,
       };
@@ -356,7 +356,7 @@ function dashboard() {
     async openEmbedderEvents() {
       this.closeDrawer();
       this.drawer = {
-        kind: 'embedder-events', title: 'embedder · recent calls',
+        kind: 'embedder-events', title: 'Embedder · recent calls',
         rows: [], detail: null, loading: true,
         bucket: null, page: 0, pageSize: 100,
       };
@@ -370,7 +370,7 @@ function dashboard() {
       // truth state reset via closeDrawer (loop 2 🟡-2).
       this.closeDrawer();
       this.drawer = {
-        kind: 'articles', title: `articles · ${bucket}`,
+        kind: 'articles', title: `Articles · ${bucket}`,
         rows: [], detail: null, loading: true,
         bucket, page: 0, pageSize: 50,
       };

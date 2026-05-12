@@ -280,7 +280,7 @@
         <!-- Picker view: shown until a task_id is created -->
         <template x-if="!prune.taskId">
           <div>
-            <p x-show="prune.loading" class="muted">loading feed list…</p>
+            <p x-show="prune.loading" class="muted">Loading feed list…</p>
 
             <fieldset style="border:1px solid var(--border, #333); padding:8px; margin-bottom:8px;">
               <legend style="font-weight:600;">Target</legend>
@@ -297,8 +297,8 @@
             <fieldset style="border:1px solid var(--border, #333); padding:8px; margin-bottom:8px;">
               <legend style="font-weight:600;">
                 Feeds
-                <button @click="selectAll()" style="margin-left:8px;">all</button>
-                <button @click="selectNone()">none</button>
+                <button @click="selectAll()" style="margin-left:8px;">All</button>
+                <button @click="selectNone()">None</button>
               </legend>
               <div x-show="prune.universe.alive.length" style="margin-bottom:6px;">
                 <div class="muted" style="font-size:11px;">Active feeds</div>
@@ -321,11 +321,11 @@
                 </template>
               </div>
               <p x-show="!prune.loading && !prune.universe.alive.length && !prune.universe.deleted.length"
-                 class="muted">no feeds visible to Qdrant</p>
+                 class="muted">No feeds visible to Qdrant</p>
             </fieldset>
 
             <label>
-              older than
+              Older than
               <input type="number" min="1" max="3650" x-model.number="prune.olderThanDays"
                      style="width:80px;"> days
             </label>
@@ -366,7 +366,7 @@
               </tbody>
             </table>
             <p style="margin-top:8px;">
-              total <strong x-text="prune.planSummary.total_would_delete"></strong> rows will be deleted.
+              Total <strong x-text="prune.planSummary.total_would_delete"></strong> rows will be deleted.
             </p>
             <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
               <button @click="backToPicker()">Back</button>
@@ -410,7 +410,7 @@
               </ul>
             </template>
             <p class="muted" style="font-size:11px;">
-              elapsed <span x-text="prune.resultSummary.elapsed_ms"></span> ms
+              Elapsed <span x-text="prune.resultSummary.elapsed_ms"></span> ms
             </p>
             <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
               <button @click="closePrune()">Close</button>
@@ -451,15 +451,15 @@
     <!-- Articles filter bar (qdrant bucket only — pending/dead don't accept filter params) -->
     <div x-show="drawer.kind === 'articles' && drawer.bucket === 'qdrant'"
          class="filter-bar">
-      <label>from
+      <label>From
         <input type="date" x-model="filter.ingested_from"
                class="filter-input">
       </label>
-      <label>to
+      <label>To
         <input type="date" x-model="filter.ingested_to"
                class="filter-input">
       </label>
-      <label>source
+      <label>Source
         <select x-model="filter.feed_id" class="filter-input">
           <option value="">(any)</option>
           <template x-for="f in filter.feedOptions" :key="'f-' + f.id">
@@ -467,7 +467,7 @@
           </template>
         </select>
       </label>
-      <label>title contains
+      <label>Title contains
         <input type="text" x-model="filter.title_q" placeholder="word(s)"
                class="filter-input"
                @keydown.enter.prevent="applyFilter()">
@@ -479,12 +479,12 @@
             style="font-size:0.75rem; margin-left:auto;"></span>
     </div>
 
-    <p x-show="drawer.loading" class="muted">loading…</p>
+    <p x-show="drawer.loading" class="muted">Loading…</p>
     <!-- Empty-state copy is kind-specific (requirements criterion 17). -->
     <p x-show="drawer.kind === 'articles' && !drawer.loading && drawer.rows.length === 0"
        class="muted" style="margin-top:8px;">No articles match</p>
     <p x-show="drawer.kind !== 'articles' && !drawer.loading && drawer.rows.length === 0"
-       class="muted" style="margin-top:8px;">no rows</p>
+       class="muted" style="margin-top:8px;">No rows</p>
 
     <!-- embedder-events table -->
     <table x-show="drawer.kind === 'embedder-events' && !drawer.loading && drawer.rows.length">
@@ -568,7 +568,7 @@
                     x-text="window.fmtDateTime(a.ingested_at_ts)"></span>
             </td>
             <td>
-              <button @click="openArticleDetail(a.md5, a.bucket)">view</button>
+              <button @click="openArticleDetail(a.md5, a.bucket)">View</button>
             </td>
           </tr>
         </template>
@@ -603,7 +603,7 @@
            x-text="drawer.detail?.url"></div>
       <div class="detail" x-text="drawer.detail?.body"></div>
       <div class="modal-footer">
-        <button @click="closeArticleDetail()">close</button>
+        <button @click="closeArticleDetail()">Close</button>
       </div>
     </div>
   </div>
@@ -708,8 +708,8 @@
                   <template x-for="tag in (f.tags || [])" :key="tag">
                     <span class="intent-tag" x-text="tag"></span>
                   </template>
-                  <span x-show="!f.tags?.length" class="muted">none</span>
-                  <button @click="beginTagEdit(f)" style="margin-left:8px;">edit tags</button>
+                  <span x-show="!f.tags?.length" class="muted">None</span>
+                  <button @click="beginTagEdit(f)" style="margin-left:8px;">Edit tags</button>
                 </div>
                 <div x-show="expanded.tagEdit">
                   <strong>Edit tags:</strong>
@@ -723,9 +723,9 @@
                          placeholder="add tag…" style="width:160px;"
                          @keydown.enter.prevent="addTagEdit()"
                          @keydown="if($event.key===',') { $event.preventDefault(); addTagEdit(); }">
-                  <button @click="addTagEdit()">add</button>
-                  <button class="primary" @click="saveTagEdit(f)">save</button>
-                  <button @click="cancelTagEdit()">cancel</button>
+                  <button @click="addTagEdit()">Add</button>
+                  <button class="primary" @click="saveTagEdit(f)">Save</button>
+                  <button @click="cancelTagEdit()">Cancel</button>
                 </div>
               </div>
 
@@ -773,7 +773,7 @@
                       <td class="mono" x-text="window.fmtDateTime(a.published_at)"></td>
                       <td class="mono muted" x-text="window.fmtDateTime(a.ingested_at_ts)"></td>
                       <td>
-                        <button @click="openArticleBody(a.md5)">view</button>
+                        <button @click="openArticleBody(a.md5)">View</button>
                       </td>
                     </tr>
                   </template>
@@ -2124,7 +2124,7 @@
       </template>
     </nav>
     <div class="logs-level-row">
-      <span class="muted" style="font-size:0.72rem; letter-spacing:0.06em; text-transform:uppercase;">level</span>
+      <span class="muted" style="font-size:0.72rem; letter-spacing:0.06em; text-transform:uppercase;">Level</span>
       <select x-model="tagLevels[subTab]" @change="setLevel(subTab, tagLevels[subTab])"
               class="level-select">
         <template x-for="lvl in allLevels()" :key="lvl">
@@ -2377,7 +2377,7 @@
 
     <div x-show="deletions.length > 0" class="banner-warn" style="display:block;">
       Pending deletions: <span class="mono" x-text="deletions.join(', ')"></span>
-      <button @click="deletions = []">undo</button>
+      <button @click="deletions = []">Undo</button>
     </div>
   </div>
 
@@ -2443,12 +2443,12 @@
 
 </div><!-- /settings-view -->
 
-<script src="/dashboard/feeds.js?v=5"></script>
+<script src="/dashboard/feeds.js?v=6"></script>
 <script src="/dashboard/intents.js?v=3"></script>
-<script src="/dashboard/templates.js?v=3"></script>
+<script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
-<script src="/dashboard/settings.js?v=11"></script>
+<script src="/dashboard/settings.js?v=12"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>
-<script src="/dashboard/app.js?v=9"></script>
+<script src="/dashboard/app.js?v=10"></script>
 </body>
 </html>
