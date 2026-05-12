@@ -106,7 +106,7 @@ class RSSSource(BaseSource):
 
         feed = feedparser.parse(resp.content)
         # Raise on parse failure: bozo (malformed XML) or unrecognized format (version="")
-        # with no entries. If entries exist despite bozo, process them (D4 err-on-inclusion).
+        # with no entries. If entries exist despite bozo, process them (err on inclusion).
         if not feed.entries and (feed.bozo or not feed.version):
             detail = feed.bozo_exception if feed.bozo else "unrecognized feed format"
             raise FetchError(f"feedparser: {detail}")
@@ -119,7 +119,7 @@ class RSSSource(BaseSource):
                 continue
 
             published_at = _entry_published(entry)
-            # D4: err on inclusion — if no timestamp, include the entry (MD5 dedup is the real guard)
+            # Err on inclusion — if no timestamp, include the entry (MD5 dedup is the real guard)
             if since and published_at is not None and published_at <= since:
                 continue
 

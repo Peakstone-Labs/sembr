@@ -1,7 +1,8 @@
 """Hash-based deterministic phase + jitter for per-feed scheduling.
 
-D3: phase derived from md5(feed.id) so distribution survives process restarts.
-D11: jitter = max(60, period_seconds // 30), capped at 600s.
+Phase is derived from md5(feed.id) so the first-tick distribution survives
+process restarts. Per-fire jitter is ``max(60, period_seconds // 30)``, capped
+at 600 s, so concurrent ticks across feeds stay desynchronised.
 """
 
 from __future__ import annotations

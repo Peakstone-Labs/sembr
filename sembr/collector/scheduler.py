@@ -101,11 +101,11 @@ async def collect_feed(
     source_type='newsapi' only reaches this function via feeds_fire — master
     tick owns scheduled polling (add_feed_job:200). Fire forces since=None
     and skips update_last_collected so the already-paid 1 token returns a
-    full page of 100, while master tick's D27 watermark math stays intact.
+    full page of 100, while the master tick's watermark math stays intact.
     """
     source_cls = SOURCE_REGISTRY.get(source_type)
     if source_cls is None:
-        # Configuration error, not a fetch attempt — per D4, don't write an event row.
+        # Configuration error, not a fetch attempt — don't write an event row.
         logger.error("unknown source_type=%r for feed_id=%d", source_type, feed_id)
         return 0, 0, []
 
@@ -126,7 +126,7 @@ async def collect_feed(
     timeout = float(config.get("timeout", 30.0))
     source = source_cls(feed_url, timeout=timeout)
 
-    # D4: cap concurrent fetches to the same group_key. Limiter is initialised in
+    # Cap concurrent fetches to the same group_key. Limiter is initialised in
     # main.lifespan; if absent (e.g. unit test that calls collect_feed directly),
     # skip the gate so tests don't need to wire app.state.
     limiter: HostLimiter | None = _LIMITER_REF.get("limiter")
@@ -229,9 +229,9 @@ async def collect_feed(
 
 
 async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
-    # D10: newsapi feeds collapse onto a singleton master job — register that
+    # newsapi feeds collapse onto a singleton master job — register that
     # instead of a per-feed IntervalTrigger so all enabled newsapi feeds share
-    # one tick (1 token / cycle, requirements hard constraint).
+    # one tick (1 token / cycle).
     if feed.source_type == "newsapi":
         await ensure_newsapi_master_job(scheduler, get_settings())
         return
@@ -239,8 +239,8 @@ async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
     period_s = feed.poll_interval_minutes * 60
     phase_s = derive_phase_seconds(feed.id, period_s)
     jitter_s = derive_jitter_seconds(period_s)
-    # D3: hash-based phase makes first-run distribution deterministic across restarts.
-    # D11: per-fire jitter on top of IntervalTrigger keeps the time series desynchronised.
+    # Hash-based phase makes first-run distribution deterministic across restarts.
+    # Per-fire jitter on top of IntervalTrigger keeps the time series desynchronised.
     scheduler.add_job(
         collect_feed,
         trigger=IntervalTrigger(minutes=feed.poll_interval_minutes, jitter=jitter_s),
@@ -254,10 +254,10 @@ async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
 
 
 async def remove_feed_job(scheduler: AsyncIOScheduler, feed_id: int) -> None:
-    # D10/R1: try the per-feed job first (no-op for newsapi feeds since they
-    # collapse onto the master job; JobLookupError is the expected path), then
-    # call maybe_drop_newsapi_master_job so the last-newsapi-feed deletion
-    # tears down the master job.
+    # Try the per-feed job first (no-op for newsapi feeds since they collapse
+    # onto the master job; JobLookupError is the expected path), then call
+    # maybe_drop_newsapi_master_job so the last-newsapi-feed deletion tears
+    # down the master job.
     try:
         scheduler.remove_job(f"feed_{feed_id}")
     except JobLookupError:
@@ -269,17 +269,17 @@ async def remove_feed_job(scheduler: AsyncIOScheduler, feed_id: int) -> None:
 
 
 async def ensure_newsapi_master_job(scheduler: AsyncIOScheduler, settings: Settings) -> None:
-    """D6/D9: register the singleton master job if absent.
+    """Register the singleton master job if absent.
 
-    No `next_run_time` argument — feedback_apscheduler_next_run_time.md flags
-    that explicit `next_run_time=None` is a paused state; the trigger computes
-    the first run instead. Jitter spreads ticks across runs so multiple sembr
-    instances behind the same NEWSAPI_API_KEY don't collide.
+    No `next_run_time` argument — explicit `next_run_time=None` is a paused
+    state; the trigger computes the first run instead. Jitter spreads ticks
+    across runs so multiple sembr instances behind the same NEWSAPI_API_KEY
+    don't collide.
 
     Skips when the job already exists so repeated calls (e.g. multiple newsapi
     feed creations in succession) don't reset `next_run_time` and indefinitely
-    delay the next tick. — review-loop1 🟢-2. Settings-change re-registration
-    is handled separately via api self-restart (R4).
+    delay the next tick. Settings-change re-registration is handled separately
+    via the api self-restart path.
     """
     if scheduler.get_job(NEWSAPI_MASTER_JOB_ID) is not None:
         return
@@ -295,8 +295,8 @@ async def ensure_newsapi_master_job(scheduler: AsyncIOScheduler, settings: Setti
 
 
 async def maybe_drop_newsapi_master_job(scheduler: AsyncIOScheduler, conn) -> None:
-    """D10: drop the master job when the last enabled newsapi feed disappears
-    so the scheduler doesn't keep firing API calls (and burning tokens) for an
+    """Drop the master job when the last enabled newsapi feed disappears so
+    the scheduler doesn't keep firing API calls (and burning tokens) for an
     empty source set."""
     async with conn.execute(
         "SELECT 1 FROM feeds WHERE source_type='newsapi' AND enabled=1 LIMIT 1"

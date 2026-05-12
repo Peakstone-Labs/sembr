@@ -1,6 +1,6 @@
 """NewsAPI.ai (eventregistry.org) source + master-tick aggregator.
 
-D2: this module bundles three responsibilities so RSS-side code stays untouched:
+This module bundles three responsibilities so RSS-side code stays untouched:
 
 1. ``NewsApiSource`` — single-source ``BaseSource`` implementation used by the
    feed-fire dry_run / real_run path. Instantiated per feed with a hostname
@@ -11,7 +11,7 @@ D2: this module bundles three responsibilities so RSS-side code stays untouched:
    ``source_type='newsapi'`` feeds in one DB query, batches them into one
    API call (``sourceUri=list(uri_map)``, 1 token regardless of feed count),
    then dispatches results back to ``insert_article_pending`` per ``feed_id``.
-   This is the design's hard constraint (1 token / poll cycle).
+   The hard constraint is 1 token per poll cycle.
 
 3. ``RECOMMENDED_SOURCES`` / ``normalize_source_uri`` — datalist data + the
    single normalization function shared between ``FeedCreate.url`` validator
@@ -21,7 +21,7 @@ D2: this module bundles three responsibilities so RSS-side code stays untouched:
 Failures (HTTP error, JSON parse, missing ``req-tokens``, empty uri_map) skip
 both the cursor advance and the fetch_event row, matching ``collect_feed``'s
 ``FetchError`` semantics so a failed tick doesn't lose articles in the next
-window. See D6 / D20.
+window.
 """
 
 from __future__ import annotations
@@ -55,11 +55,11 @@ _NEWSAPI_HOST_KEY = "eventregistry.org"
 # still fill the 100-article page on the 1 token already paid.
 _FIRE_LOOKBACK_DAYS = 30
 
-# D18 (v1.0) / D31 (v1.1): fixed request-body fields for /article/getArticles.
-# articlesPage was in this dict in v1.0 (always 1, no pagination) and is now
-# parameterized via _build_request_body(page=...) since the master tick walks
-# 1..max_pages. Single-feed fire path passes page=1 explicitly to keep v1.0
-# wire-format identical.
+# Fixed request-body fields for /article/getArticles. articlesPage was in this
+# dict originally (always 1, no pagination) and is now parameterized via
+# _build_request_body(page=...) since the master tick walks 1..max_pages. The
+# single-feed fire path passes page=1 explicitly to keep the wire format
+# identical to the legacy single-page behaviour.
 _NEWSAPI_REQUEST_FIXED: dict[str, Any] = {
     "articlesCount": 100,
     "articlesSortBy": "date",
@@ -169,16 +169,16 @@ class _PerFeedSince:
 
 
 # ---------------------------------------------------------------------------
-# Pagination helpers (D27 / D30 v1.1)
+# Pagination helpers
 # ---------------------------------------------------------------------------
 
 
 def _universal_since_for_pagination(
     per_feed: dict[str, _PerFeedSince],
 ) -> datetime | None:
-    """Earliest non-null since across all feeds; None when ANY feed is on
-    first pull. None forces the master tick to skip watermark stop and rely
-    on defensive cap (D26 / D28) — semantics match the existing _date_window
+    """Earliest non-null since across all feeds; None when ANY feed is on first
+    pull. None forces the master tick to skip the watermark stop and rely on
+    the defensive max-pages cap — semantics match the existing _date_window
     fallback to now-1d for first-pull bootstrap."""
     sinces = [p.since for p in per_feed.values()]
     if not sinces or any(s is None for s in sinces):
@@ -190,13 +190,13 @@ def _should_stop_paginating(
     page_results: list[dict[str, Any]],
     universal_since: datetime | None,
 ) -> bool:
-    """D27 v1.1: pure stop predicate for the master-tick pagination loop.
+    """Pure stop predicate for the master-tick pagination loop.
 
     Returns True when the **oldest** article in this page is at or before
     ``universal_since`` — meaning the next page would be entirely below the
-    cursor and would only feed the existing per-article since-cut path
-    (D22). Robust to ``articlesSortBy`` upstream silently flipping desc→asc
-    because we use ``min(dateTime)`` rather than "the last element".
+    cursor and would only feed the existing per-article since-cut path. Robust
+    to ``articlesSortBy`` upstream silently flipping desc→asc because we use
+    ``min(dateTime)`` rather than "the last element".
 
     Returns False when:
     - ``universal_since`` is None (first-pull bootstrap; let cap handle it)
@@ -229,10 +229,10 @@ def _should_stop_paginating(
 
 
 class NewsApiSource(BaseSource):
-    """D5/D23: same ``__init__(url, timeout)`` signature as RSSSource so
-    ``collect_feed`` can construct it without a special branch. Per-feed
-    fetch consumes 1 token; the 60s fire rate limit (see fire_tasks.py)
-    keeps token spend bounded."""
+    """Same ``__init__(url, timeout)`` signature as RSSSource so
+    ``collect_feed`` can construct it without a special branch. Per-feed fetch
+    consumes 1 token; the 60s fire rate limit (see fire_tasks.py) keeps token
+    spend bounded."""
 
     def __init__(self, url: str, timeout: float = 30.0) -> None:
         self._url = normalize_source_uri(url)
@@ -259,7 +259,7 @@ class NewsApiSource(BaseSource):
             settings=settings,
             date_start=date_start,
             date_end=date_end,
-            page=1,  # D31 v1.1: fire path stays page 1 always (no pagination here)
+            page=1,  # fire path stays on page 1 (no pagination here)
         )
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             try:
@@ -267,12 +267,12 @@ class NewsApiSource(BaseSource):
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 # Mirror RSSSource.fetch's failure contract so collect_feed's
-                # FetchError branch fires (no cursor advance, fetch_event ok=False)
-                # for both source types — D5 / D20 / review-loop1 🔴-1.
+                # FetchError branch fires (no cursor advance, fetch_event
+                # ok=False) for both source types.
                 raise FetchError(
                     f"newsapi HTTP error for {self._url!r}: {type(exc).__name__}: {exc!s}"
                 ) from exc
-            # 🟢-3: log token usage as soon as the response is in hand so even a
+            # Log token usage as soon as the response is in hand so even a
             # JSON parse failure leaves a breadcrumb for the spent token.
             _log_token_usage(resp.headers, where=f"fetch[{self._url}]")
             try:
@@ -295,13 +295,14 @@ class NewsApiSource(BaseSource):
         return articles
 
     async def health(self) -> bool:
-        """D4: requirements Non-Goals forbid remote probes; just validate the
-        api_key is present so /health returns 503 when newsapi is unconfigured."""
+        """Validate api_key is present without a remote probe so /health
+        returns 503 when newsapi is unconfigured but doesn't burn a token on
+        every probe."""
         return bool(get_settings().newsapi_api_key.get_secret_value())
 
     @classmethod
     def config_schema(cls) -> dict:
-        # D3: no per-feed config — all newsapi knobs live in Settings. Empty
+        # No per-feed config — all newsapi knobs live in Settings. Empty
         # properties block makes the dashboard create form skip rendering the
         # source-config section entirely.
         return {"type": "object", "properties": {}}
@@ -320,11 +321,11 @@ class NewsApiMaster:
         self._host_limiter = host_limiter
 
     async def tick(self) -> None:
-        # D6: read enabled+source_type='newsapi' feeds at tick time so newly
-        # added feeds participate immediately (Goal #3, no caching). v1.1: the
-        # feed list is read ONCE here even though the HTTP loop can run up to
-        # max_pages iterations — concurrent feed inserts/deletes during a tick
-        # must not change the per_feed map mid-pagination.
+        # Read enabled+source_type='newsapi' feeds at tick time so newly added
+        # feeds participate immediately (no caching). The feed list is read
+        # ONCE here even though the HTTP loop can run up to max_pages
+        # iterations — concurrent feed inserts/deletes during a tick must not
+        # change the per_feed map mid-pagination.
         from sembr.dashboard.events import log_fetch_event  # noqa: PLC0415
         from sembr.db.articles import insert_article_pending  # noqa: PLC0415
         from sembr.db.feeds import update_last_collected  # noqa: PLC0415
@@ -343,7 +344,7 @@ class NewsApiMaster:
         settings = get_settings()
         api_key = settings.newsapi_api_key.get_secret_value()
         if not api_key:
-            # D20: missing key is a configuration failure, not a fetch failure;
+            # Missing key is a configuration failure, not a fetch failure;
             # don't advance cursor and don't emit a fetch_event (matches the
             # collect_feed FetchError semantic — next tick retries).
             logger.warning(
@@ -359,13 +360,13 @@ class NewsApiMaster:
             per_feed[normalized] = _PerFeedSince(feed_id=int(fid), since=since)
 
         date_start, date_end = _date_window([p.since for p in per_feed.values()])
-        max_pages = settings.newsapi_max_pages  # D26 v1.1
-        universal_since = _universal_since_for_pagination(per_feed)  # D27
+        max_pages = settings.newsapi_max_pages
+        universal_since = _universal_since_for_pagination(per_feed)
 
-        # D21: route the call through host_limiter so newsapi never burns
-        # parallel requests when scheduler ticks coincide with feed fires.
-        # group_key matches host_limiter.derive_group_key(url) for the
-        # eventregistry.org host, which is bare hostname without proxy.
+        # Route the call through host_limiter so newsapi never burns parallel
+        # requests when scheduler ticks coincide with feed fires. group_key
+        # matches host_limiter.derive_group_key(url) for the eventregistry.org
+        # host, which is bare hostname without proxy.
         limiter_ctx = (
             self._host_limiter.acquire(_NEWSAPI_HOST_KEY)
             if self._host_limiter is not None
@@ -373,12 +374,11 @@ class NewsApiMaster:
         )
         started_at = datetime.now(timezone.utc)
 
-        # Loop 6 🟡-1 v1.1: per-feed feed_fetch_log row on EVERY failure path
-        # (cap, HTTP, JSON, malformed body) so the dashboard sparkline can
-        # tell "feed stuck on cap" apart from "feed idle". Cursor still does
-        # NOT advance — D20/D28/D29 atomicity unchanged; this only marks the
-        # failed *attempt* in the log table. Mirrors collect_feed's RSS
-        # failure-row pattern.
+        # Per-feed feed_fetch_log row on EVERY failure path (cap, HTTP, JSON,
+        # malformed body) so the dashboard sparkline can tell "feed stuck on
+        # cap" apart from "feed idle". Cursor still does NOT advance —
+        # atomicity unchanged; this only marks the failed *attempt* in the log
+        # table. Mirrors collect_feed's RSS failure-row pattern.
         async def _emit_failure_logs(error_class: str, error_message: str) -> None:
             elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
             for slot in per_feed.values():
@@ -401,12 +401,11 @@ class NewsApiMaster:
                         exc,
                     )
 
-        # D29 v1.1: B-1 atomic semantics — accumulate all pages' results in
-        # memory; any page failure → return early without dispatch (no
-        # pending_articles insert, no update_last_collected). Failure paths
-        # DO emit ok=False feed_fetch_log rows (Loop 6 🟡-1).
-        # Memory budget: max_pages=10 × 100 articles × ~5KB ≈ 5MB (see
-        # design §"Memory Footprint"); cap=20 → ~10MB worst case.
+        # Atomic semantics — accumulate all pages' results in memory; any page
+        # failure → return early without dispatch (no pending_articles insert,
+        # no update_last_collected). Failure paths DO emit ok=False
+        # feed_fetch_log rows. Memory budget: max_pages=10 × 100 articles ×
+        # ~5KB ≈ 5MB; cap=20 → ~10MB worst case.
         all_results: list[dict[str, Any]] = []
         async with limiter_ctx:
             async with httpx.AsyncClient(timeout=settings.newsapi_timeout_seconds) as client:
@@ -418,14 +417,14 @@ class NewsApiMaster:
                         settings=settings,
                         date_start=date_start,
                         date_end=date_end,
-                        page=page,  # D31 v1.1
+                        page=page,
                     )
                     try:
                         resp = await client.post(_NEWSAPI_BASE_URL + _GET_ARTICLES_PATH, json=body)
                         resp.raise_for_status()
                     except httpx.HTTPError as exc:
-                        # D20 / D29: any page HTTP failure → integral rollback.
-                        # No dispatch yet, no cursor advance.
+                        # Any page HTTP failure → integral rollback. No
+                        # dispatch yet, no cursor advance.
                         logger.warning(
                             "newsapi master tick: page=%d HTTP failed (%d feeds, since=%s): %s",
                             page,
@@ -439,8 +438,8 @@ class NewsApiMaster:
                             f"{type(exc).__name__}: {exc!s}",
                         )
                         return
-                    # 🟢-3 v1.0: log req-tokens as soon as the response is in
-                    # hand — keeps the breadcrumb even if JSON parse fails.
+                    # Log req-tokens as soon as the response is in hand —
+                    # keeps the breadcrumb even if JSON parse fails.
                     _log_token_usage(resp.headers, where=f"master[p{page}]")
                     try:
                         data = resp.json()
@@ -481,18 +480,18 @@ class NewsApiMaster:
                         stopped_naturally = True
                         break
                     if _should_stop_paginating(page_results, universal_since):
-                        # D27 watermark stop: this page's oldest article is at or
-                        # below universal_since, so subsequent pages would all be
-                        # cut by the per-article since check (D22) anyway.
+                        # Watermark stop: this page's oldest article is at or
+                        # below universal_since, so subsequent pages would all
+                        # be cut by the per-article since check anyway.
                         stopped_naturally = True
                         break
 
                 if not stopped_naturally:
-                    # D28 v1.1: defensive cap reached without watermark trigger.
-                    # Treat as soft failure (same as D20 atomic): don't dispatch,
-                    # don't advance cursor. Next tick retries with same dateStart.
-                    # Operator response: lower the poll cadence or raise
-                    # newsapi_max_pages in Settings.
+                    # Defensive cap reached without watermark trigger. Treat
+                    # as soft failure (same atomicity rule as HTTP errors):
+                    # don't dispatch, don't advance cursor. Next tick retries
+                    # with the same dateStart. Operator response: lower the
+                    # poll cadence or raise newsapi_max_pages in Settings.
                     logger.warning(
                         "newsapi master tick: max_pages=%d cap reached "
                         "(since=%s, %d feeds); dropping tick to retry next cycle",
@@ -508,9 +507,9 @@ class NewsApiMaster:
                     )
                     return
 
-        # D29 v1.1: unified dispatch — only reached after all fetched pages
-        # returned 2xx + valid JSON. From this point on, behavior matches
-        # the v1.0 single-page path (D6/D19/D22/D7).
+        # Unified dispatch — only reached after all fetched pages returned 2xx
+        # + valid JSON. From this point on, behavior matches the legacy
+        # single-page path.
         for raw in all_results:
             src = raw.get("source") if isinstance(raw, dict) else None
             src_uri = normalize_source_uri(src.get("uri", "")) if isinstance(src, dict) else ""
@@ -530,10 +529,10 @@ class NewsApiMaster:
                 continue
             slot.items_seen += 1
 
-            # D22: client-side since cut. newsapi date granularity is per-day
-            # (see §A2), so same-day re-ticks return overlapping articles.
-            # MD5 dedup catches the duplicate writes, but early-dropping here
-            # also saves a pending_articles INSERT round-trip.
+            # Client-side since cut. newsapi date granularity is per-day, so
+            # same-day re-ticks return overlapping articles. MD5 dedup catches
+            # the duplicate writes, but early-dropping here also saves a
+            # pending_articles INSERT round-trip.
             if (
                 slot.since is not None
                 and article.published_at is not None
@@ -555,10 +554,10 @@ class NewsApiMaster:
                     exc_info=True,
                 )
 
-        # D7: every enabled feed (including 0-hit ones) gets cursor advance
-        # + fetch_event so dashboard sparkline + last_collected_at progress.
-        # v1.1 D29: items_seen / items_new now reflect totals across all
-        # fetched pages (accumulated in slot during the dispatch loop above).
+        # Every enabled feed (including 0-hit ones) gets a cursor advance +
+        # fetch_event so the dashboard sparkline and last_collected_at progress
+        # together. items_seen / items_new reflect totals across all fetched
+        # pages (accumulated in slot during the dispatch loop above).
         elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
         for slot in per_feed.values():
             await update_last_collected(conn, slot.feed_id)
@@ -587,9 +586,9 @@ class NewsApiMaster:
 
 
 def _date_window(sinces: list[datetime | None]) -> tuple[str, str]:
-    """D8: dateStart = min(non-null since).date() OR (now-1d).date() on first
-    pull. dateEnd = now.date(). Both ISO 'YYYY-MM-DD' (newsapi only accepts
-    day granularity)."""
+    """dateStart = min(non-null since).date() OR (now-1d).date() on first pull.
+    dateEnd = now.date(). Both ISO 'YYYY-MM-DD' (newsapi only accepts day
+    granularity)."""
     now = datetime.now(timezone.utc)
     non_null = [s for s in sinces if s is not None]
     if non_null and len(non_null) == len(sinces):
@@ -614,13 +613,14 @@ def _build_request_body(
     body["categoryUri"] = settings.newsapi_category_uris
     body["dateStart"] = date_start
     body["dateEnd"] = date_end
-    body["articlesPage"] = page  # D31 v1.1
+    body["articlesPage"] = page
     return body
 
 
 def _log_token_usage(headers: httpx.Headers, *, where: str) -> None:
-    """R2: req-tokens header is the unit cost confirmation. httpx headers are
-    case-insensitive. Missing header → warning but tick still proceeds."""
+    """The req-tokens header confirms the unit cost charged for this request.
+    httpx headers are case-insensitive. Missing header → warning but tick
+    still proceeds."""
     raw = headers.get("req-tokens")
     if raw is None:
         logger.warning("newsapi %s: req-tokens header absent on response", where)
@@ -653,8 +653,8 @@ def _parse_iso_or_none(raw: str | None) -> datetime | None:
 
 
 def _to_raw_article(raw: dict[str, Any]) -> RawArticle | None:
-    """D19/§A3: map a newsapi article dict to RawArticle. Returns None if the
-    minimum fields (url + title) are missing."""
+    """Map a newsapi article dict to RawArticle. Returns None if the minimum
+    fields (url + title) are missing."""
     if not isinstance(raw, dict):
         return None
     # ⚠ url is article["url"] (real link), NOT article["uri"] (internal id)

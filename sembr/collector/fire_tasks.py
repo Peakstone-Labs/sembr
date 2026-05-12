@@ -1,4 +1,4 @@
-"""In-memory feed fire task state store (D13).
+"""In-memory feed fire task state store.
 
 Parallel to sembr.matcher.fire_tasks but scoped to feeds. Tasks are stored in a
 module-level dict; TTL sweep runs every 5 minutes via APScheduler. Process-local,
@@ -15,7 +15,7 @@ from uuid import uuid4
 logger = logging.getLogger(__name__)
 
 _TASK_TTL_SECONDS = 3600  # 1 hour — consistent with intent fire tasks
-_FIRE_RATE_LIMIT_SECONDS = 60  # D9: 1 real fire per feed per 60s
+_FIRE_RATE_LIMIT_SECONDS = 60  # 1 real fire per feed per 60s
 
 
 @dataclass
@@ -35,7 +35,7 @@ class FeedFireTask:
 
 _feed_fire_tasks: dict[str, FeedFireTask] = {}
 
-# Last REAL fire time per feed_id (dry_run fires do not update this — D8)
+# Last REAL fire time per feed_id (dry_run fires do not update this)
 _last_fire_at: dict[int, datetime] = {}
 
 
@@ -49,7 +49,7 @@ def create_task(feed_id: int, dry_run: bool) -> FeedFireTask:
     )
     _feed_fire_tasks[task.task_id] = task
     if not dry_run:
-        # D8: only real runs consume the rate-limit bucket
+        # Only real runs consume the rate-limit bucket
         _last_fire_at[feed_id] = datetime.now(timezone.utc)
     return task
 
@@ -59,7 +59,7 @@ def get_task(task_id: str) -> FeedFireTask | None:
 
 
 def throttle_check(feed_id: int, rate_seconds: int = _FIRE_RATE_LIMIT_SECONDS) -> bool:
-    """Return True if a real fire is allowed. D8: dry_run bypasses this check entirely."""
+    """Return True if a real fire is allowed. dry_run bypasses this check entirely."""
     last = _last_fire_at.get(feed_id)
     if last is None:
         return True
