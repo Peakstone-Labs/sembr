@@ -44,7 +44,7 @@ def extract_point_vector(point) -> list[float] | None:
     intents — its iteration order is server-response-dependent — so this helper
     is intended only for unnamed-vector callers (news collection / matcher
     article-side). Intent-side callers must use `extract_named_vector(point, slot)`
-    after the layout migration (intent-match-enhancement D2/R4).
+    so a missing slot returns None instead of silently aliasing onto another slot.
     """
     raw = getattr(point, "vector", None)
     if raw is None:
@@ -64,8 +64,8 @@ def extract_named_vector(point, slot: str) -> list[float] | None:
       - the requested slot is absent from the dict (intent had no sub_text
         for this slot — caller may skip or treat as no-hit-on-this-slot).
 
-    The strict no-fallback contract is required by R4: a fallback to `next(iter(...))`
-    would silently return e.g. alt_0 when the caller asked for main.
+    The strict no-fallback contract is required so a `next(iter(...))` fallback
+    cannot silently return e.g. alt_0 when the caller asked for main.
     """
     raw = getattr(point, "vector", None)
     if not isinstance(raw, dict):

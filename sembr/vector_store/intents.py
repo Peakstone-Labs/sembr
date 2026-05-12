@@ -4,9 +4,10 @@ Idempotent: checks existence and layout before mutating.
 No quantization: intent vectors are query-side; precision matters more than memory
 savings at < 1000 entries (~4 MB raw at 1024-dim).
 
-Layout: named-vector dict {main, alt_0, alt_1, alt_2} per point (D2). The "_mv"
+Layout: named-vector dict {main, alt_0, alt_1, alt_2} per point. The "_mv"
 suffix on the collection name marks the layout version orthogonally to
-embedder.model_version (D13).
+embedder.model_version, so a future BGE-M3 → other embedding migration
+flips the model-version segment without churning the layout marker.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ ALIAS_NAME = "intents_current"
 
 # v1 caps sub_texts at 3; all four slots are declared in the collection so a
 # point may omit alt_* slots and query_points(using="alt_2") on a slot-less point
-# simply yields no hits — see design D2.
+# simply yields no hits.
 _SLOT_NAMES: tuple[str, ...] = ("main", "alt_0", "alt_1", "alt_2")
 
 # BGE-M3 / SiliconFlow batch ceiling (sembr CLAUDE.md tech-stack table).
@@ -41,7 +42,7 @@ def collection_name(model_version: str) -> str:
 
 
 def multi_vec_collection_name(model_version: str) -> str:
-    """Named-vector layout collection name (D13)."""
+    """Named-vector layout collection name."""
     return f"intents_{model_version}_mv"
 
 
@@ -92,7 +93,7 @@ async def _migrate_reembed_and_upsert(
     mv_name: str,
     rows: list[tuple[int, str]],
 ) -> None:
-    """Embed all main texts and upsert into the new _mv collection (D3 step 3–4).
+    """Embed all main texts and upsert into the new _mv collection.
 
     The embedder is loaded lazily on first migration run — lifespan launches
     `embedder.load()` as a background task AFTER this function, so on legacy
@@ -167,14 +168,14 @@ async def ensure_intents_collection(
     embedder: "BaseEmbedder",
     conn: "aiosqlite.Connection | None" = None,
 ) -> None:
-    """Bootstrap or migrate the intents collection to named-vector layout (D2/D3).
+    """Bootstrap or migrate the intents collection to the named-vector layout.
 
     Cases:
       1. Fresh DB / no _mv: create _mv with named-vec layout, no re-embed, flip alias.
       2. Alias points to legacy unnamed-vec collection: create _mv, re-embed all
          main texts, flip alias. Old collection retained for manual rollback.
       3. Alias already points to a named-vec _mv with the `main` slot present: no-op.
-      4. _mv exists but Qdrant count != SQLite count (partial-failure recovery, R1):
+      4. _mv exists but Qdrant count != SQLite count (partial-failure recovery):
          delete + recreate _mv, redo re-embed + alias flip.
     """
     mv_name = multi_vec_collection_name(embedder.model_version)
@@ -191,14 +192,14 @@ async def ensure_intents_collection(
         logger.debug("intents collection already at named-vector layout (%r)", current_target)
         return
 
-    # SQLite row count: used by R1 partial-recovery and to drive the re-embed loop
+    # SQLite row count: used by partial-recovery probe and to drive the re-embed loop
     rows = await _select_intent_main_texts(conn) if conn is not None else []
     expected_count = len(rows)
 
-    # Case 4: partial-recovery check. R1 + 🟡-1 require both exact count AND
-    # ID-set equality — "count plausible but ID set diverged" is a real failure
-    # mode when a partial migration left the _mv collection stale relative to
-    # SQLite (e.g. user added an intent between two failed migration attempts).
+    # Case 4: partial-recovery check requires both exact count AND ID-set equality
+    # — "count plausible but ID set diverged" is a real failure mode when a partial
+    # migration left the _mv collection stale relative to SQLite (e.g. user added
+    # an intent between two failed migration attempts).
     if mv_name in existing_names:
         mismatch_reason: str | None = None
         if not await _layout_is_named_vec(client, mv_name):
@@ -207,16 +208,18 @@ async def ensure_intents_collection(
             try:
                 actual = (await client.count(collection_name=mv_name, exact=True)).count
             except Exception as exc:
-                logger.warning("R1 probe: client.count failed (%s); treating as mismatch", exc)
+                logger.warning(
+                    "recovery probe: client.count failed (%s); treating as mismatch", exc
+                )
                 actual = -1
                 mismatch_reason = f"count probe failed ({exc})"
             if mismatch_reason is None and actual != expected_count:
                 mismatch_reason = f"count={actual} expected={expected_count}"
             if mismatch_reason is None and expected_count > 0:
-                # ID-level cross-check via scroll (loop 2 🟡-1). N<1000 in practice
-                # so one or two scroll pages cover the whole collection; the round-
-                # trip cost is paid once at startup. Catches the "count equal but
-                # IDs diverged" silent inconsistency window.
+                # ID-level cross-check via scroll. N<1000 in practice so one or
+                # two scroll pages cover the whole collection; the round-trip
+                # cost is paid once at startup. Catches the "count equal but IDs
+                # diverged" silent inconsistency window.
                 scroll_ids: set[int] = set()
                 offset = None
                 try:
@@ -232,7 +235,9 @@ async def ensure_intents_collection(
                         if offset is None:
                             break
                 except Exception as exc:
-                    logger.warning("R1 ID probe: scroll failed (%s); treating as mismatch", exc)
+                    logger.warning(
+                        "recovery ID probe: scroll failed (%s); treating as mismatch", exc
+                    )
                     mismatch_reason = f"scroll probe failed ({exc})"
                 else:
                     expected_ids = {r[0] for r in rows}
@@ -243,7 +248,7 @@ async def ensure_intents_collection(
                         )
                         mismatch_reason = f"ID set diverged ({diff_short})"
         if mismatch_reason is not None:
-            logger.warning("R1 recovery: _mv=%r %s — recreating", mv_name, mismatch_reason)
+            logger.warning("recovery: _mv=%r %s — recreating", mv_name, mismatch_reason)
             await client.delete_collection(mv_name)
             existing_names.discard(mv_name)
 
@@ -261,7 +266,7 @@ async def upsert_intent_point(
     vectors: list[float] | dict[str, list[float]],
     payload: dict[str, Any],
 ) -> None:
-    """Insert or replace the intent point. point_id == SQLite intent_id (D2).
+    """Insert or replace the intent point. point_id == SQLite intent_id.
 
     Accepts either `list[float]` (legacy single-vector form; auto-wrapped as
     {"main": vec}) or `dict[str, list[float]]` (named-vector form for the

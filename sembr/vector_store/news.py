@@ -113,10 +113,10 @@ async def ensure_news_collection(client: "AsyncQdrantClient", embedder: "BaseEmb
     )
 
     # Text payload index on title: required for the dashboard's qdrant-articles
-    # filter `title_q` (D7/D8). Qdrant's MatchText condition silently scans the
-    # whole collection without a text index — D7's query plan needs this in
-    # place before the first filtered scroll. Idempotent: create_payload_index
-    # is a no-op when the index already exists.
+    # `title_q` filter. Qdrant's MatchText condition silently scans the whole
+    # collection without a text index — the index must be in place before the
+    # first filtered scroll runs. Idempotent: create_payload_index is a no-op
+    # when the index already exists.
     #
     # MULTILINGUAL tokenizer (ICU-based) is required for CJK: WORD only splits
     # on whitespace/punctuation, so a Chinese title becomes a single >20-char
