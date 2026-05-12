@@ -11,8 +11,8 @@ jobs:
     name: ruff format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
       - name: ruff format --check
@@ -22,7 +22,7 @@ jobs:
     name: No private dev-doc references
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: No sembr-dev-docs / design.md references (sembr / scripts / docs)
         run: |
@@ -53,7 +53,7 @@ jobs:
     name: SPDX-License-Identifier on every .py
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Every .py under sembr / tests / scripts must have SPDX header
         run: |
           set -e
@@ -73,8 +73,8 @@ jobs:
     # Tracked separately in opensource/02-scans (long-tail follow-up).
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
       - name: Install deps (main + dev extras)
