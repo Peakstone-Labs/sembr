@@ -44,9 +44,8 @@ def test_phase_rejects_nonpositive_period() -> None:
 
 
 def test_five_feeds_combined_phase_plus_jitter_window() -> None:
-    """SC#5(b): the combined fire-time spread (phase + jitter window) must
-    exceed the design's 30s pairwise lower bound for any 5-feed group at
-    30-min period.
+    """The combined fire-time spread (phase + jitter window) must exceed the
+    30s pairwise lower bound for any 5-feed group at a 30-min period.
 
     Pure phase can collide (md5 over 5 samples occasionally clusters within
     30s); the jitter range guarantees that across consecutive fires the

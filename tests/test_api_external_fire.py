@@ -27,9 +27,8 @@ from sembr.summarizer.models import Citation, SummaryResult
 
 @pytest.fixture(autouse=True)
 def reset_tasks():
-    """Per design Implementation Constraint #7: same-process tests share
-    ``_last_fire_at`` with ``test_api_fire.py`` — reset on entry/exit so order
-    of execution can't trigger spurious 429s."""
+    """Same-process tests share ``_last_fire_at`` with ``test_api_fire.py`` —
+    reset on entry/exit so order of execution can't trigger spurious 429s."""
     _reset_for_testing()
     yield
     _reset_for_testing()

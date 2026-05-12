@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Auth-middleware integration for the new ``/api/external/`` prefix.
+"""Auth-middleware integration for the ``/api/external/`` prefix.
 
-Per design test-strategy: this file ONLY covers whether the prefix is gated by
-``DashboardTokenMiddleware`` — endpoint behaviour (404/409/429/500) lives in
-``test_api_external_fire.py``.
+This file ONLY covers whether the prefix is gated by ``DashboardTokenMiddleware``
+— endpoint behaviour (404/409/429/500) lives in ``test_api_external_fire.py``.
 """
 
 from __future__ import annotations

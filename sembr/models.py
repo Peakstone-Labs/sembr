@@ -13,7 +13,7 @@ from sembr.notifier.email import EmailChannelConfig
 
 _NEWSAPI_HOSTNAME_RE = re.compile(
     # TLD's first char is [a-z] so bare IPs (127.0.0.1, 8.8.8.8) reject —
-    # newsapi.ai source.uri values are always real domains per design §A5.
+    # newsapi.ai source.uri values are always real domains.
     # Note: this is intentionally NOT full RFC 1035 strict validation; a
     # contrived all-alpha chain like 'a.b.c.d' would pass. The goal is
     # "reject pure-numeric IPs", not "validate hostnames generically".
