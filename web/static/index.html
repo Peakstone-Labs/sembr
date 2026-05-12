@@ -689,9 +689,9 @@
                 <button @click="openEdit(f)">Edit</button>
                 <button @click="openFire(f)">Fire</button>
                 <button @click="toggleRow(f, 'events')"
-                        :class="(expandedFeedId===f.id && expanded.kind==='events') ? 'primary' : ''">events</button>
+                        :class="(expandedFeedId===f.id && expanded.kind==='events') ? 'primary' : ''">Events</button>
                 <button @click="toggleRow(f, 'articles')"
-                        :class="(expandedFeedId===f.id && expanded.kind==='articles') ? 'primary' : ''">articles</button>
+                        :class="(expandedFeedId===f.id && expanded.kind==='articles') ? 'primary' : ''">Articles</button>
                 <button class="danger" @click="confirmDelete(f)">Delete</button>
               </div>
             </td>
@@ -699,7 +699,7 @@
 
           <tr x-show="expandedFeedId === f.id" class="feed-expand-row">
             <td colspan="9">
-              <div x-show="expanded.loading" class="muted"><span class="spinner"></span>&nbsp;loading…</div>
+              <div x-show="expanded.loading" class="muted"><span class="spinner"></span>&nbsp;Loading…</div>
 
               <!-- tag editor -->
               <div class="feed-expand-tags">
@@ -1783,7 +1783,7 @@
       <!-- Phase: form -->
       <div x-show="fire.phase === 'form'">
         <div class="fire-warning">
-          ⚠ Running Fire will <strong>immediately scan and send real notifications</strong>
+          ⚠ Running fire will <strong>immediately scan and send real notifications</strong>
           to all configured channels. This action cannot be undone.
         </div>
         <div class="form-grid" style="gap:16px; margin-top:12px;">
@@ -1809,7 +1809,7 @@
         <div x-show="fire.error" class="fire-warning" style="margin-top:12px;" x-text="fire.error"></div>
         <div class="modal-footer">
           <button @click="closeFire()">Cancel</button>
-          <button class="fire-btn" @click="runFire()">Run Fire</button>
+          <button class="fire-btn" @click="runFire()">Run fire</button>
         </div>
       </div>
 
