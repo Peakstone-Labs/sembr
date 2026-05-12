@@ -2060,3 +2060,70 @@ main.dashboard-main .panel:hover,
 .modal-panel:hover {
   /* no-op — already styled by metric-tile/container-card */
 }
+
+/* ══════════════════════════════════════════════════════════
+   Inline SVG icons (Lucide-style, stroke-based, currentColor)
+   ══════════════════════════════════════════════════════════ */
+
+.icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-sm { width: 12px; height: 12px; stroke-width: 2; }
+.icon-md { width: 16px; height: 16px; }
+.icon-lg { width: 18px; height: 18px; }
+
+/* Default buttons already have display:inline-flex + align-items:center; just ensure gap */
+button { gap: 7px; }
+
+/* Icon-only button (e.g., drawer close, modal close) */
+.btn-icon {
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+  gap: 0;
+}
+
+.btn-icon.btn-icon-sm {
+  width: 26px;
+  height: 26px;
+}
+
+/* Tab nav icon spacing */
+.tab-btn { gap: 8px; }
+.tab-btn .icon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.6;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.tab-btn:hover .icon { opacity: 0.9; }
+.tab-btn.active .icon { opacity: 1; }
+
+/* Metric tile action icon — replace the previous CSS ::after arrow */
+.metric-tile-action::after { content: none; }  /* unset old fake-arrow */
+.metric-tile-action {
+  gap: 4px;
+}
+.metric-tile-action .icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
+/* Brand mark — could host an inline SVG inside instead of "s" char */
+.brand-mark .icon {
+  width: 14px;
+  height: 14px;
+  stroke: #ffffff;
+  stroke-width: 2;
+}

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=8">
+<link rel="stylesheet" href="/dashboard/style.css?v=9">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 </head>
@@ -20,7 +20,10 @@
   </div>
   <div class="header-right">
     <span x-show="lastUpdated" x-text="'updated ' + lastUpdated"></span>
-    <button @click="logout()">Log out</button>
+    <button @click="logout()">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+      Log out
+    </button>
   </div>
 </header>
 
@@ -30,12 +33,30 @@
 
 <!-- Top-level Tab nav -->
 <nav class="tab-nav">
-  <button class="tab-btn" :class="{active: currentTab==='dashboard'}" @click="setTab('dashboard')">Dashboard</button>
-  <button class="tab-btn" :class="{active: currentTab==='feeds'}"     @click="setTab('feeds')">Feeds</button>
-  <button class="tab-btn" :class="{active: currentTab==='intents'}"   @click="setTab('intents')">Intents</button>
-  <button class="tab-btn" :class="{active: currentTab==='templates'}" @click="setTab('templates')">Templates</button>
-  <button class="tab-btn" :class="{active: currentTab==='logs'}"      @click="setTab('logs')">Logs</button>
-  <button class="tab-btn" :class="{active: currentTab==='settings'}"  @click="setTab('settings')">Settings</button>
+  <button class="tab-btn" :class="{active: currentTab==='dashboard'}" @click="setTab('dashboard')">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+    Dashboard
+  </button>
+  <button class="tab-btn" :class="{active: currentTab==='feeds'}" @click="setTab('feeds')">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+    Feeds
+  </button>
+  <button class="tab-btn" :class="{active: currentTab==='intents'}" @click="setTab('intents')">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+    Intents
+  </button>
+  <button class="tab-btn" :class="{active: currentTab==='templates'}" @click="setTab('templates')">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>
+    Templates
+  </button>
+  <button class="tab-btn" :class="{active: currentTab==='logs'}" @click="setTab('logs')">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>
+    Logs
+  </button>
+  <button class="tab-btn" :class="{active: currentTab==='settings'}" @click="setTab('settings')">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+    Settings
+  </button>
 </nav>
 
 <!-- ═══════════════════════════════════════════════════════
@@ -70,7 +91,10 @@
     <!-- Articles -->
     <div class="metric-tile">
       <div class="metric-tile-label">Articles indexed</div>
-      <button class="metric-tile-action" @click="openArticles('qdrant')">View</button>
+      <button class="metric-tile-action" @click="openArticles('qdrant')">
+        View
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+      </button>
       <div class="metric-tile-value"
            x-text="snapshot.articles?.qdrant_count >= 0 ? snapshot.articles.qdrant_count.toLocaleString() : '—'"></div>
       <div class="metric-tile-breakdown">
@@ -91,7 +115,10 @@
     <!-- Embedder throughput (24h) — value + sparkline + breakdown -->
     <div class="metric-tile">
       <div class="metric-tile-label">Embedder calls · 24h</div>
-      <button class="metric-tile-action" @click="openEmbedderEvents()">Recent</button>
+      <button class="metric-tile-action" @click="openEmbedderEvents()">
+        Recent
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+      </button>
       <div class="metric-tile-value"
            x-text="(snapshot.embedder?.calls_24h?.total ?? 0).toLocaleString()"></div>
       <div class="metric-tile-breakdown">
@@ -175,6 +202,7 @@
     </div>
     <div style="margin-top:16px; display:flex; justify-content:flex-end;">
       <button @click="openRestartConfirm()" :disabled="restart.active">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
         <span x-show="!restart.active">Restart api + rsshub…</span>
         <span x-show="restart.active">Restarting…</span>
       </button>
@@ -188,7 +216,7 @@
         <div class="modal-panel" style="max-width:520px;">
           <div class="modal-header">
             <span class="modal-title">Confirm restart</span>
-            <button class="modal-close" @click="closeRestartConfirm()">✕</button>
+            <button class="modal-close" @click="closeRestartConfirm()" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
           </div>
           <div style="font-size:0.85rem; color:var(--text-secondary); padding:8px 0;">
             <p>
@@ -228,7 +256,10 @@
       </div>
     </div>
     <div class="maintenance-row-actions">
-      <button @click="openPrune()">Manual prune…</button>
+      <button @click="openPrune()">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+        Manual prune…
+      </button>
     </div>
 
     <!-- Modal: D6 wireframe — radio + checkbox list + days input + action row.
@@ -412,7 +443,9 @@
     <div class="drawer-header"
          style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
       <h2 class="section-header-title" style="margin:0; font-size:1rem;" x-text="drawer.title"></h2>
-      <button @click="closeDrawer()" style="margin-left:auto;">Close</button>
+      <button class="btn-icon" @click="closeDrawer()" style="margin-left:auto;" title="Close" aria-label="Close">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
     </div>
 
     <!-- Articles filter bar (qdrant bucket only — pending/dead don't accept filter params) -->
@@ -564,7 +597,7 @@
     <div class="modal-panel" style="max-width:760px;">
       <div class="modal-header">
         <span class="modal-title" x-text="drawer.detail?.title"></span>
-        <button class="modal-close" @click="closeArticleDetail()">✕</button>
+        <button class="modal-close" @click="closeArticleDetail()" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div class="muted mono" style="font-size:12px; margin-bottom:12px;"
            x-text="drawer.detail?.url"></div>
@@ -592,7 +625,10 @@
     <div>
       <button @click="prevPage()" :disabled="page === 0">‹ prev</button>
       <button @click="nextPage()" :disabled="(page + 1) * pageSize >= total">next ›</button>
-      <button class="primary" @click="openCreate()">+ Add Feed</button>
+      <button class="primary" @click="openCreate()">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        Add feed
+      </button>
     </div>
   </div>
 
@@ -763,7 +799,7 @@
                 <div class="modal-panel" style="max-width:760px;">
                   <div class="modal-header">
                     <span class="modal-title" x-text="expanded.articleDetail?.title || 'article'"></span>
-                    <button class="modal-close" @click="closeArticleBody()">✕</button>
+                    <button class="modal-close" @click="closeArticleBody()" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
                   </div>
                   <div x-show="expanded.articleDetail?.loading" class="muted"><span class="spinner"></span></div>
                   <div x-show="!expanded.articleDetail?.loading">
@@ -790,7 +826,7 @@
     <div class="modal-panel">
       <div class="modal-header">
         <span class="modal-title">+ Add Feed</span>
-        <button class="modal-close" @click="closeCreate()">✕</button>
+        <button class="modal-close" @click="closeCreate()" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div class="form-sections">
         <div class="form-section">
@@ -915,7 +951,7 @@
     <div class="modal-panel" style="max-width:480px;">
       <div class="modal-header">
         <span class="modal-title">Delete Feed</span>
-        <button class="modal-close" @click="closeDelete()">✕</button>
+        <button class="modal-close" @click="closeDelete()" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <p style="font-size:0.85rem; color:var(--text-secondary);">
         Delete feed <strong x-text="del.feed?.name"></strong>?
@@ -933,7 +969,7 @@
     <div class="modal-panel">
       <div class="modal-header">
         <span class="modal-title">Edit Feed</span>
-        <button class="modal-close" @click="closeEdit()">✕</button>
+        <button class="modal-close" @click="closeEdit()" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div class="form-sections">
         <div class="form-section">
@@ -1147,7 +1183,8 @@
       </button>
     </nav>
     <button class="primary" @click="openCreate(subTab)">
-      + New <span x-text="subTab === 'cron' ? 'Cron' : 'Event'"></span> Intent
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      New <span x-text="subTab === 'cron' ? 'Cron' : 'Event'"></span> intent
     </button>
   </div>
 
@@ -1718,7 +1755,7 @@
     <div class="modal-panel" style="max-width:480px;">
       <div class="modal-header">
         <span class="modal-title">Confirm Delete</span>
-        <button class="modal-close" @click="closeDelete()">✕</button>
+        <button class="modal-close" @click="closeDelete()" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px;">
         Delete this intent? This will also remove its vector from Qdrant and stop its scheduler job.
@@ -1867,7 +1904,7 @@
     <div style="margin-bottom:12px;">
       <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px; margin-bottom:4px;">
         <span style="font-size:0.7rem; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim);">system/</span>
-        <button class="btn" @click="openCreate('system')" title="+ New system template" style="padding:0 6px; font-size:0.85rem; line-height:1;">+</button>
+        <button class="btn" @click="openCreate('system')" title="New system template" aria-label="New system template" class="btn-icon btn-icon-sm"><svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
       </div>
       <template x-if="system.length === 0 && !loading">
         <div class="muted" style="padding:4px 8px; font-size:0.72rem;">No templates.</div>
@@ -1888,7 +1925,7 @@
     <div>
       <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 6px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px; margin-bottom:4px;">
         <span style="font-size:0.7rem; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim);">instruction/</span>
-        <button class="btn" @click="openCreate('instruction')" title="+ New instruction template" style="padding:0 6px; font-size:0.85rem; line-height:1;">+</button>
+        <button class="btn" @click="openCreate('instruction')" title="New instruction template" aria-label="New instruction template" class="btn-icon btn-icon-sm"><svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
       </div>
       <template x-if="instruction.length === 0 && !loading">
         <div class="muted" style="padding:4px 8px; font-size:0.72rem;">No templates.</div>
@@ -1939,7 +1976,10 @@
             </div>
           </div>
           <div style="display:flex; gap:6px; flex-shrink:0;">
-            <button class="btn" @click="duplicateCurrent()" title="Duplicate">Duplicate</button>
+            <button class="btn" @click="duplicateCurrent()" title="Duplicate">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              Duplicate
+            </button>
             <button class="btn" :disabled="isEditorBuiltin" @click="!isEditorBuiltin && openRenameCurrent()" title="Rename">Rename</button>
             <button class="btn btn-danger" :disabled="isEditorBuiltin" @click="!isEditorBuiltin && openDeleteCurrent()" title="Delete">Delete</button>
           </div>
