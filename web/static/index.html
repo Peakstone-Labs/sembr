@@ -7,17 +7,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=7">
+<link rel="stylesheet" href="/dashboard/style.css?v=8">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 </head>
 <body x-data="dashboard()" x-init="init()">
 
 <header>
-  <h1>sembr</h1>
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">s</span>
+    <h1 class="brand-name">sembr</h1>
+  </div>
   <div class="header-right">
     <span x-show="lastUpdated" x-text="'updated ' + lastUpdated"></span>
-    <button @click="logout()">log out</button>
+    <button @click="logout()">Log out</button>
   </div>
 </header>
 
@@ -36,106 +39,141 @@
 </nav>
 
 <!-- ═══════════════════════════════════════════════════════
-     Dashboard view (existing)
+     Dashboard view — status strip + hero metrics + container cards
      ══════════════════════════════════════════════════════ -->
-<main x-show="currentTab==='dashboard'">
+<main class="dashboard-main" x-show="currentTab==='dashboard'">
 
-  <!-- System -->
-  <section class="panel panel-hero">
-    <h2>system</h2>
-    <dl class="kv">
-      <dt>qdrant</dt>
-      <dd><span class="status-pill" :class="'status-' + (snapshot.components?.qdrant || 'down')"
-                x-text="snapshot.components?.qdrant || '—'"></span></dd>
-      <dt>sqlite</dt>
-      <dd><span class="status-pill" :class="'status-' + (snapshot.components?.sqlite || 'down')"
-                x-text="snapshot.components?.sqlite || '—'"></span></dd>
-      <dt>embedder</dt>
-      <dd><span class="status-pill" :class="'status-' + (snapshot.components?.embedder || 'error')"
-                x-text="snapshot.components?.embedder || '—'"></span></dd>
-      <dt>model</dt>
-      <dd x-text="snapshot.embedder?.model_version || '—'"></dd>
-    </dl>
-  </section>
+  <!-- ── System status strip ───────────────────────────── -->
+  <div class="status-strip">
+    <div class="status-strip-summary" :class="aggregateHealth === 'ok' ? '' : aggregateHealth">
+      <span class="status-dot"></span>
+      <span x-text="aggregateHealthLabel"></span>
+    </div>
+    <div class="status-strip-detail">
+      <span class="status-pill" :class="'status-' + (snapshot.components?.qdrant || 'down')">
+        qdrant <span x-text="snapshot.components?.qdrant || '—'"></span>
+      </span>
+      <span class="status-pill" :class="'status-' + (snapshot.components?.sqlite || 'down')">
+        sqlite <span x-text="snapshot.components?.sqlite || '—'"></span>
+      </span>
+      <span class="status-pill" :class="'status-' + (snapshot.components?.embedder || 'error')">
+        embedder <span x-text="snapshot.components?.embedder || '—'"></span>
+      </span>
+      <span class="meta-sep"></span>
+      <span>model · <span x-text="snapshot.embedder?.model_version || '—'"></span></span>
+    </div>
+  </div>
 
-  <!-- Articles -->
-  <section class="panel">
-    <h2>articles</h2>
-    <div class="articles-grid">
-      <div class="articles-stat">
-        <span class="stat-num" x-text="snapshot.articles?.pending_count ?? '—'"></span>
-        <span class="stat-label">pending</span>
-        <button @click="openArticles('pending')" style="margin-top:4px;">view</button>
-      </div>
-      <div class="articles-stat">
-        <span class="stat-num"
-              :class="(snapshot.articles?.dead_count > 0) ? 'bad' : ''"
-              x-text="snapshot.articles?.dead_count ?? '—'"></span>
-        <span class="stat-label">dead</span>
-        <button @click="openArticles('dead')" style="margin-top:4px;">view</button>
-      </div>
-      <div class="articles-stat">
-        <span class="stat-num"
-              x-text="snapshot.articles?.qdrant_count >= 0 ? snapshot.articles.qdrant_count : '—'"></span>
-        <span class="stat-label">in qdrant</span>
-        <button @click="openArticles('qdrant')" style="margin-top:4px;">view</button>
+  <!-- ── Hero metrics ──────────────────────────────────── -->
+  <div class="metrics-hero">
+
+    <!-- Articles -->
+    <div class="metric-tile">
+      <div class="metric-tile-label">Articles indexed</div>
+      <button class="metric-tile-action" @click="openArticles('qdrant')">View</button>
+      <div class="metric-tile-value"
+           x-text="snapshot.articles?.qdrant_count >= 0 ? snapshot.articles.qdrant_count.toLocaleString() : '—'"></div>
+      <div class="metric-tile-breakdown">
+        <span class="breakdown-item">
+          <span class="dot"></span>
+          pending <span class="num" x-text="snapshot.articles?.pending_count ?? '—'"></span>
+          <button @click="openArticles('pending')" style="background:none; border:none; padding:0; height:auto; color:var(--text-dim); font-size:0.78rem; margin-left:2px; cursor:pointer;" title="View pending">›</button>
+        </span>
+        <span class="breakdown-item"
+              :class="(snapshot.articles?.dead_count > 0) ? 'bad' : ''">
+          <span class="dot"></span>
+          dead <span class="num" x-text="snapshot.articles?.dead_count ?? '—'"></span>
+          <button @click="openArticles('dead')" style="background:none; border:none; padding:0; height:auto; color:var(--text-dim); font-size:0.78rem; margin-left:2px; cursor:pointer;" title="View dead">›</button>
+        </span>
       </div>
     </div>
-  </section>
 
-  <!-- Embedder · 24h -->
-  <section class="panel">
-    <h2>embedder · last 24h</h2>
-    <dl class="kv">
-      <dt>total calls</dt><dd x-text="snapshot.embedder?.calls_24h?.total ?? 0"></dd>
-      <dt>failures</dt>
-      <dd :class="(snapshot.embedder?.calls_24h?.fail > 0) ? 'bad-text' : ''"
-          x-text="snapshot.embedder?.calls_24h?.fail ?? 0"></dd>
-      <dt>avg latency</dt>
-      <dd x-text="(snapshot.embedder?.calls_24h?.avg_total_elapsed_ms ?? 0) + ' ms'"></dd>
-      <dt>p95 latency</dt>
-      <dd x-text="(snapshot.embedder?.calls_24h?.p95_total_elapsed_ms ?? 0) + ' ms'"></dd>
-    </dl>
-    <div class="chart-wrap">
-      <canvas id="embed-chart" height="72"></canvas>
+    <!-- Embedder throughput (24h) — value + sparkline + breakdown -->
+    <div class="metric-tile">
+      <div class="metric-tile-label">Embedder calls · 24h</div>
+      <button class="metric-tile-action" @click="openEmbedderEvents()">Recent</button>
+      <div class="metric-tile-value"
+           x-text="(snapshot.embedder?.calls_24h?.total ?? 0).toLocaleString()"></div>
+      <div class="metric-tile-breakdown">
+        <span class="breakdown-item">
+          avg <span class="num"
+                    x-text="(snapshot.embedder?.calls_24h?.avg_total_elapsed_ms ?? 0) + 'ms'"></span>
+        </span>
+        <span class="breakdown-item"
+              :class="(snapshot.embedder?.calls_24h?.fail > 0) ? 'bad' : ''">
+          <span class="dot"></span>
+          <span class="num" x-text="snapshot.embedder?.calls_24h?.fail ?? 0"></span> failures
+        </span>
+      </div>
+      <div class="metric-tile-spark">
+        <canvas id="embed-chart"></canvas>
+      </div>
     </div>
-    <div class="chart-actions">
-      <button @click="openEmbedderEvents()">recent calls</button>
-    </div>
-  </section>
 
-  <!-- Containers (dashboard-enhancement D1+D2): per-container uptime/CPU/Mem
-       + sparkline; restart button drives api+rsshub double-restart -->
-  <section class="panel" style="grid-column: 1 / -1;">
-    <h2>containers</h2>
-    <p x-show="!snapshot.system_metrics" class="muted" style="font-size:0.85rem;">
-      docker socket unavailable or sampler still warming up — first values appear within ~20s of startup.
+    <!-- Embedder latency -->
+    <div class="metric-tile">
+      <div class="metric-tile-label">Embedder p95 latency</div>
+      <div class="metric-tile-value">
+        <span x-text="snapshot.embedder?.calls_24h?.p95_total_elapsed_ms ?? 0"></span><span class="unit">ms</span>
+      </div>
+      <div class="metric-tile-breakdown">
+        <span class="breakdown-item">
+          avg <span class="num"
+                    x-text="(snapshot.embedder?.calls_24h?.avg_total_elapsed_ms ?? 0) + 'ms'"></span>
+        </span>
+        <span class="breakdown-item">
+          model <span class="num" x-text="snapshot.embedder?.model_version || '—'"></span>
+        </span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Containers card grid ──────────────────────────── -->
+  <section class="containers-section">
+    <header class="section-header">
+      <h2 class="section-header-title">Containers</h2>
+      <span class="section-header-hint">Live uptime · CPU · memory · 10-minute history</span>
+    </header>
+    <p x-show="!snapshot.system_metrics" class="muted" style="font-size:0.85rem; padding: 16px 0;">
+      Docker socket unavailable or sampler still warming up — first values appear within ~20s of startup.
     </p>
-    <table x-show="snapshot.system_metrics" class="containers-table">
-      <thead>
-        <tr><th>container</th><th>uptime</th><th>CPU</th><th>memory</th><th>cpu · 10min</th><th>mem · 10min</th></tr>
-      </thead>
-      <tbody>
-        <template x-for="c in (snapshot.system_metrics?.containers || [])" :key="c.name">
-          <tr>
-            <td class="mono" x-text="c.name"></td>
-            <td class="mono" x-text="window.fmtUptime(c.uptime_seconds)"></td>
-            <td class="mono" x-text="(c.cpu_percent === null || c.cpu_percent === undefined) ? '—' : c.cpu_percent.toFixed(1) + '%'"></td>
-            <td class="mono">
-              <span x-text="window.fmtBytes(c.mem_used_bytes)"></span>
-              <span class="muted" x-show="c.mem_limit_bytes" x-text="' / ' + window.fmtBytes(c.mem_limit_bytes)"></span>
-            </td>
-            <td class="sparkline-cell">
-              <canvas :id="'cpu-spark-' + c.name" height="28"></canvas>
-            </td>
-            <td class="sparkline-cell">
-              <canvas :id="'mem-spark-' + c.name" height="28"></canvas>
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
-    <div style="margin-top:8px;">
+    <div x-show="snapshot.system_metrics" class="containers-grid">
+      <template x-for="c in (snapshot.system_metrics?.containers || [])" :key="c.name">
+        <div class="container-card">
+          <div class="container-card-header">
+            <span class="container-card-name" x-text="c.name"></span>
+            <span class="status-pill status-ok">up</span>
+          </div>
+          <div class="container-card-stats">
+            <div class="container-card-stat container-card-stat--wide">
+              <span class="container-card-stat-label">Uptime</span>
+              <span class="container-card-stat-value" x-text="window.fmtUptime(c.uptime_seconds)"></span>
+            </div>
+            <div class="container-card-stat">
+              <span class="container-card-stat-label">CPU</span>
+              <span class="container-card-stat-value"
+                    x-text="(c.cpu_percent === null || c.cpu_percent === undefined) ? '—' : c.cpu_percent.toFixed(1) + '%'"></span>
+              <div class="container-card-spark">
+                <canvas :id="'cpu-spark-' + c.name"></canvas>
+              </div>
+            </div>
+            <div class="container-card-stat">
+              <span class="container-card-stat-label">Memory</span>
+              <span class="container-card-stat-value">
+                <span x-text="window.fmtBytes(c.mem_used_bytes)"></span><span
+                      class="muted" x-show="c.mem_limit_bytes"
+                      x-text="' / ' + window.fmtBytes(c.mem_limit_bytes)"></span>
+              </span>
+              <div class="container-card-spark">
+                <canvas :id="'mem-spark-' + c.name"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+    <div style="margin-top:16px; display:flex; justify-content:flex-end;">
       <button @click="openRestartConfirm()" :disabled="restart.active">
         <span x-show="!restart.active">Restart api + rsshub…</span>
         <span x-show="restart.active">Restarting…</span>
@@ -182,14 +220,14 @@
   </section>
 
   <!-- Maintenance (reconcile design D6: nested x-data island) -->
-  <section class="panel" style="grid-column: 1 / -1;"
-           x-data="maintenanceTab()" x-init="initMaint()">
-    <h2>maintenance</h2>
-    <p class="muted" style="font-size:0.85rem;">
-      Manually prune Qdrant news points or dead-articles forensic rows.
-      This button is for one-off cleanup beyond the scheduled background jobs.
-    </p>
-    <div style="margin-top:8px;">
+  <section class="maintenance-row" x-data="maintenanceTab()" x-init="initMaint()">
+    <div class="maintenance-row-text">
+      <div class="maintenance-row-title">Maintenance</div>
+      <div class="maintenance-row-hint">
+        One-off cleanup beyond the scheduled background jobs — prune Qdrant news points or dead-articles forensic rows.
+      </div>
+    </div>
+    <div class="maintenance-row-actions">
       <button @click="openPrune()">Manual prune…</button>
     </div>
 
@@ -370,11 +408,11 @@
        stay in-page so they don't cover other panels. Filter bar (qdrant
        articles only) sits at the top of the drawer; pagination at the
        bottom. Empty-state copy is kind-specific (criterion 17). -->
-  <section class="panel" x-show="drawer.kind" style="grid-column: 1 / -1;">
+  <section class="panel" x-show="drawer.kind">
     <div class="drawer-header"
-         style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-      <h2 style="margin:0;" x-text="drawer.title"></h2>
-      <button @click="closeDrawer()" style="margin-left:auto;">close</button>
+         style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+      <h2 class="section-header-title" style="margin:0; font-size:1rem;" x-text="drawer.title"></h2>
+      <button @click="closeDrawer()" style="margin-left:auto;">Close</button>
     </div>
 
     <!-- Articles filter bar (qdrant bucket only — pending/dead don't accept filter params) -->

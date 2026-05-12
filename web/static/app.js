@@ -84,6 +84,24 @@ function dashboard() {
     // Tab routing
     currentTab: 'dashboard',
 
+    // Aggregate health for the dashboard status strip.
+    // Returns 'ok' / 'degraded' / 'down' based on the worst component state.
+    get aggregateHealth() {
+      const c = this.snapshot && this.snapshot.components;
+      if (!c) return 'down';
+      const states = [c.qdrant, c.sqlite, c.embedder];
+      if (states.some(s => !s || s === 'down' || s === 'error')) return 'down';
+      if (states.some(s => s === 'loading' || s === 'warn')) return 'degraded';
+      return 'ok';
+    },
+
+    get aggregateHealthLabel() {
+      const h = this.aggregateHealth;
+      if (h === 'ok') return 'All systems operational';
+      if (h === 'degraded') return 'Degraded service';
+      return 'Service disruption';
+    },
+
     async init() {
       this._syncFromHash();
       window.addEventListener('hashchange', () => this._syncFromHash());
@@ -215,24 +233,28 @@ function dashboard() {
               backgroundColor: '#171717',
               borderColor: '#171717',
               borderWidth: 0,
-              borderRadius: 2,
+              borderRadius: 1,
+              barPercentage: 0.85,
+              categoryPercentage: 0.95,
             }],
           },
           options: {
             responsive: true,
-            plugins: { legend: { display: false } },
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#171717',
+                titleFont: { family: "'Geist', 'Inter', sans-serif", size: 11, weight: '500' },
+                bodyFont:  { family: "'Geist Mono', 'JetBrains Mono', monospace", size: 11 },
+                padding: 8,
+                displayColors: false,
+              },
+            },
             scales: {
               x: { display: false },
-              y: {
-                beginAtZero: true,
-                ticks: {
-                  precision: 0,
-                  color: '#888888',
-                  font: { family: "'Geist Mono', 'JetBrains Mono', monospace", size: 10 },
-                },
-                grid: { color: 'rgba(0,0,0,0.06)' },
-                border: { color: '#ebebeb' },
-              },
+              y: { display: false, beginAtZero: true },
             },
           },
         });
