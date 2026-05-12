@@ -1,4 +1,4 @@
-"""Pydantic v2 response models for /api/dashboard endpoints (D5 / D6)."""
+"""Pydantic v2 response models for /api/dashboard endpoints."""
 
 from __future__ import annotations
 

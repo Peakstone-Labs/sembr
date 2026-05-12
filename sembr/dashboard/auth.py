@@ -1,4 +1,4 @@
-"""Token gate for /dashboard and /api/dashboard (D7 / E2).
+"""Token gate for /dashboard and /api/dashboard.
 
 Single shared token via env DASHBOARD_TOKEN. Empty token = pass-through (no auth).
 Token comparison uses secrets.compare_digest (timing-safe). Login page and vendor

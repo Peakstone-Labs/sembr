@@ -1,21 +1,20 @@
 """Background sampler for the dashboard's per-container system-metrics panel.
 
-Three responsibilities (design D2 / D3 / D4 / D5):
+Three responsibilities:
 
 1. ``SystemMetricsCollector`` — module-level rolling buffer (deque maxlen=60)
    that holds one timestamped snapshot per sample. Owned by the lifespan and
-   handed in to ``build_snapshot`` as a function argument (D6: no module-level
+   handed in to ``build_snapshot`` as a function argument (no module-level
    singleton, no FastAPI Request coupling).
 2. ``_take_docker_sample`` — synchronous helper that talks to the docker socket;
    the APScheduler job wraps it in ``asyncio.to_thread`` with a 5 s timeout so
-   a slow daemon never blocks the event loop (R10).
+   a slow daemon never blocks the event loop.
 3. ``add_system_metrics_job`` — registers the IntervalTrigger sampler with
-   ``coalesce=True`` and ``replace_existing=True`` (per the project-wide
-   convention asserted in main.py:179-200) and **never** passes
-   ``next_run_time=None`` (memory: feedback_apscheduler_next_run_time).
+   ``coalesce=True`` and ``replace_existing=True`` and **never** passes
+   ``next_run_time=None`` (paused-job pitfall).
 
 Auto-discovery: containers are filtered by docker compose's
-``com.docker.compose.project=<name>`` label (D3). The project name comes
+``com.docker.compose.project=<name>`` label. The project name comes
 from ``COMPOSE_PROJECT_NAME`` (set by docker compose) or falls back to
 ``"sembr"`` (the directory name in production).
 
@@ -44,16 +43,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Rolling-window length. 60 × 10s default poll = 10 min of history; matches
-# the size assumed by design A1's payload sizing (60 × 3 containers × 2 series).
+# Rolling-window length. 60 × 10s default poll = 10 min of history; sized to keep
+# the JSON payload bounded at ~60 × 3 containers × 2 series.
 MAXLEN_DEFAULT = 60
 
 # Hard cap on a single sampler tick. Each `container.stats(stream=False)`
-# takes ~1.5–2 s on Mac mini against the in-VM docker daemon (verified by
-# probe 2026-05-08). Three containers in parallel ≈ 2–3 s wall-clock; we
-# pad to 12 s so transient daemon hiccups (R1) don't churn unavailable.
-# Stays well under the lifespan_shutdown_timeout default (~30 s) so a
-# mid-tick shutdown still completes inside the graceful window.
+# takes ~1.5–2 s on a typical M-series macOS host against the in-VM docker
+# daemon. Three containers in parallel ≈ 2–3 s wall-clock; we pad to 12 s so
+# transient daemon hiccups don't churn the ``available`` flag. Stays well
+# under the lifespan_shutdown_timeout default (~30 s) so a mid-tick shutdown
+# still completes inside the graceful window.
 SAMPLE_TIMEOUT_SECONDS = 12.0
 
 # Compose label used to auto-discover the sembr stack's containers.
@@ -301,11 +300,10 @@ def _take_docker_sample(*, project: str | None = None) -> _Sample | None:
     now = datetime.now(timezone.utc)
 
     def _measure(container: object) -> ContainerMetric:
-        """Fetch one container's snapshot. Caller runs us in a thread pool
-        so per-container ``stats(stream=False)`` blocking I/O happens in
-        parallel — sequential calls cost ≈ N × 2 s on Mac mini and were
-        the reason loop 1's 5 s cap kept tripping (verified by probe
-        2026-05-08)."""
+        """Fetch one container's snapshot. Caller runs us in a thread pool so
+        per-container ``stats(stream=False)`` blocking I/O happens in parallel —
+        sequential calls cost ≈ N × 2 s per container and consistently trip the
+        sampler timeout on typical M-series macOS docker daemons."""
         name = container.name or container.id[:12]
         cpu_percent: float | None = None
         mem_used: int | None = None

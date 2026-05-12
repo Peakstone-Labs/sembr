@@ -1,4 +1,4 @@
-"""APIRouter for /api/dashboard/* (D5 + D6 + D10).
+"""APIRouter for /api/dashboard/* — read-only endpoints serving the monitoring UI.
 
 Endpoints:
   GET /api/dashboard/snapshot                              snapshot for polling
@@ -114,8 +114,8 @@ async def get_feed_articles(
 
 @router.get("/sources/newsapi/recommended_sources")
 async def get_newsapi_recommended_sources() -> list[dict]:
-    """D14: combobox datalist source for the create-feed modal. Static list
-    is cheap to return on every modal open; frontend caches client-side."""
+    """Combobox datalist source for the create-feed modal. The static list is
+    cheap to return on every modal open; the frontend caches it client-side."""
     return list(_NEWSAPI_RECOMMENDED)
 
 
@@ -186,7 +186,7 @@ async def post_newsapi_fire(request: Request) -> NewsApiFireResponse:
 
 @router.get("/sources/schemas", response_model=SourceSchemaResponse)
 async def get_source_schemas() -> SourceSchemaResponse:
-    """D15: source_type → JSON-Schema map. Frontend uses this to render the
+    """source_type → JSON-Schema map. Frontend uses this to render the
     create-feed form dynamically. Read directly from SOURCE_REGISTRY so a
     plugin registered via entry_points appears without a code change here."""
     schemas: dict[str, dict] = {}
@@ -255,7 +255,7 @@ async def get_articles(
 
     if bucket in ("pending", "dead"):
         # qdrant-only filter params on a sqlite bucket are a client bug;
-        # 422 surfaces it instead of silently dropping the params (D7).
+        # surface 422 instead of silently dropping the params.
         if has_qdrant_filter:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

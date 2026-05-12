@@ -1,4 +1,4 @@
-"""Hourly APScheduler job pruning event log rows beyond age / per-feed cap (D9 / F1).
+"""Hourly APScheduler job pruning event log rows beyond age / per-feed cap.
 
 Two predicates, applied as a union:
   (a) DELETE rows where started_at < now - retention_days

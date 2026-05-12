@@ -1,4 +1,4 @@
-"""Event log tables for the monitoring dashboard (D1 / D2 / D3).
+"""Event log tables for the monitoring dashboard.
 
 Two append-only tables:
   - feed_fetch_log : one row per collect_feed exit (success or failure)
@@ -101,7 +101,8 @@ async def log_fetch_event(
 ) -> None:
     """Insert one feed_fetch_log row in its own transaction.
 
-    Caller must wrap in try/except — see D3.
+    Caller must wrap in try/except — write failures should never break the
+    surrounding collect_feed flow; we record-or-drop, never raise.
     """
     async with transaction() as conn:
         await conn.execute(

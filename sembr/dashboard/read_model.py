@@ -248,13 +248,13 @@ async def build_snapshot(
     embedder: Any | None,
     metrics_collector: Any | None = None,
 ) -> SnapshotResponse:
-    """Top-level snapshot for the polling client (D5 + D6).
+    """Top-level snapshot for the polling client.
 
     ``metrics_collector`` is the lifespan-owned ``SystemMetricsCollector``
-    (or None if the dashboard wasn't bootstrapped with one). Per design D6
-    we inject it as a function argument rather than reading from
-    ``app.state`` here — this module must not import FastAPI types.
-    The caller (``routes.get_snapshot``) is the only place that touches
+    (or None if the dashboard wasn't bootstrapped with one). It is injected
+    as a function argument rather than read from ``app.state`` here — this
+    module must not import FastAPI types. The caller
+    (``routes.get_snapshot``) is the only place that touches
     ``request.app.state``.
     """
     now = _utcnow()
@@ -525,7 +525,7 @@ async def list_articles_qdrant(
     feed_id: int | None = None,
     title_q: str | None = None,
 ) -> list[ArticleListItem]:
-    """Newest-first list of news_current points (D7).
+    """Newest-first list of news_current points.
 
     Optional filters compose into a single qdrant ``Filter(must=[...])``:
 
@@ -534,7 +534,7 @@ async def list_articles_qdrant(
       ``ingested_from`` and exclusive on ``ingested_to`` (caller passes
       end-of-day + 1 second to get an inclusive end-date in UI terms).
     - ``feed_id``: integer match.
-    - ``title_q``: ``MatchText`` against the title text-index added in D8.
+    - ``title_q``: ``MatchText`` against the title text-index.
 
     All filtered fields have payload indexes (``ingested_at_ts``, ``feed_id``,
     ``title``) so qdrant uses index intersect rather than a full scroll
@@ -671,10 +671,10 @@ async def list_feeds_with_meta(
     scheduler: Any | None = None,
     now: datetime | None = None,
 ) -> FeedListResponse:
-    """Paginated feeds list for the Feeds tab (D8).
+    """Paginated feeds list for the Feeds tab.
 
     SQLite holds the source-of-truth feed rows; tags come from feed_tags;
-    group_key is derived in Python (D5) — no schema drift; next_run_iso comes
+    group_key is derived in Python — no schema drift; next_run_iso comes
     from APScheduler when available so the UI can show "next run" countdowns.
     """
     # Build a single filtered base query so total + page share the same WHERE clause.
@@ -714,9 +714,9 @@ async def list_feeds_with_meta(
         next_run_iso: str | None = None
         if scheduler is not None:
             try:
-                # D17: newsapi feeds collapse onto a singleton master job, so
-                # all of them share the same next_run_iso (the master tick's
-                # next firing). RSS keeps the per-feed lookup.
+                # newsapi feeds collapse onto a singleton master job, so all of
+                # them share the same next_run_iso (the master tick's next
+                # firing). RSS keeps the per-feed lookup.
                 job_id = "source_newsapi_master" if source_type == "newsapi" else f"feed_{fid}"
                 job = scheduler.get_job(job_id)
                 if job is not None and job.next_run_time is not None:
