@@ -157,17 +157,17 @@ async def lifespan(app: FastAPI):
     conn = await init_sqlite(settings.sqlite_path)
     await init_feed_tables(conn)
     await init_article_tables(conn)
-    await init_event_log_tables(conn)  # dashboard D1/D2; FK references feeds.id
+    await init_event_log_tables(conn)  # FK references feeds.id, so feeds first
     await init_intent_tables(conn)  # also chains init_intent_sub_texts_tables (FK CASCADE)
-    await init_match_seen_tables(conn)  # D17: after intents (FK dependency)
-    await init_event_buffer_tables(conn)  # D6/D22: after intents (FK dependency)
+    await init_match_seen_tables(conn)  # after intents — FK dependency
+    await init_event_buffer_tables(conn)  # after intents — FK dependency
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client, embedder)
     # intent-match-enhancement: pass conn so the migration step (SELECT id,text FROM intents)
     # can re-embed main vectors for the new named-vector layout.
     await ensure_intents_collection(qdrant.client, embedder, conn=conn)
-    # D19 fail-fast assertion: after migration the alias-targeted collection must use
+    # Fail-fast assertion: after migration the alias-targeted collection must use
     # the named-vector dict layout with a "main" slot. If it doesn't, lifespan aborts
     # rather than starting in a degraded state where every matcher tick logs warnings.
     _intents_info = await qdrant.client.get_collection(_INTENTS_ALIAS)
@@ -175,8 +175,8 @@ async def lifespan(app: FastAPI):
     if not isinstance(_vectors_cfg, dict) or "main" not in _vectors_cfg:
         raise RuntimeError(
             f"intents collection {_INTENTS_ALIAS!r} is not in named-vector layout "
-            f"(vectors_config={_vectors_cfg!r}); the intent-match-enhancement "
-            f"migration (D2/D3) did not complete. "
+            f"(vectors_config={_vectors_cfg!r}); the named-vector migration "
+            f"did not complete. "
             f"Recovery: inspect Qdrant for an `intents_<model>_mv` collection; "
             f"if absent or has wrong layout, restart the container to retry the "
             f"migration. If retry fails repeatedly, delete the partially-built "
@@ -187,7 +187,7 @@ async def lifespan(app: FastAPI):
         )
     load_task = asyncio.create_task(embedder.load())  # background; /health probes status
     scheduler = make_scheduler()
-    # D4: per-host concurrency limiter must exist before any feed job can fire so
+    # Per-host concurrency limiter must exist before any feed job can fire so
     # the first tick already sees the cap. set_host_limiter is the module-level
     # handle collect_feed reads; app.state.host_limiter is the readable handle.
     host_limiter = HostLimiter(settings.proxy_hosts_set, max_per_host=2)
@@ -198,10 +198,10 @@ async def lifespan(app: FastAPI):
         if feed.enabled:
             await add_feed_job(scheduler, feed)
     add_embedder_worker_job(scheduler, embedder, qdrant, app)
-    add_log_retention_job(scheduler, settings)  # dashboard D9: hourly log prune
-    # dashboard-enhancement D2: per-container metrics sampler. Registered before
-    # scheduler.start() so the first tick is computed by the trigger (NOT by
-    # passing next_run_time=None — that would silently pause the job).
+    add_log_retention_job(scheduler, settings)  # hourly log prune
+    # Per-container metrics sampler. Registered before scheduler.start() so the
+    # first tick is computed by the trigger (NOT by passing next_run_time=None
+    # — that would silently pause the job).
     metrics_collector = SystemMetricsCollector(
         interval_seconds=settings.dashboard_poll_interval_seconds
     )
@@ -210,13 +210,12 @@ async def lifespan(app: FastAPI):
         metrics_collector,
         interval_seconds=settings.dashboard_poll_interval_seconds,
     )
-    # reconcile design D1: three maintenance jobs share `maintenance_interval_hours`
-    # but stagger their first fire by 5 / 15 / 25 min so they never hit Qdrant
-    # at the same instant.
+    # Three maintenance jobs share `maintenance_interval_hours` but stagger their
+    # first fire by 5 / 15 / 25 min so they never hit Qdrant at the same instant.
     add_reconcile_job(scheduler, qdrant, settings)
     add_qdrant_ttl_job(scheduler, qdrant, settings)
     add_dead_ttl_job(scheduler, settings)
-    # DD4: sweep expired fire tasks every 5 minutes
+    # Sweep expired fire tasks every 5 minutes
     from apscheduler.triggers.interval import IntervalTrigger as _IT  # noqa: PLC0415
 
     scheduler.add_job(
@@ -226,7 +225,7 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         replace_existing=True,
     )
-    # D20: sweep expired feed fire tasks (symmetric with intent fire sweep)
+    # Sweep expired feed fire tasks (symmetric with intent fire sweep)
     scheduler.add_job(
         feed_fire_sweep_expired,
         trigger=_IT(minutes=5),
@@ -234,7 +233,7 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         replace_existing=True,
     )
-    # reconcile design D5: ManualPruneTask in-memory store, swept every 5 min
+    # ManualPruneTask in-memory store, swept every 5 min
     scheduler.add_job(
         manual_prune_sweep_expired,
         trigger=_IT(minutes=5),
@@ -242,14 +241,14 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         replace_existing=True,
     )
-    # D18: register per-intent jobs for all currently-enabled intents (restart recovery)
+    # Register per-intent jobs for all currently-enabled intents (restart recovery)
     enabled_intents = await list_intents(conn, enabled=True)
     await register_all_enabled(scheduler, enabled_intents, app, qdrant.client)
-    # D9/D22: load event-mode intent vectors into in-process cache (after register_all_enabled)
+    # Load event-mode intent vectors into in-process cache (after register_all_enabled)
     event_intent_cache = EventIntentCache()
     await load_event_cache(event_intent_cache, qdrant, conn)
 
-    # D15: sweeper flushes timed-out event buffers every 30s
+    # Sweeper flushes timed-out event buffers every 30s
     async def _event_y_sweeper() -> None:
         from sembr.db.sqlite import get_conn as _get_conn  # noqa: PLC0415
 
@@ -262,7 +261,7 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         replace_existing=True,
     )
-    # R5: assign on_match before scheduler.start() so first ticks always find a callback
+    # Assign on_match before scheduler.start() so first ticks always find a callback
     llm_backend = build_llm_backend(settings)
     email_ch = EmailChannel(settings)
     pipeline = SummaryPipeline(
@@ -276,8 +275,8 @@ async def lifespan(app: FastAPI):
         prompts_dir=PROMPTS_DIR,
     )
     app.state.on_match = pipeline.handle
-    # D16: external fire endpoint reaches the pipeline through this handle;
-    # must be set in lifespan adjacent to on_match so both are wired before the
+    # External fire endpoint reaches the pipeline through this handle; it must
+    # be set in lifespan adjacent to on_match so both are wired before the
     # first request lands.
     app.state.summary_pipeline = pipeline
     app.state.qdrant = qdrant
@@ -286,8 +285,8 @@ async def lifespan(app: FastAPI):
     app.state.embedder = embedder
     app.state.event_intent_cache = event_intent_cache
     app.state.metrics_collector = metrics_collector
-    # intent-match-enhancement R3: translate endpoint reads the LLM backend
-    # from app.state. Wiring it here keeps a single instance for summarizer + translator.
+    # Translate endpoint reads the LLM backend from app.state. Wiring it here
+    # keeps a single instance for summarizer + translator.
     app.state.llm_backend = llm_backend
     scheduler.start()
     # Log actual next_run_time for matcher jobs after scheduler.start() computes them.
@@ -351,9 +350,9 @@ app.include_router(health_router)
 app.include_router(feeds_router)
 app.include_router(feeds_fire_router)
 app.include_router(intents_router)
-# intent-match-enhancement D5: /intents/translate stateless endpoint.
-# Separate router module so the translate-specific imports (LLMError) and the
-# hardcoded prompt constant stay out of api/intents.py.
+# /intents/translate is a stateless endpoint in its own router module so the
+# translate-specific imports (LLMError) and the hardcoded prompt constant
+# stay out of api/intents.py.
 app.include_router(translate_router)
 app.include_router(fire_router)
 app.include_router(external_fire_router)
