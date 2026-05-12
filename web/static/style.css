@@ -1857,6 +1857,14 @@ main.dashboard-main > * + * {
   display: block;
 }
 
+.metric-tile-actions {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  gap: 2px;
+}
+
 .metric-tile-action {
   position: absolute;
   top: 18px;
@@ -1878,9 +1886,22 @@ main.dashboard-main > * + * {
   transition: color 0.15s, background 0.15s;
 }
 
+/* When wrapped in .metric-tile-actions, individual actions drop their own
+   absolute positioning — the wrapper owns the top-right corner. */
+.metric-tile-actions .metric-tile-action {
+  position: static;
+  top: auto;
+  right: auto;
+}
+
 .metric-tile-action:hover {
   color: var(--ink);
   background: var(--bg-secondary);
+}
+
+.metric-tile-action.danger:hover {
+  color: var(--bad);
+  background: var(--bad-bg);
 }
 
 .metric-tile-action::after {
