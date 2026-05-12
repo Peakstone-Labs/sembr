@@ -353,13 +353,33 @@ app.include_router(restart_router)
 app.include_router(maintenance_router)
 app.include_router(logs_router)
 
+class _NoCacheHTMLStaticFiles(StaticFiles):
+    """StaticFiles wrapper that disables disk-caching for HTML responses.
+
+    index.html is the entry point that references every JS/CSS via ?v=N
+    cache busters. If the browser caches index.html itself, the cache
+    busting collapses — the browser keeps reading the OLD `?v=oldN` URLs
+    from disk and never sees server-side bumps. Force HTML to revalidate
+    on every request (server returns 304 via etag when unchanged, so
+    cost is minimal); leave JS/CSS at StaticFiles defaults — their URLs
+    change on every content change so long cache is safe.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        ct = response.headers.get("content-type", "")
+        if "text/html" in ct:
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
 # Mount /dashboard only when the bundled UI exists. Missing bundle = JSON API still
 # works (per AC#10) and startup logs an INFO line.
 _dashboard_dir = Path(__file__).resolve().parent.parent / "web" / "static"
 if (_dashboard_dir / "index.html").is_file():
     app.mount(
         "/dashboard",
-        StaticFiles(directory=str(_dashboard_dir), html=True),
+        _NoCacheHTMLStaticFiles(directory=str(_dashboard_dir), html=True),
         name="dashboard",
     )
     logger.info("dashboard static mounted at /dashboard from %s", _dashboard_dir)
