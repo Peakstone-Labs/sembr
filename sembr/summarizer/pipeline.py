@@ -228,10 +228,11 @@ class SummaryPipeline:
                 )
                 return None
 
-        # Template errors propagate (D-A7 / D17). Logging here mirrors the old
-        # _handle line so log readers see the same string before the wrapper
-        # decides whether to dispatch _on_template_error. We tag the exception
-        # with ``_sembr_template_kind/_name`` so handle() can hand them to
+        # Template errors propagate to the outer never-raise wrapper. Logging
+        # here mirrors the original _handle line so log readers see the same
+        # string before the wrapper decides whether to dispatch
+        # _on_template_error. We tag the exception with
+        # ``_sembr_template_kind/_name`` so handle() can hand it to
         # _on_template_error without re-parsing the exception message.
         try:
             system_prompt = _templates.render_system(

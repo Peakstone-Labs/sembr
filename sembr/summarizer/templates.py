@@ -30,16 +30,16 @@ _IDENT_RE = re.compile(r"^(?!\.)(?!.*\.\.)[^/\\]{1,100}$")
 _SYSTEM_PLACEHOLDERS: frozenset[str] = frozenset({"language"})
 _INSTRUCTION_PLACEHOLDERS: frozenset[str] = frozenset({"intent_text", "articles"})
 
-# D1: prompts root constant. Replaces the removed Settings.prompts_dir field.
+# Prompts root constant. Replaces the older Settings.prompts_dir field.
 PROMPTS_DIR: Final[Path] = Path("/app/prompts")
 
-# D9 / D17: built-in (read-only) template names; reserved for both kinds.
+# Built-in (read-only) template names; reserved for both kinds.
 BUILTIN_NAMES: frozenset[str] = frozenset({"default"})
 
-# D14: per-write content size cap (bytes, UTF-8 encoded).
+# Per-write content size cap (bytes, UTF-8 encoded).
 MAX_TEMPLATE_BYTES: Final[int] = 64 * 1024
 
-# D10: kind → allowed placeholder names, used by try_render's strict format_map.
+# kind → allowed placeholder names, used by try_render's strict format_map.
 _PLACEHOLDERS_BY_KIND: dict[str, frozenset[str]] = {
     "system": _SYSTEM_PLACEHOLDERS,
     "instruction": _INSTRUCTION_PLACEHOLDERS,
@@ -156,9 +156,9 @@ def render_instruction(
 
 
 def try_render(kind: str, content: str) -> None:
-    """D10: dry-render *content* with empty-string placeholders to surface unknown
-    placeholders at save-time. Raises ``TemplateRenderError`` on the first violation;
-    returns ``None`` on success.
+    """Dry-render *content* with empty-string placeholders to surface unknown
+    placeholders at save-time. Raises ``TemplateRenderError`` on the first
+    violation; returns ``None`` on success.
 
     The strict map carries one empty-string entry per allowed placeholder for
     *kind*; any other ``{...}`` key in the file triggers ``KeyError`` via
@@ -183,7 +183,7 @@ def save_template_atomic(
     name: str,
     content: str,
 ) -> Path:
-    """D5: atomic write of ``prompts_dir/kind/name.md`` via tmp file + ``os.replace``.
+    """Atomic write of ``prompts_dir/kind/name.md`` via tmp file + ``os.replace``.
 
     Validates *name* (raises ``ValueError`` on identifier failure) and resolves
     the path through ``template_path`` to keep escape-check in lockstep. The tmp
@@ -221,8 +221,8 @@ def delete_template(prompts_dir: Path, kind: str, name: str) -> None:
     """Unlink ``prompts_dir/kind/name.md`` after identifier validation.
 
     Raises ``TemplateNotFoundError`` if the file is missing — explicit, not silent,
-    so callers can translate to 404. Does not check builtin status (that's the
-    API layer's responsibility per D9).
+    so callers can translate to 404. Does not check builtin status — that's the
+    API layer's responsibility.
     """
     if kind not in _PLACEHOLDERS_BY_KIND:
         raise ValueError(f"unknown template kind {kind!r}")
@@ -238,11 +238,12 @@ def rename_template(
     old_name: str,
     new_name: str,
 ) -> Path:
-    """D2 step (b): pure-filesystem rename helper.
+    """Pure-filesystem rename helper.
 
-    Validates both names + ``os.rename(old, new)`` and returns the new path.
-    Does NOT pre-check existence (caller's responsibility per D2 step a) and
-    does NOT touch SQLite (caller orchestrates the cross-boundary 2PC per D2/D15).
+    Validates both names + ``os.rename(old, new)`` and returns the new path. Does
+    NOT pre-check existence (the caller does that to differentiate 404 from
+    rename failure) and does NOT touch SQLite — the caller orchestrates the
+    cross-boundary 2PC between filesystem rename and SQLite cascade-rename.
 
     Raises:
         ValueError: identifier validation failure on either name.
