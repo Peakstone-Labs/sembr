@@ -1,7 +1,10 @@
 """APScheduler job for embedding articles from pending_articles.
 
-Implements D1 (30s IntervalTrigger), D2 (upsert-then-delete ordering),
-D17 (module constants), D20 (transient Qdrant error handling).
+Runs on a 30 s IntervalTrigger; each tick pulls a batch, embeds via the configured
+backend, upserts the resulting vectors into Qdrant first, then deletes the source
+rows from pending_articles. Transient Qdrant errors (timeout, connection reset) skip
+the attempt-counter increment so the row is retried indefinitely; non-transient
+errors increment the counter and eventually evict via the maintenance sweeper.
 """
 
 from __future__ import annotations
@@ -46,10 +49,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# SiliconFlow accepts up to 32 inputs per request. Verify worst-case token budget
-# (top-32 longest articles) on Mac Mini before shipping — see design Risk row 5.
-# Read timeout is computed dynamically per-batch from total char count
-# (see embedder_worker), so batch size doesn't need to be conservative.
+# SiliconFlow accepts up to 32 inputs per request. The read timeout is computed
+# dynamically per-batch from total char count (see embedder_worker), so the batch
+# size does not need to be conservative.
 BATCH_SIZE = 32
 
 # Per-text character cap is read from `embedder.max_input_chars` so each backend
@@ -69,7 +71,7 @@ def _to_point(row: PendingRow, vector: list[float], model_version: str) -> Point
             "published_at": row.published_at,
             "feed_id": row.feed_id,
             "embedding_model_version": model_version,
-            # C1/D14: integer epoch seconds for Qdrant Range filter in matcher scan
+            # Integer epoch seconds so Qdrant Range filter in matcher scan can compare directly.
             "ingested_at_ts": int(datetime.now(timezone.utc).timestamp()),
         },
     )
@@ -121,13 +123,13 @@ async def _emit_embed_event(
 
 
 async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=None) -> None:
-    # Embedder not yet loaded → not a call attempt; per D4 don't write an event.
+    # Embedder not yet loaded → not a call attempt; don't write an event row.
     if not embedder.is_loaded:
         return
 
     conn = get_conn()
     batch = await pull_pending_batch(conn, BATCH_SIZE, MAX_ATTEMPTS)
-    # Empty queue → no work, no event row (per D4).
+    # Empty queue → no work, no event row.
     if not batch:
         return
 
@@ -181,8 +183,9 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
         )
         return
 
-    # D2: upsert Qdrant first; delete pending only after confirmed success.
-    # Only transient connection errors skip retry increment (D20).
+    # Upsert Qdrant first; delete pending rows only after confirmed success so a
+    # crash mid-tick leaves the rows for re-embedding rather than losing them.
+    # Only transient connection errors skip the retry-counter increment.
     points = [_to_point(row, vec, embedder.model_version) for row, vec in zip(batch, vectors)]
     try:
         await upsert_news_points(qdrant.client, points, wait=True)
@@ -227,18 +230,19 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
         error_message=None,
     )
 
-    # D12: event-driven matching — after upsert success, before delete_pending.
-    # Synchronous await so failed event_match does not skip delete (Risk 7 catch is inside).
-    # Local import: top-level `from sembr.matcher.event_match import ...` would create a
-    # cycle (matcher → vector_store → embedder.scheduler → matcher). Long-term fix is to
-    # invert the dependency (matcher subscribes to embedder events via a bus); tracked in
-    # ../sembr-dev-docs/development/event-driven-intent/.
+    # Event-driven matching — after upsert success, before delete_pending. Synchronous
+    # await so a failed event_match does not skip the delete (the never-raise wrapper
+    # is inside event_match_batch). Local import: a top-level
+    # `from sembr.matcher.event_match import ...` would create a cycle
+    # (matcher → vector_store → embedder.scheduler → matcher); inverting the
+    # dependency (matcher subscribes to embedder events via a bus) is a longer-term
+    # refactor.
     if app is not None:
         from sembr.matcher.event_match import event_match_batch  # noqa: PLC0415
 
         await event_match_batch(app, points, conn)
 
-    # If delete fails, rows re-embed next tick — idempotent via deterministic UUID (D4).
+    # If delete fails, rows re-embed next tick — idempotent via deterministic UUID.
     try:
         await delete_pending(conn, md5s)
     except Exception as exc:
