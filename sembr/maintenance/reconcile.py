@@ -1,8 +1,10 @@
 """Reconcile job: bulk-delete ``feed_items`` rows whose ``md5`` has no
-corresponding Qdrant point in ``news_current`` (Option A: forward full scan).
+corresponding Qdrant point in ``news_current``.
 
-Runs on the shared maintenance cadence with a 5-minute startup offset (D1).
-Strategy and SQL details: design D3.
+Forward full scan: read every ``md5`` from SQLite (excluding in-flight
+``pending_articles`` to avoid racing with embedder_worker), batch-retrieve the
+corresponding Qdrant points, and DELETE the SQLite rows whose Qdrant point is
+missing. Runs on the shared maintenance cadence with a 5-minute startup offset.
 """
 
 from __future__ import annotations
@@ -26,14 +28,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # 1000-id batches stay well under Qdrant's per-request limit and keep network
-# RTT amortised (~50ms per batch). Empirical Mac mini measurement: 14k md5 ≈
-# 14 batches ≈ 0.7s wall time.
+# RTT amortised at ~50ms per batch (14k md5 ≈ 14 batches ≈ 0.7s wall time on a
+# typical dev box).
 _QDRANT_RETRIEVE_BATCH = 1000
 
 # 500-md5 SQLite chunks stay under the 32766 ?-bind cap with margin and keep
-# single-txn wall time < 100ms once the match_seen index (D11) is in place,
-# so embedder_worker / collect_feed writers never queue longer than one chunk
-# behind reconcile.
+# single-txn wall time < 100ms once the match_seen article_id index is in
+# place, so embedder_worker / collect_feed writers never queue longer than
+# one chunk behind reconcile.
 _SQLITE_DELETE_CHUNK = 500
 
 
@@ -106,7 +108,7 @@ async def _run_reconcile(qdrant_handle: "QdrantHandle", settings: Settings) -> N
             async with txn.execute("SELECT changes()") as cur:
                 deleted += (await cur.fetchone())[0]
         # The lock's FIFO ordering (sembr/db/sqlite.py:14-28) already guarantees
-        # fairness; the explicit yield is a defence-in-depth no-op (D12).
+        # fairness; the explicit yield is a defence-in-depth no-op.
         await asyncio.sleep(0)
 
     elapsed_ms = int((monotonic() - started_at) * 1000)
@@ -125,7 +127,7 @@ def add_reconcile_job(
     qdrant_handle: "QdrantHandle",
     settings: Settings,
 ) -> None:
-    """Register the reconcile job with a 5-minute startup offset (D1)."""
+    """Register the reconcile job with a 5-minute startup offset."""
     now = datetime.now(timezone.utc)
     scheduler.add_job(
         _run_reconcile,

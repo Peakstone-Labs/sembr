@@ -1,8 +1,8 @@
 """Dead-articles TTL job: prune ``dead_articles`` rows older than
 ``settings.dead_articles_retention_days``.
 
-Independent of Qdrant retention (D2): dead rows are forensic state for
-post-mortem of embedder failures, not vector-store lifecycle.
+Independent of Qdrant retention: dead rows are forensic state for post-mortem
+of embedder failures, not vector-store lifecycle.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ async def _run_dead_ttl(settings: Settings) -> None:
 
 
 def add_dead_ttl_job(scheduler: AsyncIOScheduler, settings: Settings) -> None:
-    """Register the dead-articles TTL job with a 25-minute startup offset (D1)."""
+    """Register the dead-articles TTL job with a 25-minute startup offset."""
     now = datetime.now(timezone.utc)
     scheduler.add_job(
         _run_dead_ttl,

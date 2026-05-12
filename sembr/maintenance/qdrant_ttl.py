@@ -1,10 +1,10 @@
 """Qdrant ``news_current`` TTL job + cascade delete to ``feed_items`` and
 ``match_seen``.
 
-Order of operations matters: the requirements hard-constraint is "Qdrant
-delete ≤ SQLite delete" (so a Qdrant failure can never leave SQLite-orphan
-``feed_items`` rows). We scroll first, delete from Qdrant in a batched loop,
-then cascade SQLite in chunks. See design D4.
+Order of operations matters: the hard-constraint is "Qdrant delete ≤ SQLite
+delete" (so a Qdrant failure can never leave SQLite-orphan ``feed_items``
+rows). We scroll first, delete from Qdrant in a batched loop, then cascade
+SQLite in chunks.
 """
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ async def _cascade_delete_sqlite(uuids: list[str]) -> tuple[int, int]:
             await txn.execute(f"DELETE FROM feed_items WHERE md5 IN ({ph_md5})", chunk_md5)
             # Each DELETE needs its own SELECT changes() — SQLite's changes()
             # only reflects the LAST DML on the connection, so a single read
-            # at txn end would silently lose the feed_items count (D4).
+            # at txn end would silently lose the feed_items count.
             async with txn.execute("SELECT changes()") as cur:
                 deleted_fi += (await cur.fetchone())[0]
             ph_uuid = ",".join("?" * len(chunk_uuid))
@@ -121,7 +121,7 @@ async def _cascade_delete_sqlite(uuids: list[str]) -> tuple[int, int]:
             )
             async with txn.execute("SELECT changes()") as cur:
                 deleted_ms += (await cur.fetchone())[0]
-        await asyncio.sleep(0)  # defence-in-depth yield (D12)
+        await asyncio.sleep(0)  # defence-in-depth yield
     return deleted_fi, deleted_ms
 
 
@@ -171,7 +171,7 @@ def add_qdrant_ttl_job(
     qdrant_handle: "QdrantHandle",
     settings: Settings,
 ) -> None:
-    """Register the Qdrant TTL job with a 15-minute startup offset (D1)."""
+    """Register the Qdrant TTL job with a 15-minute startup offset."""
     now = datetime.now(timezone.utc)
     scheduler.add_job(
         _run_qdrant_ttl,

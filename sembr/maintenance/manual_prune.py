@@ -49,7 +49,7 @@ async def _facet_news_counts(
     """Return ``{feed_id: would_delete}`` for the News dry-run.
 
     Uses ``client.facet`` with ``exact=True`` because the user sees this
-    number on the Confirm screen — an estimate would invite confusion (D10).
+    number on the Confirm screen — an estimate would invite confusion.
     """
     from qdrant_client.models import (  # noqa: PLC0415
         FieldCondition,
