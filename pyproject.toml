@@ -45,6 +45,41 @@ packages = ["sembr"]
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# Recommended set: defaults + isort + pyupgrade + bugbear + async/logging + ruff-native + style polish.
+# Excluded on purpose: D (pydocstyle, conflicts with Dxx cleanup), ANN, G, COM, N, ARG, S, PTH, TRY, PL.
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "ASYNC", # flake8-async (event-loop blocking calls)
+    "LOG",   # flake8-logging
+    "RUF",   # ruff-native rules
+    "SIM",   # flake8-simplify
+    "C4",    # flake8-comprehensions
+    "PIE",   # flake8-pie
+]
+ignore = [
+    "E501",     # line length handled by formatter
+    "E402",     # sembr uses module-level lazy imports to avoid cycles
+    "B008",     # FastAPI Depends() in defaults
+    "SIM117",   # nested with-statements often clearer for async context managers
+    "ASYNC109", # async timeout kwarg — false positives with httpx.timeout / explicit asyncio.wait_for
+    "RUF001",   # ambiguous unicode in strings (Chinese punctuation is legitimate)
+    "RUF002",   # ambiguous unicode in docstrings
+    "RUF003",   # ambiguous unicode in comments
+    "RUF100",   # unused noqa — legacy noqa cleanup is a separate task, not scope of 02
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]  # assert False is fine in tests
+
+[tool.ruff.lint.isort]
+known-first-party = ["sembr"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
