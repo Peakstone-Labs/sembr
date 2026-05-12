@@ -131,23 +131,21 @@ async def create_feed(
     # feeds insert + feed_tags insert must be atomic so a partial failure can't
     # leave a tagless feed (see api/feeds.post_feed rollback path).
     async with transaction() as txn:
-        # D32 v1.1: a newly-added newsapi feed must NOT pull a 24h bootstrap
-        # window on its first tick — that would burn extra tokens and pollute
-        # an already-aligned cohort. v1.0 D7 holds the invariant that all
-        # enabled newsapi feeds share the same last_collected_at after each
-        # tick; piggyback on that by copying any existing newsapi cursor at
-        # INSERT time (same transaction so a concurrent delete-and-recreate
-        # cannot interleave). Empty-cohort first install → NULL = bootstrap
-        # via _date_window now-1d (SC6).
+        # A newly-added newsapi feed must NOT pull a 24h bootstrap window on its
+        # first tick — that would burn extra tokens and pollute an already-aligned
+        # cohort. The cohort invariant is that all enabled newsapi feeds share the
+        # same last_collected_at after each tick; piggyback on that by copying any
+        # existing newsapi cursor at INSERT time (same transaction so a concurrent
+        # delete-and-recreate cannot interleave). Empty-cohort first install →
+        # NULL = bootstrap via _date_window now-1d.
         last_collected_at: str | None = None
         if source_type == "newsapi":
-            # Loop 6 💡-4: pick MAX (most recent) cursor instead of LIMIT 1.
-            # Under v1.0 D7's cohort-cursor invariant all donors are equal,
-            # but a partial-failure tick could temporarily desync the cohort
-            # (one feed advanced, another not yet). MAX is the safest
-            # assumption ("we've already seen everything before this") and
-            # self-heals on the next successful tick. Returns one row with
-            # NULL when the cohort is empty.
+            # Pick MAX (most recent) cursor instead of LIMIT 1. Under the
+            # cohort-cursor invariant all donors are equal, but a partial-failure
+            # tick could temporarily desync the cohort (one feed advanced, another
+            # not yet). MAX is the safest assumption ("we've already seen
+            # everything before this") and self-heals on the next successful tick.
+            # Returns one row with NULL when the cohort is empty.
             async with txn.execute(
                 "SELECT MAX(last_collected_at) FROM feeds "
                 "WHERE source_type='newsapi' AND enabled=1 "

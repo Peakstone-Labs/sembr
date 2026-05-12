@@ -1,7 +1,7 @@
 """intent_sub_texts table: auxiliary intent texts for cross-language match recall.
 
-Mirrors db/match_seen.py's child-table-with-ON-DELETE-CASCADE pattern (D1, D10):
-  - PK (intent_id, slot) makes positional slot identity (D23) explicit at the DB level.
+Mirrors db/match_seen.py's child-table-with-ON-DELETE-CASCADE pattern:
+  - PK (intent_id, slot) makes positional slot identity explicit at the DB level.
   - CASCADE wipes sub_texts on intent delete; no manual cleanup in delete_intent.
   - slot CHECK (0,1,2) hard-caps at 3; Pydantic max_length=3 also enforces (defense in depth).
 """
@@ -31,7 +31,7 @@ async def init_intent_sub_texts_tables(conn: aiosqlite.Connection) -> None:
 
 
 async def list_for_intent(conn: aiosqlite.Connection, intent_id: int) -> list[SubTextSpec]:
-    """Return sub_texts ordered by slot (slot=index for caller; D23)."""
+    """Return sub_texts ordered by slot (slot=index for caller)."""
     async with conn.execute(
         "SELECT language, text FROM intent_sub_texts WHERE intent_id=? ORDER BY slot ASC",
         (intent_id,),
@@ -65,13 +65,13 @@ async def replace_for_intent(
     intent_id: int,
     sub_texts: list[SubTextSpec],
 ) -> None:
-    """Full-list replace (D4): atomic DELETE+INSERT per intent_id."""
+    """Full-list replace: atomic DELETE+INSERT per intent_id."""
     async with transaction() as txn:
         await _replace_in_txn(txn, intent_id, sub_texts)
 
 
 async def clear_intent_sub_texts(conn: aiosqlite.Connection, intent_id: int) -> None:
-    """Used by POST rollback (R2). DELETE intents handles this via CASCADE on
+    """Used by POST rollback. DELETE intents handles this via CASCADE on the
     normal path, so this helper exists for the rare partial-failure path where
     sub_texts were written but the intents row needs an explicit rollback step.
     """

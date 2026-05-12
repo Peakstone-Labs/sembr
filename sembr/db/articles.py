@@ -17,7 +17,7 @@ from sembr.db.sqlite import transaction
 
 logger = logging.getLogger(__name__)
 
-_BODY_CAP_BYTES = 1_048_576  # 1 MB sanity cap (D11)
+_BODY_CAP_BYTES = 1_048_576  # 1 MB sanity cap
 _MD5_RE = re.compile(r"^[0-9a-f]{32}$")
 
 _CREATE_PENDING = """
@@ -131,7 +131,7 @@ async def insert_article_pending(
 async def pull_pending_batch(
     conn: aiosqlite.Connection, batch_size: int, max_retry: int
 ) -> list[PendingRow]:
-    # ORDER BY rowid gives true insertion order (FIFO) regardless of TEXT PK (D13)
+    # ORDER BY rowid gives true insertion order (FIFO) regardless of TEXT PK.
     async with conn.execute(
         "SELECT md5, feed_id, url, title, body, published_at, retry_count "
         "FROM pending_articles WHERE retry_count < ? ORDER BY rowid LIMIT ?",

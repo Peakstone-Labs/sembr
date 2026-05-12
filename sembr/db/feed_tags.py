@@ -1,4 +1,4 @@
-"""feed_tags persistence (D1).
+"""feed_tags persistence.
 
 Composite PK (feed_id, tag) with FK CASCADE on feed_id so DELETE FROM feeds
 auto-cleans tags. PRAGMA foreign_keys=ON is set globally in sqlite.py:19.

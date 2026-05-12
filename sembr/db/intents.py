@@ -264,10 +264,8 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
                 now,
             ),
         )
-        assert (
-            cursor.lastrowid is not None
-        )  # AUTOINCREMENT INSERT on SQLite always sets lastrowid (M2)
-        # Same transaction so the intents row + its sub_texts commit atomically (D1).
+        assert cursor.lastrowid is not None  # AUTOINCREMENT INSERT on SQLite always sets lastrowid
+        # Same transaction so the intents row + its sub_texts commit atomically.
         await _sub_texts_replace_in_txn(txn, cursor.lastrowid, body.sub_texts)
     result = await get_intent(conn, cursor.lastrowid)
     return result  # type: ignore[return-value]
@@ -422,7 +420,7 @@ async def _update_intent_raw_in_txn(
 
 
 async def update_intent_raw(conn: aiosqlite.Connection, intent_id: int, snapshot: Intent) -> None:
-    """Restore a snapshot to roll back a failed PUT (R7: write original updated_at, not now).
+    """Restore a snapshot to roll back a failed PUT — writes the original updated_at, not now().
 
     Standalone transaction wrapper kept for backward compat with callers that
     only need to restore the intents row (not the child sub_texts table).
@@ -441,7 +439,7 @@ async def delete_intent(conn: aiosqlite.Connection, intent_id: int) -> bool:
     return n > 0
 
 
-# D4: kinds whitelist for column-name interpolation in list_template_refs /
+# Kinds whitelist for column-name interpolation in list_template_refs /
 # rename_intent_template. Frozen — never widened from API input.
 _TEMPLATE_KINDS: frozenset[str] = frozenset({"system", "instruction"})
 
@@ -449,7 +447,7 @@ _TEMPLATE_KINDS: frozenset[str] = frozenset({"system", "instruction"})
 async def list_template_refs(
     conn: aiosqlite.Connection,
 ) -> dict[tuple[str, str], list[tuple[int, str]]]:
-    """D4: scan intents once, group `(intent_id, intent_name)` by `(kind, template_name)`.
+    """Scan intents once, group `(intent_id, intent_name)` by `(kind, template_name)`.
 
     Returned dict has keys ``("system", name)`` / ``("instruction", name)`` and
     values ``[(id, name), ...]`` ordered by intent id ASC. Templates with zero
@@ -473,13 +471,13 @@ async def rename_intent_template(
     old: str,
     new: str,
 ) -> int:
-    """D2 step (c): cascade-rename `kind`_template column from *old* to *new*.
+    """Cascade-rename `kind`_template column from *old* to *new*.
 
     Returns the rowcount of affected intents. The *kind* string is whitelisted
     against ``_TEMPLATE_KINDS`` to keep the column-name interpolation safe — the
     column name is built from a frozen set, never from API input directly.
 
-    Caller is expected to wrap this call in ``db.sqlite.transaction()`` per D15.
+    Caller is expected to wrap this call in ``db.sqlite.transaction()``.
     """
     if kind not in _TEMPLATE_KINDS:
         raise ValueError(

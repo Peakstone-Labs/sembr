@@ -1,7 +1,8 @@
 """match_seen table: deduplication log for matched (intent, article) pairs.
 
-D10: composite PK (intent_id, article_id) with ON DELETE CASCADE keeps cleanup trivial.
-D11: INSERT OR IGNORE + RETURNING identifies newly inserted rows in a single statement.
+Composite PK (intent_id, article_id) with ON DELETE CASCADE keeps cleanup trivial.
+Inserts use INSERT OR IGNORE + RETURNING so newly inserted rows are identified in
+a single round-trip.
 """
 
 from __future__ import annotations
@@ -23,8 +24,7 @@ CREATE TABLE IF NOT EXISTS match_seen (
 # Reconcile/TTL/manual-prune all DELETE WHERE article_id IN (...) without an
 # intent_id predicate; the composite PK leads with intent_id so without this
 # helper index the planner falls back to a full scan and a 500-row chunk takes
-# seconds, monopolising _WRITE_LOCK and stalling the ingest pipeline. See
-# reconcile design D11.
+# seconds, monopolising _WRITE_LOCK and stalling the ingest pipeline.
 _CREATE_IDX_MATCH_SEEN_ARTICLE = (
     "CREATE INDEX IF NOT EXISTS idx_match_seen_article_id ON match_seen(article_id)"
 )
@@ -43,9 +43,9 @@ async def insert_unseen_returning_new(
 ) -> list[str]:
     """Insert (intent_id, article_id) pairs; return only the newly inserted article_ids.
 
-    Uses a single multi-row INSERT OR IGNORE … RETURNING (D11) so the whole batch
-    lands in one statement instead of N round-trips. RETURNING yields rows only for
-    rows actually inserted; already-seen pairs are silently skipped by OR IGNORE.
+    Uses a single multi-row INSERT OR IGNORE … RETURNING so the whole batch lands in
+    one statement instead of N round-trips. RETURNING yields rows only for rows
+    actually inserted; already-seen pairs are silently skipped by OR IGNORE.
     SQLite 3.35+ multi-row RETURNING is safe at any batch size within
     SQLITE_MAX_VARIABLE_NUMBER (32 766) — the MVP _SEARCH_LIMIT of 100 produces
     200 bound parameters, well below the limit.
@@ -69,9 +69,9 @@ async def insert_unseen_returning_new(
 async def clear_intent(conn: aiosqlite.Connection, intent_id: int) -> None:
     """Delete all match_seen rows for an intent.
 
-    Called when intent text changes (D4): the intent vector is re-embedded, so
-    previously seen articles are no longer semantically de-duplicated against the
-    new query vector and must be re-evaluated.
+    Called when intent text changes: the intent vector is re-embedded, so previously
+    seen articles are no longer semantically de-duplicated against the new query
+    vector and must be re-evaluated.
     """
     async with transaction() as txn:
         await txn.execute("DELETE FROM match_seen WHERE intent_id=?", (intent_id,))
