@@ -1,27 +1,23 @@
-"""QA Loop 2 — intent-match-enhancement: design Test Strategy coverage.
+"""QA coverage for the named-vector intent layout (intent-match-enhancement).
 
-This file adds the tests deferred from dev (implementation.md 💡-4 / review Loop 2
-💡-4 disposition "accepted-defer to QA").  The test IDs match the design.md
-`## Test Strategy & Acceptance Criteria` table exactly.
-
-Coverage map vs design table:
-  test_post_intent_with_sub_texts                  → (i) POST happy path DB+Qdrant
-  test_post_intent_4th_sub_text_rejected           → (vi) 422 on > 3 sub_texts
-  test_put_replace_sub_texts                       → (i) PUT sub_texts=[] clears DB + calls delete_vectors
-  test_put_modify_sub_text_text_clears_match_seen  → R6 truth-table: text edit → clear
-  test_put_modify_sub_text_label_only_keeps_match_seen → R6: label-only → no clear
-  test_put_delete_sub_text_keeps_match_seen        → R6: deletion → no clear
-  test_put_clear_all_sub_texts_calls_delete_vectors → D17: delete_vectors called on PUT []
-  test_put_label_only_change_skips_qdrant          → R6/D10: no embed / no upsert
-  test_put_event_cache_sync_uses_named_vector_dict → R10 branch (b)/(c)
-  test_translate_endpoint_happy_path               → D5/D16 200 + text
-  test_translate_llm_failure_502                   → D15 LLMError → 502 scrubbed
-  test_translate_invalid_target_language           → D21 validator → 422
-  test_summarizer_only_sees_main_text              → D9 intent_text = main only
-  test_lifespan_migrates_existing_intents          → D3 alias flip + points count
-  test_lifespan_idempotent_second_run              → D3 no-op on second startup
-  test_legacy_intent_fire_unchanged                → (v) backward compat: sub_texts=[]
-  test_lifespan_assert_named_vec_layout            → D19 fail-fast assertion path
+Coverage map:
+  test_post_intent_with_sub_texts                  → POST happy path DB + Qdrant
+  test_post_intent_4th_sub_text_rejected           → 422 on > 3 sub_texts
+  test_put_replace_sub_texts                       → PUT sub_texts=[] clears DB + calls delete_vectors
+  test_put_modify_sub_text_text_clears_match_seen  → text edit → clear match_seen
+  test_put_modify_sub_text_label_only_keeps_match_seen → label-only → no clear
+  test_put_delete_sub_text_keeps_match_seen        → deletion → no clear
+  test_put_clear_all_sub_texts_calls_delete_vectors → delete_vectors called on PUT []
+  test_put_label_only_change_skips_qdrant          → no embed / no upsert
+  test_put_event_cache_sync_uses_named_vector_dict → event cache rebuilds from cache hit / Qdrant
+  test_translate_endpoint_happy_path               → 200 + text
+  test_translate_llm_failure_502                   → LLMError → 502 with scrubbed body
+  test_translate_invalid_target_language           → 422 from target_language validator
+  test_summarizer_only_sees_main_text              → intent_text = main only
+  test_lifespan_migrates_existing_intents          → alias flip + points count
+  test_lifespan_idempotent_second_run              → no-op on second startup
+  test_legacy_intent_fire_unchanged                → backward compat: sub_texts=[]
+  test_lifespan_assert_named_vec_layout            → fail-fast assertion path
 
 NOTE: test_fire_intent_with_sub_text_matches_more requires prod data (id=13, 28) —
       marked MANUAL / out-of-scope; see scripts/qa_sub_text_recall.py.
@@ -244,7 +240,7 @@ def test_post_intent_4th_sub_text_rejected() -> None:
 
 
 # ===========================================================================
-# R6 truth table: text edit → match_seen CLEARED
+# Truth table: text edit → match_seen CLEARED
 # ===========================================================================
 
 
@@ -291,7 +287,7 @@ def test_put_modify_sub_text_text_clears_match_seen() -> None:
 
 
 # ===========================================================================
-# R6 truth table: label-only change → match_seen NOT cleared
+# Truth table: label-only change → match_seen NOT cleared
 # ===========================================================================
 
 
@@ -335,7 +331,7 @@ def test_put_modify_sub_text_label_only_keeps_match_seen() -> None:
 
 
 # ===========================================================================
-# R6 truth table: deletion only → match_seen NOT cleared (D17 delete_vectors path)
+# Truth table: deletion only → match_seen NOT cleared (delete_vectors path)
 # ===========================================================================
 
 
@@ -373,13 +369,13 @@ def test_put_delete_sub_text_keeps_match_seen() -> None:
 
 
 # ===========================================================================
-# D17: PUT sub_texts=[] calls delete_vectors for removed slots
+# PUT sub_texts=[] calls delete_vectors for removed slots
 # ===========================================================================
 
 
 def test_put_clear_all_sub_texts_calls_delete_vectors() -> None:
     """PUT sub_texts=[] when intent has sub_texts must call qdrant_client.delete_vectors
-    for the removed alt_* slots (D17), and must NOT call upsert_intent_point again."""
+    for the removed alt_* slots, and must NOT call upsert_intent_point again."""
     embedder = _make_embedder(extra_vecs=1)
     embedder.aembed = AsyncMock(return_value=[FAKE_VECTOR, FAKE_VECTOR2])
     vs = _make_vs()
@@ -404,7 +400,7 @@ def test_put_clear_all_sub_texts_calls_delete_vectors() -> None:
 
     # embedder must NOT be called (no text changed, only sub deleted)
     embedder.aembed.assert_not_awaited()
-    # upsert_intent_point must NOT be called (D17 path bypasses upsert)
+    # upsert_intent_point must NOT be called (delete-only path bypasses upsert)
     vs["upsert"].assert_not_called()
     # delete_vectors MUST be called with the removed slot names
     vs["delete_vectors"].assert_awaited_once()
@@ -421,7 +417,7 @@ def test_put_clear_all_sub_texts_calls_delete_vectors() -> None:
 
 
 # ===========================================================================
-# R6/D10: label-only change skips Qdrant entirely (no upsert, no delete_vectors)
+# Label-only change skips Qdrant entirely (no upsert, no delete_vectors)
 # ===========================================================================
 
 
@@ -471,13 +467,13 @@ def test_put_label_only_change_skips_qdrant() -> None:
 
 
 # ===========================================================================
-# R10 branch (b): event cache sync uses named-vector dict when cache hits
+# Event cache sync uses named-vector dict when the cache already holds an entry
 # ===========================================================================
 
 
 def test_put_event_cache_sync_uses_named_vector_dict() -> None:
     """PUT on an event-mode intent with no content change must sync cache from
-    existing entry.vectors (R10 branch b) and produce a dict with 'main' key."""
+    existing entry.vectors (cache-hit branch) and produce a dict with 'main' key."""
     from sembr.matcher.event_cache import EventIntentCache, EventIntentEntry  # noqa: PLC0415
     from sembr.models import IntentCreate  # noqa: PLC0415
 
@@ -549,7 +545,7 @@ def test_put_event_cache_sync_uses_named_vector_dict() -> None:
     ):
         with TestClient(app) as http:
             iid = conn_holder["intent_id"]
-            # PUT a non-content field (threshold change only → R10 branch b via cache hit)
+            # PUT a non-content field (threshold change only → cache-hit branch)
             resp = http.put(f"/intents/{iid}", json={"threshold": 0.80})
             assert resp.status_code == 200, resp.text
 
@@ -623,7 +619,7 @@ def test_translate_llm_failure_502() -> None:
 
     assert resp.status_code == 502, resp.text
     detail = resp.json()["detail"]
-    # Must start with "translation failed:" prefix (D15 scrubbing pattern)
+    # Must start with "translation failed:" prefix (scrubbing contract)
     assert detail.startswith("translation failed:"), detail
     # Must not contain API keys — LLMError message should be operator-safe
     assert "api_key" not in detail.lower()
@@ -663,12 +659,12 @@ def test_translate_invalid_target_language() -> None:
 
 
 # ===========================================================================
-# D9: summarizer only sees intent.text (main), not sub_texts
+# Summarizer only sees intent.text (main), not sub_texts
 # ===========================================================================
 
 
 def test_summarizer_only_sees_main_text() -> None:
-    """_get_intent_prompt_ctx in main.py returns intent.text (main), not sub_texts (D9)."""
+    """_get_intent_prompt_ctx in main.py returns intent.text (main), not sub_texts."""
     import asyncio  # noqa: PLC0415
     import aiosqlite  # noqa: PLC0415
     from sembr.db.intents import init_intent_tables, create_intent  # noqa: PLC0415
@@ -901,14 +897,14 @@ def test_legacy_intent_fire_unchanged() -> None:
 
 
 # ===========================================================================
-# D19: lifespan D19 assertion fails when named-vec layout is absent → RuntimeError
+# lifespan named-vector assertion fails when the layout is absent → RuntimeError
 # ===========================================================================
 
 
 @pytest.mark.asyncio
 async def test_lifespan_assert_named_vec_layout() -> None:
-    """D19: if ensure_intents_collection somehow leaves an unnamed-vec layout,
-    the D19 assertion in main.py's lifespan must raise RuntimeError before
+    """If ensure_intents_collection somehow leaves an unnamed-vec layout,
+    the named-vector assertion in main.py's lifespan must raise RuntimeError before
     scheduler.start().  We simulate this by making get_collection return a
     non-dict vectors config and verify the assertion block raises."""
     # Import the assertion logic directly — we cannot run the full lifespan without
@@ -923,12 +919,12 @@ async def test_lifespan_assert_named_vec_layout() -> None:
     class FakeCollectionInfo:
         class config:
             class params:
-                vectors = FakeVectorsConfig()  # NOT a dict → should trigger D19
+                vectors = FakeVectorsConfig()  # NOT a dict → should trigger the named-vec assertion
 
     vectors_cfg = getattr(FakeCollectionInfo.config.params, "vectors", None)
     assertion_fails_on_non_dict = not isinstance(vectors_cfg, dict)
     assert assertion_fails_on_non_dict, (
-        "D19 guard `not isinstance(vectors_cfg, dict)` must be True for non-dict layout"
+        "named-vec guard `not isinstance(vectors_cfg, dict)` must be True for non-dict layout"
     )
 
     # Verify correct layout passes the guard
@@ -939,8 +935,8 @@ async def test_lifespan_assert_named_vec_layout() -> None:
 
     good_cfg = getattr(GoodCollectionInfo.config.params, "vectors", None)
     assert isinstance(good_cfg, dict) and "main" in good_cfg, (
-        "D19 guard must pass for named-vec dict containing 'main'"
+        "named-vec guard must pass for named-vec dict containing 'main'"
     )
 
-    # The actual RuntimeError is raised in main.py lifespan (covered by the D19 fix
+    # The actual RuntimeError is raised in main.py lifespan (covered by the named-vec fix
     # in implementation.md Phase 4; this test validates the guard logic is correct).

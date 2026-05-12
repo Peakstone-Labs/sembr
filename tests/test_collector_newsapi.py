@@ -87,7 +87,7 @@ def test_classify_quality_thresholds(n: int, expected: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# _date_window — D8 first-pull fallback
+# _date_window — first-pull fallback
 # ---------------------------------------------------------------------------
 
 
@@ -117,7 +117,7 @@ def test_date_window_all_known_uses_min_since() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _to_raw_article — D19/§A3 field mapping
+# _to_raw_article — newsapi article dict → RawArticle field mapping
 # ---------------------------------------------------------------------------
 
 
@@ -168,7 +168,7 @@ def test_to_raw_article_drops_missing_url_or_title() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _build_request_body — D18 fixed fields + D8 dates + categoryUri
+# _build_request_body — fixed fields + date window + categoryUri
 # ---------------------------------------------------------------------------
 
 
@@ -196,7 +196,7 @@ def test_build_request_body_has_fixed_fields_and_dates() -> None:
     assert body["isDuplicateFilter"] == "keepAll"
     assert body["lang"] == "eng"
     assert body["timezone"] == "UTC"
-    # forceMaxDataTimeWindow MUST NOT appear (D8)
+    # forceMaxDataTimeWindow MUST NOT appear — we drive the window via dateStart/dateEnd
     assert "forceMaxDataTimeWindow" not in body
 
 
@@ -424,7 +424,7 @@ async def test_master_tick_dispatch_to_feed_ids(monkeypatch, patched_get_conn) -
 @respx.mock
 @pytest.mark.asyncio
 async def test_master_tick_zero_articles_advances_cursor(monkeypatch, patched_get_conn) -> None:
-    """D7: even with empty results, every enabled feed gets last_collected_at advanced
+    """Even with empty results, every enabled feed gets last_collected_at advanced
     AND a fetch_log row with ok=True."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
@@ -492,13 +492,14 @@ async def test_master_tick_token_header_logged(monkeypatch, patched_get_conn, ca
 async def test_master_tick_total_results_overflow_warns(
     monkeypatch, patched_get_conn, caplog
 ) -> None:
-    """D33 v1.1: file name preserved (git-diff-friendly) but body rewritten.
+    """File name preserved (git-diff-friendly) but body rewritten for the
+    watermark+cap pagination model.
 
-    v1.0 asserted only-warn 'exceeds articlesCount=100'; v1.1 replaces the
-    only-warn behavior with watermark+cap pagination. This test now drives
-    the same totalResults>articlesCount mock through the page loop and
-    checks watermark stop kicks in on page 2 — i.e. only 2 HTTP calls,
-    no D24 only-warn left.
+    The legacy single-page implementation only logged a warning when
+    totalResults exceeded articlesCount=100; the current pagination loop drives
+    the same totalResults>articlesCount mock through the page loop and checks
+    watermark stop kicks in on page 2 — i.e. only 2 HTTP calls, no legacy
+    only-warn left.
     """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
@@ -566,7 +567,7 @@ async def test_master_tick_total_results_overflow_warns(
         await NewsApiMaster().tick()
     # Watermark stop on page 2 → exactly 2 HTTP calls, page 3 untouched.
     assert route.call_count == 2
-    # The legacy D24 only-warn message must be gone.
+    # The legacy only-warn message must be gone.
     assert not any("exceeds articlesCount=100" in r.getMessage() for r in caplog.records)
     # Watermark stop = unified dispatch ran → page 1 article landed.
     async with conn.execute("SELECT title FROM pending_articles ORDER BY title") as cur:
@@ -623,7 +624,7 @@ async def test_master_tick_dispatch_unknown_source_dropped(
 @respx.mock
 @pytest.mark.asyncio
 async def test_master_tick_since_client_side_cut(monkeypatch, patched_get_conn) -> None:
-    """D22: published_at <= feed.last_collected_at → drop the article."""
+    """published_at <= feed.last_collected_at → drop the article."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
 
@@ -694,10 +695,10 @@ async def test_master_tick_http_error_does_not_advance_cursor(
     await NewsApiMaster().tick()
     async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
         row = await cur.fetchone()
-    assert row[0] is None  # D20: no cursor advance on failure
+    assert row[0] is None  # no cursor advance on failure
     # Loop 6 🟡-1 v1.1: HTTP failure now also emits an ok=False fetch_log
     # row per feed (was 0 in v1.0, see review.md Loop 5 🟡-1). Cursor still
-    # NOT advanced — D20 atomicity preserved; only the failed *attempt* is
+    # NOT advanced — atomicity preserved; only the failed *attempt* is
     # recorded so the dashboard sparkline can detect a stuck cohort.
     async with conn.execute(
         "SELECT feed_id, ok, items_seen, error_class FROM feed_fetch_log"
@@ -725,12 +726,12 @@ async def test_master_tick_no_enabled_feeds_skips_silently(monkeypatch, patched_
 
 
 # ===========================================================================
-# v1.1 master tick pagination — D26 / D27 / D28 / D29 / D30 / D31
+# Master-tick pagination (max-pages cap + watermark stop + integral dispatch)
 # ===========================================================================
 
 
 # ---------------------------------------------------------------------------
-# _should_stop_paginating — pure function (D27, defense for Open Q1 desc/asc)
+# _should_stop_paginating — pure function (sort-order-robust watermark stop)
 # ---------------------------------------------------------------------------
 
 
@@ -745,7 +746,7 @@ def _mk_article(dt: datetime) -> dict:
 
 
 def test_should_stop_paginating_orientation_robust() -> None:
-    """D27 / Open Q1: stop decision is invariant under page-internal sort
+    """Stop decision is invariant under page-internal sort
     direction. Same articles in desc and asc must produce the same stop bool.
     Failure here means the upstream silently flipped articleSortBy and the
     'last article' heuristic would have given wrong answers — i.e. the
@@ -861,7 +862,7 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
     )
     # page 2: (now-3h, now-5h) — oldest ≤ cut(now-4h) → watermark stop
     # The article at now-5h is still loaded into all_results, but the
-    # per-article since-cut (D22) drops it during dispatch.
+    # per-article since-cut drops it during dispatch.
     page2 = _page_envelope(
         [
             {
@@ -910,7 +911,7 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
     async with conn.execute("SELECT title FROM pending_articles ORDER BY title") as cur:
         rows = await cur.fetchall()
     titles = {r[0] for r in rows}
-    # P1A, P1B, P2A landed (all > cut). P2BOld dropped by D22 since-cut.
+    # P1A, P1B, P2A landed (all > cut). P2BOld dropped by the since-cut.
     # P3SHOULDNOTFETCH never even fetched.
     assert "P1A" in titles
     assert "P1B" in titles
@@ -923,7 +924,7 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
     assert len(log_rows) == 1
     assert log_rows[0][0] == 1
     assert log_rows[0][1] == 1
-    # items_seen counts pages 1+2 = 4 (cross-page accumulation, D29).
+    # items_seen counts pages 1+2 = 4 (cross-page accumulation).
     assert log_rows[0][2] == 4
 
     async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
@@ -935,7 +936,7 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
 @respx.mock
 @pytest.mark.asyncio
 async def test_master_tick_pagination_cap_dropped(monkeypatch, patched_get_conn, caplog) -> None:
-    """SC2 v1.1 / D28: every fetched page's articles are newer than
+    """Every fetched page's articles are newer than
     universal_since (watermark never fires) → cap=10 reached → integral
     drop: pending_articles=0, last_collected_at unchanged, no fetch_event.
     """
@@ -986,7 +987,7 @@ async def test_master_tick_pagination_cap_dropped(monkeypatch, patched_get_conn,
     assert any("max_pages=10 cap reached" in r.getMessage() for r in caplog.records), [
         r.getMessage() for r in caplog.records
     ]
-    # D28: no dispatch on cap → 0 articles, no cursor advance.
+    # Cap reached without watermark → no dispatch → 0 articles, no cursor advance.
     async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
         n = (await cur.fetchone())[0]
     assert n == 0
@@ -1013,7 +1014,7 @@ async def test_master_tick_pagination_cap_dropped(monkeypatch, patched_get_conn,
 @respx.mock
 @pytest.mark.asyncio
 async def test_master_tick_pagination_mid_failure_atomic(monkeypatch, patched_get_conn) -> None:
-    """SC4 v1.1 / D29: page 1 OK, page 2 HTTP 500 → integral rollback.
+    """Page 1 OK, page 2 HTTP 500 → integral rollback.
     pending_articles=0, last_collected_at unchanged, no fetch_event."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
@@ -1125,7 +1126,7 @@ async def test_master_tick_steady_state_one_token(monkeypatch, patched_get_conn,
 
 
 # ---------------------------------------------------------------------------
-# v1.0 D31 sanity: fire path (NewsApiSource.fetch) still sends articlesPage=1.
+# Sanity: fire path (NewsApiSource.fetch) still sends articlesPage=1.
 # ---------------------------------------------------------------------------
 
 
@@ -1191,7 +1192,7 @@ async def test_master_tick_bad_articles_block_emits_log(monkeypatch, patched_get
 
 
 def test_build_request_body_default_page_is_one() -> None:
-    """D31: page parameter defaults to 1 so single-page callers (fire path,
+    """page parameter defaults to 1 so single-page callers (fire path,
     legacy tests) keep v1.0 wire format identical."""
     settings = Settings(newsapi_categories="Business")
     body = _build_request_body(
@@ -1205,7 +1206,7 @@ def test_build_request_body_default_page_is_one() -> None:
 
 
 def test_build_request_body_explicit_page() -> None:
-    """D31: master tick passes 1..max_pages."""
+    """master tick passes 1..max_pages."""
     settings = Settings(newsapi_categories="Business")
     body = _build_request_body(
         api_key="K",
