@@ -17,7 +17,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 _YAML_PATH = Path("sembr.yaml")
 
-# D13/D25: single source of truth for the NEWSAPI_CATEGORIES candidate list.
+# Single source of truth for the NEWSAPI_CATEGORIES candidate list.
 # Both the Settings field validator (this module) and the dashboard schema
 # (`api/settings._MULTISELECT_FIELDS`) reference this tuple; keep order
 # stable so the saved CSV stays canonical across reloads.
@@ -237,9 +237,9 @@ class Settings(BaseSettings):
     @field_validator("newsapi_categories")
     @classmethod
     def _newsapi_categories_valid(cls, v: str) -> str:
-        # D25 + review-loop1 🟡-2: reject empty CSV AND validate every entry
-        # is in the supported 8-category set so a hand-edited .env can't
-        # silently produce categoryUri=["news/FooBar"] and 0 results.
+        # Reject empty CSV and validate every entry is in the supported
+        # 8-category set so a hand-edited .env can't silently produce
+        # categoryUri=["news/FooBar"] and 0 results.
         items = [s.strip() for s in (v or "").split(",") if s.strip()]
         if not items:
             raise ValueError(
@@ -276,7 +276,7 @@ class Settings(BaseSettings):
 
     @property
     def proxy_hosts_set(self) -> frozenset[str]:
-        # R7: tolerate whitespace, trailing slashes, schemes typed by the user.
+        # Tolerate whitespace, trailing slashes, schemes typed by the user.
         out: set[str] = set()
         for raw in self.proxy_hosts.split(","):
             entry = raw.strip().lower()
