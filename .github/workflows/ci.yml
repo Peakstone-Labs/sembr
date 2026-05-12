@@ -24,13 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: No sembr-dev-docs / design.md references (sembr / scripts / docs)
+      - name: No sembr-dev-docs / design.md references
         run: |
           set -e
-          # Scope excludes tests/ until the long-tail cleanup completes.
           if grep -rnE "sembr-dev-docs|design\.md" \
             --include="*.py" --include="*.md" \
-            sembr/ scripts/ docs/ 2>/dev/null; then
+            sembr/ tests/ scripts/ docs/ 2>/dev/null; then
             echo "::error::Found private dev-doc references — see lines above."
             exit 1
           fi
@@ -39,10 +38,9 @@ jobs:
         run: |
           set -e
           # `noqa: D[0-9]` carve-out: pydocstyle rule codes are legitimate.
-          # Scope excludes tests/ until the long-tail cleanup completes.
           hits=$(grep -rnE "\bD[0-9]{1,3}\b|\bR[0-9]{1,3}\b|\bDD[0-9]{1,3}\b" \
             --include="*.py" --include="*.md" \
-            sembr/ scripts/ docs/ 2>/dev/null | grep -v "noqa: D[0-9]" || true)
+            sembr/ tests/ scripts/ docs/ 2>/dev/null | grep -v "noqa: D[0-9]" || true)
           if [ -n "$hits" ]; then
             echo "::error::Found decision-ID references (Dxx/Rxx/DDxx):"
             echo "$hits"
