@@ -1,8 +1,13 @@
 """APScheduler job lifecycle management for per-intent scan jobs.
 
-D15: coalesce=True, max_instances=1, replace_existing=True — project-wide APScheduler convention.
-D16: job ID = f"matcher-intent-{intent_id}" — stable, enables replace_existing-based reregister.
-D8:  EventSchedule intents skip APScheduler registration (event-driven path).
+Conventions:
+  * ``coalesce=True``, ``max_instances=1``, ``replace_existing=True`` on every
+    job — keeps a backlog from snowballing after a pause and makes reregister
+    safe.
+  * Job ID is ``f"matcher-intent-{intent_id}"`` — stable, so PUT can rewire
+    the trigger via ``replace_existing`` rather than unregister-then-register.
+  * EventSchedule intents skip APScheduler registration entirely; they are
+    triggered by ingestion events instead of cron ticks.
 """
 
 from __future__ import annotations
@@ -58,7 +63,7 @@ def register_intent_job(
 
     schedule = intent.schedule
 
-    # D8: event-mode intents are triggered by ingestion events, not APScheduler ticks
+    # event-mode intents are triggered by ingestion events, not APScheduler ticks
     if isinstance(schedule, EventSchedule):
         logger.debug("skipping APScheduler registration for event-mode intent_id=%d", intent.id)
         return
@@ -106,7 +111,7 @@ def unregister_intent_job(scheduler: AsyncIOScheduler, intent_id: int) -> None:
 
 
 def reregister_intent_job(scheduler: AsyncIOScheduler, intent: "Intent", app) -> None:
-    """Replace an existing job with updated trigger/args (D4, D5)."""
+    """Replace an existing job with updated trigger/args."""
     register_intent_job(scheduler, intent, app)
 
 
@@ -116,7 +121,7 @@ async def register_all_enabled(
     app,
     qdrant_client,
 ) -> None:
-    """Register jobs for all enabled intents at startup (D18).
+    """Register jobs for all enabled intents at startup.
 
     Checks Qdrant vector existence before registering: a partial DELETE failure
     leaves a vector-less intent row in SQLite. Re-registering such a job produces

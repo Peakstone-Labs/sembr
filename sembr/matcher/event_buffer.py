@@ -1,8 +1,12 @@
 """Event buffer: absorb + flush business logic for event-driven intent matching.
 
-D13: absorb() — explicit BEGIN IMMEDIATE transaction; merges batch_groups into event_pending.
-D14: flush() — DELETE ... RETURNING (atomic read+delete); on_match called after commit.
-D15: sweep_timed_out() — called by event_y_sweeper APScheduler job every 30s.
+Three entry points:
+
+* ``absorb()`` — explicit BEGIN IMMEDIATE transaction; merges batch_groups
+  into the ``event_pending`` table.
+* ``flush()`` — DELETE ... RETURNING (atomic read+delete); on_match is called
+  after the transaction commits.
+* ``sweep_timed_out()`` — called by event_y_sweeper every 30 s.
 """
 
 from __future__ import annotations
@@ -151,10 +155,11 @@ async def absorb(
 async def flush(conn: aiosqlite.Connection, app, intent_id: int) -> None:
     """Drain event_pending for intent_id → call on_match.
 
-    D14: DELETE ... RETURNING is a single atomic statement on SQLite ≥ 3.35
-    (guaranteed by Dockerfile python:3.12 → SQLite 3.41.2, Risk 8).
-    Commit happens before on_match is awaited. on_match failure is logged
-    but NOT re-raised — buffer is already cleared (E1 contract, same as cron path).
+    DELETE ... RETURNING is a single atomic statement on SQLite ≥ 3.35
+    (guaranteed by the Dockerfile python:3.12 → SQLite 3.41.2 baseline).
+    Commit happens before on_match is awaited. on_match failure is logged but
+    NOT re-raised — the buffer is already cleared, same contract as the cron
+    path.
     """
     from sembr.matcher.callback import Match  # noqa: PLC0415
 
@@ -213,8 +218,8 @@ async def sweep_timed_out(
 ) -> None:
     """Flush intents whose oldest buffered group has exceeded max_wait_seconds.
 
-    Called every 30s by event_y_sweeper APScheduler job (D15).
-    Each intent failure is isolated — one bad flush does not abort others.
+    Called every 30 s by the event_y_sweeper APScheduler job. Each intent
+    failure is isolated — one bad flush does not abort others.
     """
     from sembr.models import EventSchedule  # noqa: PLC0415
 

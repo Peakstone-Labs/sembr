@@ -1,16 +1,16 @@
 """Per-intent scan logic: one APScheduler tick = one call to run_intent_scan.
 
-Flow per tick (post intent-match-enhancement):
-  1. Guard: embedder not ready → skip (D6)
+Flow per tick:
+  1. Guard: embedder not ready → skip
   2. Load Intent from SQLite; skip if missing/disabled (race cover)
   3. Retrieve intent point from Qdrant intents_current — exposes all named-vector
      slots {main, alt_*} in one round-trip
-  4. For each populated slot, query news_current via asyncio.gather (parallel fan-out, D6)
+  4. For each populated slot, query news_current via asyncio.gather (parallel fan-out)
   5. Merge hits by article_id, keep max score across slots
-  6. Filter disabled articles (D20 — always-True at MVP, retention hook)
-  7. INSERT OR IGNORE into match_seen; RETURNING gives new article_ids (D11)
+  6. Filter disabled articles (retention hook; always-True at MVP)
+  7. INSERT OR IGNORE into match_seen; RETURNING gives new article_ids
   8. Build Match list for new article_ids
-  9. If non-empty: await app.state.on_match(matches) (D12, D13)
+  9. If non-empty: await app.state.on_match(matches)
 """
 
 from __future__ import annotations
@@ -51,9 +51,9 @@ class ScanOptions:
     skip_seen: bool  # True → filter out already-seen articles before returning
     feed_ids: list[int] | None  # None=all feeds; []=no feeds (short-circuits to [])
     write_match_seen: bool  # True → insert hits into match_seen; False → fire path
-    # D-A6 / D12: cron path keeps the silent-skip-tick contract (False); sync
-    # external fire endpoint sets True so a Qdrant outage surfaces as 500 rather
-    # than masquerading as 0 hits.
+    # The cron path keeps the silent-skip-tick contract (False); the sync
+    # external fire endpoint sets True so a Qdrant outage surfaces as 500
+    # rather than masquerading as 0 hits.
     propagate_qdrant_errors: bool = False
 
 
@@ -70,7 +70,7 @@ async def scan_once(
     When write_match_seen=False (fire path), all hits are returned regardless
     of match_seen state.
     """
-    # R10: empty feed_ids set matches nothing — short-circuit before any Qdrant call
+    # Empty feed_ids set matches nothing — short-circuit before any Qdrant call
     if options.feed_ids is not None and len(options.feed_ids) == 0:
         logger.debug("intent_id=%d scan_once short-circuit: feed_ids=[]", intent.id)
         return []
@@ -92,8 +92,9 @@ async def scan_once(
                 intent.id,
             )
             return []
-        # Build slot → vector dict. Strict named-vector contract per R4: extract_named_vector
-        # returns None for legacy unnamed-vec layout, which would mean migration failed.
+        # Build slot → vector dict. Strict named-vector contract:
+        # extract_named_vector returns None for the legacy unnamed-vec layout,
+        # which would mean the migration failed.
         raw_vectors = getattr(points[0], "vector", None)
         if not isinstance(raw_vectors, dict):
             logger.warning(
@@ -131,9 +132,10 @@ async def scan_once(
             )
         query_filter = Filter(must=must_conditions)
 
-        # D6: parallel fan-out — one query_points per slot. news_current is unnamed-vec
-        # so we don't pass `using=`; the slot identity is intent-side only, news-side
-        # cosine is the same regardless of which intent slot drove the query.
+        # Parallel fan-out — one query_points per slot. news_current is
+        # unnamed-vec so we don't pass `using=`; the slot identity is
+        # intent-side only, news-side cosine is the same regardless of which
+        # intent slot drove the query.
         slot_list = list(slot_vectors.keys())
         responses = await asyncio.gather(
             *[
@@ -183,8 +185,9 @@ async def scan_once(
             options.feed_ids,
         )
 
-        # Diagnostic probe: D20 — only run on the `main` slot to bound blast radius
-        # (4× slots × 2 probes would balloon Qdrant load 8× under SEMBR_DEBUG_MATCHER).
+        # Diagnostic probe — only run on the `main` slot to bound blast radius
+        # (4× slots × 2 probes would balloon Qdrant load 8× under
+        # SEMBR_DEBUG_MATCHER).
         if not hits_by_id and os.environ.get("SEMBR_DEBUG_MATCHER"):
             main_vec = slot_vectors["main"]
             _feed_cond = (
@@ -256,8 +259,8 @@ async def scan_once(
         logger.warning("intent_id=%d scan_once Qdrant error: %s", intent.id, exc)
         return []
 
-    # D20: exclude articles with enabled=False (retention hook; currently always True
-    # because news points don't carry an 'enabled' payload field at MVP)
+    # Exclude articles with enabled=False (retention hook; currently always
+    # True because news points don't carry an 'enabled' payload field at MVP)
     hits_by_id = {
         aid: triple for aid, triple in hits_by_id.items() if triple[1].get("enabled", True)
     }
@@ -346,7 +349,7 @@ async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
     if not matches:
         return
 
-    # R5: guard against on_match being None during startup race
+    # Guard against on_match being None during startup race
     callback = app.state.on_match
     if callback is None:
         logger.error("intent_id=%d on_match is None, skipping notification", intent_id)

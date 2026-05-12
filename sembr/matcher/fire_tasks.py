@@ -1,4 +1,4 @@
-"""In-memory fire task state store (DD4).
+"""In-memory fire task state store.
 
 Tasks are stored in a module-level dict. TTL sweep runs every 5 minutes
 via APScheduler, keeping memory bounded to ~1h of recent fire results.
@@ -15,7 +15,7 @@ from uuid import uuid4
 logger = logging.getLogger(__name__)
 
 _TASK_TTL_SECONDS = 3600  # 1 hour
-_FIRE_RATE_LIMIT_SECONDS = 60  # R5: 1 fire per intent per minute
+_FIRE_RATE_LIMIT_SECONDS = 60  # 1 fire per intent per minute
 
 
 @dataclass
@@ -35,7 +35,7 @@ class FireTask:
 # Module-level dict; reset between tests via _reset_for_testing()
 _fire_tasks: dict[str, FireTask] = {}
 
-# Last fire time per intent_id for rate limiting (R5)
+# Last fire time per intent_id for rate limiting
 _last_fire_at: dict[int, datetime] = {}
 
 

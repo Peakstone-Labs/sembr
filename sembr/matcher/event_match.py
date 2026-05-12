@@ -1,8 +1,9 @@
 """Event-driven intent matching: in-process cosine scoring against cached intent vectors.
 
-D11: event_match_batch — called after each Qdrant upsert in embedder_worker.
-D18: no match_seen writes on this path.
-Risk 7: top-level try/except — event path failure must not abort ingestion.
+``event_match_batch`` is called after each Qdrant upsert in embedder_worker.
+The event path never writes to ``match_seen`` — that's reserved for the cron
+path. A top-level try/except wraps the whole batch so an event-match failure
+cannot abort ingestion.
 """
 
 from __future__ import annotations
@@ -97,7 +98,7 @@ async def _event_match_batch_inner(
                 if feed_id not in entry.feed_filter_ids:
                     continue
 
-            # D12: score each slot independently, keep max (dedupe on article side)
+            # Score each slot independently, keep max (dedupe on article side)
             score = max(_dot(sv, article_vec) for sv in slot_vecs)
             if score >= entry.threshold:
                 hits.append(

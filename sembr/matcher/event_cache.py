@@ -1,10 +1,12 @@
 """In-process cache of event-mode intent vectors.
 
-D9: app.state.event_intent_cache holds one EventIntentEntry per event-mode intent.
-Cache is loaded from Qdrant at lifespan startup; kept in sync by POST/PUT/DELETE intents.
+``app.state.event_intent_cache`` holds one ``EventIntentEntry`` per event-mode
+intent. The cache is loaded from Qdrant at lifespan startup and kept in sync
+by POST/PUT/DELETE on the intents router.
 
-intent-match-enhancement D11: each entry now carries `vectors: dict[str, list[float]]`
-keyed by slot name {main, alt_0, alt_1, alt_2} instead of a single `vector`.
+Each entry carries ``vectors: dict[str, list[float]]`` keyed by slot name
+({main, alt_0, alt_1, alt_2}) so cross-language matching is checked against
+every sub-text slot rather than just the main vector.
 """
 
 from __future__ import annotations
@@ -65,9 +67,9 @@ async def load_event_cache(
 ) -> None:
     """Load all event-mode intents from SQLite + Qdrant into cache at startup.
 
-    Called after register_all_enabled (D22) so cron intents are already registered.
-    Intents whose Qdrant point uses a non-dict (legacy) layout or lacks the main
-    slot are skipped with ERROR — same policy as register_all_enabled.
+    Called after register_all_enabled so cron intents are already registered.
+    Intents whose Qdrant point uses a non-dict (legacy) layout or lacks the
+    main slot are skipped with ERROR — same policy as register_all_enabled.
     """
     from sembr.db.intents import list_intents  # noqa: PLC0415
     from sembr.models import EventSchedule  # noqa: PLC0415

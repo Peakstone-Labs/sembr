@@ -1,6 +1,7 @@
 """Matcher callback types and default implementation.
 
-D13: on_match is registered on app.state so Feature 6/7 can replace it at runtime.
+``on_match`` is registered on ``app.state`` so the lifespan can replace the
+default log-only sink with the real summarizer pipeline at startup.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ OnMatchCallback = Callable[[list[Match]], Awaitable[None]]
 
 
 async def log_matches(matches: list[Match]) -> None:
-    """Default on_match: one summary INFO line per tick, per intent (R2).
+    """Default on_match: one summary INFO line per tick, per intent.
 
     Intentionally does not write to disk or any table — purely a log sink
     until Feature 6/7 replaces this with a real notifier.
