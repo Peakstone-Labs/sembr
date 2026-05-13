@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest a new feature or improvement
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion! Please describe the problem first, then propose a solution.
+
+        For open-ended discussion of use cases or ideas you're not sure about yet, please use [Discussions](https://github.com/Peakstone-Labs/sembr/discussions) instead — it's a better fit for back-and-forth before a concrete proposal.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What use case isn't covered, or what is painful in the current design?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like sembr to behave? UI changes, new API, new config, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you've thought about — workarounds, existing tools, design variations.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues and discussions and this is not a duplicate
+          required: true
+        - label: I have read the [Code of Conduct](../blob/main/CODE_OF_CONDUCT.md)
+          required: true

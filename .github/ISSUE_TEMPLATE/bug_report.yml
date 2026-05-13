@@ -1,0 +1,85 @@
+name: Bug report
+description: Report a defect in sembr
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Filling in every field below makes triage dramatically faster.
+
+        - For **how-to questions** or open-ended ideas, please use [Discussions](https://github.com/Peakstone-Labs/sembr/discussions) instead.
+        - For **security vulnerabilities**, please use [Private Vulnerability Reporting](https://github.com/Peakstone-Labs/sembr/security/advisories/new) — do **not** file a public issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear, concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps that trigger the bug.
+      placeholder: |
+        1. Start sembr with `...`
+        2. Open `/...`
+        3. Click `...`
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual behavior
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: sembr version / commit
+      description: Release tag or output of `git rev-parse --short HEAD`
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment mode
+      options:
+        - Docker Compose (the documented path)
+        - Local Python via uv
+        - Other (please describe in steps to reproduce)
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python --version` (only required if running locally without Docker)
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any error logs or stack traces. Will be rendered as a code block.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues and this is not a duplicate
+          required: true
+        - label: I have read the [Code of Conduct](../blob/main/CODE_OF_CONDUCT.md)
+          required: true
