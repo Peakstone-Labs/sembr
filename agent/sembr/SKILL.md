@@ -24,7 +24,7 @@ BASE = http://<host>:<port>           # default http://localhost:8000
   ```
   X-Dashboard-Token: <token>
   ```
-  Wrong/missing → 401 on gated paths. Empty `DASHBOARD_TOKEN` bypasses auth (local-dev only). Send the header on every request even for paths that don't currently require it (`/health`, `/intents`, `/feeds`) — they will tighten in a future release.
+  Wrong/missing → 401 on gated paths. Empty `DASHBOARD_TOKEN` bypasses auth entirely (local-dev only). When the token is set, every path under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external` (and the corresponding bare paths) is gated. Only `/health` and `/api/dashboard/config` are unauthenticated by design (so monitors and the login page can bootstrap without a token).
 - Every POST/PUT/PATCH body is JSON. Set `Content-Type: application/json`.
 
 ## 3. Decision — which "fire" endpoint?
@@ -59,7 +59,7 @@ For anything not covered here, the authoritative schema is `GET /openapi.json`. 
 - **Don't `DELETE` intents or feeds without confirming.** Intent delete cascades `match_seen` and isn't reversible from the API.
 - **Honour the rate limit.** 429 means sleep ≥60 s, not retry harder. Check `Retry-After` if present.
 - **Don't commit / store `DASHBOARD_TOKEN`.** It's per-deployment.
-- **Send `X-Dashboard-Token` on every request**, including the currently-unauthenticated paths — they will tighten in a future release.
+- **Send `X-Dashboard-Token` on every request.** The only token-free paths today are `/health` and `/api/dashboard/config`; everything else under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external` 401s without it.
 
 ## 6. Discovery and version
 
@@ -75,6 +75,6 @@ Paths are given both as in-repo (relative to this `SKILL.md`) and as GitHub URLs
 | Doc | In-repo path | GitHub URL |
 | --- | --- | --- |
 | Agent-driven install | [`../INSTALL.md`](../INSTALL.md) | [agent/INSTALL.md](https://github.com/Peakstone-Labs/sembr/blob/v1.0.0/agent/INSTALL.md) |
-| Agent-driven public exposure | [`../public_install.md`](../public_install.md) | [agent/public_install.md](https://github.com/Peakstone-Labs/sembr/blob/v1.0.0/agent/public_install.md) |
+| Agent-driven public exposure | [`../PUBLIC_INSTALL.md`](../PUBLIC_INSTALL.md) | [agent/PUBLIC_INSTALL.md](https://github.com/Peakstone-Labs/sembr/blob/v1.0.0/agent/PUBLIC_INSTALL.md) |
 | Operator-facing public exposure | [`../../docs/deployment/public.md`](../../docs/deployment/public.md) | [docs/deployment/public.md](https://github.com/Peakstone-Labs/sembr/blob/v1.0.0/docs/deployment/public.md) |
 | Dev-time guidance for editing sembr's code (not driving its API) | [`../../CLAUDE.md`](../../CLAUDE.md) | [CLAUDE.md](https://github.com/Peakstone-Labs/sembr/blob/v1.0.0/CLAUDE.md) |

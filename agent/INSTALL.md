@@ -218,13 +218,13 @@ The slow steps below take 5–10 minutes combined. Run them **in the background*
 cd "${SEMBR_DIR}"
 # Pull the two pre-built images
 docker compose pull qdrant rsshub > /tmp/sembr-pull.log 2>&1 &
-PULL_PID=$!
+echo $! > /tmp/sembr-pull.pid
 # Build the API image (Python base + Docker CLI apt + pip wheels via uv sync)
 docker compose build api > /tmp/sembr-build.log 2>&1 &
-BUILD_PID=$!
+echo $! > /tmp/sembr-build.pid
 ```
 
-Remember `$PULL_PID`, `$BUILD_PID`, **and `$SEMBR_DIR`**; you'll need all three in Phases 4–6. If you open a fresh shell (e.g. after a daemon restart in Phase 2), re-export `SEMBR_DIR` first.
+The PIDs go to `/tmp/sembr-*.pid` so Phase 5 can `wait` on them even if you've opened a fresh shell between phases (a daemon restart in Phase 2, a reconnect, etc.). Remember `$SEMBR_DIR` — re-export it after any shell restart.
 
 ### Tell user — parallel work begins now
 
@@ -456,9 +456,9 @@ fi
 
 **Tell user:**
 
-> "Locked sembr to loopback. The dashboard is NOT reachable on the internet yet — that's intentional. The next step (domain, TLS, reverse proxy, firewall) is **manual** and host-specific; auto-configuring it without knowing your domain or cloud provider would leak secrets. Open `public_install.md` — it's a step-by-step with examples for Caddy, nginx + certbot, and Cloudflare Tunnel. Come back to this guide after Phase 5 verifies `/health` over loopback; do the public-exposure work after that."
+> "Locked sembr to loopback and minted a 64-char `DASHBOARD_TOKEN`. The dashboard is NOT yet reachable on the internet — that's intentional. The next stretch (DNS, reverse proxy + TLS, compose-level port lockdown, firewall) needs your input on the domain and cloud provider, so I'm not going to guess. I'll switch to **`PUBLIC_INSTALL.md`** to walk through it; when those steps are done we come back here and finish Phase 5 → 6 normally."
 
-Do **not** continue past Phase 5 for branch C until the user has read `public_install.md` and applied at least the `DASHBOARD_TOKEN` + reverse-proxy steps. Phase 6's first-intent demo can still use `http://localhost:${PORT}` from this same machine.
+Now **branch into `PUBLIC_INSTALL.md` (Steps 1–5)** and complete it. When you return, `${SEMBR_DIR}/.env` is still set up for loopback + token, but the host now also has DNS pointing here, a reverse proxy listening on 443 (or a Cloudflare Tunnel), compose patched to bind the side services on loopback, ufw allowing only 22 / 80 / 443, and a recorded decision on the `docker.sock` mount. After `PUBLIC_INSTALL.md` returns, continue with Phase 5 below — Phase 5 includes a branch-C-specific external verification block.
 
 #### Apply the agent choice
 
@@ -496,8 +496,9 @@ If 'no' — proceed to Phase 5.
 
 ```bash
 # Wait for pull + build (started in Phase 3). If either failed, surface the log.
-wait $PULL_PID  || ( echo "pull failed:" && tail -30 /tmp/sembr-pull.log && exit 1 )
-wait $BUILD_PID || ( echo "build failed:" && tail -30 /tmp/sembr-build.log && exit 1 )
+# PIDs were persisted to /tmp by Phase 3 so this works across shell reconnects.
+wait $(cat /tmp/sembr-pull.pid)  || ( echo "pull failed:" && tail -30 /tmp/sembr-pull.log && exit 1 )
+wait $(cat /tmp/sembr-build.pid) || ( echo "build failed:" && tail -30 /tmp/sembr-build.log && exit 1 )
 ```
 
 **On failure during pull/build:** read the tail of the log, surface the salient error to the user, and ask whether to retry or abort. Common: transient network → retry usually works; `apt-get` mirror down inside Dockerfile → retry in 5 min.
@@ -541,6 +542,51 @@ Surface the error to the user, ask for a corrected key, re-run Phase 4 for the k
 
 **On the loop exiting without 200:** print `docker compose ps` + `docker compose logs --tail=50 api`; surface to user.
 
+### Branch C only — external verification
+
+Skip this block for branches A and B.
+
+The reverse proxy and ufw were set up in `PUBLIC_INSTALL.md` before the stack came up. Now that sembr is running on loopback, confirm that **(1)** the proxy forwards `${DOMAIN}` traffic to it, **(2)** the gated paths actually 401 without a token, and **(3)** the non-public ports stay unreachable.
+
+```bash
+DOMAIN="${DOMAIN:-<from PUBLIC_INSTALL.md Step 1.2>}"
+TOKEN=$(grep -E '^DASHBOARD_TOKEN=' "${SEMBR_DIR}/.env" | cut -d= -f2)
+
+echo "→ https://${DOMAIN}/health  (expect 200, no auth)"
+curl -sI -m 10 "https://${DOMAIN}/health" | head -1
+
+echo "→ https://${DOMAIN}/intents  (no token: expect 401)"
+curl -sI -m 10 "https://${DOMAIN}/intents" | head -1
+
+echo "→ https://${DOMAIN}/intents  (wrong token: expect 401)"
+curl -sI -m 10 -H "X-Dashboard-Token: wrong" "https://${DOMAIN}/intents" | head -1
+
+echo "→ https://${DOMAIN}/intents  (correct token: expect 200)"
+curl -sI -m 10 -H "X-Dashboard-Token: ${TOKEN}" "https://${DOMAIN}/intents" | head -1
+
+# Probe the ports that MUST NOT be open from outside. curl is everywhere; nmap is optional.
+# Each line should print "✓ closed" (timeout or refused). If you see "✗ OPEN" anywhere, stop
+# and re-check PUBLIC_INSTALL.md Step 2 (compose port lockdown).
+echo "→ external port probes via ${DOMAIN}"
+for port in 8000 6333 6334 1200; do
+  if curl -m 4 -sf "http://${DOMAIN}:${port}/" -o /dev/null 2>&1; then
+    echo "  ✗ port ${port} ANSWERED — exposure leak; fix before letting anyone hit ${DOMAIN}"
+  else
+    echo "  ✓ port ${port} closed"
+  fi
+done
+```
+
+**Pass conditions (all must hold):**
+- `/health` → 200
+- `/intents` without / wrong token → 401
+- `/intents` with the correct token → 200
+- All four non-public ports (8000 / 6333 / 6334 / 1200) → closed
+
+**On failure — any of the must-be-closed ports answered:** sembr is exposed beyond the reverse proxy. Most likely causes: `PUBLIC_INSTALL.md` Step 2's sed didn't match (custom compose indent), or `SEMBR_BIND_ADDR` isn't `127.0.0.1`. Inspect `docker-compose.yml` and `.env`, fix, then `docker compose up -d --force-recreate api qdrant rsshub` and re-probe.
+
+(If `nmap` is installed on the user's laptop, an off-VM `nmap -p 80,443,8000,6333,6334,1200,22 ${DOMAIN}` from a different network is the gold-standard check — curl from the same VM goes out and comes back, which is close to but not identical to a stranger's request.)
+
 ---
 
 ## Phase 6 — First intent (recommended)
@@ -558,21 +604,35 @@ INTENT_TEXT='<user brief>'
 RECIPIENT='<user email>'
 TZ='<system tz>'
 PORT=${PORT:-8000}
+TOKEN=$(grep -E '^DASHBOARD_TOKEN=' "${SEMBR_DIR}/.env" | cut -d= -f2)
+
+# Build the body with `jq -n --arg` so quotes / backslashes / newlines in
+# INTENT_TEXT can't break out of the JSON string (natural-language intents
+# occasionally contain double quotes — don't string-interpolate into JSON).
+BODY=$(jq -n \
+  --arg name "first" \
+  --arg text "${INTENT_TEXT}" \
+  --arg tz "${TZ}" \
+  --arg recipient "${RECIPIENT}" \
+  '{
+     name: $name,
+     text: $text,
+     timezone: $tz,
+     schedule: {mode: "cron", preset: "daily", hour: 9, minute: 0},
+     channels: [{type: "email", to: [$recipient]}]
+   }')
 
 curl -X POST "http://localhost:${PORT}/intents" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"name\": \"first\",
-    \"text\": \"${INTENT_TEXT}\",
-    \"timezone\": \"${TZ}\",
-    \"schedule\": {\"mode\": \"cron\", \"preset\": \"daily\", \"hour\": 9, \"minute\": 0},
-    \"channels\": [{\"type\": \"email\", \"to\": [\"${RECIPIENT}\"]}]
-  }"
+  ${TOKEN:+-H "X-Dashboard-Token: ${TOKEN}"} \
+  -d "${BODY}"
 ```
 
 Expected response: HTTP 201 with the created intent's JSON, including its assigned `id`.
 
-If the user didn't configure SMTP, skip the `channels` field or use `[]` so the intent stores but won't try to email — the user can edit channels later via the dashboard.
+If the user didn't configure SMTP, drop `channels` from the `jq` template (or pass `[]`) so the intent stores but won't try to email — the user can edit channels later via the dashboard.
+
+If `jq` isn't installed (`command -v jq || sudo apt-get install -y jq`) — just install it; it's a tiny dependency and you'll want it for any future API plumbing.
 
 ---
 
@@ -613,8 +673,8 @@ Then **tell user** — relay only the bullets that match their Phase 4 access-mo
 
 **Branch C (public, after they finish the manual reverse-proxy work):**
 > > - From this machine for testing: http://localhost:${PORT}/dashboard (loopback-only binding — won't work from elsewhere yet)
-> > - Public URL: https://your-domain.com/dashboard ← only after you complete `public_install.md`
-> > - Don't proceed without setting up the reverse proxy + TLS + DASHBOARD_TOKEN as that guide walks through.
+> > - Public URL: https://${DOMAIN}/dashboard ← live now that `PUBLIC_INSTALL.md` Steps 1–5 are done and the stack is up
+> > - The branch-C external verification (below) confirms 8000 / 6333 / 6334 / 1200 are NOT reachable from outside.
 
 > **Common to all three:**
 > - Health probe: http://localhost:${PORT}/health (this stays loopback-friendly even in branch C)
@@ -652,7 +712,7 @@ Use this if any phase fails or the user reports a problem later.
 - **Don't** modify code under `sembr/` or rewrite `docker-compose.yml`. This is the user's deployment, not a dev install. Configuration belongs in `.env` and runtime overrides — never in committed code.
 - **Don't** install Python packages, run `uv sync`, or run `pytest` on the host. Everything runs inside Docker.
 - **Don't** run `git pull` after the initial clone. Leave the user at the launch tag.
-- **Don't** publish or expose the dashboard to the public internet without setting `DASHBOARD_TOKEN` and reading `public_install.md`. The dashboard editor is effectively root on the host via the Docker socket mount.
+- **Don't** publish or expose the dashboard to the public internet without setting `DASHBOARD_TOKEN` and running through `PUBLIC_INSTALL.md`. The dashboard editor is effectively root on the host via the Docker socket mount (which `PUBLIC_INSTALL.md` Step 5 will offer to disable).
 - **Don't** commit the user's `.env` to any repo. It contains their API keys.
 - **Don't** delete `${SEMBR_DIR}/data/` to "clean up" — that's where the SQLite DB and Qdrant vectors live. Confirm before any destructive operation.
 - **Don't** invent endpoints or env vars that aren't in `.env.example` / the docs. If a setting isn't documented, surface that to the user rather than guessing.

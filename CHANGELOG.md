@@ -108,9 +108,16 @@ LLM-analyzed digests to your inbox on whatever schedule you set.
     side-effect, returns matches + LLM summary). Copy the folder into
     `~/.claude/skills/sembr/` for auto-loading, or hand the agent the
     `SKILL.md` directly.
-  - `agent/public_install.md` — agent-driven public-exposure
-    walkthrough (counterpart of operator-facing
-    `docs/deployment/public.md`).
+  - `agent/PUBLIC_INSTALL.md` — agent-driven public-exposure
+    sub-flow, invoked as a branch from `INSTALL.md` Phase 4 option C
+    (DNS, compose-level port lockdown for qdrant/rsshub, reverse proxy
+    + TLS, ufw, docker.sock decision). Returns control to `INSTALL.md`
+    Phase 5 which carries a branch-C-specific external-verification
+    block. Counterpart of operator-facing `docs/deployment/public.md`,
+    but scoped to "no attacker comes in through a sembr-exposed
+    surface" — generic VM hygiene (SSH hardening, OS patching,
+    backups) stays out of scope and is surfaced as a Tell-user
+    pointer.
   Closes the loop: deploy sembr with an agent, then have agents call
   into it.
 - **Public-deployment guide** — `docs/deployment/public.md` with reverse-
