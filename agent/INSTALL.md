@@ -155,11 +155,14 @@ docker compose version                          # confirm the plugin reports v2.
 ```
 
 **On failure — Docker daemon not running:**
+
 - macOS → tell user to launch Docker Desktop from /Applications
-- Linux → `sudo systemctl start docker` (ask first)
+- Linux (systemd) → `sudo systemctl start docker` (ask first)
+- Linux (no systemd — WSL2, container, minimal VM) → `sudo dockerd &` then `sleep 2`. All subsequent `docker` / `docker compose` commands in this guide need `sudo`. Tell the user: "This environment has no systemd — I started dockerd in the background and will use `sudo docker compose` for the rest of the install. The install works the same, just the spelling is different."
 
 **On failure — user not in `docker` group (Linux only):**
-- `sudo usermod -aG docker $USER` and tell user they need to **log out and back in** for the group membership to apply. Re-run Phase 2 after re-login.
+
+- `sudo usermod -aG docker $USER`. Group membership won't apply until next login, but the user does NOT need to stop and re-login — simply **prefix every `docker` / `docker compose` command with `sudo`** for the rest of this install. Tell the user: "Added you to the docker group (takes effect next login). Until then I'll use `sudo docker compose` — the install works identically." The next time the user logs in, `sudo` won't be needed anymore.
 
 ---
 
@@ -389,10 +392,12 @@ This decision must be made **before** Phase 5 starts the stack, because it contr
 > | **B. LAN** (the current default) | You + anyone on your Wi-Fi / office LAN | Home server, lab box, workstation on a network you trust |
 > | **C. Public internet** | Anyone, via your domain through a reverse proxy with TLS | You're on a VPS / cloud VM with a public IP and a domain |
 >
-> Orthogonally — will you also drive sembr from an **AI agent** (Claude Code, Cursor, a custom script) instead of, or alongside, the web dashboard?"
+> ⚠️ **Heads-up for option C:** Cloudflare Tunnel (and trycloudflare) terminate idle SSE connections after ~100 s. The dashboard **Logs** tab streams live logs via SSE, so it will silently stop updating through Cloudflare. Caddy and nginx do not have this limit — pick those if real-time logs matter to you. Everything else (intent/feed CRUD, fire, settings) works fine on all options."
+>
+> Separately — once I'm done installing, do you want to keep driving sembr through me (or another AI agent like Cursor, a custom script), or only through the web dashboard?"
 
 **Ask user (single-select on binding):** "Pick A / B / C. Default A if unsure — you can always reopen later."
-**Ask user (yes/no on agent):** "Agent-driven access too?"
+**Ask user (yes/no on agent):** "And after install, will you want agent-driven access — i.e. keep working with me (or another agent) on sembr, or just use the web dashboard?"
 
 #### Apply the binding choice
 
@@ -464,6 +469,8 @@ Now **branch into `PUBLIC_INSTALL.md` (Steps 1–5)** and complete it. When you 
 
 If user said **yes** to agent-driven access:
 
+**Agent — mint a token if none exists:**
+
 ```bash
 cd "${SEMBR_DIR}"
 # Agents call /api/* with X-Dashboard-Token header. An empty token means
@@ -476,11 +483,29 @@ if ! grep -qE '^DASHBOARD_TOKEN=.+' .env; then
 fi
 ```
 
-**Tell user:**
+**Agent — install the skill bundle for yourself:**
 
-> "The repo ships an Agent Skills bundle at `${SEMBR_DIR}/agent/sembr/` (`SKILL.md` plus `references/{endpoints,schemas,recipes,errors}.md`) that teaches an AI agent to drive sembr's HTTP API — auth, intent/feed/fire/external-fire endpoints, request schemas, copy-pasteable curl + Python examples. Two ways to use it: (a) copy the whole `agent/sembr/` folder into your agent's skills directory (`~/.claude/skills/sembr/` for Claude Code) so it loads automatically, or (b) hand `${SEMBR_DIR}/agent/sembr/SKILL.md` directly to whichever agent will be working with sembr."
+You are an AI agent. The repo ships a skill bundle at `${SEMBR_DIR}/agent/sembr/` — `SKILL.md` plus `references/{endpoints,schemas,recipes,errors}.md` — that teaches an AI agent to drive sembr's HTTP API. Detect your own platform and copy the bundle to your platform's skills directory so you (and any other agent on the same platform) can operate sembr after the install.
 
-If user said **no**, skip the skill pointer — they can find it later.
+Common destinations (all follow the `~/.<platform>/skills/sembr/` convention):
+- **Claude Code**: `~/.claude/skills/sembr/`
+- **Cursor**: `~/.cursor/skills/sembr/`
+- **OpenClaw**: `~/.openclaw/skills/sembr/`
+- **Hermes**: `~/.hermes/skills/sembr/`
+- **Generic / custom agent**: copy the folder to wherever your platform loads skill bundles from
+
+```bash
+# Example for Claude Code (detect first, then adapt):
+mkdir -p ~/.claude/skills
+cp -r "${SEMBR_DIR}/agent/sembr" ~/.claude/skills/sembr
+echo "installed to ~/.claude/skills/sembr/"
+```
+
+**If you can't determine your platform's skills directory**, don't guess — tell the user where the bundle is and let them install it manually:
+
+> "The sembr agent skill bundle is at `${SEMBR_DIR}/agent/sembr/`. Copy that folder into your agent's skills directory — for Claude Code that's `~/.claude/skills/sembr/`, for Cursor `~/.cursor/skills/sembr/`. After copying, your agent can drive sembr's HTTP API directly."
+
+If user said **no**, skip both — they can find the skill bundle later at `${SEMBR_DIR}/agent/sembr/`.
 
 ### Ask user — anything else they want
 
@@ -546,6 +571,22 @@ Surface the error to the user, ask for a corrected key, re-run Phase 4 for the k
 
 Skip this block for branches A and B.
 
+If the user picked **trycloudflare** in `PUBLIC_INSTALL.md` Step 1.2, start the tunnel now (the stack is up and `/health` is green):
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:${PORT} > /tmp/sembr-cf-tunnel.log 2>&1 &
+sleep 3
+TUNNEL_URL=$(grep -oP 'https://[-\w]+\.trycloudflare\.com' /tmp/sembr-cf-tunnel.log | head -1)
+echo "tunnel URL: ${TUNNEL_URL}"
+
+# Quick sanity: the tunnel must proxy /health
+curl -s "https://${TUNNEL_URL}/health" && echo " ✓ tunnel working"
+```
+
+**Pass condition:** `/health` returns 200 through the tunnel URL. No port probes needed — Cloudflare's edge only exposes 443, and the tunnel is an outbound connection from this VM.
+
+If the user picked a **real domain** (Caddy / nginx / Cloudflare Tunnel proper), run the full verification below.
+
 The reverse proxy and ufw were set up in `PUBLIC_INSTALL.md` before the stack came up. Now that sembr is running on loopback, confirm that **(1)** the proxy forwards `${DOMAIN}` traffic to it, **(2)** the gated paths actually 401 without a token, and **(3)** the non-public ports stay unreachable.
 
 ```bash
@@ -578,10 +619,8 @@ done
 ```
 
 **Pass conditions (all must hold):**
-- `/health` → 200
-- `/intents` without / wrong token → 401
-- `/intents` with the correct token → 200
-- All four non-public ports (8000 / 6333 / 6334 / 1200) → closed
+- **trycloudflare**: `/health` through the tunnel URL → 200.
+- **Domain-based**: `/health` → 200, `/intents` without / wrong token → 401, `/intents` with correct token → 200, all four non-public ports (8000 / 6333 / 6334 / 1200) → closed.
 
 **On failure — any of the must-be-closed ports answered:** sembr is exposed beyond the reverse proxy. Most likely causes: `PUBLIC_INSTALL.md` Step 2's sed didn't match (custom compose indent), or `SEMBR_BIND_ADDR` isn't `127.0.0.1`. Inspect `docker-compose.yml` and `.env`, fix, then `docker compose up -d --force-recreate api qdrant rsshub` and re-probe.
 

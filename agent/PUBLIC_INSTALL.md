@@ -63,9 +63,40 @@ ss -ltn | awk '$4 ~ /:(80|443)$/'
 
 **Ask user:**
 
-> "What domain (or subdomain) should sembr live at? Example: `sembr.your-domain.com`. I'll need this for the TLS certificate. If you don't have one yet, you can register one in 10 minutes at Cloudflare / Namecheap / Porkbun. Paste the domain when ready."
+> "What domain (or subdomain) should sembr live at? Example: `sembr.your-domain.com`. I'll need this for the TLS certificate.
+>
+> If you don't have one yet, two paths:
+> - **Register one** in 10 minutes at Cloudflare / Namecheap / Porkbun, or
+> - **trycloudflare** — instant, zero registration. I'll install `cloudflared` and create an ephemeral tunnel; you'll get a URL like `https://xyz.trycloudflare.com` that works immediately. TLS is handled by Cloudflare's edge; no reverse proxy or firewall setup needed. The URL changes if the tunnel restarts, but you can graduate to a proper domain + option C later. ⚠️ **SSE not supported** — the dashboard Logs tab (live log streaming) won't work through trycloudflare; everything else does."
 
-Store as `${DOMAIN}`.
+Store as `${DOMAIN}`. If the user said **"trycloudflare"**:
+
+- This is an ephemeral preview — the URL changes on tunnel restart, but it's zero-setup.
+- Install `cloudflared`. Steps 2–4 (compose port lockdown, reverse proxy, ufw) are unnecessary — Cloudflare handles TLS at the edge, and the tunnel is an outbound connection from this VM.
+- **Do run Step 5** (docker.sock mount decision). Public exposure amplifies the blast radius of the Docker socket regardless of how traffic reaches the container. The user should be offered the choice to disable the restart button.
+- After Step 5, skip to "Done — return to INSTALL.md Phase 5."
+- After `INSTALL.md` Phase 5 brings the stack up and `/health` is 200, start the tunnel:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:${PORT} > /tmp/sembr-cf-tunnel.log 2>&1 &
+sleep 3
+TUNNEL_URL=$(grep -oP 'https://[-\w]+\.trycloudflare\.com' /tmp/sembr-cf-tunnel.log | head -1)
+echo "Public URL: ${TUNNEL_URL}"
+```
+
+Tell the user:
+> "sembr is reachable at **${TUNNEL_URL}**. This URL is ephemeral — it changes if the tunnel process restarts. To make it permanent later, re-run this guide with a domain and pick option C (Cloudflare Tunnel)."
+
+Cloudflared install (same as Step 3.C, run this before returning):
+
+```bash
+curl -L https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared focal main' \
+  | sudo tee /etc/apt/sources.list.d/cloudflared.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y cloudflared
+cloudflared --version
+```
 
 **Agent — verify DNS A record points here:**
 
@@ -115,7 +146,7 @@ Loop `getent hosts "${DOMAIN}"` every 30 s for up to 30 min until the result mat
 > | --- | --- | --- |
 > | **A. Caddy** (recommended) | First-time deployments; no certbot machinery | Caddy handles Let's Encrypt automatically; one ~15-line `Caddyfile` |
 > | **B. nginx + certbot** | You already run nginx, or want to integrate with an existing nginx config | More steps, more knobs; well-trodden |
-> | **C. Cloudflare Tunnel** | You want **no inbound port open** on the VM (deny-all firewall + SSH only); fine with Cloudflare being in front | Requires a Cloudflare account; CF terminates TLS, not you |
+> | **C. Cloudflare Tunnel** | You want **no inbound port open** on the VM (deny-all firewall + SSH only); fine with Cloudflare being in front | Requires a Cloudflare account; CF terminates TLS, not you. ⚠️ **Cloudflare terminates idle SSE connections after ~100 s — the dashboard Logs tab (live log streaming) will stop updating.** Everything else works. |
 >
 > Default: **A**. Pick A unless you have a specific reason."
 

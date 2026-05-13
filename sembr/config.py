@@ -191,6 +191,21 @@ class Settings(BaseSettings):
         description="How often (hours) to run background cleanup jobs.",
     )
 
+    sembr_bind_addr: str = Field(
+        default="0.0.0.0",
+        description=(
+            "IP address the API container binds to. 0.0.0.0 = reachable from "
+            "any device on the LAN; 127.0.0.1 = localhost only (use when "
+            "behind a reverse proxy or for agent-only setups)."
+        ),
+    )
+    sembr_host_port: int = Field(
+        default=8000,
+        ge=1,
+        le=65535,
+        description="Host port mapped to the API container. Change if 8000 is already in use.",
+    )
+
     lifespan_shutdown_timeout: float = Field(
         default=8.0,
         description="Max seconds for graceful shutdown before forcing exit. Keep below Docker's stop timeout (~10s).",
