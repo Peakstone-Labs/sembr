@@ -1,7 +1,7 @@
 [project]
 name = "sembr"
 version = "1.0.0"
-description = "Reverse-RAG news monitoring: define an intent, receive matched news pushes."
+description = "Self-hosted intent radar — Reverse-RAG news monitoring with semantic intent matching across RSS, NewsAPI, and Twitter."
 readme = "README.md"
 requires-python = "==3.12.*"
 license = { text = "Apache-2.0" }

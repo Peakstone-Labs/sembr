@@ -28,7 +28,7 @@ Internal development & strategy docs are kept in a **private sibling repository*
 
 ## Project Overview
 
-**sembr** (semantic + embrace) is an open-source "Reverse RAG" news monitoring tool built by Peakstone-Labs. Unlike traditional RAG (where users query documents), sembr stores user intent vectors and continuously scans incoming news vectors for semantic matches, then pushes summary digests via email (with Telegram / Discord / Slack channels scaffolded by the marker-ABC plugin point for post-1.0 work).
+**sembr** (semantic + embrace) is an open-source self-hosted **intent radar** built on "Reverse RAG", from Peakstone-Labs. Unlike traditional RAG (where users query documents), sembr stores user intent vectors and continuously scans incoming articles across RSS / NewsAPI / Twitter for semantic matches, then pushes LLM-analyzed digests via email (with Telegram / Discord / Slack channels scaffolded by the marker-ABC plugin point for post-1.0 work).
 
 The core data flow: RSS feeds → BGE-M3 embeddings → Qdrant → intent vector ANN search → LLM summary → push notification.
 

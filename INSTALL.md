@@ -23,7 +23,7 @@ Execute the phases below in order. Each phase has four parts:
 
 **Consent before privileged action.** Never `sudo` or install system packages without surfacing exactly what you're about to do and getting the user's "ok". The user is in charge; you're the operator.
 
-**What sembr is** (for context — don't relay this unless asked): a self-hosted "Reverse RAG" news monitoring service. The user writes a natural-language *intent* once; sembr continuously pulls articles across RSS / NewsAPI / Twitter, vector-matches them to the intent, and emails an LLM-summarized digest on schedule. Apache-2.0, runs as Docker Compose.
+**What sembr is** (for context — don't relay this unless asked): a self-hosted **intent radar** built on "Reverse RAG". The user writes a natural-language *intent* once; sembr continuously scans RSS / NewsAPI / Twitter, vector-matches new articles to the intent, and emails an LLM-analyzed digest on schedule. Apache-2.0, runs as Docker Compose.
 
 ---
 

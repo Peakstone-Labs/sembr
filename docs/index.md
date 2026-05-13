@@ -1,8 +1,8 @@
 # sembr
 
-> Intent-driven news monitoring via Reverse RAG.
+> A self-hosted intent radar — Reverse-RAG matching across RSS, NewsAPI, and Twitter.
 
-**sembr** lets you write a natural-language intent once — *"monitor Fed policy impact on emerging-market currencies"* — and receive matching news as a digest email. No keyword lists, no hand-tuned filters. Telegram / Discord / Slack channels and a local LLM backend are scaffolded by the plugin seams and on the post-1.0 roadmap.
+**sembr** is a self-hosted intent radar. You describe what you care about once — *"monitor Fed policy impact on emerging-market currencies"* — and it continuously scans RSS feeds, news APIs, and social streams, matches articles to your intent via semantic vectors, and delivers LLM-analyzed digests from whatever angle you configure. No keyword lists, no hand-tuned filters. Telegram / Discord / Slack channels and a local LLM backend are scaffolded by the plugin seams and on the post-1.0 roadmap.
 
 ## How it works
 

@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - TBD
 
-Initial public release of **sembr** — semantic news monitoring via reverse RAG.
-You write a natural-language intent once, sembr scans incoming articles, scores
-them against the intent vector, and pushes matched-story digests to your inbox.
+Initial public release of **sembr** — a self-hosted intent radar built on
+Reverse RAG. Write a natural-language intent once; sembr continuously scans
+RSS / NewsAPI / Twitter, vector-matches new articles to the intent, and pushes
+LLM-analyzed digests to your inbox on whatever schedule you set.
 
 ### Added
 
