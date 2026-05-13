@@ -134,6 +134,8 @@ Sensitive values (`EMBEDDER_API_KEY`, `LLM_API_KEY`, `DASHBOARD_TOKEN`, SMTP cre
 
 Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WAL) · Qdrant 1.17 · httpx · BGE-M3 · DeepSeek-V4-Flash · Apache-2.0
 
+Runs comfortably on **4 GB RAM** (homelab / Mac mini / NAS / $10 VPS) — measured baseline is ~1 GB across the three containers at the default 53-source workload. Scale up `qdrant.mem_limit` to 4G+ if you ingest at the millions-of-articles tier.
+
 ## Status
 
 **v1.0** — first stable release. Ships RSS ingestion, BGE-M3 embeddings, Qdrant dual-collection, intent CRUD (cron + event), LLM-summarized digests, email channel, monitoring dashboard, runtime settings editor, and a hardened public-deployment guide.

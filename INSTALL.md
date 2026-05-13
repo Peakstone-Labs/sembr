@@ -62,7 +62,7 @@ curl -fsI -m 5 https://api.siliconflow.cn/v1/models >/dev/null && echo "siliconf
 - OS is `Linux` or `Darwin` (macOS); Windows must be running under WSL2 (`uname -s` will report `Linux`)
 - Arch is `x86_64` / `amd64` / `arm64` / `aarch64` — all are supported
 - Free disk under `$HOME` ≥ **4 GB**
-- Free RAM ≥ **4 GB** available, **8 GB total** preferred (Qdrant gets 4 GB limit, API gets 3 GB)
+- Free RAM ≥ **2 GB** available, **4 GB total** preferred. The default stack reserves ~1.5 GB at idle (api ~125 MiB + rsshub ~355 MiB + qdrant ~520 MiB measured) and is capped at ~4 GB total via docker-compose `mem_limit`. Heavy workloads (millions of articles, tens of concurrent intents) may want 8 GB+.
 - `siliconflow.cn` reachable
 
 **On failure:**

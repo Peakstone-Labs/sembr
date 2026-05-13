@@ -111,11 +111,14 @@ WAL mode (`journal_mode=WAL; synchronous=NORMAL; cache_size=-64000; busy_timeout
 
 The 1.0 source registry is a hardcoded `SOURCE_REGISTRY: dict[str, type[BaseSource]]` in `collector.scheduler` (currently `{"rss": RSSSource}`). The dashboard reads this dict to populate the create-feed form, so adding an HTTP/JSON source means subclassing `BaseSource` and registering in that dict — the form picks it up on the next dashboard page load. A `pyproject.toml` entry-points-driven plugin discovery layer is on the post-1.0 roadmap but does not exist today.
 
-## Docker Compose limits (16 GB M4 reference deployment)
+## Docker Compose memory limits
 
 ```yaml
-api:    mem_limit: 3g
-qdrant: mem_limit: 4g, mem_reservation: 2g
+api:    mem_limit: 1500m, mem_reservation: 512m
+qdrant: mem_limit: 2g,    mem_reservation: 1g
+rsshub: mem_limit: 512m
 ```
+
+Right-sized against live measurement (api ~125 MiB, rsshub ~355 MiB, qdrant ~520 MiB at the default 53-source workload — total ~1 GB in use). Each limit leaves ~4× headroom for cron-mode batch scans, concurrent LLM summarizer calls, and Qdrant ANN bursts. Raise `qdrant.mem_limit` to 4G+ if you ingest millions of articles; raise `api.mem_limit` to 3G if you run tens of intents with concurrent fire bursts.
 
 Qdrant stores quantized vectors in RAM (`always_ram=True`) and raw vectors on disk (`on_disk=True`) using INT8 scalar quantization. 10 M vectors at 1024-dim ≈ 600 MB RAM.

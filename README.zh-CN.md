@@ -134,6 +134,8 @@ curl -X POST http://localhost:8000/intents \
 
 Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WAL) · Qdrant 1.17 · httpx · BGE-M3 · DeepSeek-V4-Flash · Apache-2.0
 
+**4 GB 内存就能跑舒服**（homelab / Mac mini / NAS / $10 VPS）—— 默认 53 源工作负载下三个容器加起来约 1 GB 实测。如果你跑到几百万条向量量级，把 `qdrant.mem_limit` 调到 4G+。
+
 ## 状态
 
 **v1.0** —— 首个稳定版本。已经发布的能力：RSS 摄入、BGE-M3 embedding、Qdrant 双 collection、intent CRUD（cron + event）、LLM 总结的 email digest、监控 dashboard、运行时 settings 编辑器、公网部署加固指南。
