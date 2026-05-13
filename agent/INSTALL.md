@@ -156,13 +156,39 @@ docker compose version                          # confirm the plugin reports v2.
 
 **On failure — Docker daemon not running:**
 
-- macOS → tell user to launch Docker Desktop from /Applications
-- Linux (systemd) → `sudo systemctl start docker` (ask first)
-- Linux (no systemd — WSL2, container, minimal VM) → `sudo dockerd &` then `sleep 2`. All subsequent `docker` / `docker compose` commands in this guide need `sudo`. Tell the user: "This environment has no systemd — I started dockerd in the background and will use `sudo docker compose` for the rest of the install. The install works the same, just the spelling is different."
+- macOS → tell user to launch Docker Desktop from /Applications.
+- Linux (systemd) → `sudo systemctl start docker` (ask first).
+- Linux (no systemd — WSL2, container, minimal VM) → start dockerd in the background, then **poll** until it actually answers. Don't use a fixed `sleep` — dockerd cold-start on a slow VM can exceed any number you'd pick.
+
+  ```bash
+  sudo nohup dockerd > /tmp/dockerd.log 2>&1 &
+  disown
+  for i in $(seq 1 30); do
+    sudo docker info >/dev/null 2>&1 && break
+    sleep 1
+  done
+  sudo docker info >/dev/null 2>&1 || { echo "dockerd failed to start; see /tmp/dockerd.log"; exit 1; }
+  ```
+
+  Then set up the sudo-prefix convention (see below).
 
 **On failure — user not in `docker` group (Linux only):**
 
-- `sudo usermod -aG docker $USER`. Group membership won't apply until next login, but the user does NOT need to stop and re-login — simply **prefix every `docker` / `docker compose` command with `sudo`** for the rest of this install. Tell the user: "Added you to the docker group (takes effect next login). Until then I'll use `sudo docker compose` — the install works identically." The next time the user logs in, `sudo` won't be needed anymore.
+- `sudo usermod -aG docker $USER`. Group membership won't apply until next login, but the user does NOT need to stop and re-login — set up the sudo-prefix convention below.
+
+### sudo-prefix convention (used by both fallbacks above)
+
+If either fallback fires, every subsequent `docker` / `docker compose` command in Phases 3 / 5 / 6 must run with `sudo`. To make this mechanical, set a shell variable **once** here and use it everywhere:
+
+```bash
+# Default: no sudo needed (regular daemon, user in docker group).
+DC="docker compose"
+# If we just had to start dockerd manually OR the user isn't in the docker group yet:
+if ! docker info >/dev/null 2>&1; then DC="sudo docker compose"; fi
+echo "compose CLI: ${DC}"
+```
+
+**For the rest of this guide**, every `docker compose ...` command shown below is shorthand for `${DC} ...`. If the variable resolved to `sudo docker compose`, substitute accordingly — including the Phase 3 background pulls. **Tell the user:** "This environment needs `sudo` for `docker compose` for the rest of the install (no systemd, or you're not in the `docker` group yet). The install works identically; only the spelling differs."
 
 ---
 
@@ -483,29 +509,27 @@ if ! grep -qE '^DASHBOARD_TOKEN=.+' .env; then
 fi
 ```
 
-**Agent — install the skill bundle for yourself:**
+**Agent — install the skill bundle for yourself (if your platform supports it):**
 
-You are an AI agent. The repo ships a skill bundle at `${SEMBR_DIR}/agent/sembr/` — `SKILL.md` plus `references/{endpoints,schemas,recipes,errors}.md` — that teaches an AI agent to drive sembr's HTTP API. Detect your own platform and copy the bundle to your platform's skills directory so you (and any other agent on the same platform) can operate sembr after the install.
+The repo ships a skill bundle at `${SEMBR_DIR}/agent/sembr/` — `SKILL.md` plus `references/{endpoints,schemas,recipes,errors}.md` — that teaches an AI agent to drive sembr's HTTP API.
 
-Common destinations (all follow the `~/.<platform>/skills/sembr/` convention):
-- **Claude Code**: `~/.claude/skills/sembr/`
-- **Cursor**: `~/.cursor/skills/sembr/`
-- **OpenClaw**: `~/.openclaw/skills/sembr/`
-- **Hermes**: `~/.hermes/skills/sembr/`
-- **Generic / custom agent**: copy the folder to wherever your platform loads skill bundles from
+**Only one platform-specific path is verified to actually load skills from a known directory:**
+
+- **Claude Code** → `~/.claude/skills/sembr/`
+
+If you are Claude Code:
 
 ```bash
-# Example for Claude Code (detect first, then adapt):
 mkdir -p ~/.claude/skills
 cp -r "${SEMBR_DIR}/agent/sembr" ~/.claude/skills/sembr
 echo "installed to ~/.claude/skills/sembr/"
 ```
 
-**If you can't determine your platform's skills directory**, don't guess — tell the user where the bundle is and let them install it manually:
+**If you are any other platform** (Cursor, OpenClaw, Hermes, a custom agent, or anything else): don't guess at a path. Different agents load context differently — some have skills folders, some don't, the conventions vary. Tell the user instead:
 
-> "The sembr agent skill bundle is at `${SEMBR_DIR}/agent/sembr/`. Copy that folder into your agent's skills directory — for Claude Code that's `~/.claude/skills/sembr/`, for Cursor `~/.cursor/skills/sembr/`. After copying, your agent can drive sembr's HTTP API directly."
+> "The sembr agent skill bundle is at `${SEMBR_DIR}/agent/sembr/` (`SKILL.md` plus `references/`). I'm not certain where your agent platform loads skill bundles from, so I won't copy blindly. Either (a) consult your platform's docs and copy the folder there yourself, or (b) hand `${SEMBR_DIR}/agent/sembr/SKILL.md` directly to whichever agent will operate sembr."
 
-If user said **no**, skip both — they can find the skill bundle later at `${SEMBR_DIR}/agent/sembr/`.
+If user said **no** to agent-driven access, skip both — they can find the bundle at `${SEMBR_DIR}/agent/sembr/` whenever they want.
 
 ### Ask user — anything else they want
 
@@ -571,19 +595,44 @@ Surface the error to the user, ask for a corrected key, re-run Phase 4 for the k
 
 Skip this block for branches A and B.
 
-If the user picked **trycloudflare** in `PUBLIC_INSTALL.md` Step 1.2, start the tunnel now (the stack is up and `/health` is green):
+If the user picked **trycloudflare** in `PUBLIC_INSTALL.md` Step 1.2, start the tunnel now (the stack is up and `/health` is green).
+
+The tunnel process must survive the agent's SSH session ending — a bare `&` dies on SIGHUP. Use `nohup` + `disown` (no systemd needed, no extra dependency):
 
 ```bash
-cloudflared tunnel --url http://127.0.0.1:${PORT} > /tmp/sembr-cf-tunnel.log 2>&1 &
-sleep 3
-TUNNEL_URL=$(grep -oP 'https://[-\w]+\.trycloudflare\.com' /tmp/sembr-cf-tunnel.log | head -1)
+# Start the tunnel detached from this shell so it survives SSH disconnect.
+nohup cloudflared tunnel --url "http://127.0.0.1:${PORT}" \
+  > /tmp/sembr-cf-tunnel.log 2>&1 &
+CLOUDFLARED_PID=$!
+disown
+echo "${CLOUDFLARED_PID}" > /tmp/sembr-cf-tunnel.pid
+
+# cloudflared takes a few seconds (DNS, connect) before it prints the URL.
+# Poll the log for up to 30 s. -oE is portable (busybox / Alpine); avoid -oP.
+TUNNEL_URL=""
+for i in $(seq 1 30); do
+  TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' \
+    /tmp/sembr-cf-tunnel.log | head -1)
+  [ -n "${TUNNEL_URL}" ] && break
+  sleep 1
+done
+
+if [ -z "${TUNNEL_URL}" ]; then
+  echo "ERROR: tunnel URL did not appear within 30 s. Log tail:" >&2
+  tail -30 /tmp/sembr-cf-tunnel.log >&2
+  exit 1
+fi
 echo "tunnel URL: ${TUNNEL_URL}"
 
-# Quick sanity: the tunnel must proxy /health
-curl -s "https://${TUNNEL_URL}/health" && echo " ✓ tunnel working"
+# Sanity: the tunnel must proxy /health.
+curl -fsS -m 10 "${TUNNEL_URL}/health" && echo " ✓ tunnel working"
 ```
 
 **Pass condition:** `/health` returns 200 through the tunnel URL. No port probes needed — Cloudflare's edge only exposes 443, and the tunnel is an outbound connection from this VM.
+
+**Tell user:**
+
+> "sembr is reachable at **${TUNNEL_URL}**. The tunnel process (pid `${CLOUDFLARED_PID}`, logged to `/tmp/sembr-cf-tunnel.log`) is detached from my session, so it survives me disconnecting — but it does **not** restart on reboot. If the VM reboots, the URL changes. To make it permanent, re-run with a registered domain and pick option C (Cloudflare Tunnel proper) or B (Caddy / nginx)."
 
 If the user picked a **real domain** (Caddy / nginx / Cloudflare Tunnel proper), run the full verification below.
 

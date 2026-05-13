@@ -71,23 +71,14 @@ ss -ltn | awk '$4 ~ /:(80|443)$/'
 
 Store as `${DOMAIN}`. If the user said **"trycloudflare"**:
 
-- This is an ephemeral preview — the URL changes on tunnel restart, but it's zero-setup.
-- Install `cloudflared`. Steps 2–4 (compose port lockdown, reverse proxy, ufw) are unnecessary — Cloudflare handles TLS at the edge, and the tunnel is an outbound connection from this VM.
-- **Do run Step 5** (docker.sock mount decision). Public exposure amplifies the blast radius of the Docker socket regardless of how traffic reaches the container. The user should be offered the choice to disable the restart button.
-- After Step 5, skip to "Done — return to INSTALL.md Phase 5."
-- After `INSTALL.md` Phase 5 brings the stack up and `/health` is 200, start the tunnel:
+- Ephemeral preview — the URL changes on tunnel restart, but it's zero-setup.
+- **Do run Step 2 (mandatory).** The tunnel is just one inbound path; the VM still has a public IP (Step 1.1 confirmed it), and qdrant 6333 / 6334 and rsshub 1200 are still bound to `0.0.0.0` on that public IP regardless of how sembr traffic enters. Skipping Step 2 = those three ports remain world-reachable.
+- **Skip Step 3** (no reverse proxy needed; Cloudflare handles TLS at its edge).
+- **Skip Step 4** (no inbound 80 / 443 needed; tunnel is an outbound connection).
+- **Do run Step 5** (docker.sock decision). Public exposure amplifies the socket's blast radius regardless of how traffic reaches the container.
+- After Step 5, skip to "Done — return to INSTALL.md Phase 5." Phase 5's branch-C addendum starts the tunnel after the stack is up.
 
-```bash
-cloudflared tunnel --url http://127.0.0.1:${PORT} > /tmp/sembr-cf-tunnel.log 2>&1 &
-sleep 3
-TUNNEL_URL=$(grep -oP 'https://[-\w]+\.trycloudflare\.com' /tmp/sembr-cf-tunnel.log | head -1)
-echo "Public URL: ${TUNNEL_URL}"
-```
-
-Tell the user:
-> "sembr is reachable at **${TUNNEL_URL}**. This URL is ephemeral — it changes if the tunnel process restarts. To make it permanent later, re-run this guide with a domain and pick option C (Cloudflare Tunnel)."
-
-Cloudflared install (same as Step 3.C, run this before returning):
+Cloudflared install (do this now so it's ready when Phase 5 starts the tunnel):
 
 ```bash
 curl -L https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
