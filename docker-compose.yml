@@ -42,8 +42,12 @@ services:
       # cwd-based project name "app" instead of "sembr", and would create a
       # parallel set of containers rather than targeting sembr-rsshub.
       - COMPOSE_PROJECT_NAME=sembr
-    mem_limit: 3g
-    mem_reservation: 1g
+    # Limit right-sized 2026-05-13 against live Mac mini measurement
+    # (api baseline ~125 MiB; 4x headroom comfortably absorbs cron-mode
+    # batch scans + summarizer LLM calls). Raise back to 3g if you run
+    # tens of intents with concurrent fire bursts.
+    mem_limit: 1500m
+    mem_reservation: 512m
     restart: unless-stopped
 
   qdrant:
@@ -54,6 +58,10 @@ services:
       - "6334:6334"
     volumes:
       - ./data/qdrant:/qdrant/storage
-    mem_limit: 4g
-    mem_reservation: 2g
+    # Qdrant memory scales with vector count; baseline ~520 MiB at the
+    # default 53-source workload. 2g comfortably covers single-user installs
+    # up to ~30 M vectors with INT8 quantization. Raise to 4g+ if you ingest
+    # at scale (millions of articles or many high-cardinality intents).
+    mem_limit: 2g
+    mem_reservation: 1g
     restart: unless-stopped

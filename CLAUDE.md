@@ -167,12 +167,15 @@ sembr/
 
 Collections are named `news_{model}_{version}` (e.g., `news_bge-m3_v1`). The application accesses via alias `news_current`. On model upgrade: create new collection in parallel, re-embed in background via low-priority APScheduler job, then atomically switch alias. Every document payload and intent vector must include `embedding_model_version` field.
 
-### Docker Compose (16GB M4 limits)
+### Docker Compose memory limits
 
 ```yaml
-api:    memory limit 3G
-qdrant: memory limit 4G, reservation 2G
+api:    mem_limit 1.5G, reservation 512M
+qdrant: mem_limit 2G,   reservation 1G
+rsshub: mem_limit 512M
 ```
+
+Right-sized 2026-05-13 from live Mac mini measurement (api ~125 MiB, rsshub ~355 MiB, qdrant ~520 MiB; total ~1 GB at the default 53-source workload). Each limit leaves ~4x headroom for bursts. Raise `qdrant.mem_limit` to 4G+ at scale (millions of articles); raise `api.mem_limit` to 3G if you run tens of intents with concurrent fire bursts.
 
 Qdrant stores quantized vectors in RAM (`always_ram=True`) and raw vectors on disk (`on_disk=True`) using Scalar int8 quantization. 10M vectors at 1024-dim ≈ 600MB RAM.
 

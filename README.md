@@ -58,7 +58,9 @@ The flip is small but its implications are big. Queries become first-class entit
 
 ## Quickstart
 
-Requires Docker + Docker Compose. First run pulls Qdrant + RSSHub and builds the API image (Python 3.12 base + Docker CLI + pip wheels) — **about 1 GB total network download, 10–15 minutes on a typical home connection**. `/health` returns `503` until the embedder probe completes.
+**Got an AI coding agent on this machine?** (Claude Code / Cursor / Cline / Aider / Continue / Roo) — paste it the URL of [`INSTALL.md`](INSTALL.md). It'll handle hardware checks, dependency install, parallel Docker pulls, and `.env` setup; you'll only be asked for API keys.
+
+**Manual install** (everything below, ~15 min). Requires Docker + Docker Compose. First run pulls Qdrant + RSSHub and builds the API image (Python 3.12 base + Docker CLI + pip wheels) — **about 1 GB total network download, 10–15 minutes on a typical home connection**. `/health` returns `503` until the embedder probe completes.
 
 ```bash
 git clone https://github.com/Peakstone-Labs/sembr.git
@@ -129,6 +131,8 @@ Sensitive values (`EMBEDDER_API_KEY`, `LLM_API_KEY`, `DASHBOARD_TOKEN`, SMTP cre
 ## Tech stack
 
 Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WAL) · Qdrant 1.17 · httpx · BGE-M3 · DeepSeek-V4-Flash · Apache-2.0
+
+Runs comfortably on **4 GB RAM** (homelab / Mac mini / NAS / $10 VPS) — measured baseline is ~1 GB across the three containers at the default 53-source workload. Scale up `qdrant.mem_limit` to 4G+ if you ingest at the millions-of-articles tier.
 
 ## Status
 

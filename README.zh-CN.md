@@ -58,7 +58,9 @@
 
 ## 快速开始
 
-需要 Docker + Docker Compose。第一次跑会拉 Qdrant + RSSHub 然后构建 API 镜像（Python 3.12 base + Docker CLI + pip 依赖）—— **总网络下载约 1 GB，家庭网速 10–15 分钟**。embedder probe 通之前 `/health` 返回 `503`。
+**机器上有 AI coding agent？**（Claude Code / Cursor / Cline / Aider / Continue / Roo）—— 把 [`INSTALL.md`](INSTALL.md) 的 URL 丢给它。硬件自检、装依赖、并行拉镜像、写 `.env` 它全包，只在要 API key 的时候问你。
+
+**手动装**（下面这套，约 15 分钟）。需要 Docker + Docker Compose。第一次跑会拉 Qdrant + RSSHub 然后构建 API 镜像（Python 3.12 base + Docker CLI + pip 依赖）—— **总网络下载约 1 GB，家庭网速 10–15 分钟**。embedder probe 通之前 `/health` 返回 `503`。
 
 ```bash
 git clone https://github.com/Peakstone-Labs/sembr.git
@@ -129,6 +131,8 @@ curl -X POST http://localhost:8000/intents \
 ## 技术栈
 
 Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WAL) · Qdrant 1.17 · httpx · BGE-M3 · DeepSeek-V4-Flash · Apache-2.0
+
+**4 GB 内存就能跑舒服**（homelab / Mac mini / NAS / $10 VPS）—— 默认 53 源工作负载下三个容器加起来约 1 GB 实测。如果你跑到几百万条向量量级，把 `qdrant.mem_limit` 调到 4G+。
 
 ## 状态
 
