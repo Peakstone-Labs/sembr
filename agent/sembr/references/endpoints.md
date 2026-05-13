@@ -80,7 +80,7 @@ Async fire status payload (`GET /intents/{id}/fire/{task_id}`):
 
 | Method & path | Purpose |
 | --- | --- |
-| `POST /intents/translate` | Stateless one-shot translation via the summarizer LLM. Body: `{"text": "...", "target_language": "en"}` → `{"translated_text": "..."}`. Useful before creating an intent — translate the intent text into the operator's preferred language without persisting anything. |
+| `POST /intents/translate` | Stateless one-shot translation via the summarizer LLM. Body: `{"source_text": "...", "target_language": "en"}` (`source_text` ≤ 2000 chars) → `{"text": "..."}`. Useful before creating an intent — translate the intent text into the operator's preferred language without persisting anything. `502` if the LLM call fails; `503` if the backend isn't ready yet. |
 
 `target_language` accepts values matching `[A-Za-z][A-Za-z0-9_\- ]*` (e.g. `"en"`, `"zh"`, `"Japanese"`).
 
@@ -93,8 +93,8 @@ Async fire status payload (`GET /intents/{id}/fire/{task_id}`):
 | `POST /api/settings/save` | Write back to `.env`. **Can trigger a process restart** (lifespan SIGTERMs itself when secret env vars change). Require explicit operator consent. |
 | `GET /api/prompts/templates` | List template names by kind (`system` / `instruction`). Use the returned names in `IntentCreate.system_template` / `instruction_template`. |
 | `GET /api/prompts/templates/{kind}/{name}` | Full template detail (name, kind, body). |
-| `POST /api/prompts/templates/{kind}/{name}` | Create or overwrite a template. Body: `{"body": "..."}`. |
-| `PUT /api/prompts/templates/{kind}/{name}` | Update template body (overwrite). |
+| `POST /api/prompts/templates/{kind}` | Create a new template by **cloning** an existing one (raw-content creation isn't supported here). Body: `{"name": "<new-unique-name>", "source": "default"}`; `source` defaults to `"default"`, pass another template name to clone from it. Returns `201`. To set custom content, follow up with PUT. |
+| `PUT /api/prompts/templates/{kind}/{name}` | Overwrite template content (rejects builtin names with `403`). Body: `{"content": "<full Jinja2 template text>"}`. |
 | `DELETE /api/prompts/templates/{kind}/{name}` | Remove a template (204). |
 | `POST /api/prompts/templates/{kind}/{name}/rename` | Rename a template. Body: `{"new_name": "..."}`. |
 
