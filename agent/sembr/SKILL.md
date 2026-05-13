@@ -24,7 +24,7 @@ BASE = http://<host>:<port>           # default http://localhost:8000
   ```
   X-Dashboard-Token: <token>
   ```
-  Wrong/missing → 401. Empty `DASHBOARD_TOKEN` bypasses auth (local-dev only). Currently `/api/*` is gated; `/health`, `/intents`, `/feeds` are not — send the header anyway for forward-compat.
+  Wrong/missing → 401 on gated paths. Empty `DASHBOARD_TOKEN` bypasses auth (local-dev only). Send the header on every request even for paths that don't currently require it (`/health`, `/intents`, `/feeds`) — they will tighten in a future release.
 - Every POST/PUT/PATCH body is JSON. Set `Content-Type: application/json`.
 
 ## 3. Decision — which "fire" endpoint?

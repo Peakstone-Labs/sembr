@@ -11,7 +11,7 @@
 | `409` | Mode constraint — e.g. firing `/api/external/.../fire` on an **event-mode** intent | Either change the intent's `schedule.mode`, or use a different endpoint. Don't retry. |
 | `422` | Pydantic validation (including `extra="forbid"` on `ExternalFireRequest`) | Read `detail[].loc` and `detail[].msg` — the offending field is named explicitly. |
 | `429` | Rate-limited (fire endpoints: 1 / intent or feed / 60 s) | Sleep ≥60 s; check `Retry-After` if present. |
-| `500` | sembr-side error | Surface to the operator with the raw `detail` (already scrubbed of paths / URLs / tracebacks on the external surface). |
+| `500` | sembr-side error | The `detail` string on external endpoints is already scrubbed (no paths/URLs/tracebacks). Surface it to the operator; for full diagnostics check `docker compose logs api`. |
 | `503` | `/health` only: embedder probe still warming | Sleep 30 s and retry. |
 
 ## Response body shapes

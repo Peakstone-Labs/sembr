@@ -34,7 +34,7 @@ The "test what this intent would match right now" surface. Pick by side-effect p
 
 | Method & path | Sync? | Notifier? | Writes `match_seen`? | Mode constraint | Rate limit |
 | --- | --- | --- | --- | --- | --- |
-| `POST /intents/{id}/fire?lookback=86400&skip_seen=true&threshold=0.75` | No (`202 {task_id, status_url}`; poll `GET /intents/{id}/fire/{task_id}`) | **Yes** | No (both fire paths skip `match_seen` writes) | cron-mode only (event → 409) | 1 / intent / 60 s |
+| `POST /intents/{id}/fire?lookback=86400&skip_seen=true&threshold=0.60` | No (`202 {task_id, status_url}`; poll `GET /intents/{id}/fire/{task_id}`) | **Yes** | No (both fire paths skip `match_seen` writes) | cron-mode only (event → 409) | 1 / intent / 60 s |
 | `POST /api/external/intents/{id}/fire` (body: `ExternalFireRequest`) | **Yes** — matches + LLM summary in the response | **No** (designed for agents) | No | cron-mode only (event → 409) | 1 / intent / 60 s |
 | `POST /feeds/{id}/fire?dry_run=true` | No (`202 {task_id}`; poll `GET /feeds/{id}/fire/{task_id}`) | n/a | `dry_run=true` → no DB writes | n/a | 1 / feed / 60 s |
 
@@ -76,12 +76,26 @@ Async fire status payload (`GET /intents/{id}/fire/{task_id}`):
 }
 ```
 
+## Translate (agent utility)
+
+| Method & path | Purpose |
+| --- | --- |
+| `POST /intents/translate` | Stateless one-shot translation via the summarizer LLM. Body: `{"text": "...", "target_language": "en"}` → `{"translated_text": "..."}`. Useful before creating an intent — translate the intent text into the operator's preferred language without persisting anything. |
+
+`target_language` accepts values matching `[A-Za-z][A-Za-z0-9_\- ]*` (e.g. `"en"`, `"zh"`, `"Japanese"`).
+
 ## Templates and settings (read freely; mutate with care)
 
 | Method & path | Purpose |
 | --- | --- |
 | `GET /api/settings/schema` | What env vars are tunable, their types and ranges. **Read this before suggesting any `.env` change** — the schema is authoritative. |
 | `GET /api/settings/values` | Current values (sensitive ones masked). |
-| `GET /api/prompts/templates` | List system + instruction prompt templates by name. Use the returned names in `IntentCreate.system_template` / `instruction_template`. |
 | `POST /api/settings/save` | Write back to `.env`. **Can trigger a process restart** (lifespan SIGTERMs itself when secret env vars change). Require explicit operator consent. |
-| `POST/PUT/DELETE /api/prompts/templates/...` | Template CRUD. Edits take effect on the next scheduler tick. |
+| `GET /api/prompts/templates` | List template names by kind (`system` / `instruction`). Use the returned names in `IntentCreate.system_template` / `instruction_template`. |
+| `GET /api/prompts/templates/{kind}/{name}` | Full template detail (name, kind, body). |
+| `POST /api/prompts/templates/{kind}/{name}` | Create or overwrite a template. Body: `{"body": "..."}`. |
+| `PUT /api/prompts/templates/{kind}/{name}` | Update template body (overwrite). |
+| `DELETE /api/prompts/templates/{kind}/{name}` | Remove a template (204). |
+| `POST /api/prompts/templates/{kind}/{name}/rename` | Rename a template. Body: `{"new_name": "..."}`. |
+
+Template edits take effect on the next scheduler tick.

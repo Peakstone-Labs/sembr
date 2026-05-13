@@ -31,7 +31,7 @@ curl -s "${BASE}/intents" "${H_TOKEN[@]}" | jq '.[] | {id, name, enabled, thresh
 curl -s -X POST "${BASE}/intents" "${H_JSON[@]}" "${H_TOKEN[@]}" -d '{
   "name": "openai-anthropic-releases",
   "text": "OpenAI, Anthropic, and DeepMind product launches and benchmark releases.",
-  "threshold": 0.75,
+  "threshold": 0.60,
   "channels": [{"type":"email","to":["you@example.com"]}],
   "schedule": {"mode":"cron","preset":"daily","hour":9,"minute":0,"lookback_seconds":86400,"skip_seen":true},
   "timezone": "Asia/Shanghai",
@@ -59,26 +59,32 @@ No email, no `match_seen` writes, full response in one round-trip. Use this for 
 INTENT_ID=42
 curl -s -X POST "${BASE}/api/external/intents/${INTENT_ID}/fire" "${H_JSON[@]}" "${H_TOKEN[@]}" -d '{
   "lookback_seconds": 86400,
-  "threshold": 0.70,
+  "threshold": 0.55,
   "skip_seen": false,
   "feed_ids": null
 }' | jq '{match_count, top: .matches[:5] | map({title, score, feed_id}), summary_head: (.summary // "<none>" | .[0:240])}'
 ```
 
-**Tip — threshold tuning.** When unsure whether an intent catches what the operator wants, sync-fire with a slightly **lower** threshold (e.g. 0.65 instead of the stored 0.75) and report the *score distribution*, not just `match_count`. Lets the operator pick a threshold informed by real scores rather than guessing.
+**Tip — threshold tuning.** When unsure whether an intent catches what the operator wants, sync-fire with a slightly **lower** threshold (e.g. 0.55 instead of the stored 0.60) and report the *score distribution*, not just `match_count`. Lets the operator pick a threshold informed by real scores rather than guessing.
 
 ## Async fire — when the notifier SHOULD fire
 
 ```bash
 TASK=$(curl -s -X POST "${BASE}/intents/${INTENT_ID}/fire?lookback=86400&skip_seen=true" "${H_TOKEN[@]}")
 TASK_ID=$(echo "${TASK}" | jq -r .task_id)
+if [ -z "${TASK_ID}" ] || [ "${TASK_ID}" = "null" ]; then
+  echo "ERROR: fire request failed — response was:" >&2
+  echo "${TASK}" | jq . >&2
+  exit 1
+fi
 
-while :; do
+for i in $(seq 1 120); do
   STATE=$(curl -s "${BASE}/intents/${INTENT_ID}/fire/${TASK_ID}" "${H_TOKEN[@]}")
   STATUS=$(echo "${STATE}" | jq -r .status)
   echo "task ${TASK_ID}: ${STATUS}"
   case "${STATUS}" in
     succeeded|failed|cancelled) break ;;
+    "") echo "WARN: empty response, retrying..." ;;
   esac
   sleep 3
 done
@@ -133,7 +139,7 @@ with httpx.Client(base_url=BASE, headers=HEADERS, timeout=30.0) as c:
     intent = _json(c.post("/intents", json={
         "name": "fed-em-currencies",
         "text": "US Federal Reserve policy moves that impact emerging-market currencies.",
-        "threshold": 0.72,
+        "threshold": 0.60,
         "channels": [{"type": "email", "to": ["analyst@example.com"]}],
         "schedule": {
             "mode": "cron", "preset": "daily", "hour": 7, "minute": 30,
@@ -147,7 +153,7 @@ with httpx.Client(base_url=BASE, headers=HEADERS, timeout=30.0) as c:
     # 3. Sync-fire to see what would match RIGHT NOW (no email side-effect)
     result = _json(c.post(f"/api/external/intents/{intent_id}/fire", json={
         "lookback_seconds": 86400,
-        "threshold": 0.70,           # slightly lower for the diagnostic run
+        "threshold": 0.55,           # slightly lower for the diagnostic run
         "skip_seen": False,
         "feed_ids": None,
     }))
@@ -159,9 +165,9 @@ with httpx.Client(base_url=BASE, headers=HEADERS, timeout=30.0) as c:
 
     # 4. Auto-tune: too few or too many matches → adjust stored threshold
     if result["match_count"] < 3:
-        _json(c.put(f"/intents/{intent_id}", json={"threshold": 0.68}))
+        _json(c.put(f"/intents/{intent_id}", json={"threshold": 0.60}))
     elif result["match_count"] > 50:
-        _json(c.put(f"/intents/{intent_id}", json={"threshold": 0.78}))
+        _json(c.put(f"/intents/{intent_id}", json={"threshold": 0.68}))
 
     # 5. Done — daily 07:30 NY-time cron takes over.
 ```

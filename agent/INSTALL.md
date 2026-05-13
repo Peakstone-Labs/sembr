@@ -1,6 +1,6 @@
 # sembr — Agent-Driven Install Guide
 
-> **This document is written for an AI coding agent** (Claude Code, Cursor, Cline, Aider, Continue, Roo, or similar) running on the user's machine with shell access. The user has handed you this URL with the intent: "install sembr for me."
+> **This document is written for an AI agent** (OpenClaw, Hermes or similar) running on the user's machine with shell access. The user has handed you this URL with the intent: "install sembr for me."
 >
 > A human can follow this guide too, but the structure — explicit phases, parallel work, "Tell user" / "Ask user" labels — is optimised for autonomous agent execution with minimal back-and-forth.
 

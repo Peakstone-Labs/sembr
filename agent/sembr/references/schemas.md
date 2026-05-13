@@ -10,8 +10,11 @@ Discriminated unions (`channels[].type`, `schedule.mode`) are where most agents 
 {
   "name": "openai-anthropic-releases",      // 1–100 chars; server enforces uniqueness
   "text": "OpenAI, Anthropic, and DeepMind product launches and benchmark releases. Exclude blog-only opinion pieces.",
-  "sub_texts": [],                          // optional; up to 3 multilingual phrasings, each {language, text}
-  "threshold": 0.75,                        // 0.60–0.95; lower = more permissive
+  "sub_texts": [                            // optional; up to 3 multilingual phrasings
+    {"language": "en", "text": "US Federal Reserve policy impact on emerging-market currencies."},
+    {"language": "zh", "text": "美联储政策对新兴市场货币的影响。"}
+  ],
+  "threshold": 0.60,                        // 0.60–0.95; lower = more permissive
   "enabled": true,
   "channels": [                             // 1–10 entries. 1.0 supports only "email".
     {
@@ -105,7 +108,7 @@ Requires `TWITTER_AUTH_TOKEN` set in `.env` on the host. `url` is the screen nam
 
 ## `ExternalFireRequest` (body for `POST /api/external/intents/{id}/fire`)
 
-Every field optional — omitted fields fall back to the intent's stored values. `extra="forbid"` → unknown fields are **422**.
+Every field optional — omitted fields fall back to the intent's stored values. **`extra="forbid"` → unknown fields are 422.** Do not invent extra fields; use only the four listed below.
 
 ```jsonc
 {
