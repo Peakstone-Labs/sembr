@@ -49,6 +49,10 @@ _PROTECTED_EXACT = frozenset(
 #   /api/dashboard/config — frontend calls it on first load to know whether
 #   auth is required and what poll interval to use.
 _AUTH_FREE_API_PATHS = frozenset({"/api/dashboard/config"})
+# Static assets the login page itself loads before the cookie is set. Without
+# these, an enabled DASHBOARD_TOKEN deployment would 302 the login page's own
+# CSS / favicon to /login.html, leaving the user staring at an un-styled page.
+_LOGIN_ASSETS = frozenset({"/dashboard/style.css", "/dashboard/favicon.svg"})
 
 
 class DashboardTokenMiddleware(BaseHTTPMiddleware):
@@ -71,6 +75,8 @@ class DashboardTokenMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if path == _LOGIN_PATH or path.startswith(_VENDOR_PREFIX):
+            return await call_next(request)
+        if path in _LOGIN_ASSETS:
             return await call_next(request)
         if path in _AUTH_FREE_API_PATHS:
             return await call_next(request)
