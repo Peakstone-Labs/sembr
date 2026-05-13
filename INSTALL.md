@@ -46,7 +46,9 @@ No question to ask — just set expectations.
 uname -s    # Linux | Darwin | Windows_NT (under WSL)
 uname -m    # x86_64 | arm64 | aarch64
 
-# Free disk under the install target (default: ~/sembr)
+# Free disk under the install target. Defaults to $HOME — if the user picks a
+# different SEMBR_DIR in Phase 3 (e.g. /srv/sembr, /data/...), re-check df
+# against that filesystem before kicking off the parallel pull/build.
 df -h ~ | tail -1
 
 # Available RAM (cross-platform best-effort)
@@ -54,8 +56,13 @@ df -h ~ | tail -1
  || ( command -v vm_stat >/dev/null && vm_stat | head -5 ) \
  || true
 
-# Network reachability for the default model provider
-curl -fsI -m 5 https://api.siliconflow.cn/v1/models >/dev/null && echo "siliconflow: ok" || echo "siliconflow: unreachable"
+# Network reachability for the default model provider.
+# NOTE: we have no API key yet, so any HTTP response (200 / 401 / 403) means
+# DNS + TLS + routing all work. Only "000" (curl could not get any response)
+# counts as unreachable. Do NOT use `curl -f` here — it treats 401 as failure
+# and produces a false negative against the unauthenticated /v1/models endpoint.
+code=$(curl -s -o /dev/null -m 5 -w "%{http_code}" https://api.siliconflow.cn/v1/models)
+[ "$code" != "000" ] && echo "siliconflow: reachable (HTTP $code)" || echo "siliconflow: unreachable"
 ```
 
 **Pass conditions:**
@@ -63,7 +70,7 @@ curl -fsI -m 5 https://api.siliconflow.cn/v1/models >/dev/null && echo "siliconf
 - Arch is `x86_64` / `amd64` / `arm64` / `aarch64` — all are supported
 - Free disk under `$HOME` ≥ **4 GB**
 - Free RAM ≥ **2 GB** available, **4 GB total** preferred. The default stack reserves ~1.5 GB at idle (api ~125 MiB + rsshub ~355 MiB + qdrant ~520 MiB measured) and is capped at ~4 GB total via docker-compose `mem_limit`. Heavy workloads (millions of articles, tens of concurrent intents) may want 8 GB+.
-- `siliconflow.cn` reachable
+- `siliconflow.cn` reachable (HTTP 200 / 401 / 403 all count — auth happens later in Phase 3)
 
 **On failure:**
 - Insufficient disk / RAM → stop. Tell user what's short and what's required.
@@ -89,18 +96,63 @@ docker info >/dev/null 2>&1 && echo "daemon: ok" || echo "daemon: not running"
 
 **On failure — Docker missing:**
 
+> ⚠️ **Critical: do NOT install the legacy `docker-compose` (v1) package.** It is unmaintained, conflicts with the v2 plugin syntax sembr's `docker-compose.yml` expects, and is no longer in Ubuntu 24.04+. sembr requires **Docker Compose v2** (`docker compose`, two words, plugin form). On Ubuntu / Debian this **only** comes from Docker's official apt repo — the distro's `docker.io` package does **not** bundle the compose plugin, and `apt install docker-compose-plugin` against the default sources will fail with "Unable to locate package". You must add `download.docker.com` first.
+
 | OS | Recommended install path |
 | --- | --- |
-| macOS (Apple Silicon or Intel) | Docker Desktop — `brew install --cask docker`, then launch the app once to grant permissions |
-| Ubuntu / Debian | `docker.io` + `docker-compose-plugin` via apt: `sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin`, then `sudo usermod -aG docker $USER` and have the user re-login |
-| Fedora / RHEL | `sudo dnf install -y docker docker-compose-plugin && sudo systemctl enable --now docker` |
-| Arch | `sudo pacman -S docker docker-compose` |
+| macOS (Apple Silicon or Intel) | Docker Desktop — `brew install --cask docker`, then launch the app once to grant permissions. Compose v2 ships inside Desktop. |
+| Ubuntu / Debian | Add Docker's official apt repo, then install `docker-ce` + `docker-compose-plugin`. Use the official one-liner below. |
+| Fedora / RHEL | `sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin && sudo systemctl enable --now docker` (after adding `docker-ce.repo` — see below) |
+| Arch | `sudo pacman -S docker docker-compose` (Arch's `docker-compose` package *is* v2 — exception to the rule above) |
+
+**Ubuntu / Debian — full sequence (run as one block after confirming with the user):**
+
+```bash
+# 1. Prereqs + GPG key for Docker's apt repo
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+# 2. Add the repo (auto-detects ubuntu vs debian and the codename)
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") \
+  $(. /etc/os-release; echo "$VERSION_CODENAME") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 3. Install Engine + CLI + Compose plugin (NOT the legacy docker-compose package)
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 4. Allow current user to talk to the daemon without sudo
+sudo usermod -aG docker $USER
+# User must log out + back in (or run `newgrp docker` in a new shell) for the group change to take effect.
+```
+
+**Fedora / RHEL — repo first:**
+
+```bash
+sudo dnf -y install dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo  # or .../rhel/...
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+```
 
 **Ask user** before running any `sudo` / `brew` command:
 
-> "Docker is not installed. I'd like to run: `<exact command>`. Proceed? (yes / no / I'll install it myself)"
+> "Docker is not installed. I'd like to run the official Docker apt-repo setup + install `docker-ce` and `docker-compose-plugin` (the v2 plugin form `docker compose`, NOT the deprecated v1 `docker-compose` binary). Exact commands shown above. Proceed? (yes / no / I'll install it myself)"
 
-If "no" or "I'll install it myself" — pause and tell the user how to install Docker themselves; wait for them to confirm it's running.
+If "no" or "I'll install it myself" — pause and tell the user how to install Docker themselves; wait for them to confirm it's running. **If they ask why not just `apt install docker.io docker-compose`**: docker.io lags upstream and `docker-compose` is v1 (Python, EOL'd 2023, syntax-incompatible with v2). sembr's compose file uses v2-only features.
+
+**If you (the agent) already installed legacy `docker-compose` by mistake**, undo it before continuing:
+
+```bash
+sudo apt-get remove -y docker-compose          # remove v1
+docker compose version                          # confirm the plugin reports v2.x
+```
 
 **On failure — Docker daemon not running:**
 - macOS → tell user to launch Docker Desktop from /Applications
@@ -113,31 +165,57 @@ If "no" or "I'll install it myself" — pause and tell the user how to install D
 
 ## Phase 3 — Clone, start parallel work, queue API-key fetch
 
+### Ask user — where to install
+
+**Ask user:** "Where should I install sembr? The default is `~/sembr`. Press enter / say 'default' to use it, or give me a different absolute path (e.g. `/srv/sembr`, `~/projects/sembr`, `/data/apps/sembr`). The directory will hold the source tree, `.env`, and — most importantly — `data/` with the SQLite DB and Qdrant vectors, so pick a disk with room to grow."
+
+Capture the answer into a shell variable that **persists for the rest of this guide**. Every subsequent shell command in Phases 3–6 that mentions `~/sembr` should be substituted with this path. Expand `~` yourself before storing (don't pass a literal `~` into commands that may run under contexts where it isn't expanded):
+
+```bash
+# Replace the right-hand side with the user's answer.
+# Examples:
+#   SEMBR_DIR="${HOME}/sembr"         # default
+#   SEMBR_DIR="/srv/sembr"            # explicit absolute path
+#   SEMBR_DIR="${HOME}/projects/sembr"
+SEMBR_DIR="${HOME}/sembr"
+
+# Sanity: must be absolute and the parent must exist and be writable.
+case "${SEMBR_DIR}" in
+  /*) : ;;
+  *) echo "ERROR: SEMBR_DIR must be an absolute path" >&2; exit 1 ;;
+esac
+PARENT=$(dirname "${SEMBR_DIR}")
+[ -d "${PARENT}" ] && [ -w "${PARENT}" ] || { echo "ERROR: ${PARENT} is not a writable directory" >&2; exit 1; }
+echo "install target: ${SEMBR_DIR}"
+```
+
+**On non-writable parent / not-absolute path:** tell the user, ask again. Don't `sudo mkdir` someone's path for them without permission — that mints a root-owned directory and bites later.
+
 **Agent:**
 
 ```bash
-# Default install location. If ~/sembr already exists, ask user before overwriting.
-test -d ~/sembr && echo "EXISTS" || echo "NEW"
+# If the target already exists, ask the user before overwriting.
+test -d "${SEMBR_DIR}" && echo "EXISTS" || echo "NEW"
 ```
 
-If exists → **Ask user**: "`~/sembr` already exists. Use it as-is (assume previous install), use a different directory, or delete and re-clone?"
+If exists → **Ask user**: "`${SEMBR_DIR}` already exists. Use it as-is (assume previous install), use a different directory, or delete and re-clone?"
 
 If new:
 
 ```bash
-git clone https://github.com/Peakstone-Labs/sembr.git ~/sembr
-cd ~/sembr
+git clone https://github.com/Peakstone-Labs/sembr.git "${SEMBR_DIR}"
+cd "${SEMBR_DIR}"
 cp .env.example .env
 ```
 
-**Pass condition:** `~/sembr/.env` exists (was copied from `.env.example`).
+**Pass condition:** `${SEMBR_DIR}/.env` exists (was copied from `.env.example`).
 
 ### Kick off the parallel work
 
 The slow steps below take 5–10 minutes combined. Run them **in the background** so the user has time to fetch API keys.
 
 ```bash
-cd ~/sembr
+cd "${SEMBR_DIR}"
 # Pull the two pre-built images
 docker compose pull qdrant rsshub > /tmp/sembr-pull.log 2>&1 &
 PULL_PID=$!
@@ -146,7 +224,7 @@ docker compose build api > /tmp/sembr-build.log 2>&1 &
 BUILD_PID=$!
 ```
 
-Remember `$PULL_PID` and `$BUILD_PID`; you'll wait on them in Phase 5.
+Remember `$PULL_PID`, `$BUILD_PID`, **and `$SEMBR_DIR`**; you'll need all three in Phases 4–6. If you open a fresh shell (e.g. after a daemon restart in Phase 2), re-export `SEMBR_DIR` first.
 
 ### Tell user — parallel work begins now
 
@@ -176,27 +254,76 @@ Wait until the user replies with a key (`sk-...` shape) or "skip".
 
 ### Validate the key before writing it to disk
 
+A working SiliconFlow account is **not** enough — sembr needs **two specific models** enabled on it:
+- `BAAI/bge-m3` (embedder, 1024-dim) — usually free tier
+- `deepseek-ai/DeepSeek-V4-Flash` (LLM) — usually free tier, but can be regionally gated
+
+Listing `/v1/models` only proves the key authenticates, not that these two models are reachable. Test each with a tiny real call.
+
 If user provided a SiliconFlow key:
 
 ```bash
-curl -sf -m 10 -H "Authorization: Bearer <KEY>" https://api.siliconflow.cn/v1/models | head -c 200
+KEY='sk-...'   # the value the user gave you
+
+# (1) Key is valid + account is active
+echo "→ checking key auth …"
+curl -sf -m 10 -H "Authorization: Bearer ${KEY}" \
+  https://api.siliconflow.cn/v1/models | head -c 200 \
+  || { echo "AUTH FAILED"; exit 1; }
+echo
+
+# (2) Embedding model is enabled and returns a 1024-dim vector
+echo "→ probing BAAI/bge-m3 …"
+EMBED_RESP=$(curl -s -m 15 -H "Authorization: Bearer ${KEY}" \
+  -H "Content-Type: application/json" \
+  -X POST https://api.siliconflow.cn/v1/embeddings \
+  -d '{"model":"BAAI/bge-m3","input":"sembr install probe"}')
+echo "${EMBED_RESP}" | head -c 200; echo
+echo "${EMBED_RESP}" | grep -q '"embedding"' && echo "  ✓ embedder OK" \
+  || echo "  ✗ embedder FAILED — see response above"
+
+# (3) LLM is enabled and returns a chat completion
+echo "→ probing deepseek-ai/DeepSeek-V4-Flash …"
+LLM_RESP=$(curl -s -m 20 -H "Authorization: Bearer ${KEY}" \
+  -H "Content-Type: application/json" \
+  -X POST https://api.siliconflow.cn/v1/chat/completions \
+  -d '{"model":"deepseek-ai/DeepSeek-V4-Flash","messages":[{"role":"user","content":"reply with the single word: pong"}],"max_tokens":8}')
+echo "${LLM_RESP}" | head -c 300; echo
+echo "${LLM_RESP}" | grep -q '"choices"' && echo "  ✓ LLM OK" \
+  || echo "  ✗ LLM FAILED — see response above"
 ```
 
-**Pass condition:** HTTP 200, output is JSON with `"object":"list"`.
+**Pass conditions (all three must hold):**
+1. Step (1) returns JSON with `"object":"list"` — key authenticates.
+2. Step (2) response contains `"embedding"` and the vector array is non-empty — embedder works.
+3. Step (3) response contains `"choices"` with a non-empty `message.content` — LLM works.
 
-**On 401:** key is wrong. Tell user, ask for the key again.
-**On timeout / connection error:** network problem. Tell user, suggest they check connectivity.
+**On failure — diagnose by which step failed:**
 
-If user said "skip" — they intend to use a non-SiliconFlow endpoint. Ask them for the OpenAI-compatible base URL + key they want to use instead.
+| Failing step | Most likely cause | Action |
+| --- | --- | --- |
+| (1) HTTP 401 | Key is wrong or revoked | Ask user for the key again. |
+| (1) timeout / 000 | Network blocks SiliconFlow | Suggest VPN / proxy / swap to a different OpenAI-compatible provider (see "skip" branch below). |
+| (2) `model_not_found` / 404 / 403 | `BAAI/bge-m3` not enabled on the account | Tell user to enable it in the SiliconFlow console (Models → search "bge-m3" → Enable). Free tier — no payment needed. Retry after enabling. |
+| (3) `model_not_found` / 404 / 403 | `deepseek-ai/DeepSeek-V4-Flash` not enabled | Same fix on the console. If the model has been retired or renamed by SiliconFlow, ask the user which LLM they want to use instead and adjust `LLM_MODEL` in Phase 4. |
+| (2) or (3) returns `"insufficient_quota"` / `"rate_limit"` | Account out of credit or rate-limited | Tell user; suggest topping up or waiting. sembr won't function until at least the embedder works (the LLM is only invoked at digest time, so step 3 failures are non-blocking for *boot* but will silently break digests). |
+
+If user said **"skip"** — they intend to use a non-SiliconFlow endpoint. Ask for:
+- OpenAI-compatible **base URL** (e.g. `https://api.deepseek.com/v1`, `http://localhost:11434/v1` for Ollama, etc.)
+- **API key** for that endpoint
+- The **embedding model name** they want (must produce ≥1024-dim vectors, or you'll need to alter `EMBEDDER_MODEL` + understand the dimension implications for Qdrant collection layout — easiest is to stick with a `bge-m3`-equivalent)
+- The **chat model name** for `LLM_MODEL`
+
+Re-run the three-step probe above against their endpoint and model names before proceeding.
 
 ---
 
 ## Phase 4 — Configure `.env`
 
-You should now have at least the SiliconFlow API key. Open `~/sembr/.env` and write the values. Use `sed` or a small Python one-liner — do **not** open an interactive editor on the user's behalf.
+You should now have at least the SiliconFlow API key. Open `${SEMBR_DIR}/.env` and write the values. Use `sed` or a small Python one-liner — do **not** open an interactive editor on the user's behalf.
 
 ```bash
-cd ~/sembr
+cd "${SEMBR_DIR}"
 
 # 1. SiliconFlow key (powers both embedder and LLM by default)
 KEY='sk-...'   # the value the user gave you
@@ -271,13 +398,14 @@ wait $BUILD_PID || ( echo "build failed:" && tail -30 /tmp/sembr-build.log && ex
 ### Start the stack
 
 ```bash
-cd ~/sembr
+cd "${SEMBR_DIR}"
 docker compose up -d
 ```
 
 ### Poll `/health` until ready
 
 ```bash
+cd "${SEMBR_DIR}"   # ensure we're in the install dir for .env lookup + docker compose
 PORT=$(grep -E '^SEMBR_HOST_PORT=' .env | cut -d= -f2)
 PORT=${PORT:-8000}
 
@@ -350,9 +478,9 @@ If the user didn't configure SMTP, skip the `channels` field or use `[]` so the 
 > - **Dashboard**: http://localhost:${PORT}/dashboard {if DASHBOARD_TOKEN set: '— login with the token I generated earlier'}
 > - **API**: http://localhost:${PORT}
 > - **Health**: http://localhost:${PORT}/health
-> - **Data**: ~/sembr/data/ (SQLite + Qdrant storage — back this up)
-> - **Logs**: `docker compose logs -f api` from `~/sembr`
-> - **Stop / start**: `docker compose down` / `docker compose up -d` from `~/sembr`
+> - **Data**: `${SEMBR_DIR}/data/` (SQLite + Qdrant storage — back this up)
+> - **Logs**: `docker compose logs -f api` from `${SEMBR_DIR}`
+> - **Stop / start**: `docker compose down` / `docker compose up -d` from `${SEMBR_DIR}`
 >
 > 53 pre-loaded sources are already pulling in the background. Your first digest fires at the scheduled time. Add more intents from the dashboard or via `POST /intents`. Documentation: https://peakstone-labs.github.io/sembr"
 
@@ -374,7 +502,7 @@ Use this if any phase fails or the user reports a problem later.
 | RSSHub feeds all 503 | RSSHub container crashed or rate-limited by source | `docker compose logs rsshub --tail=50`; restart: `docker compose restart rsshub` |
 | Twitter feeds empty | `TWITTER_AUTH_TOKEN` not set or token expired | Refresh the cookie from x.com, update `.env`, `docker compose restart rsshub` |
 | NewsAPI feeds empty | `NEWSAPI_API_KEY` not set, or free-tier quota exhausted | Check `docker compose logs api | grep -i newsapi`; if quota burn is the cause, raise `NEWSAPI_POLL_INTERVAL_MINUTES` or remove some NewsAPI feeds |
-| Filesystem warnings in logs | `./data` on a network share (NFS / SMB / virtio-9p) | Move `~/sembr` to a local-disk path; SQLite WAL is unsafe on network shares |
+| Filesystem warnings in logs | `./data` on a network share (NFS / SMB / virtio-9p) | Move `${SEMBR_DIR}` to a local-disk path; SQLite WAL is unsafe on network shares |
 
 ---
 
@@ -385,7 +513,7 @@ Use this if any phase fails or the user reports a problem later.
 - **Don't** run `git pull` after the initial clone. Leave the user at the launch tag.
 - **Don't** publish or expose the dashboard to the public internet without setting `DASHBOARD_TOKEN` and reading `docs/deployment/public.md`. The dashboard editor is effectively root on the host via the Docker socket mount.
 - **Don't** commit the user's `.env` to any repo. It contains their API keys.
-- **Don't** delete `~/sembr/data/` to "clean up" — that's where the SQLite DB and Qdrant vectors live. Confirm before any destructive operation.
+- **Don't** delete `${SEMBR_DIR}/data/` to "clean up" — that's where the SQLite DB and Qdrant vectors live. Confirm before any destructive operation.
 - **Don't** invent endpoints or env vars that aren't in `.env.example` / the docs. If a setting isn't documented, surface that to the user rather than guessing.
 - **Don't** silently change `LLM_MAX_PROMPT_CHARS` or other tuning knobs without telling the user — defaults are sensible for the default LLM (DeepSeek-V4-Flash with 1 M context).
 
