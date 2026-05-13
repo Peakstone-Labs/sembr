@@ -46,6 +46,9 @@
 
 ## "反向 RAG" 是怎么工作的
 
+> *Attention is all you need.* —— Vaswani 等，2017
+> *AI 就是你的注意力。* —— sembr
+
 传统 RAG：用户输入 query → 应用检索匹配文档 → LLM 回答。
 
 **反向 RAG (sembr)**：用户定义 intent → sembr 把 intent 向量化一次 → 每条新文章过一遍所有 intent 向量 → 命中的被 LLM 总结然后推送。

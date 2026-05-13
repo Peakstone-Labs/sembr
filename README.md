@@ -46,6 +46,9 @@ You write the intent once. sembr does the retrieval forever.
 
 ## How "Reverse RAG" works
 
+> *Attention is all you need.* — Vaswani et al., 2017
+> *AI is your attention.* — sembr
+
 Classic RAG: user types a query → app retrieves matching documents → LLM answers.
 
 **Reverse RAG (sembr):** user defines an intent → sembr embeds it once → every new article runs against every standing intent vector → matches get summarized and pushed.
