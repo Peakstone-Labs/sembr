@@ -60,7 +60,9 @@ The flip is small but its implications are big. Queries become first-class entit
 
 ## Quickstart
 
-Requires Docker + Docker Compose. First run pulls Qdrant + RSSHub and builds the API image (Python 3.12 base + Docker CLI + pip wheels) — **about 1 GB total network download, 10–15 minutes on a typical home connection**. `/health` returns `503` until the embedder probe completes.
+**Got an AI coding agent on this machine?** (Claude Code / Cursor / Cline / Aider / Continue / Roo) — paste it the URL of [`INSTALL.md`](INSTALL.md). It'll handle hardware checks, dependency install, parallel Docker pulls, and `.env` setup; you'll only be asked for API keys.
+
+**Manual install** (everything below, ~15 min). Requires Docker + Docker Compose. First run pulls Qdrant + RSSHub and builds the API image (Python 3.12 base + Docker CLI + pip wheels) — **about 1 GB total network download, 10–15 minutes on a typical home connection**. `/health` returns `503` until the embedder probe completes.
 
 ```bash
 git clone https://github.com/Peakstone-Labs/sembr.git
