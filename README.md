@@ -24,9 +24,7 @@
 
 ---
 
-**sembr** is a self-hosted news-monitoring agent. Describe what you care about in plain English — _"monitor Fed policy impact on emerging-market currencies"_ — and sembr keeps watching for you: continuously pulling new articles across RSS feeds, [NewsAPI.ai](https://newsapi.ai), and Twitter, vector-matching them to your intent, and emailing an LLM-written digest on whatever schedule you set.
-
-You write the intent once. sembr does the retrieval forever.
+**sembr** is a **self-hosted intent radar**. You describe what you care about once — _"monitor Fed policy impact on emerging-market currencies"_ — and it continuously scans RSS feeds, news APIs, and social streams, matches articles to your intent via semantic vectors, and delivers LLM-analyzed digests from whatever angle you configure.
 
 <p align="center">
   <img src="assets/brand/hero.png" alt="sembr — Reverse RAG" width="720">
@@ -38,7 +36,7 @@ You write the intent once. sembr does the retrieval forever.
 
 - **Semantic, not keyword.** Your intent is an embedding, not an `OR`-list. *"EM currency contagion"* matches *"Turkish lira plunges as Fed eyes another hike"* with zero shared words.
 - **Bilingual out of the box.** [BGE-M3](https://huggingface.co/BAAI/bge-m3) was picked specifically for CJK + English mixed content. Bloomberg, SCMP, 财联社, 华尔街见闻, Nature, 36氪 can all sit under one intent and the matcher doesn't care which language an article is in.
-- **Free embeddings, pennies per digest.** The default embedder (BGE-M3 on [SiliconFlow](https://siliconflow.cn)) is free at any volume. The default LLM (DeepSeek-V4-Flash) is paid but extremely cheap — and its 1 M-token context window means one digest can chew through a hundred long-form articles for well under a cent. Same OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
+- **Free embeddings, pennies per digest.** The default embedder (BGE-M3 on [SiliconFlow](https://siliconflow.cn)) is free at any volume. The default LLM (DeepSeek-V4-Flash) is paid but extremely cheap — and its 1M-token context window means one digest can chew through a hundred long-form articles for well under a cent. Same OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
 - **Your watchlist never leaves your box.** What you're monitoring is itself signal — sensitive financial or journalistic intents leak research direction to whichever vendor sees them. sembr runs on your hardware (homelab / Mac mini / NAS / a $5 VPS); only outbound calls are to the embedder and LLM endpoints you choose.
 - **Cron or event.** Per-intent schedule: a fixed digest time (*"every weekday 09:00 in Asia/Shanghai"*) or event-mode (*"fire the moment 3 matches accumulate, but at most every 30 min"*).
 - **Pluggable everywhere.** Source / channel / embedder / LLM are all ABC seams. Telegram, Discord, Slack channels, local LLM backends (mlx-lm, Ollama), and more source plugins (Reddit, HN, Mastodon) are scaffolded for post-1.0.

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>反向 RAG —— 让 AI 替你长期盯着一个问题。</b><br>
+  <b>反向 RAG —— 让 AI 成为你的注意力。</b><br>
   <i>覆盖任何信息流的常驻检索服务。</i>
 </p>
 
@@ -24,9 +24,7 @@
 
 ---
 
-**sembr** 是一个自部署的新闻监控 agent。用一句自然语言写下你关心的事 —— *"美联储政策对新兴市场货币的传导"* —— sembr 会替你盯着：跨 RSS、[NewsAPI.ai](https://newsapi.ai) 聚合 API、Twitter 持续拉新文章，对每篇做向量匹配，按你定的节奏把命中文章用 LLM 总结后通过 email 推给你。
-
-你写一次 intent，sembr 替你检索一辈子。
+**sembr** 是一台**自部署的意图雷达**。你只需一次描述你的关注点——*"美联储政策对新兴市场货币的传导"*——它持续扫描 RSS 订阅、新闻 API 和社交信息流，通过语义向量将文章与意图匹配，并按你配置的角度交付 LLM 分析简报。
 
 <p align="center">
   <img src="assets/brand/hero.png" alt="sembr — 反向 RAG" width="720">
@@ -42,7 +40,7 @@
 - **关注清单不离开你的机器。** 你监控的东西本身就是信号 —— 敏感的财经 / 调查类 intent 哪怕只是输给厂商，也是在泄露研究方向。sembr 跑在你自己的硬件上（homelab / Mac mini / NAS / $5 VPS），唯一对外的请求是你选的 embedder + LLM endpoint。
 - **Cron 或 Event。** 每个 intent 自定节奏：固定时间（*"工作日 09:00 Asia/Shanghai"*）或者事件模式（*"凑齐 3 条命中就发，但每 30 分钟最多一次"*）。
 - **处处可插拔。** Source / channel / embedder / LLM 全部是 ABC 接缝。Telegram / Discord / Slack 通道、本地 LLM (mlx-lm / Ollama)、Reddit / HN / Mastodon 源都是后 1.0 工作已经搭好的脚手架。
-- **Agent 可调用。** `POST /api/external/intents/{id}/fire` 一次同步调用直接返回命中文章 + LLM 总结的 JSON —— 接进你的 agent 栈（Hermes / OpenClaw / LangGraph / 自己撸的），让 orchestrator 自己决定什么时候看一眼世界。单次调用可覆写 lookback / threshold / feed 范围；不触发通知（纯 read-only 副作用）。
+- **Agent 可调用。** `POST /api/external/intents/{id}/fire` 一次同步调用直接返回命中文章 + LLM 总结的 JSON —— 接进你的 agent 栈（Hermes / OpenClaw / LangGraph / 自己撸的），让 orchestrator 自己决定什么时候看一眼世界。单次调用可覆写 lookback / threshold / feed 范围；不触发通知，无副作用。
 
 ## "反向 RAG" 是怎么工作的
 
