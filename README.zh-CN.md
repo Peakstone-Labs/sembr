@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>反向 RAG —— 让 AI 替你长期盯着一个问题。</b><br>
-  <i>把任何输入流变成一台常驻查询引擎。</i>
+  <i>覆盖任何信息流的常驻检索服务。</i>
 </p>
 
 <p align="center">
@@ -42,10 +42,12 @@
 - **关注清单不离开你的机器。** 你监控的东西本身就是信号 —— 敏感的财经 / 调查类 intent 哪怕只是输给厂商，也是在泄露研究方向。sembr 跑在你自己的硬件上（homelab / Mac mini / NAS / $5 VPS），唯一对外的请求是你选的 embedder + LLM endpoint。
 - **Cron 或 Event。** 每个 intent 自定节奏：固定时间（*"工作日 09:00 Asia/Shanghai"*）或者事件模式（*"凑齐 3 条命中就发，但每 30 分钟最多一次"*）。
 - **处处可插拔。** Source / channel / embedder / LLM 全部是 ABC 接缝。Telegram / Discord / Slack 通道、本地 LLM (mlx-lm / Ollama)、Reddit / HN / Mastodon 源都是后 1.0 工作已经搭好的脚手架。
+- **Agent 可调用。** `POST /api/external/intents/{id}/fire` 一次同步调用直接返回命中文章 + LLM 总结的 JSON —— 接进你的 agent 栈（Hermes / OpenClaw / LangGraph / 自己撸的），让 orchestrator 自己决定什么时候看一眼世界。单次调用可覆写 lookback / threshold / feed 范围；不触发通知（纯 read-only 副作用）。
 
 ## "反向 RAG" 是怎么工作的
 
 > *Attention is all you need.* —— Vaswani 等，2017
+>
 > *AI 就是你的注意力。* —— sembr
 
 传统 RAG：用户输入 query → 应用检索匹配文档 → LLM 回答。

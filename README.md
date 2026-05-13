@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>Reverse RAG.</b><br>
-  <i>A standing-query engine for any input stream.</i>
+  <i>Always-on retrieval service for any input stream.</i>
 </p>
 
 <p align="center">
@@ -42,10 +42,12 @@ You write the intent once. sembr does the retrieval forever.
 - **Your watchlist never leaves your box.** What you're monitoring is itself signal — sensitive financial or journalistic intents leak research direction to whichever vendor sees them. sembr runs on your hardware (homelab / Mac mini / NAS / a $5 VPS); only outbound calls are to the embedder and LLM endpoints you choose.
 - **Cron or event.** Per-intent schedule: a fixed digest time (*"every weekday 09:00 in Asia/Shanghai"*) or event-mode (*"fire the moment 3 matches accumulate, but at most every 30 min"*).
 - **Pluggable everywhere.** Source / channel / embedder / LLM are all ABC seams. Telegram, Discord, Slack channels, local LLM backends (mlx-lm, Ollama), and more source plugins (Reddit, HN, Mastodon) are scaffolded for post-1.0.
+- **Agent-callable.** `POST /api/external/intents/{id}/fire` returns matches plus an LLM summary in one synchronous JSON round-trip — drop sembr into any agent stack you run (Hermes, OpenClaw, LangGraph, your own) and let the orchestrator decide when to look at the world. Per-call overrides for lookback, threshold, and feed scope; no notification side-effects.
 
 ## How "Reverse RAG" works
 
 > *Attention is all you need.* — Vaswani et al., 2017
+>
 > *AI is your attention.* — sembr
 
 Classic RAG: user types a query → app retrieves matching documents → LLM answers.
