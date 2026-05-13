@@ -3,7 +3,7 @@
 This guide is for users who want to run sembr on a cloud VM (DigitalOcean / Hetzner / Vultr / EC2 / …) and reach the dashboard from anywhere on the internet.
 
 !!! danger "Default config is **not** public-internet safe"
-    Out of the box, sembr binds to `0.0.0.0:8000` in plaintext with `DASHBOARD_TOKEN` empty. If you `docker compose up` on a VM with a public IP and open port 8000 in the firewall, **the dashboard is open to the world with no authentication**. Read this whole page before exposing sembr publicly.
+    Out of the box, sembr binds to `0.0.0.0:8000` in plaintext with `DASHBOARD_TOKEN` empty. If you `docker compose up` on a VM with a public IP and open port 8000 in the firewall, **the dashboard is open to the world with no authentication**. This default is chosen to keep LAN / home-server setups frictionless; the steps below walk you through the changes you must make before exposing sembr publicly.
 
 The recommended path is still a private network (Tailscale / WireGuard / VPN) — see [Getting Started](../getting-started.md). Use this guide only if you actually need a public endpoint.
 
@@ -12,7 +12,7 @@ The recommended path is still a private network (Tailscale / WireGuard / VPN) �
 ## TL;DR (the 6-step checklist)
 
 1. Set a strong **`DASHBOARD_TOKEN`** in `.env`.
-2. Keep sembr bound to **loopback only** (default in `docker-compose.yml` since v1.0).
+2. Edit `docker-compose.yml` to bind the API to **loopback only** (`127.0.0.1:8000:8000`).
 3. Put it behind a **reverse proxy with TLS** (Caddy is the easiest).
 4. **Firewall**: allow 443, drop 8000, lock 22 down to your SSH key.
 5. **SSH hardening**: disable password auth and root login.
@@ -45,17 +45,23 @@ DASHBOARD_TOKEN=<paste the 64-character hex string here>
 !!! warning "Empty token = open dashboard"
     If `DASHBOARD_TOKEN` is empty, the auth middleware is bypassed entirely (so local-dev still works without configuration). sembr will log an `ERROR` at startup if it detects an empty token, but **it will still start** — do not ignore that line.
 
-## 3. Keep sembr bound to loopback
+## 3. Bind sembr to loopback only
 
-Since v1.0 the shipped `docker-compose.yml` binds the API to `127.0.0.1` only:
+The shipped `docker-compose.yml` publishes the API on `0.0.0.0:8000` so home / LAN setups work out of the box. For a public-internet host you want the opposite: the API reachable only from the local machine, and the only inbound path the reverse proxy you'll set up in the next step.
+
+Edit the `api` service's `ports:` line in `docker-compose.yml`:
 
 ```yaml
-  sembr-api:
+  api:
     ports:
-      - "127.0.0.1:${SEMBR_HOST_PORT:-8000}:8000"
+      - "127.0.0.1:${SEMBR_HOST_PORT:-8000}:8000"   # add the 127.0.0.1: prefix
 ```
 
-This makes port 8000 **unreachable from outside the VM** — the only way in is through the reverse proxy you set up in the next step. Do **not** change this back to `0.0.0.0:8000` "to test from another machine"; use SSH port-forwarding instead:
+While you're at it, do the same for `qdrant` (`6333:6333` / `6334:6334`) and `rsshub` (`1200:1200`) — none of them need to be reachable from the public internet, and the API container talks to them over the docker network regardless of the published port.
+
+Then `docker compose up -d --force-recreate api qdrant rsshub`.
+
+Need to test from another machine? Don't undo this — use SSH port-forwarding instead:
 
 ```bash
 ssh -L 8000:127.0.0.1:8000 user@your.vm.ip

@@ -3,10 +3,8 @@ services:
     image: diygod/rsshub:latest
     container_name: sembr-rsshub
     restart: unless-stopped
-    # Bound to loopback by default — the API talks to rsshub over the
-    # internal docker network, so external exposure is never needed.
     ports:
-      - "127.0.0.1:1200:1200"
+      - "1200:1200"
     env_file:
       - .env
     mem_limit: 512m
@@ -17,13 +15,8 @@ services:
     depends_on:
       - qdrant
       - rsshub
-    # Default bind address is 127.0.0.1 — the API is reachable from the
-    # host only, NOT from the public internet. To expose sembr publicly,
-    # put it behind a reverse proxy (see docs/deployment/public.md). If
-    # you absolutely need to bind to all interfaces (e.g. LAN-only home
-    # server), set SEMBR_HOST_BIND=0.0.0.0 in .env.
     ports:
-      - "${SEMBR_HOST_BIND:-127.0.0.1}:${SEMBR_HOST_PORT:-8000}:8000"
+      - "${SEMBR_HOST_PORT:-8000}:8000"
     env_file:
       - .env
     volumes:
@@ -56,11 +49,9 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.17.1
     container_name: sembr-qdrant
-    # Bound to loopback — the API container reaches qdrant over the
-    # docker network. Exposing 6333/6334 publicly is never necessary.
     ports:
-      - "127.0.0.1:6333:6333"
-      - "127.0.0.1:6334:6334"
+      - "6333:6333"
+      - "6334:6334"
     volumes:
       - ./data/qdrant:/qdrant/storage
     mem_limit: 4g
