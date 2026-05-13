@@ -19,6 +19,7 @@
   <a href="README.zh-CN.md">中文</a> ·
   <a href="https://peakstone-labs.github.io/sembr">Documentation</a> ·
   <a href="#quickstart">Quickstart</a> ·
+  <a href="#for-ai-agents">For AI agents</a> ·
   <a href="https://github.com/Peakstone-Labs/sembr/discussions">Discussions</a>
 </p>
 
@@ -40,7 +41,7 @@
 - **Your watchlist never leaves your box.** What you're monitoring is itself signal — sensitive financial or journalistic intents leak research direction to whichever vendor sees them. sembr runs on your hardware (homelab / Mac mini / NAS / a $5 VPS); only outbound calls are to the embedder and LLM endpoints you choose.
 - **Cron or event.** Per-intent schedule: a fixed digest time (*"every weekday 09:00 in Asia/Shanghai"*) or event-mode (*"fire the moment 3 matches accumulate, but at most every 30 min"*).
 - **Pluggable everywhere.** Source / channel / embedder / LLM are all ABC seams. Telegram, Discord, Slack channels, local LLM backends (mlx-lm, Ollama), and more source plugins (Reddit, HN, Mastodon) are scaffolded for post-1.0.
-- **Agent-callable.** `POST /api/external/intents/{id}/fire` returns matches plus an LLM summary in one synchronous JSON round-trip — drop sembr into any agent stack you run (Hermes, OpenClaw, LangGraph, your own) and let the orchestrator decide when to look at the world. Per-call overrides for lookback, threshold, and feed scope; no notification side-effects.
+- **Agent-friendly end-to-end.** One-shot install via AI coding agent, an Agent Skills bundle that teaches the API, and a synchronous fire endpoint built for orchestrators. See [For AI agents](#for-ai-agents).
 
 ## How "Reverse RAG" works
 
@@ -64,7 +65,7 @@ The flip is small but its implications are big. Queries become first-class entit
 
 ## Quickstart
 
-**Got an AI coding agent on this machine?** (Claude Code / Cursor / Cline / Aider / Continue / Roo) — paste it the URL of [`agent/INSTALL.md`](agent/INSTALL.md). It'll handle hardware checks, dependency install, parallel Docker pulls, and `.env` setup; you'll only be asked for API keys. Once sembr is running, [`agent/sembr/`](agent/sembr/) is an [Agent Skills](https://agentskills.io) bundle (`SKILL.md` + `references/`) that teaches your agent to drive sembr over HTTP — copy the folder into `~/.claude/skills/sembr/` for auto-loading, or hand it the `SKILL.md`.
+**Got an AI coding agent on this machine?** Jump to [For AI agents](#for-ai-agents) below — one-shot install + an Agent Skills bundle for the post-install API.
 
 **Manual install** (everything below, ~15 min). Requires Docker + Docker Compose. First run pulls Qdrant + RSSHub and builds the API image (Python 3.12 base + Docker CLI + pip wheels) — **about 1 GB total network download, 10–15 minutes on a typical home connection**. `/health` returns `503` until the embedder probe completes.
 
@@ -98,6 +99,43 @@ Next digest fires on schedule. Done.
 
 → Step-by-step walkthrough: [docs/getting-started.md](docs/getting-started.md)
 → Putting sembr on a public IP? Read [docs/deployment/public.md](docs/deployment/public.md) first — TL;DR keep the default `127.0.0.1` bind, put sembr behind a reverse proxy with TLS, and set a strong `DASHBOARD_TOKEN`.
+
+## For AI agents
+
+sembr is designed to be **installed**, **driven**, and **embedded** by AI coding agents. Three pieces of scaffolding ship in the repo:
+
+### 1. One-shot install
+
+If you have an AI coding agent with shell access on the target machine (Claude Code, Cursor, Cline, Aider, Continue, Roo, OpenClaw, Hermes, …), paste this:
+
+> Read https://github.com/Peakstone-Labs/sembr/blob/main/agent/INSTALL.md and follow it to install sembr on this machine.
+
+[`agent/INSTALL.md`](agent/INSTALL.md) is a 6-phase script the agent works through: hardware self-check → Docker setup → repo clone → key validation → access-mode choice (localhost / LAN / public) → bring up → first health round-trip. Image pulls run in the background while it asks you for API keys in parallel, so wall-clock is ~15 min of which ~10 are unattended.
+
+For public-internet deployment the agent branches into [`agent/PUBLIC_INSTALL.md`](agent/PUBLIC_INSTALL.md) — DNS check, mandatory side-service port lockdown (qdrant/rsshub), reverse proxy + TLS via Caddy / nginx + certbot / Cloudflare Tunnel / trycloudflare, ufw, and an explicit docker.sock decision — then returns to Phase 5 to bring the stack up and run external verification.
+
+### 2. Skill bundle for post-install operation
+
+Once sembr is running, [`agent/sembr/`](agent/sembr/) is an [Agent Skills](https://agentskills.io) bundle that teaches any agent how to drive the HTTP API:
+
+- `SKILL.md` — auth model, decision matrix for which `fire` endpoint to use, guardrails
+- `references/endpoints.md` — full surface (31 endpoints across feeds / intents / fire / external-fire / settings / prompts / translate)
+- `references/schemas.md` — `IntentCreate` / `FeedCreate` / `ExternalFireRequest` body shapes including the cron/event discriminated union and channel discriminator
+- `references/recipes.md` — copy-pasteable curl + Python `httpx` workflows
+- `references/errors.md` — status code table and scrubbed-detail contract
+
+**Claude Code**: `cp -r agent/sembr ~/.claude/skills/sembr` for auto-loading. **Other platforms**: hand your agent `agent/sembr/SKILL.md` directly, or consult your platform's skill-loading docs.
+
+### 3. The agent-callable fire endpoint
+
+`POST /api/external/intents/{id}/fire` is the orchestrator-facing diagnostic endpoint:
+
+- **Synchronous** — matches + LLM summary in the response, no polling, no `task_id` hand-off
+- **No notifier** — the intent's email recipients are not pinged; safe for "what would this intent match right now?" without spamming
+- **No state writes** — doesn't touch `match_seen`, idempotent under repeated calls
+- **Per-call overrides** — `lookback_seconds` (`300`–`2_592_000`), `threshold` (`0.20`–`0.95`, wider than the `0.60`–`0.95` at intent-create time, so you can sweep low during diagnostics), `feed_ids` (subset or `null` for all)
+
+Drop sembr into any orchestrator (Hermes, OpenClaw, LangGraph, your own) and let it decide when to look at the world. The response shape, error contract, rate-limit (1/intent/60 s), and the cron-mode-only constraint are documented in [`agent/sembr/references/endpoints.md`](agent/sembr/references/endpoints.md).
 
 ## What's in the box
 

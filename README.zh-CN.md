@@ -19,6 +19,7 @@
   <a href="README.md">English</a> ·
   <a href="https://peakstone-labs.github.io/sembr">文档站</a> ·
   <a href="#快速开始">快速开始</a> ·
+  <a href="#给-ai-agent-用">给 AI agent 用</a> ·
   <a href="https://github.com/Peakstone-Labs/sembr/discussions">Discussions</a>
 </p>
 
@@ -40,7 +41,7 @@
 - **关注清单不离开你的机器。** 你监控的东西本身就是信号 —— 敏感的财经 / 调查类 intent 哪怕只是输给厂商，也是在泄露研究方向。sembr 跑在你自己的硬件上（homelab / Mac mini / NAS / $5 VPS），唯一对外的请求是你选的 embedder + LLM endpoint。
 - **Cron 或 Event。** 每个 intent 自定节奏：固定时间（*"工作日 09:00 Asia/Shanghai"*）或者事件模式（*"凑齐 3 条命中就发，但每 30 分钟最多一次"*）。
 - **处处可插拔。** Source / channel / embedder / LLM 全部是 ABC 接缝。Telegram / Discord / Slack 通道、本地 LLM (mlx-lm / Ollama)、Reddit / HN / Mastodon 源都是后 1.0 工作已经搭好的脚手架。
-- **Agent 可调用。** `POST /api/external/intents/{id}/fire` 一次同步调用直接返回命中文章 + LLM 总结的 JSON —— 接进你的 agent 栈（Hermes / OpenClaw / LangGraph / 自己撸的），让 orchestrator 自己决定什么时候看一眼世界。单次调用可覆写 lookback / threshold / feed 范围；不触发通知，无副作用。
+- **从头到尾 agent 友好。** AI coding agent 一键部署、Agent Skills bundle 教 agent 调 API、专为编排器设计的同步 fire endpoint。详见 [给 AI agent 用](#给-ai-agent-用)。
 
 ## "反向 RAG" 是怎么工作的
 
@@ -64,7 +65,7 @@
 
 ## 快速开始
 
-**机器上有 AI coding agent？**（Claude Code / Cursor / Cline / Aider / Continue / Roo）—— 把 [`agent/INSTALL.md`](agent/INSTALL.md) 的 URL 丢给它。硬件自检、装依赖、并行拉镜像、写 `.env` 它全包，只在要 API key 的时候问你。装好之后，[`agent/sembr/`](agent/sembr/) 是配套的 [Agent Skills](https://agentskills.io) bundle（`SKILL.md` + `references/`）—— 整个文件夹拷到 `~/.claude/skills/sembr/` 即可被自动加载，或直接把 `SKILL.md` 丢给 agent。
+**机器上有 AI coding agent？** 直接看下面 [给 AI agent 用](#给-ai-agent-用) —— 一键部署 + 部署后用的 Agent Skills bundle 一起讲。
 
 **手动装**（下面这套，约 15 分钟）。需要 Docker + Docker Compose。第一次跑会拉 Qdrant + RSSHub 然后构建 API 镜像（Python 3.12 base + Docker CLI + pip 依赖）—— **总网络下载约 1 GB，家庭网速 10–15 分钟**。embedder probe 通之前 `/health` 返回 `503`。
 
@@ -98,6 +99,43 @@ curl -X POST http://localhost:8000/intents \
 
 → 一步一步走：[docs/getting-started.md](docs/getting-started.md)
 → 准备把 sembr 挂在公网 IP 上？先读 [docs/deployment/public.md](docs/deployment/public.md) —— TL;DR 保持默认 `127.0.0.1` 绑定，前面套一层带 TLS 的反向代理，`DASHBOARD_TOKEN` 必须设强一点。
+
+## 给 AI agent 用
+
+sembr 从设计上就是给 AI coding agent **部署**、**调用**、**接进编排栈**用的。仓库里配了三块脚手架：
+
+### 1. 一键部署
+
+机器上有 AI coding agent 且能跑 shell（Claude Code / Cursor / Cline / Aider / Continue / Roo / OpenClaw / Hermes / ……）—— 直接把下面这一句丢给它：
+
+> 读 https://github.com/Peakstone-Labs/sembr/blob/main/agent/INSTALL.md 然后照着帮我把 sembr 装到这台机器上。
+
+[`agent/INSTALL.md`](agent/INSTALL.md) 是 6 个 phase 的剧本：硬件自检 → Docker 安装 → 拉仓库 → 校验 key → 选访问模式（localhost / LAN / 公网）→ 起 stack → 第一次 `/health` 来回。镜像拉取后台跑、你的 API key 前台问，并行起来 wall-clock 约 15 分钟，其中约 10 分钟你不用看着。
+
+选了公网部署的话，agent 会拐进 [`agent/PUBLIC_INSTALL.md`](agent/PUBLIC_INSTALL.md) —— DNS 检查、side service 端口必锁（qdrant/rsshub）、Caddy / nginx+certbot / Cloudflare Tunnel / trycloudflare 任选、ufw、docker.sock 取舍 —— 然后回到 Phase 5 起 stack + 外部验证。
+
+### 2. 部署后驱动 sembr 的 skill bundle
+
+sembr 起来之后，[`agent/sembr/`](agent/sembr/) 是配套的 [Agent Skills](https://agentskills.io) bundle，教任何 agent 怎么调 sembr 的 HTTP API：
+
+- `SKILL.md` —— 认证模型、fire 端点选择决策表、护栏
+- `references/endpoints.md` —— 完整端点表（feeds / intents / fire / external-fire / settings / prompts / translate 共 31 个）
+- `references/schemas.md` —— `IntentCreate` / `FeedCreate` / `ExternalFireRequest` 的 body 形状，含 cron/event 鉴别字段联合体和 channel 鉴别器
+- `references/recipes.md` —— 可直接复制的 curl + Python `httpx` 工作流
+- `references/errors.md` —— 状态码表和 scrub-after 错误约定
+
+**Claude Code**：`cp -r agent/sembr ~/.claude/skills/sembr` 即可自动加载。**其他平台**：直接把 `agent/sembr/SKILL.md` 丢给 agent，或查阅你平台的 skill 加载文档。
+
+### 3. 给 agent 调的 fire endpoint
+
+`POST /api/external/intents/{id}/fire` 是给编排器（orchestrator）专用的诊断 endpoint：
+
+- **同步** —— 命中文章 + LLM 总结在响应里直接返回，不用 poll，不用拿 `task_id`
+- **不触发通知** —— intent 配置的 email 收件人不会被打扰；适合"这个 intent 现在会命中啥"这种试探用法
+- **无状态写** —— 不动 `match_seen`，反复调幂等
+- **单次覆写** —— `lookback_seconds`（`300`–`2_592_000`）、`threshold`（`0.20`–`0.95`，比 intent 创建时的 `0.60`–`0.95` 还宽，方便诊断时往低扫）、`feed_ids`（子集或 `null` 表示全部）
+
+接进任意编排器（Hermes / OpenClaw / LangGraph / 自己撸的），让它自己决定什么时候看一眼世界。响应形状、错误约定、限流（1 次/intent/60 秒）、cron-mode-only 约束都在 [`agent/sembr/references/endpoints.md`](agent/sembr/references/endpoints.md) 里。
 
 ## 盒子里都有什么
 
