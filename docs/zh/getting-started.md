@@ -27,7 +27,7 @@ EMBEDDER_API_KEY=sk-your-actual-key-here
 docker compose up --build
 ```
 
-首次运行需要拉取镜像（`qdrant/qdrant:v1.17.1` ~100 MB、`python:3.12` ~140 MB），网络较慢时需 5–10 分钟。
+首次运行会拉 `qdrant/qdrant:v1.17.1`（~100 MB）和 `diygod/rsshub:latest`（~300–400 MB），再用 `python:3.12`（~340 MB）+ Docker CLI apt 依赖（~150 MB）+ pip 依赖（~150 MB）构建 API 镜像。总网络下载约 **1 GB**，家庭网速 10–15 分钟。
 
 ## 第三步：验证健康状态
 

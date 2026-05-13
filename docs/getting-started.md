@@ -27,7 +27,7 @@ EMBEDDER_API_KEY=sk-your-actual-key-here
 docker compose up --build
 ```
 
-First run pulls `qdrant/qdrant:v1.17.1` (~100 MB) and `python:3.12` (~140 MB) — allow 5–10 minutes on a slow connection.
+First run pulls `qdrant/qdrant:v1.17.1` (~100 MB) and `diygod/rsshub:latest` (~300–400 MB), then builds the API image from `python:3.12` (~340 MB) with the Docker CLI apt packages (~150 MB) and pip wheels (~150 MB). Total network download is roughly **1 GB**; allow 10–15 minutes on a typical home connection.
 
 ## 3. Verify health
 

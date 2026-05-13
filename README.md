@@ -9,10 +9,9 @@
 
 <p align="center">
   <a href="https://github.com/Peakstone-Labs/sembr/actions/workflows/ci.yml"><img src="https://github.com/Peakstone-Labs/sembr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/Peakstone-Labs/sembr?color=blue" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.12-blue?logo=python&logoColor=white" alt="Python 3.12"></a>
   <a href="Dockerfile"><img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
-  <a href="https://github.com/Peakstone-Labs/sembr/blob/main/CHANGELOG.md"><img src="https://img.shields.io/github/v/tag/Peakstone-Labs/sembr?label=release&color=brightgreen" alt="Release"></a>
 </p>
 
 <p align="center">
@@ -25,7 +24,7 @@
 
 ---
 
-**sembr** is a self-hosted news-monitoring agent. Describe what you care about in plain English — _"monitor Fed policy impact on emerging-market currencies"_ — and sembr keeps watching for you: continuously pulling RSS feeds, vector-matching new articles to your intent, and emailing an LLM-written digest on whatever schedule you set.
+**sembr** is a self-hosted news-monitoring agent. Describe what you care about in plain English — _"monitor Fed policy impact on emerging-market currencies"_ — and sembr keeps watching for you: continuously pulling new articles across RSS feeds, [NewsAPI.ai](https://newsapi.ai), and Twitter, vector-matching them to your intent, and emailing an LLM-written digest on whatever schedule you set.
 
 You write the intent once. sembr does the retrieval forever.
 
@@ -39,7 +38,7 @@ You write the intent once. sembr does the retrieval forever.
 
 - **Semantic, not keyword.** Your intent is an embedding, not an `OR`-list. *"EM currency contagion"* matches *"Turkish lira plunges as Fed eyes another hike"* with zero shared words.
 - **Bilingual out of the box.** [BGE-M3](https://huggingface.co/BAAI/bge-m3) was picked specifically for CJK + English mixed content. Bloomberg, SCMP, 财联社, 华尔街见闻, Nature, 36氪 can all sit under one intent and the matcher doesn't care which language an article is in.
-- **Effectively $0 to run.** Default embedder (BGE-M3) and default LLM (DeepSeek-V4-Flash) both live on [SiliconFlow](https://siliconflow.cn)'s free tier. Same OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
+- **Free embeddings, pennies per digest.** The default embedder (BGE-M3 on [SiliconFlow](https://siliconflow.cn)) is free at any volume. The default LLM (DeepSeek-V4-Flash) is paid but extremely cheap — and its 1 M-token context window means one digest can chew through a hundred long-form articles for well under a cent. Same OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
 - **Your watchlist never leaves your box.** What you're monitoring is itself signal — sensitive financial or journalistic intents leak research direction to whichever vendor sees them. sembr runs on your hardware (homelab / Mac mini / NAS / a $5 VPS); only outbound calls are to the embedder and LLM endpoints you choose.
 - **Cron or event.** Per-intent schedule: a fixed digest time (*"every weekday 09:00 in Asia/Shanghai"*) or event-mode (*"fire the moment 3 matches accumulate, but at most every 30 min"*).
 - **Pluggable everywhere.** Source / channel / embedder / LLM are all ABC seams. Telegram, Discord, Slack channels, local LLM backends (mlx-lm, Ollama), and more source plugins (Reddit, HN, Mastodon) are scaffolded for post-1.0.
@@ -59,7 +58,7 @@ The flip is small but its implications are big. Queries become first-class entit
 
 ## Quickstart
 
-Requires Docker + Docker Compose. First image pull is ~250 MB; `/health` returns `503` until both services are warm.
+Requires Docker + Docker Compose. First run pulls Qdrant + RSSHub and builds the API image (Python 3.12 base + Docker CLI + pip wheels) — **about 1 GB total network download, 10–15 minutes on a typical home connection**. `/health` returns `503` until the embedder probe completes.
 
 ```bash
 git clone https://github.com/Peakstone-Labs/sembr.git
@@ -73,7 +72,7 @@ curl -i http://localhost:8000/health         # 200 once embedder probe completes
 open http://localhost:8000/dashboard          # web UI
 ```
 
-Out of the box: 23 pre-loaded RSS feeds (EN + CN), a live dashboard, and a working `/intents` API. Create your first intent:
+Out of the box: 53 pre-loaded sources across RSS / NewsAPI / Twitter (EN + CN), a live dashboard, and a working `/intents` API. Create your first intent:
 
 ```bash
 curl -X POST http://localhost:8000/intents \
@@ -94,8 +93,16 @@ Next digest fires on schedule. Done.
 
 ## What's in the box
 
-- **23 pre-loaded RSS sources** covering EN + CN finance, general news, government statistics, academic, OSS, and Twitter — curated for substantive body text. Full list: [docs/getting-started.md](docs/getting-started.md)
-- A bundled **[RSSHub](https://rsshub.app) sidecar** so Chinese sources / Twitter / Telegram routes work without extra setup
+**53 pre-loaded sources across three source types** — curated for substantive body text or information-dense headlines:
+
+| Source type | Pre-loaded | Examples |
+| --- | --- | --- |
+| RSS feeds | 22 | The Guardian, SCMP, NPR, Washington Post, Bloomberg Markets, 华尔街见闻, 第一财经, 36氪, 虎嗅, 财联社电报, 澎湃, 国家统计局, Nature ×3, HelloGitHub |
+| Twitter | 1 | Elon Musk — extend with your own users / keyword searches via a `TWITTER_AUTH_TOKEN` cookie |
+| [NewsAPI.ai](https://newsapi.ai) aggregator | 30 | Reuters, BBC, NYT, WSJ, FT, Economist, Bloomberg, The Atlantic, NPR, TechCrunch, Wired, Ars Technica, Vox, … |
+
+RSS routes that need a JS-rendering origin (most CN sources, Twitter) go through the bundled **[RSSHub](https://rsshub.app)** sidecar — no extra setup. NewsAPI.ai's free signup token covers roughly 30 days of normal polling; get one at [newsapi.ai](https://newsapi.ai) and drop it into `.env`. Full per-feed list: [docs/getting-started.md](docs/getting-started.md).
+
 - **BGE-M3 embeddings** via SiliconFlow (free), or any OpenAI-compatible `/v1/embeddings` endpoint
 - **[Qdrant](https://qdrant.tech) vector store** with scalar int8 quantization (10M vectors fit in ~600 MB RAM)
 - **LLM digest generation** via any OpenAI-compatible `/v1/chat/completions` — defaults to DeepSeek-V4-Flash on SiliconFlow

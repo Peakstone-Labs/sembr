@@ -9,10 +9,9 @@
 
 <p align="center">
   <a href="https://github.com/Peakstone-Labs/sembr/actions/workflows/ci.yml"><img src="https://github.com/Peakstone-Labs/sembr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/Peakstone-Labs/sembr?color=blue" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.12-blue?logo=python&logoColor=white" alt="Python 3.12"></a>
   <a href="Dockerfile"><img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
-  <a href="https://github.com/Peakstone-Labs/sembr/blob/main/CHANGELOG.md"><img src="https://img.shields.io/github/v/tag/Peakstone-Labs/sembr?label=release&color=brightgreen" alt="Release"></a>
 </p>
 
 <p align="center">
@@ -25,7 +24,7 @@
 
 ---
 
-**sembr** 是一个自部署的新闻监控 agent。用一句自然语言写下你关心的事 —— *"美联储政策对新兴市场货币的传导"* —— sembr 会替你盯着：持续拉取 RSS 源，对每一篇新文章做向量匹配，按你定的节奏把命中文章用 LLM 总结后通过 email 推给你。
+**sembr** 是一个自部署的新闻监控 agent。用一句自然语言写下你关心的事 —— *"美联储政策对新兴市场货币的传导"* —— sembr 会替你盯着：跨 RSS、[NewsAPI.ai](https://newsapi.ai) 聚合 API、Twitter 持续拉新文章，对每篇做向量匹配，按你定的节奏把命中文章用 LLM 总结后通过 email 推给你。
 
 你写一次 intent，sembr 替你检索一辈子。
 
@@ -39,7 +38,7 @@
 
 - **语义，不是关键词。** intent 是一个 embedding，不是一串 `OR`。*"新兴市场货币传染"* 能匹中 *"土耳其里拉跳水，市场押注美联储再加息"* —— 一个共同词都没有。
 - **中英开箱混用。** [BGE-M3](https://huggingface.co/BAAI/bge-m3) 是专门为 CJK + 英文混合内容选的。Bloomberg / SCMP / 财联社 / 华尔街见闻 / Nature / 36氪 可以放在同一个 intent 下，matcher 不在意你哪条是哪种语言。
-- **跑起来基本 $0。** 默认 embedder (BGE-M3) 和默认 LLM (DeepSeek-V4-Flash) 都跑在 [SiliconFlow](https://siliconflow.cn) 的免费档；OpenAI 兼容协议意味着你可以随时切到 OpenAI / Together / Groq / Ollama / mlx-lm。
+- **Embedding 全免费，LLM 一篇 digest 几分钱。** 默认 embedder（[SiliconFlow](https://siliconflow.cn) 上的 BGE-M3）在任何用量下都免费。默认 LLM（DeepSeek-V4-Flash）收费但便宜得多 —— 1M token 上下文意味着一次 digest 可以塞进上百篇长文，全摊下来不到一分钱。OpenAI 兼容协议意味着你可以随时切到 OpenAI / Together / Groq / Ollama / mlx-lm。
 - **关注清单不离开你的机器。** 你监控的东西本身就是信号 —— 敏感的财经 / 调查类 intent 哪怕只是输给厂商，也是在泄露研究方向。sembr 跑在你自己的硬件上（homelab / Mac mini / NAS / $5 VPS），唯一对外的请求是你选的 embedder + LLM endpoint。
 - **Cron 或 Event。** 每个 intent 自定节奏：固定时间（*"工作日 09:00 Asia/Shanghai"*）或者事件模式（*"凑齐 3 条命中就发，但每 30 分钟最多一次"*）。
 - **处处可插拔。** Source / channel / embedder / LLM 全部是 ABC 接缝。Telegram / Discord / Slack 通道、本地 LLM (mlx-lm / Ollama)、Reddit / HN / Mastodon 源都是后 1.0 工作已经搭好的脚手架。
@@ -59,7 +58,7 @@
 
 ## 快速开始
 
-需要 Docker + Docker Compose。第一次拉镜像 ~250 MB；两个服务热身完之前 `/health` 返回 `503`。
+需要 Docker + Docker Compose。第一次跑会拉 Qdrant + RSSHub 然后构建 API 镜像（Python 3.12 base + Docker CLI + pip 依赖）—— **总网络下载约 1 GB，家庭网速 10–15 分钟**。embedder probe 通之前 `/health` 返回 `503`。
 
 ```bash
 git clone https://github.com/Peakstone-Labs/sembr.git
@@ -73,7 +72,7 @@ curl -i http://localhost:8000/health         # embedder probe 通了就 200
 open http://localhost:8000/dashboard          # 浏览器打开 web UI
 ```
 
-开箱即用：23 条预置 RSS（中英混合）、监控 dashboard、可用的 `/intents` API。建你的第一个 intent：
+开箱即用：53 条预置源（RSS / NewsAPI / Twitter，中英混合）、监控 dashboard、可用的 `/intents` API。建你的第一个 intent：
 
 ```bash
 curl -X POST http://localhost:8000/intents \
@@ -94,8 +93,16 @@ curl -X POST http://localhost:8000/intents \
 
 ## 盒子里都有什么
 
-- **23 条预置 RSS**，覆盖中英财经、综合新闻、政府统计、学术、OSS、Twitter —— 都是挑过的有正文长内容的源。完整列表见 [docs/getting-started.md](docs/getting-started.md)
-- 内置 **[RSSHub](https://rsshub.app) sidecar**，开箱就能用中文源 / Twitter / Telegram 路由
+**53 条预置源，分三种来源类型** —— 都是挑过的"有正文长内容"或"标题即事实"的源：
+
+| 来源类型 | 预置 | 例子 |
+| --- | --- | --- |
+| RSS feeds | 22 | The Guardian、SCMP、NPR、Washington Post、Bloomberg Markets、华尔街见闻、第一财经、36氪、虎嗅、财联社电报、澎湃、国家统计局、Nature ×3、HelloGitHub |
+| Twitter | 1 | Elon Musk —— 自行加 user / 关键词搜索，需要 `TWITTER_AUTH_TOKEN` cookie |
+| [NewsAPI.ai](https://newsapi.ai) 聚合 | 30 | Reuters、BBC、NYT、WSJ、FT、Economist、Bloomberg、The Atlantic、NPR、TechCrunch、Wired、Ars Technica、Vox、…… |
+
+需要 JS 渲染的 RSS 路由（多数中文源、Twitter）走内置 **[RSSHub](https://rsshub.app)** sidecar，开箱即用。NewsAPI.ai 注册送的免费 token 大约够用一个月正常轮询；去 [newsapi.ai](https://newsapi.ai) 申请一个，填进 `.env` 即可。完整每条源的列表见 [docs/getting-started.md](docs/getting-started.md)。
+
 - **BGE-M3 embedding**，跑在 SiliconFlow 免费档，也可以指向任意 OpenAI 兼容的 `/v1/embeddings`
 - **[Qdrant](https://qdrant.tech) 向量库**，scalar int8 量化（1000 万条向量约占 600 MB RAM）
 - **LLM 总结**，OpenAI 兼容的 `/v1/chat/completions` —— 默认走 SiliconFlow 上的 DeepSeek-V4-Flash
