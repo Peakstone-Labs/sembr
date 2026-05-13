@@ -64,7 +64,7 @@
 
 ## 快速开始
 
-**机器上有 AI coding agent？**（Claude Code / Cursor / Cline / Aider / Continue / Roo）—— 把 [`agent/INSTALL.md`](agent/INSTALL.md) 的 URL 丢给它。硬件自检、装依赖、并行拉镜像、写 `.env` 它全包，只在要 API key 的时候问你。装好之后，[`agent/AGENTS.md`](agent/AGENTS.md) 是配套的 HTTP API 参考，给 agent 用来驱动 sembr。
+**机器上有 AI coding agent？**（Claude Code / Cursor / Cline / Aider / Continue / Roo）—— 把 [`agent/INSTALL.md`](agent/INSTALL.md) 的 URL 丢给它。硬件自检、装依赖、并行拉镜像、写 `.env` 它全包，只在要 API key 的时候问你。装好之后，[`agent/sembr/`](agent/sembr/) 是配套的 [Agent Skills](https://agentskills.io) bundle（`SKILL.md` + `references/`）—— 整个文件夹拷到 `~/.claude/skills/sembr/` 即可被自动加载，或直接把 `SKILL.md` 丢给 agent。
 
 **手动装**（下面这套，约 15 分钟）。需要 Docker + Docker Compose。第一次跑会拉 Qdrant + RSSHub 然后构建 API 镜像（Python 3.12 base + Docker CLI + pip 依赖）—— **总网络下载约 1 GB，家庭网速 10–15 分钟**。embedder probe 通之前 `/health` 返回 `503`。
 

@@ -89,22 +89,25 @@ LLM-analyzed digests to your inbox on whatever schedule you set.
   restart.
 - **`/health` endpoint** — auth-free liveness probe reporting per-component
   state (`embedder`, `qdrant`, `db`, `scheduler`).
-- **Agent-driven install + API kit (`agent/`)** — repo-level `agent/`
-  directory grouping the three documents an AI coding agent (Claude
-  Code, Cursor, Cline, Aider, Continue, Roo) reads to operate sembr
-  end-to-end:
+- **Agent-driven install + skill kit (`agent/`)** — repo-level `agent/`
+  directory grouping the artifacts an AI coding agent (Claude Code,
+  Cursor, Cline, Aider, Continue, Roo) needs to deploy sembr and then
+  drive it end-to-end:
   - `agent/INSTALL.md` — six-phase install protocol: hardware self-
     check, dependency install with consent, clone + parallel image
     pulls while the user fetches API keys, `.env` configuration,
     bring-up and `/health` polling, optional first intent. Includes a
     Phase 4 access-mode question (localhost / LAN / public + agent-
     yes-no), troubleshooting matrix, and agent guardrails.
-  - `agent/AGENTS.md` — self-contained HTTP-API reference for driving a
-    running sembr instance: auth (`X-Dashboard-Token`), endpoint
-    surface, `IntentCreate` / `FeedCreate` schemas, curl + Python
-    `httpx` recipes including the sync `POST /api/external/intents/
-    {id}/fire` flow (no notifier side-effect, returns matches + LLM
-    summary).
+  - `agent/sembr/` — [Agent Skills](https://agentskills.io) bundle
+    (`SKILL.md` + `references/{endpoints,schemas,recipes,errors}.md`)
+    teaching agents to drive a running sembr instance: auth
+    (`X-Dashboard-Token`), endpoint surface, `IntentCreate` /
+    `FeedCreate` schemas, curl + Python `httpx` recipes including the
+    sync `POST /api/external/intents/{id}/fire` flow (no notifier
+    side-effect, returns matches + LLM summary). Copy the folder into
+    `~/.claude/skills/sembr/` for auto-loading, or hand the agent the
+    `SKILL.md` directly.
   - `agent/public_install.md` — agent-driven public-exposure
     walkthrough (counterpart of operator-facing
     `docs/deployment/public.md`).

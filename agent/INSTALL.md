@@ -478,9 +478,9 @@ fi
 
 **Tell user:**
 
-> "Read `agent/AGENTS.md` in the repo (`${SEMBR_DIR}/agent/AGENTS.md`) — it's a self-contained reference for driving sembr's HTTP API from an AI agent. Covers auth, the intent/feed/fire/external-fire endpoints, request schemas, and copy-pasteable curl + Python examples. Hand it to whichever agent will be working with sembr; it's written to fit in a single context window."
+> "The repo ships an Agent Skills bundle at `${SEMBR_DIR}/agent/sembr/` (`SKILL.md` plus `references/{endpoints,schemas,recipes,errors}.md`) that teaches an AI agent to drive sembr's HTTP API — auth, intent/feed/fire/external-fire endpoints, request schemas, copy-pasteable curl + Python examples. Two ways to use it: (a) copy the whole `agent/sembr/` folder into your agent's skills directory (`~/.claude/skills/sembr/` for Claude Code) so it loads automatically, or (b) hand `${SEMBR_DIR}/agent/sembr/SKILL.md` directly to whichever agent will be working with sembr."
 
-If user said **no**, skip the AGENTS.md pointer — they can find it later.
+If user said **no**, skip the skill pointer — they can find it later.
 
 ### Ask user — anything else they want
 
@@ -621,7 +621,7 @@ Then **tell user** — relay only the bullets that match their Phase 4 access-mo
 > - Data: `${SEMBR_DIR}/data/` (SQLite + Qdrant storage — back this up)
 > - Logs: `docker compose logs -f api` from `${SEMBR_DIR}`
 > - Stop / start: `docker compose down` / `docker compose up -d` from `${SEMBR_DIR}`
-> - **Drive from an AI agent**: see `${SEMBR_DIR}/agent/AGENTS.md` — copy/paste-able curl + Python examples for every endpoint
+> - **Drive from an AI agent**: see `${SEMBR_DIR}/agent/sembr/` — Agent Skills bundle with curl + Python recipes for every endpoint
 >
 > 53 pre-loaded sources are already pulling in the background. Your first digest fires at the scheduled time. Add more intents from the dashboard or via `POST /intents`. Documentation: https://peakstone-labs.github.io/sembr"
 
