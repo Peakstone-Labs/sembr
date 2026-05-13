@@ -6,6 +6,34 @@ readme = "README.md"
 requires-python = "==3.12.*"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Peakstone Labs" }]
+keywords = [
+    "rss",
+    "news",
+    "monitoring",
+    "rag",
+    "reverse-rag",
+    "embeddings",
+    "qdrant",
+    "fastapi",
+    "llm",
+    "digest",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Office/Business :: News/Diary",
+    "Framework :: FastAPI",
+    "Typing :: Typed",
+]
 
 dependencies = [
     "fastapi==0.115.14",
@@ -33,6 +61,14 @@ dev = [
     "ruff>=0.6,<0.8",
     "mkdocs-material>=9.5,<10",
 ]
+
+[project.urls]
+Homepage      = "https://github.com/Peakstone-Labs/sembr"
+Documentation = "https://peakstone-labs.github.io/sembr"
+Repository    = "https://github.com/Peakstone-Labs/sembr"
+Issues        = "https://github.com/Peakstone-Labs/sembr/issues"
+Changelog     = "https://github.com/Peakstone-Labs/sembr/blob/main/CHANGELOG.md"
+"Release notes" = "https://github.com/Peakstone-Labs/sembr/releases"
 
 [build-system]
 requires = ["hatchling"]

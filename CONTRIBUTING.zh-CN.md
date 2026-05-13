@@ -90,7 +90,7 @@ CI 还会拒绝引入以下内容的 PR：
 
 ## 提交信息规范
 
-我们使用 [Conventional Commits](https://www.conventionalcommits.org/) 的轻量子集。v1.0 上线前，请使用以下五种 type：
+我们使用 [Conventional Commits](https://www.conventionalcommits.org/) 的轻量子集。下面五种 type 覆盖绝大多数改动，优先用它们：
 
 | Type | 用于 |
 | --- | --- |
@@ -100,10 +100,21 @@ CI 还会拒绝引入以下内容的 PR：
 | `refactor` | 不改行为、不增功能、不修 bug 的代码改动 |
 | `chore` | 工具、构建、依赖、CI、仓库杂事 |
 
-格式：
+需要更精确时，也接受以下扩展 type：
+
+| Type | 用于 |
+| --- | --- |
+| `perf` | 性能优化，行为不变 |
+| `test` | 仅新增或修复测试 |
+| `build` | 构建系统、打包或运行时依赖（`pyproject.toml` / Dockerfile / `uv.lock`） |
+| `ci` | 仅 CI / GitHub Actions / workflow 改动 |
+| `style` | 格式化、空白或纯样式调整（不动逻辑） |
+| `revert` | 回滚先前 commit |
+
+可选 **scope** 写在括号里，仅在改动明确限定在单个模块时使用：
 
 ```
-<type>: <祈使句概述，小写，不带句号>
+<type>(<scope>): <祈使句概述，小写，不带句号>
 
 <可选正文，解释 "为什么"，按 72 列换行>
 ```
@@ -112,11 +123,17 @@ CI 还会拒绝引入以下内容的 PR：
 
 ```
 feat: add NewsAPI source adapter
-fix: prevent duplicate intent firing on SSE reconnect
+fix(matcher): prevent duplicate intent firing on SSE reconnect
 docs: clarify uv setup in README
+perf(qdrant): switch to scalar int8 quantization for news collection
+revert: "feat: experimental redis cache" (causes startup deadlock)
 ```
 
-完整 type 清单（`build` / `ci` / `test` / `perf` / `style` / `revert`）会在 release 工具链建好后写入 `RELEASING.md`。此前上面 5 个已覆盖所有场景。
+不兼容改动用 `type!:` 或 footer `BREAKING CHANGE:` 标识，这些会归入 [CHANGELOG.md](./CHANGELOG.md) 的大版本段：
+
+```
+feat!: rename DASHBOARD_TOKEN env var to SEMBR_API_TOKEN
+```
 
 ## PR 流程
 

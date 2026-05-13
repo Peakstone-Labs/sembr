@@ -90,7 +90,7 @@ If you trip these by accident, the CI message will tell you the offending file.
 
 ## Commit messages
 
-We follow a lightweight subset of [Conventional Commits](https://www.conventionalcommits.org/). For the v1.0 launch, please use one of these types:
+We follow a lightweight subset of [Conventional Commits](https://www.conventionalcommits.org/). The five types below cover almost every change — reach for one of these first:
 
 | Type | When |
 | --- | --- |
@@ -100,10 +100,21 @@ We follow a lightweight subset of [Conventional Commits](https://www.conventiona
 | `refactor` | Code change that neither fixes a bug nor adds a feature |
 | `chore` | Tooling, build, deps, CI, repo plumbing |
 
-Format:
+Additional types are also accepted when they fit better than the five above:
+
+| Type | When |
+| --- | --- |
+| `perf` | Performance improvement with no behavior change |
+| `test` | Add or fix tests only |
+| `build` | Build system, packaging, or runtime-dep changes (`pyproject.toml`, Dockerfile, `uv.lock`) |
+| `ci` | CI / GitHub Actions / workflow changes only |
+| `style` | Formatting, whitespace, or pure-style edits (no logic change) |
+| `revert` | Reverts a previous commit |
+
+Optional **scope** in parentheses is allowed — use it when the change is clearly confined to one module:
 
 ```
-<type>: <imperative summary, lower case, no trailing period>
+<type>(<scope>): <imperative summary, lower case, no trailing period>
 
 <optional body explaining "why" — wrap at 72 cols>
 ```
@@ -112,11 +123,17 @@ Examples:
 
 ```
 feat: add NewsAPI source adapter
-fix: prevent duplicate intent firing on SSE reconnect
+fix(matcher): prevent duplicate intent firing on SSE reconnect
 docs: clarify uv setup in README
+perf(qdrant): switch to scalar int8 quantization for news collection
+revert: "feat: experimental redis cache" (causes startup deadlock)
 ```
 
-A fuller type list (`build`, `ci`, `test`, `perf`, `style`, `revert`) will land in `RELEASING.md` after release tooling is set up. Until then, the 5 above cover everything.
+Use `!` after the type or a `BREAKING CHANGE:` footer for backwards-incompatible changes — these end up in the major-version section of [CHANGELOG.md](./CHANGELOG.md):
+
+```
+feat!: rename DASHBOARD_TOKEN env var to SEMBR_API_TOKEN
+```
 
 ## Pull-request flow
 
