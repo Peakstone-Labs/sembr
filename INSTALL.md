@@ -375,6 +375,113 @@ sed -i.bak "s|^DASHBOARD_TOKEN=.*|DASHBOARD_TOKEN=${TOKEN}|" .env && rm -f .env.
 
 > "Generated `DASHBOARD_TOKEN=<value>` — write this down. You'll need it to log in to the dashboard. The token is also stored in `.env` on this machine."
 
+### Access mode — who should be able to reach this sembr
+
+This decision must be made **before** Phase 5 starts the stack, because it controls the docker-compose port binding (`SEMBR_BIND_ADDR`). The shipped default is `0.0.0.0` — i.e. **anyone on the same LAN as this machine can already hit `http://<this-host-ip>:8000` once the stack is up**. Most home / LAN installs are fine with that; some setups want it locked down. Surface the choice explicitly.
+
+**Tell user:**
+
+> "Before I bring sembr up, choose how it should be reachable:
+>
+> | Option | Who can reach the dashboard | Pick this when |
+> | --- | --- | --- |
+> | **A. localhost-only** | Only programs running on this host | You're the only user, or you'll SSH-tunnel in, or sembr lives on a server with no UI users |
+> | **B. LAN** (the current default) | You + anyone on your Wi-Fi / office LAN | Home server, lab box, workstation on a network you trust |
+> | **C. Public internet** | Anyone, via your domain through a reverse proxy with TLS | You're on a VPS / cloud VM with a public IP and a domain |
+>
+> Orthogonally — will you also drive sembr from an **AI agent** (Claude Code, Cursor, a custom script) instead of, or alongside, the web dashboard?"
+
+**Ask user (single-select on binding):** "Pick A / B / C. Default A if unsure — you can always reopen later."
+**Ask user (yes/no on agent):** "Agent-driven access too?"
+
+#### Apply the binding choice
+
+For each branch, edit `.env` so Phase 5 brings the stack up with the right binding from the start.
+
+**A — localhost-only:**
+
+```bash
+cd "${SEMBR_DIR}"
+# Pin to loopback. SEMBR_BIND_ADDR is read by docker-compose.yml.
+if grep -q '^SEMBR_BIND_ADDR=' .env; then
+  sed -i.bak 's|^SEMBR_BIND_ADDR=.*|SEMBR_BIND_ADDR=127.0.0.1|' .env
+else
+  echo 'SEMBR_BIND_ADDR=127.0.0.1' >> .env
+fi
+rm -f .env.bak
+```
+
+Tell user: "Dashboard will be reachable only at `http://localhost:${PORT}` from this machine. To open it later, delete the `SEMBR_BIND_ADDR` line in `.env` and run `docker compose up -d --force-recreate api`."
+
+**B — LAN (default):**
+
+No `.env` change needed — `SEMBR_BIND_ADDR` left unset, docker-compose default `0.0.0.0` wins. You'll print the LAN URL in Phase 6's final summary.
+
+**Strongly recommend** setting `DASHBOARD_TOKEN` even on LAN — anyone on the same Wi-Fi (housemates, guests, untrusted IoT devices) can otherwise post to `/api/*` and run up your SiliconFlow bill. If you didn't already generate one above, do it now:
+
+```bash
+cd "${SEMBR_DIR}"
+if ! grep -qE '^DASHBOARD_TOKEN=.+' .env; then
+  TOKEN=$(openssl rand -hex 16)
+  sed -i.bak "s|^DASHBOARD_TOKEN=.*|DASHBOARD_TOKEN=${TOKEN}|" .env
+  rm -f .env.bak
+  echo "DASHBOARD_TOKEN=${TOKEN}"   # show to user
+fi
+```
+
+**C — public internet:**
+
+Apply the loopback binding (same as branch A) so the API is **not** reachable on the public interface directly. The reverse proxy will forward to `127.0.0.1:8000`.
+
+```bash
+cd "${SEMBR_DIR}"
+if grep -q '^SEMBR_BIND_ADDR=' .env; then
+  sed -i.bak 's|^SEMBR_BIND_ADDR=.*|SEMBR_BIND_ADDR=127.0.0.1|' .env
+else
+  echo 'SEMBR_BIND_ADDR=127.0.0.1' >> .env
+fi
+rm -f .env.bak
+```
+
+Also force-generate `DASHBOARD_TOKEN` if empty — public deployments **must not** run unauthenticated:
+
+```bash
+if ! grep -qE '^DASHBOARD_TOKEN=.+' .env; then
+  TOKEN=$(openssl rand -hex 32)   # 64-char for public exposure
+  sed -i.bak "s|^DASHBOARD_TOKEN=.*|DASHBOARD_TOKEN=${TOKEN}|" .env
+  rm -f .env.bak
+  echo "DASHBOARD_TOKEN=${TOKEN}"
+fi
+```
+
+**Tell user:**
+
+> "Locked sembr to loopback. The dashboard is NOT reachable on the internet yet — that's intentional. The next step (domain, TLS, reverse proxy, firewall) is **manual** and host-specific; auto-configuring it without knowing your domain or cloud provider would leak secrets. Open `docs/deployment/public.md` — it's a step-by-step with examples for Caddy, nginx + certbot, and Cloudflare Tunnel. Come back to this guide after Phase 5 verifies `/health` over loopback; do the public-exposure work after that."
+
+Do **not** continue past Phase 5 for branch C until the user has read `docs/deployment/public.md` and applied at least the `DASHBOARD_TOKEN` + reverse-proxy steps. Phase 6's first-intent demo can still use `http://localhost:${PORT}` from this same machine.
+
+#### Apply the agent choice
+
+If user said **yes** to agent-driven access:
+
+```bash
+cd "${SEMBR_DIR}"
+# Agents call /api/* with X-Dashboard-Token header. An empty token means
+# anyone with network reach can drive the API, so we mint one if absent.
+if ! grep -qE '^DASHBOARD_TOKEN=.+' .env; then
+  TOKEN=$(openssl rand -hex 16)
+  sed -i.bak "s|^DASHBOARD_TOKEN=.*|DASHBOARD_TOKEN=${TOKEN}|" .env
+  rm -f .env.bak
+  echo "DASHBOARD_TOKEN=${TOKEN}"
+fi
+```
+
+**Tell user:**
+
+> "Read `AGENTS.md` at the repo root (`${SEMBR_DIR}/AGENTS.md`) — it's a self-contained reference for driving sembr's HTTP API from an AI agent. Covers auth, the intent/feed/fire/external-fire endpoints, request schemas, and copy-pasteable curl + Python examples. Hand it to whichever agent will be working with sembr; it's written to fit in a single context window."
+
+If user said **no**, skip the AGENTS.md pointer — they can find it later.
+
 ### Ask user — anything else they want
 
 **Ask user:** "Anything else to configure right now? (Common: change `LLM_MODEL` to a non-SiliconFlow endpoint, change Qdrant or SQLite paths, set `SEMBR_HOST_PORT` if 8000 is taken). If unsure, say 'no' and we'll move on."
@@ -471,16 +578,50 @@ If the user didn't configure SMTP, skip the `channels` field or use `[]` so the 
 
 ## Done — final summary to user
 
-**Tell user:**
+Before printing the summary, detect this machine's primary LAN IP so users who picked branch B get a clickable URL (not just `localhost`):
+
+```bash
+# Cross-platform best-effort. Empty string is fine — we'll just hide the LAN line.
+LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')                                # Linux (most)
+[ -z "$LAN_IP" ] && LAN_IP=$(ipconfig getifaddr en0 2>/dev/null)                    # macOS Wi-Fi / primary
+[ -z "$LAN_IP" ] && LAN_IP=$(ipconfig getifaddr en1 2>/dev/null)                    # macOS secondary
+[ -z "$LAN_IP" ] && LAN_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
+# Sanity: keep only RFC1918 / link-local (don't accidentally print a public IP)
+case "${LAN_IP}" in
+  10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|169.254.*) : ;;
+  *) LAN_IP="" ;;
+esac
+echo "LAN_IP=${LAN_IP:-<none detected>}"
+```
+
+Then **tell user** — relay only the bullets that match their Phase 4 access-mode choice. Drop the others; don't recite options that don't apply.
 
 > "sembr is running.
 >
-> - **Dashboard**: http://localhost:${PORT}/dashboard {if DASHBOARD_TOKEN set: '— login with the token I generated earlier'}
-> - **API**: http://localhost:${PORT}
-> - **Health**: http://localhost:${PORT}/health
-> - **Data**: `${SEMBR_DIR}/data/` (SQLite + Qdrant storage — back this up)
-> - **Logs**: `docker compose logs -f api` from `${SEMBR_DIR}`
-> - **Stop / start**: `docker compose down` / `docker compose up -d` from `${SEMBR_DIR}`
+> **How to reach it:**
+
+**Branch A (localhost-only):**
+> > - Dashboard: http://localhost:${PORT}/dashboard {if DASHBOARD_TOKEN set: '— log in with the token I generated earlier'}
+> > - API: http://localhost:${PORT}
+> > - Reachable only from this machine. To open up later: clear `SEMBR_BIND_ADDR` in `.env` and `docker compose up -d --force-recreate api`.
+
+**Branch B (LAN):**
+> > - From this machine: http://localhost:${PORT}/dashboard
+> > - From any device on your LAN: **http://${LAN_IP}:${PORT}/dashboard** ← share this with the other devices on your Wi-Fi
+> > - {if DASHBOARD_TOKEN set: 'Log in with the token I generated earlier — required for both URLs.'}
+> > - {if DASHBOARD_TOKEN empty: '⚠️ No token set — anyone on the same Wi-Fi (including guests / IoT devices) can drive your sembr. Strongly consider setting `DASHBOARD_TOKEN` in .env and `docker compose restart api`.'}
+
+**Branch C (public, after they finish the manual reverse-proxy work):**
+> > - From this machine for testing: http://localhost:${PORT}/dashboard (loopback-only binding — won't work from elsewhere yet)
+> > - Public URL: https://your-domain.com/dashboard ← only after you complete `docs/deployment/public.md`
+> > - Don't proceed without setting up the reverse proxy + TLS + DASHBOARD_TOKEN as that guide walks through.
+
+> **Common to all three:**
+> - Health probe: http://localhost:${PORT}/health (this stays loopback-friendly even in branch C)
+> - Data: `${SEMBR_DIR}/data/` (SQLite + Qdrant storage — back this up)
+> - Logs: `docker compose logs -f api` from `${SEMBR_DIR}`
+> - Stop / start: `docker compose down` / `docker compose up -d` from `${SEMBR_DIR}`
+> - **Drive from an AI agent**: see `${SEMBR_DIR}/AGENTS.md` — copy/paste-able curl + Python examples for every endpoint
 >
 > 53 pre-loaded sources are already pulling in the background. Your first digest fires at the scheduled time. Add more intents from the dashboard or via `POST /intents`. Documentation: https://peakstone-labs.github.io/sembr"
 
@@ -539,7 +680,8 @@ For your scanning convenience. Full descriptions are in `.env.example`.
 | `NEWSAPI_API_KEY` | optional | empty | Enables 30 NewsAPI.ai sources |
 | `NEWSAPI_POLL_INTERVAL_MINUTES` | optional | `30` | One token per poll across all NewsAPI feeds |
 | `TWITTER_AUTH_TOKEN` | optional | empty | `auth_token` cookie value, 40-char hex |
-| `DASHBOARD_TOKEN` | conditional | empty | **Must set** if exposing beyond localhost |
+| `DASHBOARD_TOKEN` | conditional | empty | **Must set** if exposing beyond localhost (LAN or public) |
+| `SEMBR_BIND_ADDR` | optional | `0.0.0.0` | Set to `127.0.0.1` for localhost-only or for reverse-proxy / agent-only setups |
 | `SEMBR_HOST_PORT` | optional | `8000` | Override if 8000 is in use |
 
 ---

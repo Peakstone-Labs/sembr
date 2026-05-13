@@ -16,7 +16,11 @@ services:
       - qdrant
       - rsshub
     ports:
-      - "${SEMBR_HOST_PORT:-8000}:8000"
+      # SEMBR_BIND_ADDR controls who can reach the dashboard:
+      #   0.0.0.0   (default, current behaviour) — anyone on the LAN can hit it
+      #   127.0.0.1 — only programs on this host (use behind a reverse proxy, or for agent-only setups)
+      # SEMBR_HOST_PORT changes the published host port if 8000 is taken.
+      - "${SEMBR_BIND_ADDR:-0.0.0.0}:${SEMBR_HOST_PORT:-8000}:8000"
     env_file:
       - .env
     volumes:
