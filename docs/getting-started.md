@@ -1,5 +1,8 @@
 # Getting Started
 
+!!! tip "Prefer an AI agent do this for you?"
+    `agent/INSTALL.md` in the repo is a step-by-step that an LLM agent (Claude Code, Cursor, OpenClaw, Hermes, …) with shell access can run end-to-end — including hardware checks, parallel image pulls, API-key validation, and an opinionated default for the access-mode choice. Hand the URL [`agent/INSTALL.md`](https://github.com/Peakstone-Labs/sembr/blob/main/agent/INSTALL.md) to your agent and let it drive. The page below is the manual walk-through for when you want to do it yourself.
+
 ## Prerequisites
 
 - Docker + Docker Compose
@@ -21,6 +24,16 @@ EMBEDDER_API_KEY=sk-your-actual-key-here
 
 `EMBEDDER_API_KEY` is the only required value. The container exits immediately at startup if it is missing or blank.
 
+!!! warning "Default binding is your **LAN**, not just `localhost`"
+    Out of the box, the API container publishes on `0.0.0.0:8000` — anyone on the same Wi-Fi / office network as this machine can already reach `http://<your-LAN-ip>:8000`. The Dashboard auth gate is **off** by default (empty `DASHBOARD_TOKEN`), so they could also POST `/intents`, change feed URLs, drain your SiliconFlow quota, and read your digests.
+
+    Two knobs to set this right before step 2:
+
+    - **localhost-only** (no LAN access): put `SEMBR_BIND_ADDR=127.0.0.1` in `.env`.
+    - **LAN with auth** (you + trusted devices): leave bind unset, but set `DASHBOARD_TOKEN=$(openssl rand -hex 16)` in `.env`.
+
+    For public-internet exposure see [Deployment / Public server](deployment/public.md) — there's a separate hardening checklist.
+
 ## 2. Start all services
 
 ```bash
@@ -34,6 +47,8 @@ First run pulls `qdrant/qdrant:v1.17.1` (~100 MB) and `diygod/rsshub:latest` (~3
 ```bash
 curl -i http://localhost:8000/health
 ```
+
+If you set `SEMBR_HOST_PORT=8080` (or any other value — see [Port override](#port-override) at the bottom of this page), substitute that port in every URL below.
 
 While the embedder probe is running you get:
 
@@ -63,9 +78,14 @@ Leaving `SMTP_HOST` empty disables email — the rest of the app still runs.
 
 ## 5. Create your first intent
 
+If you set `DASHBOARD_TOKEN` in `.env` (recommended — see step 1's warning), every `/intents` / `/feeds` / `/api/*` request needs the `X-Dashboard-Token` header. The snippet below adapts automatically:
+
 ```bash
+TOKEN=$(grep -E '^DASHBOARD_TOKEN=' .env | cut -d= -f2-)
+
 curl -X POST http://localhost:8000/intents \
   -H "Content-Type: application/json" \
+  ${TOKEN:+-H "X-Dashboard-Token: $TOKEN"} \
   -d '{
     "name": "fed-em-fx",
     "text": "Fed policy impact on emerging market currencies",
@@ -81,8 +101,15 @@ This intent fires every day at 08:00 in `America/New_York`. The digest renders t
 
 Browse to **http://localhost:8000/dashboard** for a monitoring view: per-feed fetch outcomes, embedder stats, and article pipeline counts.
 
-!!! warning "Security"
-    Set `DASHBOARD_TOKEN` in `.env` before exposing the port beyond `localhost`. Without it, feed URLs and error messages are readable by anyone on the network.
+!!! warning "Why `DASHBOARD_TOKEN` matters even on a single home network"
+    With `DASHBOARD_TOKEN` empty (the default), every `/intents`, `/feeds`, `/api/prompts`, `/api/settings`, and `/api/external/*` endpoint is **unauthenticated**. Anyone who can reach `http://<this-host>:8000` can:
+
+    - POST a new intent that emails them your digests
+    - Edit feed URLs to point at an attacker-controlled server
+    - Trigger fires that burn your SiliconFlow embedding / LLM quota
+    - Change settings (which may include secrets in mask form)
+
+    The default `0.0.0.0` bind means "anyone on the same Wi-Fi / office LAN" reaches this. Set `DASHBOARD_TOKEN=$(openssl rand -hex 16)` in `.env` and `docker compose restart api`. For public-internet deployment do **not** stop here — read [Deployment / Public server](deployment/public.md).
 
 ## Customising prompt templates
 
