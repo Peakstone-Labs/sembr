@@ -1634,19 +1634,10 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
   width: 24px;
   height: 24px;
-  background: var(--ink);
-  color: #ffffff;
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1;
+  flex-shrink: 0;
 }
 
 .brand-name {
@@ -2141,10 +2132,3 @@ button { gap: 7px; }
   stroke-width: 2;
 }
 
-/* Brand mark — could host an inline SVG inside instead of "s" char */
-.brand-mark .icon {
-  width: 14px;
-  height: 14px;
-  stroke: #ffffff;
-  stroke-width: 2;
-}
