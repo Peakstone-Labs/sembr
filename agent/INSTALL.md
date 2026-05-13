@@ -456,9 +456,9 @@ fi
 
 **Tell user:**
 
-> "Locked sembr to loopback. The dashboard is NOT reachable on the internet yet — that's intentional. The next step (domain, TLS, reverse proxy, firewall) is **manual** and host-specific; auto-configuring it without knowing your domain or cloud provider would leak secrets. Open `docs/deployment/public.md` — it's a step-by-step with examples for Caddy, nginx + certbot, and Cloudflare Tunnel. Come back to this guide after Phase 5 verifies `/health` over loopback; do the public-exposure work after that."
+> "Locked sembr to loopback. The dashboard is NOT reachable on the internet yet — that's intentional. The next step (domain, TLS, reverse proxy, firewall) is **manual** and host-specific; auto-configuring it without knowing your domain or cloud provider would leak secrets. Open `public_install.md` — it's a step-by-step with examples for Caddy, nginx + certbot, and Cloudflare Tunnel. Come back to this guide after Phase 5 verifies `/health` over loopback; do the public-exposure work after that."
 
-Do **not** continue past Phase 5 for branch C until the user has read `docs/deployment/public.md` and applied at least the `DASHBOARD_TOKEN` + reverse-proxy steps. Phase 6's first-intent demo can still use `http://localhost:${PORT}` from this same machine.
+Do **not** continue past Phase 5 for branch C until the user has read `public_install.md` and applied at least the `DASHBOARD_TOKEN` + reverse-proxy steps. Phase 6's first-intent demo can still use `http://localhost:${PORT}` from this same machine.
 
 #### Apply the agent choice
 
@@ -478,7 +478,7 @@ fi
 
 **Tell user:**
 
-> "Read `AGENTS.md` at the repo root (`${SEMBR_DIR}/AGENTS.md`) — it's a self-contained reference for driving sembr's HTTP API from an AI agent. Covers auth, the intent/feed/fire/external-fire endpoints, request schemas, and copy-pasteable curl + Python examples. Hand it to whichever agent will be working with sembr; it's written to fit in a single context window."
+> "Read `agent/AGENTS.md` in the repo (`${SEMBR_DIR}/agent/AGENTS.md`) — it's a self-contained reference for driving sembr's HTTP API from an AI agent. Covers auth, the intent/feed/fire/external-fire endpoints, request schemas, and copy-pasteable curl + Python examples. Hand it to whichever agent will be working with sembr; it's written to fit in a single context window."
 
 If user said **no**, skip the AGENTS.md pointer — they can find it later.
 
@@ -613,7 +613,7 @@ Then **tell user** — relay only the bullets that match their Phase 4 access-mo
 
 **Branch C (public, after they finish the manual reverse-proxy work):**
 > > - From this machine for testing: http://localhost:${PORT}/dashboard (loopback-only binding — won't work from elsewhere yet)
-> > - Public URL: https://your-domain.com/dashboard ← only after you complete `docs/deployment/public.md`
+> > - Public URL: https://your-domain.com/dashboard ← only after you complete `public_install.md`
 > > - Don't proceed without setting up the reverse proxy + TLS + DASHBOARD_TOKEN as that guide walks through.
 
 > **Common to all three:**
@@ -621,7 +621,7 @@ Then **tell user** — relay only the bullets that match their Phase 4 access-mo
 > - Data: `${SEMBR_DIR}/data/` (SQLite + Qdrant storage — back this up)
 > - Logs: `docker compose logs -f api` from `${SEMBR_DIR}`
 > - Stop / start: `docker compose down` / `docker compose up -d` from `${SEMBR_DIR}`
-> - **Drive from an AI agent**: see `${SEMBR_DIR}/AGENTS.md` — copy/paste-able curl + Python examples for every endpoint
+> - **Drive from an AI agent**: see `${SEMBR_DIR}/agent/AGENTS.md` — copy/paste-able curl + Python examples for every endpoint
 >
 > 53 pre-loaded sources are already pulling in the background. Your first digest fires at the scheduled time. Add more intents from the dashboard or via `POST /intents`. Documentation: https://peakstone-labs.github.io/sembr"
 
@@ -652,7 +652,7 @@ Use this if any phase fails or the user reports a problem later.
 - **Don't** modify code under `sembr/` or rewrite `docker-compose.yml`. This is the user's deployment, not a dev install. Configuration belongs in `.env` and runtime overrides — never in committed code.
 - **Don't** install Python packages, run `uv sync`, or run `pytest` on the host. Everything runs inside Docker.
 - **Don't** run `git pull` after the initial clone. Leave the user at the launch tag.
-- **Don't** publish or expose the dashboard to the public internet without setting `DASHBOARD_TOKEN` and reading `docs/deployment/public.md`. The dashboard editor is effectively root on the host via the Docker socket mount.
+- **Don't** publish or expose the dashboard to the public internet without setting `DASHBOARD_TOKEN` and reading `public_install.md`. The dashboard editor is effectively root on the host via the Docker socket mount.
 - **Don't** commit the user's `.env` to any repo. It contains their API keys.
 - **Don't** delete `${SEMBR_DIR}/data/` to "clean up" — that's where the SQLite DB and Qdrant vectors live. Confirm before any destructive operation.
 - **Don't** invent endpoints or env vars that aren't in `.env.example` / the docs. If a setting isn't documented, surface that to the user rather than guessing.
@@ -688,4 +688,4 @@ For your scanning convenience. Full descriptions are in `.env.example`.
 
 ## Versioning
 
-This guide tracks sembr `main`. For a specific version, prefix the URL with the tag: `https://github.com/Peakstone-Labs/sembr/blob/v1.0.0/INSTALL.md`.
+This guide tracks sembr `main`. For a specific version, prefix the URL with the tag: `https://github.com/Peakstone-Labs/sembr/blob/v1.0.0/agent/INSTALL.md`.

@@ -2,7 +2,7 @@
 
 > **This document teaches an AI agent (Claude Code, Cursor, Cline, Aider, a custom LangChain / DSPy / OpenAI-SDK script — anything that can speak HTTP) how to operate a **running** sembr instance.**
 >
-> It is **not** the install guide. If sembr isn't running yet, see `INSTALL.md`. Companion to `docs/deployment/public.md` (operator-facing hardening).
+> It is **not** the install guide. If sembr isn't running yet, see the sibling [`INSTALL.md`](INSTALL.md). Companion to [`public_install.md`](public_install.md) (public-exposure / reverse-proxy walkthrough rewritten for agent execution).
 >
 > Designed to fit in one context window: ~500 lines, no decorative prose, copy-pasteable curl + Python `httpx` for every flow.
 
@@ -401,7 +401,7 @@ Error response body is always shaped:
 
 ## 10. Companion docs
 
-- `INSTALL.md` — getting sembr running (agent-driven install guide).
-- `docs/deployment/public.md` — exposing sembr on the public internet (Caddy / nginx / Cloudflare Tunnel).
-- `docs/architecture.md`, `docs/configuration.md`, `docs/modules/*.md` — operator-facing internals.
-- `CLAUDE.md` — internal dev-time guidance (not for agents driving the API; for agents editing the codebase).
+- `INSTALL.md` (sibling) — getting sembr running (agent-driven install guide).
+- `public_install.md` (sibling) — agent-driven public-exposure walkthrough (reverse proxy + TLS + firewall). For the operator-facing version, see `../docs/deployment/public.md` in the same repo.
+- `../docs/architecture.md`, `../docs/configuration.md`, `../docs/modules/*.md` — operator-facing internals.
+- `../CLAUDE.md` — internal dev-time guidance (not for agents driving the API; for agents editing the codebase).

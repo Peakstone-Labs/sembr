@@ -89,14 +89,27 @@ LLM-analyzed digests to your inbox on whatever schedule you set.
   restart.
 - **`/health` endpoint** — auth-free liveness probe reporting per-component
   state (`embedder`, `qdrant`, `db`, `scheduler`).
-- **Agent-driven `INSTALL.md`** — top-level markdown protocol an AI coding
-  agent (Claude Code, Cursor, Cline, Aider, Continue, Roo) can execute
-  end-to-end on a fresh machine. Seven phases: hardware self-check,
-  dependency install with consent, clone + parallel image pulls while the
-  user fetches API keys, `.env` configuration, bring-up and `/health`
-  polling, optional first intent. Includes troubleshooting matrix and
-  agent guardrails. Closes the loop with the external-fire endpoint:
-  deploy sembr with an agent, then have agents call into it.
+- **Agent-driven install + API kit (`agent/`)** — repo-level `agent/`
+  directory grouping the three documents an AI coding agent (Claude
+  Code, Cursor, Cline, Aider, Continue, Roo) reads to operate sembr
+  end-to-end:
+  - `agent/INSTALL.md` — six-phase install protocol: hardware self-
+    check, dependency install with consent, clone + parallel image
+    pulls while the user fetches API keys, `.env` configuration,
+    bring-up and `/health` polling, optional first intent. Includes a
+    Phase 4 access-mode question (localhost / LAN / public + agent-
+    yes-no), troubleshooting matrix, and agent guardrails.
+  - `agent/AGENTS.md` — self-contained HTTP-API reference for driving a
+    running sembr instance: auth (`X-Dashboard-Token`), endpoint
+    surface, `IntentCreate` / `FeedCreate` schemas, curl + Python
+    `httpx` recipes including the sync `POST /api/external/intents/
+    {id}/fire` flow (no notifier side-effect, returns matches + LLM
+    summary).
+  - `agent/public_install.md` — agent-driven public-exposure
+    walkthrough (counterpart of operator-facing
+    `docs/deployment/public.md`).
+  Closes the loop: deploy sembr with an agent, then have agents call
+  into it.
 - **Public-deployment guide** — `docs/deployment/public.md` with reverse-
   proxy samples (Caddy / nginx / Cloudflare Tunnel), `ufw` and SSH
   hardening steps, and a `nmap`-based verification checklist for users
