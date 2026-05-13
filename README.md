@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
+  <a href="https://panel.peakstone-labs.com/#news"><b>Live demo</b></a> ·
   <a href="README.zh-CN.md">中文</a> ·
   <a href="https://peakstone-labs.github.io/sembr">Documentation</a> ·
   <a href="#quickstart">Quickstart</a> ·
-  <a href="docs/deployment/public.md">Public deployment</a> ·
   <a href="https://github.com/Peakstone-Labs/sembr/discussions">Discussions</a>
 </p>
 
@@ -53,6 +53,12 @@ Classic RAG: user types a query → app retrieves matching documents → LLM ans
 **Reverse RAG (sembr):** user defines an intent → sembr embeds it once → every new article runs against every standing intent vector → matches get summarized and pushed.
 
 The flip is small but its implications are big. Queries become first-class entities you can name, edit, schedule, and version. Retrieval becomes a long-running job, not a request-response round-trip. *"Answer quality"* becomes *"how relevant were the last 10 things I was told about."*
+
+<p align="center">
+  <img src="assets/screenshots/intents.jpeg" alt="sembr Intents tab — five active intents written in natural Chinese, each with its own daily/weekly cron schedule, similarity threshold, language, and tags" width="900">
+  <br>
+  <sub>Five live intents from a working deployment. Each is a natural-language brief; the cron preset + threshold + tags fully define the matcher's behaviour. Live digests at <a href="https://panel.peakstone-labs.com/#news">panel.peakstone-labs.com</a>.</sub>
+</p>
 
 → Full architecture write-up: [docs/architecture.md](docs/architecture.md)
 
@@ -105,6 +111,12 @@ Next digest fires on schedule. Done.
 
 RSS routes that need a JS-rendering origin (most CN sources, Twitter) go through the bundled **[RSSHub](https://rsshub.app)** sidecar — no extra setup. NewsAPI.ai's free signup token covers roughly 30 days of normal polling; get one at [newsapi.ai](https://newsapi.ai) and drop it into `.env`. Full per-feed list: [docs/getting-started.md](docs/getting-started.md).
 
+<p align="center">
+  <img src="assets/screenshots/feeds.jpeg" alt="sembr Feeds tab — Reuters row expanded showing real article titles + URLs, with the rest of the 70-feed list visible below" width="900">
+  <br>
+  <sub>Feeds tab. Each row is a live source; expand to inspect the most recent ingests with their source URLs and timestamps.</sub>
+</p>
+
 - **BGE-M3 embeddings** via SiliconFlow (free), or any OpenAI-compatible `/v1/embeddings` endpoint
 - **[Qdrant](https://qdrant.tech) vector store** with scalar int8 quantization (10M vectors fit in ~600 MB RAM)
 - **LLM digest generation** via any OpenAI-compatible `/v1/chat/completions` — defaults to DeepSeek-V4-Flash on SiliconFlow
@@ -127,6 +139,12 @@ RSS routes that need a JS-rendering origin (most CN sources, Twitter) go through
 Sensitive values (`EMBEDDER_API_KEY`, `LLM_API_KEY`, `DASHBOARD_TOKEN`, SMTP creds) belong in env vars or a properly-permissioned `.env` — never in committed files. Full surface: [docs/configuration.md](docs/configuration.md).
 
 > ⚠️ **Set `DASHBOARD_TOKEN` whenever the host is reachable beyond `localhost`.** Without it, `/api/dashboard/*` and the settings editor are unauthenticated. The Settings editor also bind-mounts the host docker socket so it can recreate containers — that's a deliberate single-tenant trade-off (same model as Watchtower / Portainer); anyone with API access is effectively docker-root on the host. Don't run sembr on a multi-tenant host without accepting that. See [docs/deployment/public.md](docs/deployment/public.md) for the full hardening checklist.
+
+<p align="center">
+  <img src="assets/screenshots/settings.jpeg" alt="sembr Settings tab — collapsible groups for Embedder / LLM / NewsAPI / RSSHub / Email / Dashboard / Maintenance / etc., with the LLM group expanded showing in-app .env edits with inline documentation" width="900">
+  <br>
+  <sub>Settings tab. Edit the host <code>.env</code> in the browser; secret fields are masked; saves are dry-run validated, then a <code>RestartController</code> recreates the affected container in place.</sub>
+</p>
 
 ## Tech stack
 

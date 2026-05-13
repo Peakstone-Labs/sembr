@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
+  <a href="https://panel.peakstone-labs.com/#news"><b>在线 demo</b></a> ·
   <a href="README.md">English</a> ·
   <a href="https://peakstone-labs.github.io/sembr">文档站</a> ·
   <a href="#快速开始">快速开始</a> ·
-  <a href="docs/deployment/public.md">公网部署</a> ·
   <a href="https://github.com/Peakstone-Labs/sembr/discussions">Discussions</a>
 </p>
 
@@ -53,6 +53,12 @@
 **反向 RAG (sembr)**：用户定义 intent → sembr 把 intent 向量化一次 → 每条新文章过一遍所有 intent 向量 → 命中的被 LLM 总结然后推送。
 
 翻转很小，含义很大。query 变成了一等公民 —— 你可以命名它、编辑它、给它排程、给它做版本管理。retrieval 变成了一个长时间运行的任务，不再是请求-响应。*"答案好不好"* 变成了 *"sembr 最近 10 次告诉我的东西，跟我关心的事有多相关"*。
+
+<p align="center">
+  <img src="assets/screenshots/intents.jpeg" alt="sembr Intents tab —— 5 个用自然中文写的实际 intent，各自带 cron 排程 / 相似度阈值 / 语言 / 标签" width="900">
+  <br>
+  <sub>真实部署的 5 个 intent。每条都是自然语言 brief；cron 预设 + 阈值 + 标签完整定义 matcher 行为。实时日报：<a href="https://panel.peakstone-labs.com/#news">panel.peakstone-labs.com</a>。</sub>
+</p>
 
 → 完整架构说明：[docs/architecture.md](docs/architecture.md)
 
@@ -105,6 +111,12 @@ curl -X POST http://localhost:8000/intents \
 
 需要 JS 渲染的 RSS 路由（多数中文源、Twitter）走内置 **[RSSHub](https://rsshub.app)** sidecar，开箱即用。NewsAPI.ai 注册送的免费 token 大约够用一个月正常轮询；去 [newsapi.ai](https://newsapi.ai) 申请一个，填进 `.env` 即可。完整每条源的列表见 [docs/getting-started.md](docs/getting-started.md)。
 
+<p align="center">
+  <img src="assets/screenshots/feeds.jpeg" alt="sembr Feeds tab —— Reuters 展开显示真实文章标题 + URL，下方还有 70 条 feeds 中的其余" width="900">
+  <br>
+  <sub>Feeds 页。每行是一个活跃源；展开就能看到最近抓到的文章 + 源 URL + 时间戳。</sub>
+</p>
+
 - **BGE-M3 embedding**，跑在 SiliconFlow 免费档，也可以指向任意 OpenAI 兼容的 `/v1/embeddings`
 - **[Qdrant](https://qdrant.tech) 向量库**，scalar int8 量化（1000 万条向量约占 600 MB RAM）
 - **LLM 总结**，OpenAI 兼容的 `/v1/chat/completions` —— 默认走 SiliconFlow 上的 DeepSeek-V4-Flash
@@ -127,6 +139,12 @@ curl -X POST http://localhost:8000/intents \
 敏感值（`EMBEDDER_API_KEY` / `LLM_API_KEY` / `DASHBOARD_TOKEN` / SMTP 凭据）放环境变量或者权限收紧的 `.env`，**别**提交进代码库。完整配置项见 [docs/configuration.md](docs/configuration.md)。
 
 > ⚠️ **只要 host 能被 `localhost` 之外访问到，就必须设 `DASHBOARD_TOKEN`。** 不设的话 `/api/dashboard/*` 和 settings 编辑器全是无认证的。Settings 编辑器还会 bind-mount 宿主机 docker socket 才能重建容器 —— 这是单租户场景下有意的取舍（和 Watchtower / Portainer 一样）；任何拿到 API 访问的人都等于在 host 上拿到 docker root。多租户主机上别这么跑。完整加固清单见 [docs/deployment/public.md](docs/deployment/public.md)。
+
+<p align="center">
+  <img src="assets/screenshots/settings.jpeg" alt="sembr Settings 页 —— Embedder / LLM / NewsAPI / RSSHub / Email / Dashboard / Maintenance 等分组，LLM 组展开可见浏览器里改 .env 的 inline 文档" width="900">
+  <br>
+  <sub>Settings 页。浏览器里直接改宿主机 <code>.env</code>；secret 字段自动 mask；保存前 dry-run 校验，然后 <code>RestartController</code> 原地重建受影响的容器。</sub>
+</p>
 
 ## 技术栈
 
