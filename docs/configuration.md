@@ -34,6 +34,7 @@ The same key is reused as `LLM_API_KEY` by default — SiliconFlow hosts both BG
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant server URL. The bundled `docker-compose.yml` provisions this address |
 | `SQLITE_PATH` | `/app/data/sembr.db` | SQLite database path inside the container. The host maps `./data/` here via the compose bind mount |
 | `SEMBR_HOST_PORT` | `8000` | Host port exposed by Docker Compose. The in-container bind port is hardcoded to `8000` in the Dockerfile CMD; override the host side here |
+| `SEMBR_HOST_BIND` | `127.0.0.1` | Host bind address for the published API port. Default loopback-only means the API is unreachable from outside the host — required for a sane public-internet deployment behind a reverse proxy ([deployment guide](deployment/public.md)). Set `0.0.0.0` for LAN-only home setups |
 
 ## Embedder
 

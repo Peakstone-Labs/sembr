@@ -64,6 +64,8 @@ nav:
     - logbus: modules/logbus.md
     - api: modules/api.md
     - dashboard: modules/dashboard.md
+  - Deployment:
+    - Public server: deployment/public.md
   - Contributing: contributing.md
   - 中文文档:
     - 简介: zh/index.md

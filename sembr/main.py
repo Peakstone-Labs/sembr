@@ -153,6 +153,14 @@ async def lifespan(app: FastAPI):
         buffer_per_tag=settings.dashboard_log_buffer_per_tag,
         default_level=getattr(logging, settings.dashboard_log_level),
     )
+    if not settings.dashboard_token.get_secret_value():
+        logger.error(
+            "DASHBOARD_TOKEN is empty — dashboard and API are unauthenticated. "
+            "This is OK for local development on 127.0.0.1, but unsafe for any "
+            "host reachable beyond localhost. Set DASHBOARD_TOKEN in .env "
+            "(e.g. `openssl rand -hex 32`) before exposing sembr to a LAN or "
+            "the public internet. See docs/deployment/public.md."
+        )
     # Validate embedder config before any I/O — raises ValueError if EMBEDDER_API_KEY unset.
     embedder = build_embedder(settings)
     conn = await init_sqlite(settings.sqlite_path)

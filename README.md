@@ -37,7 +37,7 @@ curl -i http://localhost:8000/health
 
 **Filesystem note**: keep `./data/` on a local POSIX-ish filesystem (ext4 / APFS / NTFS local). SQLite WAL is unsafe on network shares (NFS, SMB, virtio-9p).
 
-**Port override**: set `SEMBR_HOST_PORT=8080` in `.env` (or as a shell env var) to expose the API on `localhost:8080`. The in-container bind port is hardcoded to `8000` in the Dockerfile CMD. See [docs/configuration.md](docs/configuration.md) for the full settings surface.
+**Port & bind override**: the published API port defaults to `127.0.0.1:8000` (loopback-only) so the host is unreachable from outside the machine until you put sembr behind a reverse proxy. Set `SEMBR_HOST_PORT=8080` to change the port, or `SEMBR_HOST_BIND=0.0.0.0` for LAN-only home setups. For public-internet deployment follow [docs/deployment/public.md](docs/deployment/public.md). The in-container bind port is hardcoded to `8000` in the Dockerfile CMD. See [docs/configuration.md](docs/configuration.md) for the full settings surface.
 
 ## Production deployment
 
@@ -59,8 +59,9 @@ root on the host. Concrete implications:
 - **Do not run sembr on a multi-tenant host** unless you accept that an API
   compromise = host compromise.
 - **Prefer a private network** (LAN, VPN, Tailscale) over a public IP. If you
-  must expose it publicly, put it behind a reverse proxy with mTLS or basic auth
-  _in addition_ to `DASHBOARD_TOKEN`.
+  must expose it publicly, follow [docs/deployment/public.md](docs/deployment/public.md)
+  — TL;DR keep the default `127.0.0.1` bind, put sembr behind a reverse proxy
+  with TLS, and set a strong `DASHBOARD_TOKEN`.
 - **`cp .env.example .env` BEFORE the first `docker compose up`** — without an
   existing host `.env` file, Docker creates a directory at the bind-mount path
   and the API will refuse to start.
