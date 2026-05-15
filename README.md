@@ -207,41 +207,41 @@ Runs comfortably on **4 GB RAM** (homelab / Mac mini / NAS / $10 VPS) — measur
 
 How the closest tools in the market compare on the dimensions that matter for sembr's use case:
 
-| | Price | Semantic match | Custom sources | Self-host / data local | Bilingual CN+EN | Per-intent analysis lens | Agent-callable API |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **Feedly Pro+ AI** | ~$99 / yr | ✅ AI Feeds | ⚠️ Feedly index only | ❌ | ⚠️ translates non-EN to English first | ⚠️ natural-language filter, no per-feed prompt template | ❌ |
-| **Inoreader Pro** | $90 / yr | ❌ rules + keywords | ✅ RSS | ❌ | ⚠️ | ⚠️ on-demand custom queries per article (GPT-4o-mini, 1M tok / mo) | ⚠️ general read API |
-| **Brand24 / Mention** | $199–$499 / mo | ❌ keyword + sentiment NLP | ❌ vendor scans for you | ❌ | ⚠️ NLP across 100+ languages | ❌ | ✅ |
-| **Bloomberg Terminal** | ~$32k / yr / seat | ✅ ASKB conversational AI (beta) | ❌ Bloomberg-only | ❌ | ✅ | ❌ | ⚠️ B-Pipe (priced separately) |
-| **FreshRSS / miniflux** | $0 (self-host) | ❌ | ✅ RSS | ✅ | rendering only | ❌ | ⚠️ read API only |
-| **Google Alerts** | $0 | ❌ keyword | ❌ Google index | ❌ | ❌ weak on CN | ❌ | ❌ |
-| **Perplexity Pro** | $20 / mo | ✅ search + LLM | ❌ web index | ❌ | ⚠️ | ⚠️ Spaces persistent prompt, but applies per-query (pull) | ✅ |
-| **sembr** | **Self-host + ~$0.014 / intent / day** | ✅ BGE-M3 vectors | ✅ RSS / NewsAPI / Twitter / custom | ✅ | ✅ BGE-M3 native cross-lingual | ✅ per-intent prompt template, applied automatically on every match | ✅ sync `/api/external/.../fire` |
+| | Price | Semantic | Custom sources | Self-host | Bilingual CN+EN | Per-intent lens | Agent API |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Feedly Pro+ AI** | ~$99 / yr | ✅ | ⚠️ ¹ | ❌ | ⚠️ ² | ⚠️ ³ | ❌ |
+| **Inoreader Pro** | $90 / yr | ❌ | ✅ | ❌ | ⚠️ | ⚠️ ⁴ | ⚠️ |
+| **Brand24 / Mention** | $199–$499 / mo | ❌ | ❌ ⁵ | ❌ | ⚠️ | ❌ | ✅ |
+| **Bloomberg Terminal** | ~$32k / yr / seat | ✅ ⁶ | ❌ | ❌ | ✅ | ❌ | ⚠️ ⁷ |
+| **FreshRSS / miniflux** | $0 (self-host) | ❌ | ✅ | ✅ | ❌ | ❌ | ⚠️ |
+| **Google Alerts** | $0 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Perplexity Pro** | $20 / mo | ✅ | ❌ | ❌ | ⚠️ | ⚠️ ⁸ | ✅ |
+| **sembr** | **Self-host + ~$0.014 / intent / day** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Symbols: ✅ comparable to sembr or better · ⚠️ partial / with caveats · ❌ not supported.
+✅ comparable to sembr or better · ⚠️ partial / with caveats · ❌ not supported
+
+<sub>
+¹ Limited to Feedly's curated index — you don't point it at arbitrary RSS / NewsAPI.<br>
+² Translates non-English articles to English first; not native cross-lingual vectors.<br>
+³ Natural-language filter, not a per-feed system+instruction prompt template.<br>
+⁴ On-demand custom queries per article (GPT-4o-mini, 1M tokens / month); not a standing per-intent prompt.<br>
+⁵ Vendor scans the public web for you; you don't get to point it at specific sources.<br>
+⁶ ASKB conversational AI (beta in 2026); proprietary, terminal-only.<br>
+⁷ B-Pipe data licensing priced separately (institutional only).<br>
+⁸ Spaces persistent custom instructions are real, but apply per-query (pull); sembr applies them push-style on every match.
+</sub>
 
 **DIY paths** — n8n / Huginn + LangChain + a vector DB + your own scheduler — could check ✅ on every column above. You'd be assembling 5+ moving parts and owning the long tail of feed parsing, embedding rate-limits, dedup, prompt management, and notification reliability yourself. sembr is the turnkey version of that stack.
 
 If you're an institution with budget, run Bloomberg or Brand24. If you're happy with a hosted plan and your watchlist isn't sensitive, Feedly Pro+ is great. sembr is for the slice where you want all four of **semantic + bilingual + custom sources + self-host** at once, **and** the per-intent analyst lens applied push-style on every match. **No tool we've found today sits at that intersection.**
 
-### Why not Perplexity, or wrap its API in a script?
+### "What if I just wrap Perplexity's API in a cron loop?"
 
-Perplexity is "search-then-summarize": it queries a search engine (keyword ranking) on demand, then wraps the top results in an LLM explanation. sembr is the inverse — you stash standing semantic intents, and a vector engine continuously scans your chosen feeds for matches.
+The table above covers head-to-head capabilities. The "wrap the API in a script" alternative is the one place readers most often think they can DIY past sembr. You can, for one or two low-frequency topics. Three structural gaps don't go away if you try at scale:
 
-| | Perplexity | sembr |
-| --- | --- | --- |
-| Mode | **Pull** — you ask, it answers | **Push** — you define once, it watches |
-| Retrieval | Search engine + keyword ranking | Vector match against pre-stored intent (BGE-M3) |
-| Sources | What the search engine indexes | What you point sembr at — RSS, NewsAPI, Twitter, your own |
-| Languages | One query, one language | Mixed (one intent matches CN + EN articles in one pass) |
-| Cost shape | **O(queries)** — every poll costs | **O(matches)** — scanning is free, only hits trigger LLM |
-| Watchlist | Sent to Perplexity each query | Vectors stay in your local Qdrant |
-
-**"What if I just wrap Perplexity's API in a cron loop?"** You can, for one or two low-frequency topics. Three structural gaps don't go away:
-
-1. **Cost** — every poll costs ~$0.005–0.02 vs sembr's "free until matched". 10 intents × 24 polls/day × 365 days = 87.6k API calls; the math gets ugly fast.
+1. **Cost shape** — every poll costs ~$0.005–0.02 vs sembr's "free until matched". 10 intents × 24 polls/day × 365 days ≈ 87k API calls; the math gets ugly fast.
 2. **Matching quality** — you'd hand-craft search queries every time, instead of writing one natural-language intent that BGE-M3 vectorises once. *"EM contagion"* won't return *"Turkish lira plunges as Fed eyes another hike"* through keyword ranking; semantic vectors do.
-3. **Watchlist leak** — every poll mails the things you're monitoring to a third party. *What you're watching is itself signal* — sembr keeps it on your hardware.
+3. **Watchlist leak** — every poll mails what you're monitoring to a third party. *What you're watching is itself signal* — sembr keeps it on your hardware.
 
 ## Built by
 

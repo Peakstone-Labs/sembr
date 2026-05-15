@@ -207,39 +207,39 @@ Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WA
 
 市面上最接近的几样，按 sembr 在意的维度横向对比：
 
-| | 价格 | 语义匹配 | 自定义源 | 自部署 / 数据本地 | 中英混合 | Per-intent 分析视角 | Agent 可调用 API |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **Feedly Pro+ AI** | 约 $99 / 年 | ✅ AI Feeds | ⚠️ 仅限 Feedly 索引 | ❌ | ⚠️ 非英文先翻译成英文再处理 | ⚠️ 自然语言 filter，非 per-feed prompt 模板 | ❌ |
-| **Inoreader Pro** | $90 / 年 | ❌ 规则 + 关键词 | ✅ RSS | ❌ | ⚠️ | ⚠️ 单篇 on-demand custom query（GPT-4o-mini，1M token / 月） | ⚠️ 通用读 API |
-| **Brand24 / Mention** | $199–$499 / 月 | ❌ 关键词 + 情感 NLP | ❌ 厂商替你扫 | ❌ | ⚠️ 100+ 语言 NLP | ❌ | ✅ |
-| **Bloomberg Terminal** | 约 $32,000 / 年 / 席位 | ✅ ASKB 对话式 AI（beta） | ❌ 仅 Bloomberg 数据 | ❌ | ✅ | ❌ | ⚠️ B-Pipe（另收费） |
-| **FreshRSS / miniflux** | $0（自部署） | ❌ | ✅ RSS | ✅ | 只是渲染 | ❌ | ⚠️ 仅读 API |
-| **Google Alerts** | $0 | ❌ 关键词 | ❌ Google 索引 | ❌ | ❌ 中文弱 | ❌ | ❌ |
-| **Perplexity Pro** | $20 / 月 | ✅ 搜索 + LLM | ❌ Web 索引 | ❌ | ⚠️ | ⚠️ Spaces 持久 prompt，但 per-query 触发（pull） | ✅ |
-| **sembr** | **自部署 + ~¥0.10 / 个 intent / 天** | ✅ BGE-M3 向量 | ✅ RSS / NewsAPI / Twitter / 自定义 | ✅ | ✅ BGE-M3 原生跨语言 | ✅ per-intent prompt 模板，每条命中文章自动应用 | ✅ 同步 `/api/external/.../fire` |
+| | 价格 | 语义 | 自定义源 | 自部署 | 中英混合 | Per-intent 视角 | Agent API |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Feedly Pro+ AI** | 约 $99 / 年 | ✅ | ⚠️ ¹ | ❌ | ⚠️ ² | ⚠️ ³ | ❌ |
+| **Inoreader Pro** | $90 / 年 | ❌ | ✅ | ❌ | ⚠️ | ⚠️ ⁴ | ⚠️ |
+| **Brand24 / Mention** | $199–$499 / 月 | ❌ | ❌ ⁵ | ❌ | ⚠️ | ❌ | ✅ |
+| **Bloomberg Terminal** | 约 $32,000 / 年 / 席位 | ✅ ⁶ | ❌ | ❌ | ✅ | ❌ | ⚠️ ⁷ |
+| **FreshRSS / miniflux** | $0（自部署） | ❌ | ✅ | ✅ | ❌ | ❌ | ⚠️ |
+| **Google Alerts** | $0 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Perplexity Pro** | $20 / 月 | ✅ | ❌ | ❌ | ⚠️ | ⚠️ ⁸ | ✅ |
+| **sembr** | **自部署 + ~¥0.10 / 个 intent / 天** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-符号：✅ 跟 sembr 同档或更好 · ⚠️ 部分支持 / 带 caveat · ❌ 没有这个能力。
+✅ 跟 sembr 同档或更好 · ⚠️ 部分支持 / 带 caveat · ❌ 没有这个能力
+
+<sub>
+¹ 仅限 Feedly 自己的索引 —— 你不能指它去抓任意 RSS / NewsAPI。<br>
+² 非英文文章先翻译成英文再处理，不是原生跨语言向量空间。<br>
+³ 自然语言 filter，不是 per-feed 的 system+instruction prompt 模板。<br>
+⁴ 单篇 on-demand custom query（GPT-4o-mini，1M token / 月），不是 standing per-intent prompt。<br>
+⁵ 厂商替你扫公网，你不能指定具体源。<br>
+⁶ ASKB 对话式 AI（2026 beta），仅限 terminal、私有数据。<br>
+⁷ B-Pipe 数据授权另收费（仅机构）。<br>
+⁸ Spaces 持久 custom instructions 是真的，但 per-query 触发（pull）；sembr 是命中后自动 push 应用。
+</sub>
 
 **DIY 派路径** —— n8n / Huginn + LangChain + 向量库 + 自己的调度器 —— 技术上每一列都能拼到 ✅。你要自己装 5+ 个组件，并且独自承担源解析、embedding 限流、去重、prompt 管理、通知可靠性这一长串维护成本。sembr 是这套栈的开箱即用版。
 
 如果你是有预算的机构，跑 Bloomberg / Brand24。如果你不在意托管、关注清单也不敏感，Feedly Pro+ 已经挺好。sembr 想覆盖的是这样一群人：上面表里的 **语义 + 中英混合 + 自定义源 + 自部署** 四列都想要 ✅，**并且**想要 per-intent 分析视角对每条命中文章自动应用（push 式而非 pull 式）。**目前我们没找到第二家覆盖这个交集。**
 
-### 跟 Perplexity 啥区别？自己写脚本 wrap 它的 API 不行吗？
+### "那我自己 wrap Perplexity 的 API + cron 不就行？"
 
-Perplexity 是"先搜后总结"：它向搜索引擎发 query（关键词排名），把 top 结果用 LLM 包一层解释。sembr 是反过来的 —— 你预先存好语义意图，向量引擎在你指定的源上持续扫描匹配。
+上面表格已经覆盖了 Perplexity vs sembr 的能力对比。"自己写脚本 wrap API" 是读者最容易想到的"DIY 绕过 sembr"路径。一两个低频主题可以；做大就有三道结构性差距绕不过去：
 
-| | Perplexity | sembr |
-| --- | --- | --- |
-| 模式 | **拉** —— 你问，它答 | **推** —— 你定义一次，它持续盯 |
-| 检索层 | 搜索引擎 + 关键词排名 | 预存意图向量匹配（BGE-M3） |
-| 源可控性 | 看搜索引擎索引到什么 | 看你给 sembr 配什么 —— RSS / NewsAPI / Twitter / 自定义 |
-| 语言 | 单 query 单语言 | 跨语言混合（一个 intent 同时能命中中英文） |
-| 成本结构 | **O(查询)** —— 每次扫描都花钱 | **O(命中)** —— 扫描免费，只有命中才调 LLM |
-| 关注清单 | 每次查询发给 Perplexity | 向量留在你本地 Qdrant |
-
-**"那我自己 wrap 它的 API + cron 不就行？"** 一两个低频主题可以。但有三道结构性差距绕不过去：
-
-1. **成本** —— 每次 ~$0.005–0.02 vs sembr "命中之前免费"。10 个意图 × 一天扫 24 次 × 365 天 = 8.76 万次 API 调用，账单会很难看。
+1. **成本结构** —— 每次 ~$0.005–0.02 vs sembr "命中之前免费"。10 个意图 × 一天扫 24 次 × 365 天 ≈ 8.7 万次 API 调用，账单会很难看。
 2. **匹配质量** —— 你每次都要手撸 search query，而不是写一句自然语言意图让 BGE-M3 一次向量化永久使用。*"新兴市场货币传染"* 在关键词排名里搜不到 *"土耳其里拉跳水，市场押注美联储再加息"*；语义向量能。
 3. **关注清单泄露** —— 每次轮询都把"你正在监控什么"发给第三方。*你监控什么本身就是信号* —— sembr 让这件事留在你自己的硬件上。
 
