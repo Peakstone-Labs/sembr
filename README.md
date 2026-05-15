@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>Your private intelligence analyst.</b><br>
-  <i>Say what to watch — and how to analyze it. sembr scans your chosen feeds continuously, matches by meaning (not keywords), and delivers analyst-shaped digests on schedule.</i>
+  <i>Say what to watch — and how to analyze it. sembr scans your chosen feeds continuously, matches by meaning (not keywords), and delivers analyst-shaped digests on your terms.</i>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 
 ---
 
-**sembr** is a **self-hosted intent radar**. You describe what you care about once — _"monitor Fed policy impact on emerging-market currencies"_ — and it continuously scans RSS feeds, news APIs, and social streams, matches articles to your intent via semantic vectors, and delivers LLM-analyzed digests from whatever angle you configure.
+**sembr** is a **self-hosted intent radar**. You describe what you care about once — _"monitor Fed policy impact on emerging-market currencies"_ — and it continuously scans RSS feeds, news APIs, and social streams, matches articles to your intent via semantic vectors, and generates reports through the analytical lens you configure.
 
 <p align="center">
   <img src="assets/brand/hero.png" alt="sembr — Reverse RAG" width="720">
@@ -38,13 +38,13 @@
 ## Why sembr
 
 - **Semantic, not keyword.** Your intent is an embedding, not an `OR`-list. *"EM currency contagion"* matches *"Turkish lira plunges as Fed eyes another hike"* with zero shared words.
-- **Bilingual out of the box.** [BGE-M3](https://huggingface.co/BAAI/bge-m3) was picked specifically for CJK + English mixed content. Bloomberg, SCMP, 财联社, 华尔街见闻, Nature, 36氪 can all sit under one intent and the matcher doesn't care which language an article is in.
-- **Per-intent analyst lens.** Each intent owns its LLM prompt template (system + instruction, edited from the dashboard). The same article gets analyzed *"as a macro asset allocator"* under one intent and *"as a short-term commodity desk"* under another — sembr isn't just *finding* matches, it's *analyzing them your way*. Swappable, versionable, validated on save.
-- **Free embeddings, pennies per digest.** The default embedder (BGE-M3 on [SiliconFlow](https://siliconflow.cn)) is free at any volume. The default LLM (DeepSeek-V4-Flash, **input $0.14 / output $0.28 per 1M tokens**) is paid but extremely cheap — its 1M-token context window means one digest can chew through a hundred long-form articles for typically well under a cent. Same OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
-- **Your watchlist never leaves your box.** What you're monitoring is itself signal — sensitive financial or journalistic intents leak research direction to whichever vendor sees them. sembr runs on your hardware (homelab / Mac mini / NAS / a $5 VPS). The default embedder + LLM hit cloud APIs for zero-friction startup, but both are ABC seams — swap in Ollama / mlx-lm and the data never leaves the box.
-- **Cron or event.** Per-intent schedule: a fixed digest time (*"every weekday 09:00 in Asia/Shanghai"*) or event-mode (*"fire the moment 3 matches accumulate, but at most every 30 min"*).
+- **Bilingual out of the box.** [BGE-M3](https://huggingface.co/BAAI/bge-m3) was picked specifically for CJK + English mixed content. Write your intent in one language; mixed-language sources — Bloomberg, Reuters, Nature, 财联社, 华尔街见闻, 36氪 — all match against it.
+- **Per-intent analyst lens.** Each intent can bind its own analyst template (system + instruction, edited from the dashboard). The same article — under *"macro asset allocator"* outputs cross-asset rotation signals and rebalancing setups; under *"short-term commodity desk"* outputs supply-demand pivots and near-term catalysts — sembr isn't just *finding* matches, it's *analyzing them your way*. Templates are highly customizable; more bundled ones landing post-1.0.
+- **Free embeddings, pennies per digest.** The default embedder (BGE-M3 on [SiliconFlow](https://siliconflow.cn)) is free at any volume. The default LLM (DeepSeek-V4-Flash) is per-token (**input $0.14 / output $0.28 per 1M tokens**). A typical daily digest — dozens of full articles in plus the analysis out — usually runs around a cent. OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
+- **Data sovereignty stays with you.** Your intents and match history live in local Qdrant — no third party sees them. The default embedder + LLM hit cloud APIs (SiliconFlow / DeepSeek) for zero-friction startup, but both are ABC seams — swap in Ollama / mlx-lm and the data never leaves the box.
+- **Cron or event.** Per-intent schedule: a fixed digest time (*"every weekday 09:00 in Asia/Shanghai"*) or event-mode (*"fire when something moves"*).
 - **Pluggable everywhere.** Source / channel / embedder / LLM are all ABC seams. Telegram, Discord, Slack channels, local LLM backends (mlx-lm, Ollama), and more source plugins (Reddit, HN, Mastodon) are scaffolded for post-1.0.
-- **Agent-friendly end-to-end.** One-shot install via AI coding agent, an Agent Skills bundle that teaches the API, and a synchronous fire endpoint built for orchestrators. See [For AI agents](#for-ai-agents).
+- **Agent-friendly by design.** One-shot install by an AI agent, Agent Skills integration, and a synchronous fire endpoint built for orchestrators. See [For AI agents](#for-ai-agents).
 
 ## How "Reverse RAG" works
 
