@@ -205,18 +205,24 @@ Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WA
 
 ## 那些"差不多"的东西，以及 sembr 为什么存在
 
-市面上最接近的几样：
+市面上最接近的几样，按 sembr 在意的维度横向对比：
 
-- **Feedly Pro+ "AI Feeds"**（约 $99 / 年） —— 最近的语义竞品。支持 15 种语言，但非英文文章的翻译被截到 ~1,600 字符，你的关注清单存在 Feedly 服务器上，AI 这一层还被门槛卡在中高档套餐之上。
-- **Inoreader Pro**（约 $90 / 年） —— 规则 + 关键词过滤 + 月度 token 预算的 AI 总结。没有"对常驻 intent 做向量匹配"这一层。
-- **Brand24 / Mention**（$199+ / 月） —— 企业级提及监控，关键词驱动，纯托管，按分析师人头收费。
-- **Bloomberg Terminal**（约 $32,000 / 年 / 席位） —— 机构桌面的金标准；对长尾用户不相干。
-- **FreshRSS / miniflux** —— 你可能已经在跑的自部署 RSS 阅读器。没有语义匹配、没有 LLM 总结、没有 intent 概念。
-- **Google Alerts** —— 免费，但只能关键词，并且中文一直不太行。
+| | 价格 | 语义匹配 | 自定义源 | 自部署 / 数据本地 | 中英混合 | Per-intent 分析视角 | Agent 可调用 API |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **Feedly Pro+ AI** | 约 $99 / 年 | ✅ AI Feeds | ⚠️ 仅限 Feedly 索引 | ❌ | ⚠️ 非英文先翻译成英文再处理 | ⚠️ 自然语言 filter，非 per-feed prompt 模板 | ❌ |
+| **Inoreader Pro** | $90 / 年 | ❌ 规则 + 关键词 | ✅ RSS | ❌ | ⚠️ | ⚠️ 单篇 on-demand custom query（GPT-4o-mini，1M token / 月） | ⚠️ 通用读 API |
+| **Brand24 / Mention** | $199–$499 / 月 | ❌ 关键词 + 情感 NLP | ❌ 厂商替你扫 | ❌ | ⚠️ 100+ 语言 NLP | ❌ | ✅ |
+| **Bloomberg Terminal** | 约 $32,000 / 年 / 席位 | ✅ ASKB 对话式 AI（beta） | ❌ 仅 Bloomberg 数据 | ❌ | ✅ | ❌ | ⚠️ B-Pipe（另收费） |
+| **FreshRSS / miniflux** | $0（自部署） | ❌ | ✅ RSS | ✅ | 只是渲染 | ❌ | ⚠️ 仅读 API |
+| **Google Alerts** | $0 | ❌ 关键词 | ❌ Google 索引 | ❌ | ❌ 中文弱 | ❌ | ❌ |
+| **Perplexity Pro** | $20 / 月 | ✅ 搜索 + LLM | ❌ Web 索引 | ❌ | ⚠️ | ⚠️ Spaces 持久 prompt，但 per-query 触发（pull） | ✅ |
+| **sembr** | **自部署 + ~¥0.10 / 个 intent / 天** | ✅ BGE-M3 向量 | ✅ RSS / NewsAPI / Twitter / 自定义 | ✅ | ✅ BGE-M3 原生跨语言 | ✅ per-intent prompt 模板，每条命中文章自动应用 | ✅ 同步 `/api/external/.../fire` |
 
-**DIY 派路径** —— n8n / Huginn + LangChain + 向量库 + 自己的调度器 —— 技术上当然能拼。你要自己装 5+ 个组件，并且独自承担源解析、embedding 限流、去重、prompt 管理、通知可靠性这一长串维护成本。sembr 是这套栈的开箱即用版。
+符号：✅ 跟 sembr 同档或更好 · ⚠️ 部分支持 / 带 caveat · ❌ 没有这个能力。
 
-如果你是有预算的机构，跑 Bloomberg / Brand24。如果你不在意托管、关注清单也不敏感，Feedly Pro+ 已经挺好。sembr 想覆盖的是这样一群人：(a) 想用自然语言写关注 brief，(b) 想在中英混合源上做语义匹配，(c) 想按自己定的节奏拿到 LLM 总结的 digest，(d) 想付接近 $0、数据全在自己手里。**这四件事的交集，目前我们没找到第二家在做。**
+**DIY 派路径** —— n8n / Huginn + LangChain + 向量库 + 自己的调度器 —— 技术上每一列都能拼到 ✅。你要自己装 5+ 个组件，并且独自承担源解析、embedding 限流、去重、prompt 管理、通知可靠性这一长串维护成本。sembr 是这套栈的开箱即用版。
+
+如果你是有预算的机构，跑 Bloomberg / Brand24。如果你不在意托管、关注清单也不敏感，Feedly Pro+ 已经挺好。sembr 想覆盖的是这样一群人：上面表里的 **语义 + 中英混合 + 自定义源 + 自部署** 四列都想要 ✅，**并且**想要 per-intent 分析视角对每条命中文章自动应用（push 式而非 pull 式）。**目前我们没找到第二家覆盖这个交集。**
 
 ### 跟 Perplexity 啥区别？自己写脚本 wrap 它的 API 不行吗？
 

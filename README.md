@@ -205,18 +205,24 @@ Runs comfortably on **4 GB RAM** (homelab / Mac mini / NAS / $10 VPS) — measur
 
 ## Alternatives, and why sembr exists
 
-The closest things in the market today:
+How the closest tools in the market compare on the dimensions that matter for sembr's use case:
 
-- **Feedly Pro+ "AI Feeds"** ($99 / yr) — the closest semantic competitor. 15 languages, but non-English articles are translation-truncated at ~1,600 chars, your watchlist lives on Feedly's servers, and the AI tier is gated above the entry-level plan.
-- **Inoreader Pro** ($90 / yr) — rules + keyword filters with AI summaries on a monthly token budget. No vector-matching of standing intents.
-- **Brand24 / Mention** ($199+ / mo) — enterprise mention monitoring, keyword-driven, hosted only, priced per analyst.
-- **Bloomberg Terminal** (~$32k / yr / seat) — gold standard for institutional desks; irrelevant to the long tail.
-- **FreshRSS / miniflux** — self-hosted RSS readers you may already run. No semantic matching, no LLM digest, no intent concept.
-- **Google Alerts** — free but keyword-only and famously weak on Chinese.
+| | Price | Semantic match | Custom sources | Self-host / data local | Bilingual CN+EN | Per-intent analysis lens | Agent-callable API |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **Feedly Pro+ AI** | ~$99 / yr | ✅ AI Feeds | ⚠️ Feedly index only | ❌ | ⚠️ translates non-EN to English first | ⚠️ natural-language filter, no per-feed prompt template | ❌ |
+| **Inoreader Pro** | $90 / yr | ❌ rules + keywords | ✅ RSS | ❌ | ⚠️ | ⚠️ on-demand custom queries per article (GPT-4o-mini, 1M tok / mo) | ⚠️ general read API |
+| **Brand24 / Mention** | $199–$499 / mo | ❌ keyword + sentiment NLP | ❌ vendor scans for you | ❌ | ⚠️ NLP across 100+ languages | ❌ | ✅ |
+| **Bloomberg Terminal** | ~$32k / yr / seat | ✅ ASKB conversational AI (beta) | ❌ Bloomberg-only | ❌ | ✅ | ❌ | ⚠️ B-Pipe (priced separately) |
+| **FreshRSS / miniflux** | $0 (self-host) | ❌ | ✅ RSS | ✅ | rendering only | ❌ | ⚠️ read API only |
+| **Google Alerts** | $0 | ❌ keyword | ❌ Google index | ❌ | ❌ weak on CN | ❌ | ❌ |
+| **Perplexity Pro** | $20 / mo | ✅ search + LLM | ❌ web index | ❌ | ⚠️ | ⚠️ Spaces persistent prompt, but applies per-query (pull) | ✅ |
+| **sembr** | **Self-host + ~$0.014 / intent / day** | ✅ BGE-M3 vectors | ✅ RSS / NewsAPI / Twitter / custom | ✅ | ✅ BGE-M3 native cross-lingual | ✅ per-intent prompt template, applied automatically on every match | ✅ sync `/api/external/.../fire` |
 
-**DIY paths** — n8n / Huginn + LangChain + a vector DB + your own scheduler — are technically possible. You'd be assembling 5+ moving parts and owning the long tail of feed parsing, embedding rate-limits, dedup, prompt management, and notification reliability yourself. sembr is the turnkey version of that stack.
+Symbols: ✅ comparable to sembr or better · ⚠️ partial / with caveats · ❌ not supported.
 
-If you're an institution with budget, run Bloomberg or Brand24. If you're happy with a hosted plan and your watchlist isn't sensitive, Feedly Pro+ is great. sembr is for the slice where you want to (a) write watchlist briefs in natural language, (b) have them matched semantically across mixed-language feeds, (c) get an LLM digest on a schedule you control, and (d) pay close to $0 while owning all the data. **No tool we've found today sits at the intersection of all four.**
+**DIY paths** — n8n / Huginn + LangChain + a vector DB + your own scheduler — could check ✅ on every column above. You'd be assembling 5+ moving parts and owning the long tail of feed parsing, embedding rate-limits, dedup, prompt management, and notification reliability yourself. sembr is the turnkey version of that stack.
+
+If you're an institution with budget, run Bloomberg or Brand24. If you're happy with a hosted plan and your watchlist isn't sensitive, Feedly Pro+ is great. sembr is for the slice where you want all four of **semantic + bilingual + custom sources + self-host** at once, **and** the per-intent analyst lens applied push-style on every match. **No tool we've found today sits at that intersection.**
 
 ### Why not Perplexity, or wrap its API in a script?
 
