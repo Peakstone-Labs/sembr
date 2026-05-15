@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>反向 RAG —— 让 AI 成为你的注意力。</b><br>
-  <i>覆盖任何信息流的常驻检索服务。</i>
+  <i>你的私人情报分析员 —— 你说盯什么、怎么看，剩下的它来。</i>
 </p>
 
 <p align="center">
@@ -29,6 +29,8 @@
 
 <p align="center">
   <img src="assets/brand/hero.png" alt="sembr — 反向 RAG" width="720">
+  <br>
+  <sub><i>实时 demo：sembr 是 <a href="https://panel.peakstone-labs.com">Peakstone Labs A股看板</a> 里 News tab 的引擎。</i></sub>
 </p>
 
 <!-- TODO: 等部署后截 intent 编辑 / dashboard / digest email 三连屏，替换占位 -->
@@ -37,6 +39,7 @@
 
 - **语义，不是关键词。** intent 是一个 embedding，不是一串 `OR`。*"新兴市场货币传染"* 能匹中 *"土耳其里拉跳水，市场押注美联储再加息"* —— 一个共同词都没有。
 - **中英开箱混用。** [BGE-M3](https://huggingface.co/BAAI/bge-m3) 是专门为 CJK + 英文混合内容选的。Bloomberg / SCMP / 财联社 / 华尔街见闻 / Nature / 36氪 可以放在同一个 intent 下，matcher 不在意你哪条是哪种语言。
+- **每个 intent 自带分析视角。** 每个 intent 绑定专属 LLM prompt 模板（system + instruction，dashboard 里改）。同一篇文章在 *"宏观交易员视角"* 下能输出市场定价偏差和交易机会，在 *"合规风控视角"* 下输出监管信号和上报事项 —— sembr 不只是"找到相关文章"，而是"按你的方式解读文章"。模板可换可改可版本化，存盘前严格校验。
 - **Embedding 全免费，LLM 一篇 digest 几分钱。** 默认 embedder（[SiliconFlow](https://siliconflow.cn) 上的 BGE-M3）在任何用量下都免费。默认 LLM（DeepSeek-V4-Flash）收费但便宜得多 —— 1M token 上下文意味着一次 digest 可以塞进上百篇长文，全摊下来不到一分钱。OpenAI 兼容协议意味着你可以随时切到 OpenAI / Together / Groq / Ollama / mlx-lm。
 - **关注清单不离开你的机器。** 你监控的东西本身就是信号 —— 敏感的财经 / 调查类 intent 哪怕只是输给厂商，也是在泄露研究方向。sembr 跑在你自己的硬件上（homelab / Mac mini / NAS / $5 VPS），唯一对外的请求是你选的 embedder + LLM endpoint。
 - **Cron 或 Event。** 每个 intent 自定节奏：固定时间（*"工作日 09:00 Asia/Shanghai"*）或者事件模式（*"凑齐 3 条命中就发，但每 30 分钟最多一次"*）。
@@ -209,7 +212,28 @@ Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WA
 - **FreshRSS / miniflux** —— 你可能已经在跑的自部署 RSS 阅读器。没有语义匹配、没有 LLM 总结、没有 intent 概念。
 - **Google Alerts** —— 免费，但只能关键词，并且中文一直不太行。
 
-如果你是有预算的机构，跑 Bloomberg / Brand24。如果你不在意托管、关注清单也不敏感，Feedly Pro+ 已经挺好。sembr 想覆盖的是这样一群人：(a) 想用自然语言写关注 brief，(b) 想在中英混合源上做语义匹配，(c) 想按自己定的节奏拿到 LLM 总结的 digest，(d) 想付接近 $0、数据全在自己手里。这四件事的交集，目前据我们所知没有第二家在做。
+**DIY 派路径** —— n8n / Huginn + LangChain + 向量库 + 自己的调度器 —— 技术上当然能拼。你要自己装 5+ 个组件，并且独自承担源解析、embedding 限流、去重、prompt 管理、通知可靠性这一长串维护成本。sembr 是这套栈的开箱即用版。
+
+如果你是有预算的机构，跑 Bloomberg / Brand24。如果你不在意托管、关注清单也不敏感，Feedly Pro+ 已经挺好。sembr 想覆盖的是这样一群人：(a) 想用自然语言写关注 brief，(b) 想在中英混合源上做语义匹配，(c) 想按自己定的节奏拿到 LLM 总结的 digest，(d) 想付接近 $0、数据全在自己手里。**这四件事的交集，目前我们没找到第二家在做。**
+
+### 跟 Perplexity 啥区别？自己写脚本 wrap 它的 API 不行吗？
+
+Perplexity 是"先搜后总结"：它向搜索引擎发 query（关键词排名），把 top 结果用 LLM 包一层解释。sembr 是反过来的 —— 你预先存好语义意图，向量引擎在你指定的源上持续扫描匹配。
+
+| | Perplexity | sembr |
+| --- | --- | --- |
+| 模式 | **拉** —— 你问，它答 | **推** —— 你定义一次，它持续盯 |
+| 检索层 | 搜索引擎 + 关键词排名 | 预存意图向量匹配（BGE-M3） |
+| 源可控性 | 看搜索引擎索引到什么 | 看你给 sembr 配什么 —— RSS / NewsAPI / Twitter / 自定义 |
+| 语言 | 单 query 单语言 | 跨语言混合（一个 intent 同时能命中中英文） |
+| 成本结构 | **O(查询)** —— 每次扫描都花钱 | **O(命中)** —— 扫描免费，只有命中才调 LLM |
+| 关注清单 | 每次查询发给 Perplexity | 向量留在你本地 Qdrant |
+
+**"那我自己 wrap 它的 API + cron 不就行？"** 一两个低频主题可以。但有三道结构性差距绕不过去：
+
+1. **成本** —— 每次 ~$0.005–0.02 vs sembr "命中之前免费"。10 个意图 × 一天扫 24 次 × 365 天 = 8.76 万次 API 调用，账单会很难看。
+2. **匹配质量** —— 你每次都要手撸 search query，而不是写一句自然语言意图让 BGE-M3 一次向量化永久使用。*"新兴市场货币传染"* 在关键词排名里搜不到 *"土耳其里拉跳水，市场押注美联储再加息"*；语义向量能。
+3. **关注清单泄露** —— 每次轮询都把"你正在监控什么"发给第三方。*你监控什么本身就是信号* —— sembr 让这件事留在你自己的硬件上。
 
 ## 是谁做的
 

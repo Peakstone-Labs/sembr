@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>Reverse RAG.</b><br>
-  <i>Always-on retrieval service for any input stream.</i>
+  <i>Your private intelligence analyst — say what to watch, and how to read it.</i>
 </p>
 
 <p align="center">
@@ -29,6 +29,8 @@
 
 <p align="center">
   <img src="assets/brand/hero.png" alt="sembr — Reverse RAG" width="720">
+  <br>
+  <sub><i>Live demo: sembr powers the News tab inside <a href="https://panel.peakstone-labs.com">Peakstone Labs' A股 panel</a>.</i></sub>
 </p>
 
 <!-- TODO: add product UI strip (intent editor / dashboard / digest email) once captured -->
@@ -37,6 +39,7 @@
 
 - **Semantic, not keyword.** Your intent is an embedding, not an `OR`-list. *"EM currency contagion"* matches *"Turkish lira plunges as Fed eyes another hike"* with zero shared words.
 - **Bilingual out of the box.** [BGE-M3](https://huggingface.co/BAAI/bge-m3) was picked specifically for CJK + English mixed content. Bloomberg, SCMP, 财联社, 华尔街见闻, Nature, 36氪 can all sit under one intent and the matcher doesn't care which language an article is in.
+- **Per-intent analyst lens.** Each intent owns its LLM prompt template (system + instruction, edited from the dashboard). The same article gets analyzed *"as a macro trader"* under one intent and *"flagged for compliance review"* under another — sembr isn't just *finding* matches, it's *reading them your way*. Swappable, versionable, validated on save.
 - **Free embeddings, pennies per digest.** The default embedder (BGE-M3 on [SiliconFlow](https://siliconflow.cn)) is free at any volume. The default LLM (DeepSeek-V4-Flash) is paid but extremely cheap — and its 1M-token context window means one digest can chew through a hundred long-form articles for well under a cent. Same OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
 - **Your watchlist never leaves your box.** What you're monitoring is itself signal — sensitive financial or journalistic intents leak research direction to whichever vendor sees them. sembr runs on your hardware (homelab / Mac mini / NAS / a $5 VPS); only outbound calls are to the embedder and LLM endpoints you choose.
 - **Cron or event.** Per-intent schedule: a fixed digest time (*"every weekday 09:00 in Asia/Shanghai"*) or event-mode (*"fire the moment 3 matches accumulate, but at most every 30 min"*).
@@ -209,7 +212,28 @@ The closest things in the market today:
 - **FreshRSS / miniflux** — self-hosted RSS readers you may already run. No semantic matching, no LLM digest, no intent concept.
 - **Google Alerts** — free but keyword-only and famously weak on Chinese.
 
-If you're an institution with budget, run Bloomberg or Brand24. If you're happy with a hosted plan and your watchlist isn't sensitive, Feedly Pro+ is great. sembr is for the slice where you want to (a) write watchlist briefs in natural language, (b) have them matched semantically across mixed-language feeds, (c) get an LLM digest on a schedule you control, and (d) pay close to $0 while owning all the data. As far as we can tell, nothing else sits at the intersection of all four.
+**DIY paths** — n8n / Huginn + LangChain + a vector DB + your own scheduler — are technically possible. You'd be assembling 5+ moving parts and owning the long tail of feed parsing, embedding rate-limits, dedup, prompt management, and notification reliability yourself. sembr is the turnkey version of that stack.
+
+If you're an institution with budget, run Bloomberg or Brand24. If you're happy with a hosted plan and your watchlist isn't sensitive, Feedly Pro+ is great. sembr is for the slice where you want to (a) write watchlist briefs in natural language, (b) have them matched semantically across mixed-language feeds, (c) get an LLM digest on a schedule you control, and (d) pay close to $0 while owning all the data. **No tool we've found today sits at the intersection of all four.**
+
+### Why not Perplexity, or wrap its API in a script?
+
+Perplexity is "search-then-summarize": it queries a search engine (keyword ranking) on demand, then wraps the top results in an LLM explanation. sembr is the inverse — you stash standing semantic intents, and a vector engine continuously scans your chosen feeds for matches.
+
+| | Perplexity | sembr |
+| --- | --- | --- |
+| Mode | **Pull** — you ask, it answers | **Push** — you define once, it watches |
+| Retrieval | Search engine + keyword ranking | Vector match against pre-stored intent (BGE-M3) |
+| Sources | What the search engine indexes | What you point sembr at — RSS, NewsAPI, Twitter, your own |
+| Languages | One query, one language | Mixed (one intent matches CN + EN articles in one pass) |
+| Cost shape | **O(queries)** — every poll costs | **O(matches)** — scanning is free, only hits trigger LLM |
+| Watchlist | Sent to Perplexity each query | Vectors stay in your local Qdrant |
+
+**"What if I just wrap Perplexity's API in a cron loop?"** You can, for one or two low-frequency topics. Three structural gaps don't go away:
+
+1. **Cost** — every poll costs ~$0.005–0.02 vs sembr's "free until matched". 10 intents × 24 polls/day × 365 days = 87.6k API calls; the math gets ugly fast.
+2. **Matching quality** — you'd hand-craft search queries every time, instead of writing one natural-language intent that BGE-M3 vectorises once. *"EM contagion"* won't return *"Turkish lira plunges as Fed eyes another hike"* through keyword ranking; semantic vectors do.
+3. **Watchlist leak** — every poll mails the things you're monitoring to a third party. *What you're watching is itself signal* — sembr keeps it on your hardware.
 
 ## Built by
 
