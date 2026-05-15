@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>你的私人情报分析员。</b><br>
-  <i>你说盯什么、怎么分析 —— sembr 在你指定的源上持续扫描，靠语义（不是关键词）匹配，按你的节奏出分析报告。</i>
+  <i>你说盯什么、怎么分析 —— sembr 在你指定的信息流上持续扫描，靠语义（不是关键词）匹配，按你的要求出分析报告。</i>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 
 ---
 
-**sembr** 是一台**自部署的意图雷达**。你只需一次描述你的关注点——*"美联储政策对新兴市场货币的传导"*——它持续扫描 RSS 订阅、新闻 API 和社交信息流，通过语义向量将文章与意图匹配，并按你配置的角度交付 LLM 分析简报。
+**sembr** 是一台**自部署的意图雷达**。你只需一次描述你的关注点——*"美联储政策对新兴市场货币的传导"*——它持续扫描 RSS 订阅、新闻 API 和社交信息流，通过语义向量将文章与关注意图匹配，并按你的分析框架生成报告。
 
 <p align="center">
   <img src="assets/brand/hero.png" alt="sembr — 反向 RAG" width="720">
@@ -38,13 +38,13 @@
 ## 为什么是 sembr
 
 - **语义，不是关键词。** intent 是一个 embedding，不是一串 `OR`。*"新兴市场货币传染"* 能匹中 *"土耳其里拉跳水，市场押注美联储再加息"* —— 一个共同词都没有。
-- **中英开箱混用。** [BGE-M3](https://huggingface.co/BAAI/bge-m3) 是专门为 CJK + 英文混合内容选的。Bloomberg / SCMP / 财联社 / 华尔街见闻 / Nature / 36氪 可以放在同一个 intent 下，matcher 不在意你哪条是哪种语言。
-- **每个 intent 自带分析视角。** 每个 intent 绑定专属 LLM prompt 模板（system + instruction，dashboard 里改）。同一篇文章在 *"宏观资产配置视角"* 下输出资产权重调整建议，在 *"短线大宗商品交易视角"* 下输出当日波动机会 —— sembr 不只是"找到相关文章"，而是"按你的方式分析文章"。模板可换可改可版本化，存盘前严格校验。
-- **Embedding 全免费，LLM 一篇 digest 不到一毛钱。** 默认 embedder（[SiliconFlow](https://siliconflow.cn) 上的 BGE-M3）在任何用量下都免费。默认 LLM（DeepSeek-V4-Flash，**输入 $0.14 / 输出 $0.28 每 1M token**）收费但很便宜 —— 1M token 上下文意味着一次 digest 可以塞进上百篇长文，全摊下来通常不到人民币一毛钱。OpenAI 兼容协议意味着你可以随时切到 OpenAI / Together / Groq / Ollama / mlx-lm。
-- **关注清单不离开你的机器。** 你监控的东西本身就是信号 —— 敏感的财经 / 调查类 intent 哪怕只是输给厂商，也是在泄露研究方向。sembr 跑在你自己的硬件上（homelab / Mac mini / NAS / $5 VPS）。默认 embedder + LLM 走云端 API 以便快速起步，但都是 ABC 抽象 —— 切到 Ollama / mlx-lm 即可全程数据不出机器。
-- **Cron 或 Event。** 每个 intent 自定节奏：固定时间（*"工作日 09:00 Asia/Shanghai"*）或者事件模式（*"凑齐 3 条命中就发，但每 30 分钟最多一次"*）。
+- **中英开箱混用。** [BGE-M3](https://huggingface.co/BAAI/bge-m3) 是专门为 CJK + 英文混合内容选的。Bloomberg / Reuters / Nature /财联社 / 华尔街见闻 / 36氪 多语言信息源都能匹配上你的用单一语言写的关注意图。
+- **每个 intent 自带分析视角。** 每个 intent 可绑定专属分析模板（system + instruction，dashboard 里改）。同一篇文章在 *"宏观资产配置视角"* 下能输出跨资产轮动信号和再平衡机会，在 *"短线大宗商品交易视角"* 下输出供需边际变化和短期交易催化 —— sembr 不只是"找到相关文章"，而是"按你的方式分析文章"。分析模板高度可定制化（后续会上线更多自带模板）。
+- **Embedding 全免费，一份报告不到1毛钱。** 默认 embedder（[SiliconFlow](https://siliconflow.cn) 上的 BGE-M3）在任何用量下都免费。默认 LLM（DeepSeek-V4-Flash）按 token 计费（输入 $0.14/1M、输出 $0.28/1M）。一份典型日报——几十篇文章全文送进去再加分析输出——通常不到人民币一毛钱。OpenAI 兼容协议意味着你可以切换其他模型。
+- **数据主权在你手里。** 你的 intent 和匹配历史存在本地 Qdrant，不经过任何第三方。默认 embedder 和 LLM 走云端 API（SiliconFlow / DeepSeek）以便快速起步，但两个后端都是 ABC 抽象  —— 接入本地模型（Ollama / mlx-lm）即可做到全程数据不出机器。
+- **Cron 或 Event。** 每个 intent 自定节奏：固定时间（*"工作日 09:00 Asia/Shanghai"*）或者事件模式（*"关注的事情有进展就推送"*）。
 - **处处可插拔。** Source / channel / embedder / LLM 全部是 ABC 接缝。Telegram / Discord / Slack 通道、本地 LLM (mlx-lm / Ollama)、Reddit / HN / Mastodon 源都是后 1.0 工作已经搭好的脚手架。
-- **从头到尾 agent 友好。** AI coding agent 一键部署、Agent Skills bundle 教 agent 调 API、专为编排器设计的同步 fire endpoint。详见 [给 AI agent 用](#给-ai-agent-用)。
+- **Agent友好型设计。** AI agent 一键部署、Skills集成、专为agent调用的设计的同步 fire endpoint。详见 [给 AI agent 用](#给-ai-agent-用)。
 
 ## "反向 RAG" 是怎么工作的
 
@@ -68,7 +68,7 @@
 
 ## 快速开始
 
-**机器上有 AI coding agent？** 直接看下面 [给 AI agent 用](#给-ai-agent-用) —— 一键部署 + 部署后用的 Agent Skills bundle 一起讲。
+**机器上有 Agent / 龙虾？** 直接看下面 [给 AI agent 用](#给-ai-agent-用) —— 一键部署 + 部署后用的 Agent Skills bundle 一起讲。
 
 **手动装**（下面这套，约 15 分钟）。需要 Docker + Docker Compose。第一次跑会拉 Qdrant + RSSHub 然后构建 API 镜像（Python 3.12 base + Docker CLI + pip 依赖）—— **总网络下载约 1 GB，家庭网速 10–15 分钟**。embedder probe 通之前 `/health` 返回 `503`。
 
