@@ -39,9 +39,9 @@
 
 - **Semantic, not keyword.** Your intent is an embedding, not an `OR`-list. *"EM currency contagion"* matches *"Turkish lira plunges as Fed eyes another hike"* with zero shared words.
 - **Bilingual out of the box.** [BGE-M3](https://huggingface.co/BAAI/bge-m3) was picked specifically for CJK + English mixed content. Bloomberg, SCMP, 财联社, 华尔街见闻, Nature, 36氪 can all sit under one intent and the matcher doesn't care which language an article is in.
-- **Per-intent analyst lens.** Each intent owns its LLM prompt template (system + instruction, edited from the dashboard). The same article gets analyzed *"as a macro trader"* under one intent and *"flagged for compliance review"* under another — sembr isn't just *finding* matches, it's *analyzing them your way*. Swappable, versionable, validated on save.
-- **Free embeddings, pennies per digest.** The default embedder (BGE-M3 on [SiliconFlow](https://siliconflow.cn)) is free at any volume. The default LLM (DeepSeek-V4-Flash) is paid but extremely cheap — and its 1M-token context window means one digest can chew through a hundred long-form articles for well under a cent. Same OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
-- **Your watchlist never leaves your box.** What you're monitoring is itself signal — sensitive financial or journalistic intents leak research direction to whichever vendor sees them. sembr runs on your hardware (homelab / Mac mini / NAS / a $5 VPS); only outbound calls are to the embedder and LLM endpoints you choose.
+- **Per-intent analyst lens.** Each intent owns its LLM prompt template (system + instruction, edited from the dashboard). The same article gets analyzed *"as a macro asset allocator"* under one intent and *"as a short-term commodity desk"* under another — sembr isn't just *finding* matches, it's *analyzing them your way*. Swappable, versionable, validated on save.
+- **Free embeddings, pennies per digest.** The default embedder (BGE-M3 on [SiliconFlow](https://siliconflow.cn)) is free at any volume. The default LLM (DeepSeek-V4-Flash, **input $0.14 / output $0.28 per 1M tokens**) is paid but extremely cheap — its 1M-token context window means one digest can chew through a hundred long-form articles for typically well under a cent. Same OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
+- **Your watchlist never leaves your box.** What you're monitoring is itself signal — sensitive financial or journalistic intents leak research direction to whichever vendor sees them. sembr runs on your hardware (homelab / Mac mini / NAS / a $5 VPS). The default embedder + LLM hit cloud APIs for zero-friction startup, but both are ABC seams — swap in Ollama / mlx-lm and the data never leaves the box.
 - **Cron or event.** Per-intent schedule: a fixed digest time (*"every weekday 09:00 in Asia/Shanghai"*) or event-mode (*"fire the moment 3 matches accumulate, but at most every 30 min"*).
 - **Pluggable everywhere.** Source / channel / embedder / LLM are all ABC seams. Telegram, Discord, Slack channels, local LLM backends (mlx-lm, Ollama), and more source plugins (Reddit, HN, Mastodon) are scaffolded for post-1.0.
 - **Agent-friendly end-to-end.** One-shot install via AI coding agent, an Agent Skills bundle that teaches the API, and a synchronous fire endpoint built for orchestrators. See [For AI agents](#for-ai-agents).
@@ -121,11 +121,13 @@ For public-internet deployment the agent branches into [`agent/PUBLIC_INSTALL.md
 
 Once sembr is running, [`agent/sembr/`](agent/sembr/) is an [Agent Skills](https://agentskills.io) bundle that teaches any agent how to drive the HTTP API:
 
-- `SKILL.md` — auth model, decision matrix for which `fire` endpoint to use, guardrails
-- `references/endpoints.md` — full surface (31 endpoints across feeds / intents / fire / external-fire / settings / prompts / translate)
-- `references/schemas.md` — `IntentCreate` / `FeedCreate` / `ExternalFireRequest` body shapes including the cron/event discriminated union and channel discriminator
-- `references/recipes.md` — copy-pasteable curl + Python `httpx` workflows
-- `references/errors.md` — status code table and scrubbed-detail contract
+| File | Content |
+| --- | --- |
+| `SKILL.md` | Auth model, decision matrix for which `fire` endpoint to use, guardrails |
+| `references/endpoints.md` | Full surface — 31 endpoints across feeds / intents / fire / external-fire / settings / prompts / translate |
+| `references/schemas.md` | `IntentCreate` / `FeedCreate` / `ExternalFireRequest` body shapes, including the cron/event discriminated union and channel discriminator |
+| `references/recipes.md` | Copy-pasteable curl + Python `httpx` workflows |
+| `references/errors.md` | Status code table and scrubbed-detail error contract |
 
 **Claude Code**: `cp -r agent/sembr ~/.claude/skills/sembr` for auto-loading. **Other platforms**: hand your agent `agent/sembr/SKILL.md` directly, or consult your platform's skill-loading docs.
 
