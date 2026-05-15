@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <b>反向 RAG —— 让 AI 成为你的注意力。</b><br>
-  <i>你的私人情报分析员 —— 你说盯什么、怎么看，剩下的它来。</i>
+  <b>你的私人情报分析员。</b><br>
+  <i>你说盯什么、怎么分析 —— sembr 在你指定的源上持续扫描，靠语义（不是关键词）匹配，按你的节奏出分析报告。</i>
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
 
 - **语义，不是关键词。** intent 是一个 embedding，不是一串 `OR`。*"新兴市场货币传染"* 能匹中 *"土耳其里拉跳水，市场押注美联储再加息"* —— 一个共同词都没有。
 - **中英开箱混用。** [BGE-M3](https://huggingface.co/BAAI/bge-m3) 是专门为 CJK + 英文混合内容选的。Bloomberg / SCMP / 财联社 / 华尔街见闻 / Nature / 36氪 可以放在同一个 intent 下，matcher 不在意你哪条是哪种语言。
-- **每个 intent 自带分析视角。** 每个 intent 绑定专属 LLM prompt 模板（system + instruction，dashboard 里改）。同一篇文章在 *"宏观交易员视角"* 下能输出市场定价偏差和交易机会，在 *"合规风控视角"* 下输出监管信号和上报事项 —— sembr 不只是"找到相关文章"，而是"按你的方式解读文章"。模板可换可改可版本化，存盘前严格校验。
+- **每个 intent 自带分析视角。** 每个 intent 绑定专属 LLM prompt 模板（system + instruction，dashboard 里改）。同一篇文章在 *"宏观交易员视角"* 下能输出市场定价偏差和交易机会，在 *"合规风控视角"* 下输出监管信号和上报事项 —— sembr 不只是"找到相关文章"，而是"按你的方式分析文章"。模板可换可改可版本化，存盘前严格校验。
 - **Embedding 全免费，LLM 一篇 digest 几分钱。** 默认 embedder（[SiliconFlow](https://siliconflow.cn) 上的 BGE-M3）在任何用量下都免费。默认 LLM（DeepSeek-V4-Flash）收费但便宜得多 —— 1M token 上下文意味着一次 digest 可以塞进上百篇长文，全摊下来不到一分钱。OpenAI 兼容协议意味着你可以随时切到 OpenAI / Together / Groq / Ollama / mlx-lm。
 - **关注清单不离开你的机器。** 你监控的东西本身就是信号 —— 敏感的财经 / 调查类 intent 哪怕只是输给厂商，也是在泄露研究方向。sembr 跑在你自己的硬件上（homelab / Mac mini / NAS / $5 VPS），唯一对外的请求是你选的 embedder + LLM endpoint。
 - **Cron 或 Event。** 每个 intent 自定节奏：固定时间（*"工作日 09:00 Asia/Shanghai"*）或者事件模式（*"凑齐 3 条命中就发，但每 30 分钟最多一次"*）。

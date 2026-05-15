@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <b>Reverse RAG.</b><br>
-  <i>Your private intelligence analyst — say what to watch, and how to read it.</i>
+  <b>Your private intelligence analyst.</b><br>
+  <i>Say what to watch — and how to analyze it. sembr scans your chosen feeds continuously, matches by meaning (not keywords), and delivers analyst-shaped digests on schedule.</i>
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
 
 - **Semantic, not keyword.** Your intent is an embedding, not an `OR`-list. *"EM currency contagion"* matches *"Turkish lira plunges as Fed eyes another hike"* with zero shared words.
 - **Bilingual out of the box.** [BGE-M3](https://huggingface.co/BAAI/bge-m3) was picked specifically for CJK + English mixed content. Bloomberg, SCMP, 财联社, 华尔街见闻, Nature, 36氪 can all sit under one intent and the matcher doesn't care which language an article is in.
-- **Per-intent analyst lens.** Each intent owns its LLM prompt template (system + instruction, edited from the dashboard). The same article gets analyzed *"as a macro trader"* under one intent and *"flagged for compliance review"* under another — sembr isn't just *finding* matches, it's *reading them your way*. Swappable, versionable, validated on save.
+- **Per-intent analyst lens.** Each intent owns its LLM prompt template (system + instruction, edited from the dashboard). The same article gets analyzed *"as a macro trader"* under one intent and *"flagged for compliance review"* under another — sembr isn't just *finding* matches, it's *analyzing them your way*. Swappable, versionable, validated on save.
 - **Free embeddings, pennies per digest.** The default embedder (BGE-M3 on [SiliconFlow](https://siliconflow.cn)) is free at any volume. The default LLM (DeepSeek-V4-Flash) is paid but extremely cheap — and its 1M-token context window means one digest can chew through a hundred long-form articles for well under a cent. Same OpenAI-compatible protocol means you can swap to OpenAI / Together / Groq / Ollama / mlx-lm any time.
 - **Your watchlist never leaves your box.** What you're monitoring is itself signal — sensitive financial or journalistic intents leak research direction to whichever vendor sees them. sembr runs on your hardware (homelab / Mac mini / NAS / a $5 VPS); only outbound calls are to the embedder and LLM endpoints you choose.
 - **Cron or event.** Per-intent schedule: a fixed digest time (*"every weekday 09:00 in Asia/Shanghai"*) or event-mode (*"fire the moment 3 matches accumulate, but at most every 30 min"*).
