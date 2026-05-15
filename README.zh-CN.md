@@ -18,6 +18,7 @@
   <a href="https://panel.peakstone-labs.com/#news"><b>在线 demo</b></a> ·
   <a href="README.md">English</a> ·
   <a href="https://peakstone-labs.github.io/sembr">文档站</a> ·
+  <a href="#那些差不多的东西以及-sembr-为什么存在">竞品对比</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#给-ai-agent-用">给 AI agent 用</a> ·
   <a href="https://github.com/Peakstone-Labs/sembr/discussions">Discussions</a>
@@ -66,6 +67,46 @@
 
 → 完整架构说明：[docs/architecture.md](docs/architecture.md)
 
+## 那些"差不多"的东西，以及 sembr 为什么存在
+
+市面上最接近的几样，按 sembr 在意的维度横向对比：
+
+| | 价格 | 语义 | 自定义源 | 自部署 | 中英混合 | Per-intent 视角 | Agent API |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Feedly Pro+ AI** | 约 $99 / 年 | ✅ | ⚠️ ¹ | ❌ | ⚠️ ² | ⚠️ ³ | ❌ |
+| **Inoreader Pro** | $90 / 年 | ❌ | ✅ | ❌ | ⚠️ | ⚠️ ⁴ | ⚠️ |
+| **Brand24 / Mention** | $199–$499 / 月 | ❌ | ❌ ⁵ | ❌ | ⚠️ | ❌ | ✅ |
+| **Bloomberg Terminal** | 约 $32,000 / 年 / 席位 | ✅ ⁶ | ❌ | ❌ | ✅ | ❌ | ⚠️ ⁷ |
+| **FreshRSS / miniflux** | $0（自部署） | ❌ | ✅ | ✅ | ❌ | ❌ | ⚠️ |
+| **Google Alerts** | $0 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Perplexity Pro** | $20 / 月 | ✅ | ❌ | ❌ | ⚠️ | ⚠️ ⁸ | ✅ |
+| **sembr** | **自部署 + ~¥0.10 / 个 intent / 天** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+✅ 跟 sembr 同档或更好 · ⚠️ 部分支持 / 带 caveat · ❌ 没有这个能力
+
+<sub>
+¹ 仅限 Feedly 自己的索引 —— 你不能指它去抓任意 RSS / NewsAPI。<br>
+² 非英文文章先翻译成英文再处理，不是原生跨语言向量空间。<br>
+³ 自然语言 filter，不是 per-feed 的 system+instruction prompt 模板。<br>
+⁴ 单篇 on-demand custom query（GPT-4o-mini，1M token / 月），不是 standing per-intent prompt。<br>
+⁵ 厂商替你扫公网，你不能指定具体源。<br>
+⁶ ASKB 对话式 AI（2026 beta），仅限 terminal、私有数据。<br>
+⁷ B-Pipe 数据授权另收费（仅机构）。<br>
+⁸ Spaces 持久 custom instructions 是真的，但 per-query 触发（pull）；sembr 是命中后自动 push 应用。
+</sub>
+
+**DIY 派路径** —— n8n / Huginn + LangChain + 向量库 + 自己的调度器 —— 技术上每一列都能拼到 ✅。你要自己装 5+ 个组件，并且独自承担源解析、embedding 限流、去重、prompt 管理、通知可靠性这一长串维护成本。sembr 是这套栈的开箱即用版。
+
+如果你是有预算的机构，跑 Bloomberg / Brand24。如果你不在意托管、关注清单也不敏感，Feedly Pro+ 已经挺好。sembr 想覆盖的是这样一群人：上面表里的 **语义 + 中英混合 + 自定义源 + 自部署** 四列都想要 ✅，**并且**想要 per-intent 分析视角对每条命中文章自动应用（push 式而非 pull 式）。**目前我们没找到第二家覆盖这个交集。**
+
+### "那我自己 wrap Perplexity 的 API + cron 不就行？"
+
+上面表格已经覆盖了 Perplexity vs sembr 的能力对比。"自己写脚本 wrap API" 是读者最容易想到的"DIY 绕过 sembr"路径。一两个低频主题可以；做大就有三道结构性差距绕不过去：
+
+1. **成本结构** —— 每次 ~$0.005–0.02 vs sembr "命中之前免费"。10 个意图 × 一天扫 24 次 × 365 天 ≈ 8.7 万次 API 调用，账单会很难看。
+2. **匹配质量** —— 你每次都要手撸 search query，而不是写一句自然语言意图让 BGE-M3 一次向量化永久使用。*"新兴市场货币传染"* 在关键词排名里搜不到 *"土耳其里拉跳水，市场押注美联储再加息"*；语义向量能。
+3. **关注清单泄露** —— 每次轮询都把"你正在监控什么"发给第三方。*你监控什么本身就是信号* —— sembr 让这件事留在你自己的硬件上。
+
 ## 快速开始
 
 **机器上有 Agent / 龙虾？** 直接看下面 [给 AI agent 用](#给-ai-agent-用) —— 一键部署 + 部署后用的 Agent Skills bundle 一起讲。
@@ -102,45 +143,6 @@ curl -X POST http://localhost:8000/intents \
 
 → 一步一步走：[docs/getting-started.md](docs/getting-started.md)
 → 准备把 sembr 挂在公网 IP 上？先读 [docs/deployment/public.md](docs/deployment/public.md) —— TL;DR 保持默认 `127.0.0.1` 绑定，前面套一层带 TLS 的反向代理，`DASHBOARD_TOKEN` 必须设强一点。
-
-## 给 AI agent 用
-
-sembr 从设计上就是给 AI coding agent **部署**、**调用**、**接进编排栈**用的。仓库里配了三块脚手架：
-
-### 1. 一键部署
-
-机器上有 AI coding agent 且能跑 shell（Claude Code / Cursor / Cline / Aider / Continue / Roo / OpenClaw / Hermes / ……）—— 直接把下面这一句丢给它：
-
-> 读 https://github.com/Peakstone-Labs/sembr/blob/main/agent/INSTALL.md 然后照着帮我把 sembr 装到这台机器上。
-
-[`agent/INSTALL.md`](agent/INSTALL.md) 是 6 个 phase 的剧本：硬件自检 → Docker 安装 → 拉仓库 → 校验 key → 选访问模式（localhost / LAN / 公网）→ 起 stack → 第一次 `/health` 来回。镜像拉取后台跑、你的 API key 前台问，并行起来 wall-clock 约 15 分钟，其中约 10 分钟你不用看着。
-
-选了公网部署的话，agent 会拐进 [`agent/PUBLIC_INSTALL.md`](agent/PUBLIC_INSTALL.md) —— DNS 检查、side service 端口必锁（qdrant/rsshub）、Caddy / nginx+certbot / Cloudflare Tunnel / trycloudflare 任选、ufw、docker.sock 取舍 —— 然后回到 Phase 5 起 stack + 外部验证。
-
-### 2. 部署后驱动 sembr 的 skill bundle
-
-sembr 起来之后，[`agent/sembr/`](agent/sembr/) 是配套的 [Agent Skills](https://agentskills.io) bundle，教任何 agent 怎么调 sembr 的 HTTP API：
-
-| 文件 | 内容 |
-| --- | --- |
-| `SKILL.md` | 认证模型、fire 端点决策表、护栏 |
-| `references/endpoints.md` | 31 个端点完整表（feeds / intents / fire / external-fire / settings / prompts / translate） |
-| `references/schemas.md` | `IntentCreate` / `FeedCreate` / `ExternalFireRequest` body 形状，含 cron/event 鉴别字段联合体和 channel 鉴别器 |
-| `references/recipes.md` | 可直接复制的 curl + Python `httpx` 工作流 |
-| `references/errors.md` | 状态码表与 scrub-after 错误约定 |
-
-**Claude Code**：`cp -r agent/sembr ~/.claude/skills/sembr` 即可自动加载。**其他平台**：直接把 `agent/sembr/SKILL.md` 丢给 agent，或查阅你平台的 skill 加载文档。
-
-### 3. 给 agent 调的 fire endpoint
-
-`POST /api/external/intents/{id}/fire` 是给编排器（orchestrator）专用的诊断 endpoint：
-
-- **同步** —— 命中文章 + LLM 总结在响应里直接返回，不用 poll，不用拿 `task_id`
-- **不触发通知** —— intent 配置的 email 收件人不会被打扰；适合"这个 intent 现在会命中啥"这种试探用法
-- **无状态写** —— 不动 `match_seen`，反复调幂等
-- **单次覆写** —— `lookback_seconds`（`300`–`2_592_000`）、`threshold`（`0.20`–`0.95`，比 intent 创建时的 `0.60`–`0.95` 还宽，方便诊断时往低扫）、`feed_ids`（子集或 `null` 表示全部）
-
-接进任意编排器（Hermes / OpenClaw / LangGraph / 自己撸的），让它自己决定什么时候看一眼世界。响应形状、错误约定、限流（1 次/intent/60 秒）、cron-mode-only 约束都在 [`agent/sembr/references/endpoints.md`](agent/sembr/references/endpoints.md) 里。
 
 ## 盒子里都有什么
 
@@ -189,6 +191,45 @@ sembr 起来之后，[`agent/sembr/`](agent/sembr/) 是配套的 [Agent Skills](
   <sub>Settings 页。浏览器里直接改宿主机 <code>.env</code>；secret 字段自动 mask；保存前 dry-run 校验，然后 <code>RestartController</code> 原地重建受影响的容器。</sub>
 </p>
 
+## 给 AI agent 用
+
+sembr 从设计上就是给 AI coding agent **部署**、**调用**、**接进编排栈**用的。仓库里配了三块脚手架：
+
+### 1. 一键部署
+
+机器上有 AI coding agent 且能跑 shell（Claude Code / Cursor / Cline / Aider / Continue / Roo / OpenClaw / Hermes / ……）—— 直接把下面这一句丢给它：
+
+> 读 https://github.com/Peakstone-Labs/sembr/blob/main/agent/INSTALL.md 然后照着帮我把 sembr 装到这台机器上。
+
+[`agent/INSTALL.md`](agent/INSTALL.md) 是 6 个 phase 的剧本：硬件自检 → Docker 安装 → 拉仓库 → 校验 key → 选访问模式（localhost / LAN / 公网）→ 起 stack → 第一次 `/health` 来回。镜像拉取后台跑、你的 API key 前台问，并行起来 wall-clock 约 15 分钟，其中约 10 分钟你不用看着。
+
+选了公网部署的话，agent 会拐进 [`agent/PUBLIC_INSTALL.md`](agent/PUBLIC_INSTALL.md) —— DNS 检查、side service 端口必锁（qdrant/rsshub）、Caddy / nginx+certbot / Cloudflare Tunnel / trycloudflare 任选、ufw、docker.sock 取舍 —— 然后回到 Phase 5 起 stack + 外部验证。
+
+### 2. 部署后驱动 sembr 的 skill bundle
+
+sembr 起来之后，[`agent/sembr/`](agent/sembr/) 是配套的 [Agent Skills](https://agentskills.io) bundle，教任何 agent 怎么调 sembr 的 HTTP API：
+
+| 文件 | 内容 |
+| --- | --- |
+| `SKILL.md` | 认证模型、fire 端点决策表、护栏 |
+| `references/endpoints.md` | 31 个端点完整表（feeds / intents / fire / external-fire / settings / prompts / translate） |
+| `references/schemas.md` | `IntentCreate` / `FeedCreate` / `ExternalFireRequest` body 形状，含 cron/event 鉴别字段联合体和 channel 鉴别器 |
+| `references/recipes.md` | 可直接复制的 curl + Python `httpx` 工作流 |
+| `references/errors.md` | 状态码表与 scrub-after 错误约定 |
+
+**Claude Code**：`cp -r agent/sembr ~/.claude/skills/sembr` 即可自动加载。**其他平台**：直接把 `agent/sembr/SKILL.md` 丢给 agent，或查阅你平台的 skill 加载文档。
+
+### 3. 给 agent 调的 fire endpoint
+
+`POST /api/external/intents/{id}/fire` 是给编排器（orchestrator）专用的诊断 endpoint：
+
+- **同步** —— 命中文章 + LLM 总结在响应里直接返回，不用 poll，不用拿 `task_id`
+- **不触发通知** —— intent 配置的 email 收件人不会被打扰；适合"这个 intent 现在会命中啥"这种试探用法
+- **无状态写** —— 不动 `match_seen`，反复调幂等
+- **单次覆写** —— `lookback_seconds`（`300`–`2_592_000`）、`threshold`（`0.20`–`0.95`，比 intent 创建时的 `0.60`–`0.95` 还宽，方便诊断时往低扫）、`feed_ids`（子集或 `null` 表示全部）
+
+接进任意编排器（Hermes / OpenClaw / LangGraph / 自己撸的），让它自己决定什么时候看一眼世界。响应形状、错误约定、限流（1 次/intent/60 秒）、cron-mode-only 约束都在 [`agent/sembr/references/endpoints.md`](agent/sembr/references/endpoints.md) 里。
+
 ## 技术栈
 
 Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WAL) · Qdrant 1.17 · httpx · BGE-M3 · DeepSeek-V4-Flash · Apache-2.0
@@ -202,46 +243,6 @@ Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WA
 **后 1.0：** Telegram / Discord / Slack 通道、本地 LLM 后端（mlx-lm / Ollama）、Reddit / HN / Mastodon 源插件、entry-points 插件发现、通知重试 / DLQ、多 worker 部署。
 
 → 版本策略和 changelog：[CHANGELOG.md](CHANGELOG.md)
-
-## 那些"差不多"的东西，以及 sembr 为什么存在
-
-市面上最接近的几样，按 sembr 在意的维度横向对比：
-
-| | 价格 | 语义 | 自定义源 | 自部署 | 中英混合 | Per-intent 视角 | Agent API |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Feedly Pro+ AI** | 约 $99 / 年 | ✅ | ⚠️ ¹ | ❌ | ⚠️ ² | ⚠️ ³ | ❌ |
-| **Inoreader Pro** | $90 / 年 | ❌ | ✅ | ❌ | ⚠️ | ⚠️ ⁴ | ⚠️ |
-| **Brand24 / Mention** | $199–$499 / 月 | ❌ | ❌ ⁵ | ❌ | ⚠️ | ❌ | ✅ |
-| **Bloomberg Terminal** | 约 $32,000 / 年 / 席位 | ✅ ⁶ | ❌ | ❌ | ✅ | ❌ | ⚠️ ⁷ |
-| **FreshRSS / miniflux** | $0（自部署） | ❌ | ✅ | ✅ | ❌ | ❌ | ⚠️ |
-| **Google Alerts** | $0 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Perplexity Pro** | $20 / 月 | ✅ | ❌ | ❌ | ⚠️ | ⚠️ ⁸ | ✅ |
-| **sembr** | **自部署 + ~¥0.10 / 个 intent / 天** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-
-✅ 跟 sembr 同档或更好 · ⚠️ 部分支持 / 带 caveat · ❌ 没有这个能力
-
-<sub>
-¹ 仅限 Feedly 自己的索引 —— 你不能指它去抓任意 RSS / NewsAPI。<br>
-² 非英文文章先翻译成英文再处理，不是原生跨语言向量空间。<br>
-³ 自然语言 filter，不是 per-feed 的 system+instruction prompt 模板。<br>
-⁴ 单篇 on-demand custom query（GPT-4o-mini，1M token / 月），不是 standing per-intent prompt。<br>
-⁵ 厂商替你扫公网，你不能指定具体源。<br>
-⁶ ASKB 对话式 AI（2026 beta），仅限 terminal、私有数据。<br>
-⁷ B-Pipe 数据授权另收费（仅机构）。<br>
-⁸ Spaces 持久 custom instructions 是真的，但 per-query 触发（pull）；sembr 是命中后自动 push 应用。
-</sub>
-
-**DIY 派路径** —— n8n / Huginn + LangChain + 向量库 + 自己的调度器 —— 技术上每一列都能拼到 ✅。你要自己装 5+ 个组件，并且独自承担源解析、embedding 限流、去重、prompt 管理、通知可靠性这一长串维护成本。sembr 是这套栈的开箱即用版。
-
-如果你是有预算的机构，跑 Bloomberg / Brand24。如果你不在意托管、关注清单也不敏感，Feedly Pro+ 已经挺好。sembr 想覆盖的是这样一群人：上面表里的 **语义 + 中英混合 + 自定义源 + 自部署** 四列都想要 ✅，**并且**想要 per-intent 分析视角对每条命中文章自动应用（push 式而非 pull 式）。**目前我们没找到第二家覆盖这个交集。**
-
-### "那我自己 wrap Perplexity 的 API + cron 不就行？"
-
-上面表格已经覆盖了 Perplexity vs sembr 的能力对比。"自己写脚本 wrap API" 是读者最容易想到的"DIY 绕过 sembr"路径。一两个低频主题可以；做大就有三道结构性差距绕不过去：
-
-1. **成本结构** —— 每次 ~$0.005–0.02 vs sembr "命中之前免费"。10 个意图 × 一天扫 24 次 × 365 天 ≈ 8.7 万次 API 调用，账单会很难看。
-2. **匹配质量** —— 你每次都要手撸 search query，而不是写一句自然语言意图让 BGE-M3 一次向量化永久使用。*"新兴市场货币传染"* 在关键词排名里搜不到 *"土耳其里拉跳水，市场押注美联储再加息"*；语义向量能。
-3. **关注清单泄露** —— 每次轮询都把"你正在监控什么"发给第三方。*你监控什么本身就是信号* —— sembr 让这件事留在你自己的硬件上。
 
 ## 是谁做的
 

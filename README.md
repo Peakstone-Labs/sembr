@@ -18,6 +18,7 @@
   <a href="https://panel.peakstone-labs.com/#news"><b>Live demo</b></a> ·
   <a href="README.zh-CN.md">中文</a> ·
   <a href="https://peakstone-labs.github.io/sembr">Documentation</a> ·
+  <a href="#alternatives-and-why-sembr-exists">Alternatives</a> ·
   <a href="#quickstart">Quickstart</a> ·
   <a href="#for-ai-agents">For AI agents</a> ·
   <a href="https://github.com/Peakstone-Labs/sembr/discussions">Discussions</a>
@@ -66,6 +67,46 @@ The flip is small but its implications are big. Queries become first-class entit
 
 → Full architecture write-up: [docs/architecture.md](docs/architecture.md)
 
+## Alternatives, and why sembr exists
+
+How the closest tools in the market compare on the dimensions that matter for sembr's use case:
+
+| | Price | Semantic | Custom sources | Self-host | Bilingual CN+EN | Per-intent lens | Agent API |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Feedly Pro+ AI** | ~$99 / yr | ✅ | ⚠️ ¹ | ❌ | ⚠️ ² | ⚠️ ³ | ❌ |
+| **Inoreader Pro** | $90 / yr | ❌ | ✅ | ❌ | ⚠️ | ⚠️ ⁴ | ⚠️ |
+| **Brand24 / Mention** | $199–$499 / mo | ❌ | ❌ ⁵ | ❌ | ⚠️ | ❌ | ✅ |
+| **Bloomberg Terminal** | ~$32k / yr / seat | ✅ ⁶ | ❌ | ❌ | ✅ | ❌ | ⚠️ ⁷ |
+| **FreshRSS / miniflux** | $0 (self-host) | ❌ | ✅ | ✅ | ❌ | ❌ | ⚠️ |
+| **Google Alerts** | $0 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Perplexity Pro** | $20 / mo | ✅ | ❌ | ❌ | ⚠️ | ⚠️ ⁸ | ✅ |
+| **sembr** | **Self-host + ~$0.014 / intent / day** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+✅ comparable to sembr or better · ⚠️ partial / with caveats · ❌ not supported
+
+<sub>
+¹ Limited to Feedly's curated index — you don't point it at arbitrary RSS / NewsAPI.<br>
+² Translates non-English articles to English first; not native cross-lingual vectors.<br>
+³ Natural-language filter, not a per-feed system+instruction prompt template.<br>
+⁴ On-demand custom queries per article (GPT-4o-mini, 1M tokens / month); not a standing per-intent prompt.<br>
+⁵ Vendor scans the public web for you; you don't get to point it at specific sources.<br>
+⁶ ASKB conversational AI (beta in 2026); proprietary, terminal-only.<br>
+⁷ B-Pipe data licensing priced separately (institutional only).<br>
+⁸ Spaces persistent custom instructions are real, but apply per-query (pull); sembr applies them push-style on every match.
+</sub>
+
+**DIY paths** — n8n / Huginn + LangChain + a vector DB + your own scheduler — could check ✅ on every column above. You'd be assembling 5+ moving parts and owning the long tail of feed parsing, embedding rate-limits, dedup, prompt management, and notification reliability yourself. sembr is the turnkey version of that stack.
+
+If you're an institution with budget, run Bloomberg or Brand24. If you're happy with a hosted plan and your watchlist isn't sensitive, Feedly Pro+ is great. sembr is for the slice where you want all four of **semantic + bilingual + custom sources + self-host** at once, **and** the per-intent analyst lens applied push-style on every match. **No tool we've found today sits at that intersection.**
+
+### "What if I just wrap Perplexity's API in a cron loop?"
+
+The table above covers head-to-head capabilities. The "wrap the API in a script" alternative is the one place readers most often think they can DIY past sembr. You can, for one or two low-frequency topics. Three structural gaps don't go away if you try at scale:
+
+1. **Cost shape** — every poll costs ~$0.005–0.02 vs sembr's "free until matched". 10 intents × 24 polls/day × 365 days ≈ 87k API calls; the math gets ugly fast.
+2. **Matching quality** — you'd hand-craft search queries every time, instead of writing one natural-language intent that BGE-M3 vectorises once. *"EM contagion"* won't return *"Turkish lira plunges as Fed eyes another hike"* through keyword ranking; semantic vectors do.
+3. **Watchlist leak** — every poll mails what you're monitoring to a third party. *What you're watching is itself signal* — sembr keeps it on your hardware.
+
 ## Quickstart
 
 **Got an AI coding agent on this machine?** Jump to [For AI agents](#for-ai-agents) below — one-shot install + an Agent Skills bundle for the post-install API.
@@ -102,45 +143,6 @@ Next digest fires on schedule. Done.
 
 → Step-by-step walkthrough: [docs/getting-started.md](docs/getting-started.md)
 → Putting sembr on a public IP? Read [docs/deployment/public.md](docs/deployment/public.md) first — TL;DR keep the default `127.0.0.1` bind, put sembr behind a reverse proxy with TLS, and set a strong `DASHBOARD_TOKEN`.
-
-## For AI agents
-
-sembr is designed to be **installed**, **driven**, and **embedded** by AI coding agents. Three pieces of scaffolding ship in the repo:
-
-### 1. One-shot install
-
-If you have an AI coding agent with shell access on the target machine (Claude Code, Cursor, Cline, Aider, Continue, Roo, OpenClaw, Hermes, …), paste this:
-
-> Read https://github.com/Peakstone-Labs/sembr/blob/main/agent/INSTALL.md and follow it to install sembr on this machine.
-
-[`agent/INSTALL.md`](agent/INSTALL.md) is a 6-phase script the agent works through: hardware self-check → Docker setup → repo clone → key validation → access-mode choice (localhost / LAN / public) → bring up → first health round-trip. Image pulls run in the background while it asks you for API keys in parallel, so wall-clock is ~15 min of which ~10 are unattended.
-
-For public-internet deployment the agent branches into [`agent/PUBLIC_INSTALL.md`](agent/PUBLIC_INSTALL.md) — DNS check, mandatory side-service port lockdown (qdrant/rsshub), reverse proxy + TLS via Caddy / nginx + certbot / Cloudflare Tunnel / trycloudflare, ufw, and an explicit docker.sock decision — then returns to Phase 5 to bring the stack up and run external verification.
-
-### 2. Skill bundle for post-install operation
-
-Once sembr is running, [`agent/sembr/`](agent/sembr/) is an [Agent Skills](https://agentskills.io) bundle that teaches any agent how to drive the HTTP API:
-
-| File | Content |
-| --- | --- |
-| `SKILL.md` | Auth model, decision matrix for which `fire` endpoint to use, guardrails |
-| `references/endpoints.md` | Full surface — 31 endpoints across feeds / intents / fire / external-fire / settings / prompts / translate |
-| `references/schemas.md` | `IntentCreate` / `FeedCreate` / `ExternalFireRequest` body shapes, including the cron/event discriminated union and channel discriminator |
-| `references/recipes.md` | Copy-pasteable curl + Python `httpx` workflows |
-| `references/errors.md` | Status code table and scrubbed-detail error contract |
-
-**Claude Code**: `cp -r agent/sembr ~/.claude/skills/sembr` for auto-loading. **Other platforms**: hand your agent `agent/sembr/SKILL.md` directly, or consult your platform's skill-loading docs.
-
-### 3. The agent-callable fire endpoint
-
-`POST /api/external/intents/{id}/fire` is the orchestrator-facing diagnostic endpoint:
-
-- **Synchronous** — matches + LLM summary in the response, no polling, no `task_id` hand-off
-- **No notifier** — the intent's email recipients are not pinged; safe for "what would this intent match right now?" without spamming
-- **No state writes** — doesn't touch `match_seen`, idempotent under repeated calls
-- **Per-call overrides** — `lookback_seconds` (`300`–`2_592_000`), `threshold` (`0.20`–`0.95`, wider than the `0.60`–`0.95` at intent-create time, so you can sweep low during diagnostics), `feed_ids` (subset or `null` for all)
-
-Drop sembr into any orchestrator (Hermes, OpenClaw, LangGraph, your own) and let it decide when to look at the world. The response shape, error contract, rate-limit (1/intent/60 s), and the cron-mode-only constraint are documented in [`agent/sembr/references/endpoints.md`](agent/sembr/references/endpoints.md).
 
 ## What's in the box
 
@@ -189,6 +191,45 @@ Sensitive values (`EMBEDDER_API_KEY`, `LLM_API_KEY`, `DASHBOARD_TOKEN`, SMTP cre
   <sub>Settings tab. Edit the host <code>.env</code> in the browser; secret fields are masked; saves are dry-run validated, then a <code>RestartController</code> recreates the affected container in place.</sub>
 </p>
 
+## For AI agents
+
+sembr is designed to be **installed**, **driven**, and **embedded** by AI coding agents. Three pieces of scaffolding ship in the repo:
+
+### 1. One-shot install
+
+If you have an AI coding agent with shell access on the target machine (Claude Code, Cursor, Cline, Aider, Continue, Roo, OpenClaw, Hermes, …), paste this:
+
+> Read https://github.com/Peakstone-Labs/sembr/blob/main/agent/INSTALL.md and follow it to install sembr on this machine.
+
+[`agent/INSTALL.md`](agent/INSTALL.md) is a 6-phase script the agent works through: hardware self-check → Docker setup → repo clone → key validation → access-mode choice (localhost / LAN / public) → bring up → first health round-trip. Image pulls run in the background while it asks you for API keys in parallel, so wall-clock is ~15 min of which ~10 are unattended.
+
+For public-internet deployment the agent branches into [`agent/PUBLIC_INSTALL.md`](agent/PUBLIC_INSTALL.md) — DNS check, mandatory side-service port lockdown (qdrant/rsshub), reverse proxy + TLS via Caddy / nginx + certbot / Cloudflare Tunnel / trycloudflare, ufw, and an explicit docker.sock decision — then returns to Phase 5 to bring the stack up and run external verification.
+
+### 2. Skill bundle for post-install operation
+
+Once sembr is running, [`agent/sembr/`](agent/sembr/) is an [Agent Skills](https://agentskills.io) bundle that teaches any agent how to drive the HTTP API:
+
+| File | Content |
+| --- | --- |
+| `SKILL.md` | Auth model, decision matrix for which `fire` endpoint to use, guardrails |
+| `references/endpoints.md` | Full surface — 31 endpoints across feeds / intents / fire / external-fire / settings / prompts / translate |
+| `references/schemas.md` | `IntentCreate` / `FeedCreate` / `ExternalFireRequest` body shapes, including the cron/event discriminated union and channel discriminator |
+| `references/recipes.md` | Copy-pasteable curl + Python `httpx` workflows |
+| `references/errors.md` | Status code table and scrubbed-detail error contract |
+
+**Claude Code**: `cp -r agent/sembr ~/.claude/skills/sembr` for auto-loading. **Other platforms**: hand your agent `agent/sembr/SKILL.md` directly, or consult your platform's skill-loading docs.
+
+### 3. The agent-callable fire endpoint
+
+`POST /api/external/intents/{id}/fire` is the orchestrator-facing diagnostic endpoint:
+
+- **Synchronous** — matches + LLM summary in the response, no polling, no `task_id` hand-off
+- **No notifier** — the intent's email recipients are not pinged; safe for "what would this intent match right now?" without spamming
+- **No state writes** — doesn't touch `match_seen`, idempotent under repeated calls
+- **Per-call overrides** — `lookback_seconds` (`300`–`2_592_000`), `threshold` (`0.20`–`0.95`, wider than the `0.60`–`0.95` at intent-create time, so you can sweep low during diagnostics), `feed_ids` (subset or `null` for all)
+
+Drop sembr into any orchestrator (Hermes, OpenClaw, LangGraph, your own) and let it decide when to look at the world. The response shape, error contract, rate-limit (1/intent/60 s), and the cron-mode-only constraint are documented in [`agent/sembr/references/endpoints.md`](agent/sembr/references/endpoints.md).
+
 ## Tech stack
 
 Python 3.12 · FastAPI 0.115 · Pydantic v2 · APScheduler 3.11 · aiosqlite (WAL) · Qdrant 1.17 · httpx · BGE-M3 · DeepSeek-V4-Flash · Apache-2.0
@@ -202,46 +243,6 @@ Runs comfortably on **4 GB RAM** (homelab / Mac mini / NAS / $10 VPS) — measur
 **Post-1.0:** Telegram / Discord / Slack channels, local LLM backends (mlx-lm, Ollama), Reddit / HN / Mastodon source plugins, entry-points plugin discovery, notification retry / DLQ, multi-worker deployment.
 
 → Versioning policy and changelog: [CHANGELOG.md](CHANGELOG.md)
-
-## Alternatives, and why sembr exists
-
-How the closest tools in the market compare on the dimensions that matter for sembr's use case:
-
-| | Price | Semantic | Custom sources | Self-host | Bilingual CN+EN | Per-intent lens | Agent API |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Feedly Pro+ AI** | ~$99 / yr | ✅ | ⚠️ ¹ | ❌ | ⚠️ ² | ⚠️ ³ | ❌ |
-| **Inoreader Pro** | $90 / yr | ❌ | ✅ | ❌ | ⚠️ | ⚠️ ⁴ | ⚠️ |
-| **Brand24 / Mention** | $199–$499 / mo | ❌ | ❌ ⁵ | ❌ | ⚠️ | ❌ | ✅ |
-| **Bloomberg Terminal** | ~$32k / yr / seat | ✅ ⁶ | ❌ | ❌ | ✅ | ❌ | ⚠️ ⁷ |
-| **FreshRSS / miniflux** | $0 (self-host) | ❌ | ✅ | ✅ | ❌ | ❌ | ⚠️ |
-| **Google Alerts** | $0 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Perplexity Pro** | $20 / mo | ✅ | ❌ | ❌ | ⚠️ | ⚠️ ⁸ | ✅ |
-| **sembr** | **Self-host + ~$0.014 / intent / day** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-
-✅ comparable to sembr or better · ⚠️ partial / with caveats · ❌ not supported
-
-<sub>
-¹ Limited to Feedly's curated index — you don't point it at arbitrary RSS / NewsAPI.<br>
-² Translates non-English articles to English first; not native cross-lingual vectors.<br>
-³ Natural-language filter, not a per-feed system+instruction prompt template.<br>
-⁴ On-demand custom queries per article (GPT-4o-mini, 1M tokens / month); not a standing per-intent prompt.<br>
-⁵ Vendor scans the public web for you; you don't get to point it at specific sources.<br>
-⁶ ASKB conversational AI (beta in 2026); proprietary, terminal-only.<br>
-⁷ B-Pipe data licensing priced separately (institutional only).<br>
-⁸ Spaces persistent custom instructions are real, but apply per-query (pull); sembr applies them push-style on every match.
-</sub>
-
-**DIY paths** — n8n / Huginn + LangChain + a vector DB + your own scheduler — could check ✅ on every column above. You'd be assembling 5+ moving parts and owning the long tail of feed parsing, embedding rate-limits, dedup, prompt management, and notification reliability yourself. sembr is the turnkey version of that stack.
-
-If you're an institution with budget, run Bloomberg or Brand24. If you're happy with a hosted plan and your watchlist isn't sensitive, Feedly Pro+ is great. sembr is for the slice where you want all four of **semantic + bilingual + custom sources + self-host** at once, **and** the per-intent analyst lens applied push-style on every match. **No tool we've found today sits at that intersection.**
-
-### "What if I just wrap Perplexity's API in a cron loop?"
-
-The table above covers head-to-head capabilities. The "wrap the API in a script" alternative is the one place readers most often think they can DIY past sembr. You can, for one or two low-frequency topics. Three structural gaps don't go away if you try at scale:
-
-1. **Cost shape** — every poll costs ~$0.005–0.02 vs sembr's "free until matched". 10 intents × 24 polls/day × 365 days ≈ 87k API calls; the math gets ugly fast.
-2. **Matching quality** — you'd hand-craft search queries every time, instead of writing one natural-language intent that BGE-M3 vectorises once. *"EM contagion"* won't return *"Turkish lira plunges as Fed eyes another hike"* through keyword ranking; semantic vectors do.
-3. **Watchlist leak** — every poll mails what you're monitoring to a third party. *What you're watching is itself signal* — sembr keeps it on your hardware.
 
 ## Built by
 
