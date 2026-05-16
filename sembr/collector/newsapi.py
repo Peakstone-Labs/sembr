@@ -190,16 +190,20 @@ def _universal_since_for_pagination(
 def _should_stop_paginating(
     page_results: list[dict[str, Any]],
     universal_since: datetime | None,
+    indexing_lag: timedelta = timedelta(0),
 ) -> bool:
     """Pure stop predicate for the master-tick pagination loop.
 
     Returns True when the **oldest** article in this page is at or before
-    ``universal_since`` — meaning the next page would be entirely below the
-    cursor; since the per-article since-cut was removed (indexing-lag
-    losses), the next page would still be dispatched and rely on MD5 dedup,
-    but fetching it costs an extra token for near-certain duplicates. Robust
-    to ``articlesSortBy`` upstream silently flipping desc→asc because we use
-    ``min(dateTime)`` rather than "the last element".
+    ``universal_since - indexing_lag`` — i.e. the next page would be entirely
+    below the "could-still-be-newly-indexed" line. NewsAPI indexes articles
+    asynchronously after publication (Reuters / USA Today: ~1-2h delay), so
+    an article with ``dateTime < cursor`` may still be brand-new to us if it
+    was indexed *after* the previous tick. Walking back ``indexing_lag``
+    beyond the cursor lets us catch those; MD5 dedup absorbs the duplicates
+    in pages we revisit. Robust to ``articlesSortBy`` upstream silently
+    flipping desc→asc because we use ``min(dateTime)`` rather than "the last
+    element".
 
     Returns False when:
     - ``universal_since`` is None (first-pull bootstrap; let cap handle it)
@@ -223,7 +227,7 @@ def _should_stop_paginating(
             oldest = dt
     if oldest is None:
         return False
-    return oldest <= universal_since
+    return oldest <= universal_since - indexing_lag
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +369,7 @@ class NewsApiMaster:
         date_start, date_end = _date_window([p.since for p in per_feed.values()])
         max_pages = settings.newsapi_max_pages
         universal_since = _universal_since_for_pagination(per_feed)
+        indexing_lag = timedelta(hours=settings.newsapi_indexing_lag_hours)
 
         # Route the call through host_limiter so newsapi never burns parallel
         # requests when scheduler ticks coincide with feed fires. group_key
@@ -482,10 +487,14 @@ class NewsApiMaster:
                         # before max_pages; safe to dispatch what we have.
                         stopped_naturally = True
                         break
-                    if _should_stop_paginating(page_results, universal_since):
+                    if _should_stop_paginating(
+                        page_results, universal_since, indexing_lag
+                    ):
                         # Watermark stop: this page's oldest article is at or
-                        # below universal_since, so subsequent pages would all
-                        # be cut by the per-article since check anyway.
+                        # below (universal_since - indexing_lag). Below that
+                        # line, NewsAPI is unlikely to have anything new since
+                        # the previous tick — subsequent pages would be
+                        # dispatched but MD5 dedup'd to ~0 net inserts.
                         stopped_naturally = True
                         break
 

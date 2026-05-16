@@ -249,6 +249,20 @@ class Settings(BaseSettings):
             "pagination; higher values raise the token cost of each poll."
         ),
     )
+    newsapi_indexing_lag_hours: float = Field(
+        default=2.0,
+        ge=0.0,
+        le=12.0,
+        description=(
+            "Watermark grace period (hours). NewsAPI indexes articles with "
+            "delay (Reuters/USA Today: ~1-2h); pagination would otherwise "
+            "stop at p1 before walking back far enough to catch articles "
+            "freshly indexed below the cursor. Each extra hour of grace "
+            "typically costs ~1 extra page (1 token) per master tick. "
+            "Set to 0 to disable the grace (revert to publication-time "
+            "watermark = cursor)."
+        ),
+    )
 
     @field_validator("newsapi_categories")
     @classmethod

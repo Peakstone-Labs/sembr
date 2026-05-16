@@ -502,8 +502,12 @@ async def test_master_tick_total_results_overflow_warns(
     the same totalResults>articlesCount mock through the page loop and checks
     watermark stop kicks in on page 2 — i.e. only 2 HTTP calls, no legacy
     only-warn left.
+
+    Pins ``NEWSAPI_INDEXING_LAG_HOURS=0`` to test the no-lag baseline; the
+    grace-period behaviour has its own targeted unit test below.
     """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    monkeypatch.setenv("NEWSAPI_INDEXING_LAG_HOURS", "0")
     from sembr.config import get_settings
 
     get_settings.cache_clear()
@@ -634,8 +638,14 @@ async def test_master_tick_keeps_articles_older_than_cursor(
     advances every tick regardless of items_new. MD5 dedup in
     insert_article_pending is the dedup layer. Without this behaviour, the
     same article re-appears in subsequent ticks below an ever-advancing
-    cursor and is permanently lost."""
+    cursor and is permanently lost.
+
+    Pins ``NEWSAPI_INDEXING_LAG_HOURS=0`` so this test exercises the
+    dispatch-level behaviour without the watermark grace turning the mock
+    into a cap-reached drop.
+    """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    monkeypatch.setenv("NEWSAPI_INDEXING_LAG_HOURS", "0")
     from sembr.config import get_settings
 
     get_settings.cache_clear()
@@ -805,6 +815,32 @@ def test_should_stop_paginating_handles_missing_or_bad_datetime() -> None:
     assert _should_stop_paginating(bad, cut) is False
 
 
+def test_should_stop_paginating_indexing_lag_pushes_watermark_back() -> None:
+    """With indexing_lag=2h, articles with dateTime in (cursor-2h, cursor]
+    do NOT trigger the stop — pagination keeps walking to catch
+    freshly-indexed articles whose published_at is below the cursor but
+    that were indexed by NewsAPI after the previous tick."""
+    now = datetime.now(timezone.utc)
+    cursor = now - timedelta(minutes=30)
+    lag = timedelta(hours=2)
+
+    # Page whose oldest is 1h before cursor → without lag, stop=True; with
+    # 2h lag, stop line = cursor-2h, oldest > cursor-2h → continue.
+    arts = [
+        _mk_article(now),
+        _mk_article(cursor - timedelta(hours=1)),
+    ]
+    assert _should_stop_paginating(arts, cursor, timedelta(0)) is True
+    assert _should_stop_paginating(arts, cursor, lag) is False
+
+    # Page whose oldest is 3h before cursor → past the lag line, stop=True
+    deep = [
+        _mk_article(now),
+        _mk_article(cursor - timedelta(hours=3)),
+    ]
+    assert _should_stop_paginating(deep, cursor, lag) is True
+
+
 def test_universal_since_min_when_all_set() -> None:
     now = datetime.now(timezone.utc)
     pf = {
@@ -839,8 +875,13 @@ def _page_envelope(results: list[dict], total: int) -> dict:
 async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_conn) -> None:
     """SC1 v1.1: page1 newest, page2 mid, page3 oldest (≤ since) → only 2
     HTTP calls; page3 NOT requested; pending_articles contains only the
-    ≥ since portion of pages 1+2."""
+    ≥ since portion of pages 1+2.
+
+    Pins ``NEWSAPI_INDEXING_LAG_HOURS=0`` to test the no-lag baseline; the
+    grace-period behaviour has its own targeted unit test.
+    """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    monkeypatch.setenv("NEWSAPI_INDEXING_LAG_HOURS", "0")
     from sembr.config import get_settings
 
     get_settings.cache_clear()
@@ -1093,8 +1134,13 @@ async def test_master_tick_steady_state_one_token(monkeypatch, patched_get_conn,
     """SC3 v1.1: totalResults=80 (under 100) — page 1 oldest is ≤ cut →
     watermark stop after page 1 → 1 HTTP call, equivalent to v1.0 cost.
     Guards against regression where pagination accidentally always walks
-    multiple pages."""
+    multiple pages.
+
+    Pins ``NEWSAPI_INDEXING_LAG_HOURS=0`` to test the no-lag baseline; with
+    the default 2h grace the steady-state cost grows to ~2-3 tokens.
+    """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    monkeypatch.setenv("NEWSAPI_INDEXING_LAG_HOURS", "0")
     from sembr.config import get_settings
 
     get_settings.cache_clear()
