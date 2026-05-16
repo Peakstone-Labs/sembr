@@ -30,7 +30,6 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev
 
 COPY sembr/ ./sembr/
-COPY scripts/ ./scripts/
 # Dashboard bundle (optional). main.py mounts /dashboard only when web/static/
 # exists, so the build succeeds even if a downstream consumer drops the dir.
 COPY web/ ./web/

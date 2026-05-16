@@ -29,7 +29,7 @@ jobs:
           set -e
           if grep -rnE "sembr-dev-docs|design\.md" \
             --include="*.py" --include="*.md" \
-            sembr/ tests/ scripts/ docs/ 2>/dev/null; then
+            sembr/ tests/ docs/ 2>/dev/null; then
             echo "::error::Found private dev-doc references — see lines above."
             exit 1
           fi
@@ -40,7 +40,7 @@ jobs:
           # `noqa: D[0-9]` carve-out: pydocstyle rule codes are legitimate.
           hits=$(grep -rnE "\bD[0-9]{1,3}\b|\bR[0-9]{1,3}\b|\bDD[0-9]{1,3}\b" \
             --include="*.py" --include="*.md" \
-            sembr/ tests/ scripts/ docs/ 2>/dev/null | grep -v "noqa: D[0-9]" || true)
+            sembr/ tests/ docs/ 2>/dev/null | grep -v "noqa: D[0-9]" || true)
           if [ -n "$hits" ]; then
             echo "::error::Found decision-ID references (Dxx/Rxx/DDxx):"
             echo "$hits"
@@ -52,12 +52,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Every .py under sembr / tests / scripts must have SPDX header
+      - name: Every .py under sembr / tests must have SPDX header
         run: |
           set -e
           missing=$(grep -rL "SPDX-License-Identifier" \
             --include="*.py" \
-            sembr/ tests/ scripts/ || true)
+            sembr/ tests/ || true)
           if [ -n "$missing" ]; then
             echo "::error::Files missing SPDX-License-Identifier header:"
             echo "$missing"

@@ -21,7 +21,7 @@ Coverage map:
   test_lifespan_assert_named_vec_layout            → fail-fast assertion path
 
 NOTE: test_fire_intent_with_sub_text_matches_more requires prod data (id=13, 28) —
-      marked MANUAL / out-of-scope; see scripts/qa_sub_text_recall.py.
+      marked MANUAL / out-of-scope.
 """
 
 from __future__ import annotations
