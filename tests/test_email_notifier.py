@@ -282,12 +282,12 @@ async def test_render_includes_indexed_sources() -> None:
 
 
 # ---------------------------------------------------------------------------
-# UT-3b: logo embedded as multipart/related with cid:sembr-logo
+# UT-3b: digest is single-part HTML (no inline logo) and footer links to repo
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_logo_embedded_as_inline_image() -> None:
+async def test_digest_is_single_part_html_with_repo_link() -> None:
     ch = _make_channel()
     citations = [_citation("a", published_at="2026-01-01T00:00:00Z")]
     result = _result(citations)
@@ -299,14 +299,13 @@ async def test_logo_embedded_as_inline_image() -> None:
         )
 
     msg = captured[0]
-    assert msg.is_multipart(), "expected multipart/related when logo present"
+    assert not msg.is_multipart(), "digest should be single-part text/html, no inline image"
     image_parts = [p for p in msg.walk() if p.get_content_type() == "image/png"]
-    assert len(image_parts) == 1
-    cid = image_parts[0].get("Content-ID", "")
-    assert cid == "<sembr-logo>", f"Content-ID is {cid!r}"
+    assert image_parts == []
     body = _extract_html(msg)
-    assert 'src="cid:sembr-logo"' in body
-    assert "Peakstone Labs" in body
+    assert "cid:sembr-logo" not in body
+    assert "Peakstone Labs" not in body
+    assert 'href="https://github.com/Peakstone-Labs/sembr"' in body
 
 
 # ---------------------------------------------------------------------------
