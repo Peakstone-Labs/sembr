@@ -487,9 +487,7 @@ class NewsApiMaster:
                         # before max_pages; safe to dispatch what we have.
                         stopped_naturally = True
                         break
-                    if _should_stop_paginating(
-                        page_results, universal_since, indexing_lag
-                    ):
+                    if _should_stop_paginating(page_results, universal_since, indexing_lag):
                         # Watermark stop: this page's oldest article is at or
                         # below (universal_since - indexing_lag). Below that
                         # line, NewsAPI is unlikely to have anything new since

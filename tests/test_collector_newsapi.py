@@ -629,9 +629,7 @@ async def test_master_tick_dispatch_unknown_source_dropped(
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_master_tick_keeps_articles_older_than_cursor(
-    monkeypatch, patched_get_conn
-) -> None:
+async def test_master_tick_keeps_articles_older_than_cursor(monkeypatch, patched_get_conn) -> None:
     """Articles with published_at <= feed.last_collected_at are NOT dropped:
     NewsAPI has ~1h indexing delay (Reuters worst case), so a freshly-indexed
     article will routinely look "older than the cursor" because the cursor
