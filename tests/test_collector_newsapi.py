@@ -625,8 +625,16 @@ async def test_master_tick_dispatch_unknown_source_dropped(
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_master_tick_since_client_side_cut(monkeypatch, patched_get_conn) -> None:
-    """published_at <= feed.last_collected_at → drop the article."""
+async def test_master_tick_keeps_articles_older_than_cursor(
+    monkeypatch, patched_get_conn
+) -> None:
+    """Articles with published_at <= feed.last_collected_at are NOT dropped:
+    NewsAPI has ~1h indexing delay (Reuters worst case), so a freshly-indexed
+    article will routinely look "older than the cursor" because the cursor
+    advances every tick regardless of items_new. MD5 dedup in
+    insert_article_pending is the dedup layer. Without this behaviour, the
+    same article re-appears in subsequent ticks below an ever-advancing
+    cursor and is permanently lost."""
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
 
@@ -676,7 +684,10 @@ async def test_master_tick_since_client_side_cut(monkeypatch, patched_get_conn) 
     await NewsApiMaster().tick()
     async with conn.execute("SELECT title FROM pending_articles") as cur:
         rows = await cur.fetchall()
-    assert {r[0] for r in rows} == {"Fresh"}
+    # All three articles land — the per-article since-cut was removed to
+    # defeat indexing-lag-induced article loss. The MD5 fingerprint stops
+    # duplicates on subsequent ticks.
+    assert {r[0] for r in rows} == {"Fresh", "Older1", "Older2"}
     await conn.close()
 
 
@@ -862,9 +873,10 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
         ],
         total=250,
     )
-    # page 2: (now-3h, now-5h) — oldest ≤ cut(now-4h) → watermark stop
-    # The article at now-5h is still loaded into all_results, but the
-    # per-article since-cut drops it during dispatch.
+    # page 2: (now-3h, now-5h) — oldest ≤ cut(now-4h) → watermark stop.
+    # All articles fetched into all_results are dispatched (no per-article
+    # since-cut: indexing lag would otherwise drop newly-indexed-but-pre-cursor
+    # articles permanently).
     page2 = _page_envelope(
         [
             {
@@ -913,12 +925,13 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
     async with conn.execute("SELECT title FROM pending_articles ORDER BY title") as cur:
         rows = await cur.fetchall()
     titles = {r[0] for r in rows}
-    # P1A, P1B, P2A landed (all > cut). P2BOld dropped by the since-cut.
-    # P3SHOULDNOTFETCH never even fetched.
+    # All four pages 1+2 articles land (the per-article since-cut was removed
+    # to defeat indexing-lag-induced loss; MD5 dedup handles re-tick dupes).
+    # P3SHOULDNOTFETCH never even fetched (watermark stop on page 2).
     assert "P1A" in titles
     assert "P1B" in titles
     assert "P2A" in titles
-    assert "P2BOld" not in titles
+    assert "P2BOld" in titles
     assert "P3SHOULDNOTFETCH" not in titles
 
     async with conn.execute("SELECT feed_id, ok, items_seen FROM feed_fetch_log") as cur:

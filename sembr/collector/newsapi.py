@@ -195,7 +195,9 @@ def _should_stop_paginating(
 
     Returns True when the **oldest** article in this page is at or before
     ``universal_since`` — meaning the next page would be entirely below the
-    cursor and would only feed the existing per-article since-cut path. Robust
+    cursor; since the per-article since-cut was removed (indexing-lag
+    losses), the next page would still be dispatched and rely on MD5 dedup,
+    but fetching it costs an extra token for near-certain duplicates. Robust
     to ``articlesSortBy`` upstream silently flipping desc→asc because we use
     ``min(dateTime)`` rather than "the last element".
 
@@ -530,16 +532,14 @@ class NewsApiMaster:
                 continue
             slot.items_seen += 1
 
-            # Client-side since cut. newsapi date granularity is per-day, so
-            # same-day re-ticks return overlapping articles. MD5 dedup catches
-            # the duplicate writes, but early-dropping here also saves a
-            # pending_articles INSERT round-trip.
-            if (
-                slot.since is not None
-                and article.published_at is not None
-                and article.published_at <= slot.since
-            ):
-                continue
+            # No client-side since-cut: NewsAPI has ~1h indexing delay for some
+            # sources (Reuters worst case), so an article first surfaced in the
+            # API response often has published_at < slot.since (which advances
+            # to now() every tick regardless of items_new). Cutting here drops
+            # the article on first sight; on subsequent ticks slot.since has
+            # moved further past it → permanent loss. MD5 dedup in
+            # insert_article_pending is the correctness layer; the round-trip
+            # cost is dwarfed by the article-loss it prevents.
             try:
                 is_new = await insert_article_pending(conn, article, slot.feed_id)
                 if is_new:
