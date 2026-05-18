@@ -12,6 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.12-blue?logo=python&logoColor=white" alt="Python 3.12"></a>
   <a href="Dockerfile"><img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
+  <a href="https://panel.peakstone-labs.com/static/img/sembr-preview-qrcode.png"><img src="https://img.shields.io/badge/WeChat-交流群-07C160?logo=wechat&logoColor=white" alt="WeChat 交流群"></a>
 </p>
 
 <p align="center">
