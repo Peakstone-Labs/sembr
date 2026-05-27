@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 _IDENT_RE = re.compile(r"^(?!\.)(?!.*\.\.)[^/\\]{1,100}$")
 
 _SYSTEM_PLACEHOLDERS: frozenset[str] = frozenset({"language"})
-_INSTRUCTION_PLACEHOLDERS: frozenset[str] = frozenset({"intent_text", "articles"})
+_INSTRUCTION_PLACEHOLDERS: frozenset[str] = frozenset({"intent_text", "articles", "history"})
 
 # Prompts root constant. Replaces the older Settings.prompts_dir field.
 PROMPTS_DIR: Final[Path] = Path("/app/prompts")
@@ -139,8 +139,9 @@ def render_instruction(
     *,
     intent_text: str,
     articles: str,
+    history: str = "",
 ) -> str:
-    """Load and render an instruction template, injecting ``{intent_text}`` and ``{articles}``.
+    """Load and render an instruction template.
 
     Raises:
         TemplateNotFoundError: file missing.
@@ -148,11 +149,13 @@ def render_instruction(
     """
     raw = load_template(prompts_dir, "instruction", name)
     try:
-        return raw.format_map(_StrictMap(intent_text=intent_text, articles=articles))
+        return raw.format_map(
+            _StrictMap(intent_text=intent_text, articles=articles, history=history)
+        )
     except KeyError as exc:
         raise TemplateRenderError(
             f"Instruction template '{name}' contains undeclared placeholder {{{exc.args[0]}}}. "
-            f"Available placeholders: {{intent_text}}, {{articles}}"
+            f"Available placeholders: {{intent_text}}, {{articles}}, {{history}}"
         ) from exc
 
 

@@ -1551,6 +1551,16 @@
                     </label>
                     <span class="field-hint">Skip articles already matched by this intent</span>
                   </div>
+
+                  <div class="form-field">
+                    <label class="field-label">History Window (days)</label>
+                    <input type="number" x-model="modal.form.history_days"
+                           min="1" max="365" step="1" placeholder="blank = disabled"
+                           :class="modal.errors.history_days ? 'field-err' : ''">
+                    <span class="field-err-msg" x-show="modal.errors.history_days"
+                          x-text="modal.errors.history_days"></span>
+                    <span class="field-hint">Days of past summaries injected as <code>{history}</code> in prompt. Leave blank to disable. Set 1–365 to inject past summaries.</span>
+                  </div>
                 </div>
               </div>
             </template>
@@ -1798,6 +1808,16 @@
               </span>
               <span class="field-label" style="margin:0;">Skip seen</span>
             </label>
+          </div>
+          <div class="form-field" style="align-self:center; padding-top:20px;">
+            <label class="toggle-wrap" style="cursor:pointer;">
+              <span class="toggle">
+                <input type="checkbox" x-model="fire.form.persist">
+                <span class="toggle-slider"></span>
+              </span>
+              <span class="field-label" style="margin:0;">Persist result</span>
+            </label>
+            <span class="field-hint">Save this run's summary to history (default: off)</span>
           </div>
         </div>
         <div x-show="fire.error" class="fire-warning" style="margin-top:12px;" x-text="fire.error"></div>
@@ -2438,7 +2458,7 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=3"></script>
+<script src="/dashboard/intents.js?v=4"></script>
 <script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=12"></script>

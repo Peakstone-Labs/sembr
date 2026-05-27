@@ -412,9 +412,9 @@ def test_put_clear_all_sub_texts_calls_delete_vectors() -> None:
     )
     # collect flat arguments for inspection
     flat_args = str(vs["delete_vectors"].call_args)
-    assert "alt_0" in flat_args, (
-        f"delete_vectors must include 'alt_0'; call was: {vs['delete_vectors'].call_args}"
-    )
+    assert (
+        "alt_0" in flat_args
+    ), f"delete_vectors must include 'alt_0'; call was: {vs['delete_vectors'].call_args}"
 
 
 # ===========================================================================
@@ -764,9 +764,9 @@ async def test_lifespan_migrates_existing_intents() -> None:
     # _mv collection must be created
     mock_client.create_collection.assert_called_once()
     create_call_kwargs = str(mock_client.create_collection.call_args)
-    assert mv_name in create_call_kwargs, (
-        f"create_collection must use {mv_name!r}; got {create_call_kwargs}"
-    )
+    assert (
+        mv_name in create_call_kwargs
+    ), f"create_collection must use {mv_name!r}; got {create_call_kwargs}"
 
     # embedder.aembed called with the 3 intent texts
     mock_embedder.aembed.assert_awaited_once_with(["text1", "text2", "text3"])
@@ -924,9 +924,9 @@ async def test_lifespan_assert_named_vec_layout() -> None:
 
     vectors_cfg = getattr(FakeCollectionInfo.config.params, "vectors", None)
     assertion_fails_on_non_dict = not isinstance(vectors_cfg, dict)
-    assert assertion_fails_on_non_dict, (
-        "named-vec guard `not isinstance(vectors_cfg, dict)` must be True for non-dict layout"
-    )
+    assert (
+        assertion_fails_on_non_dict
+    ), "named-vec guard `not isinstance(vectors_cfg, dict)` must be True for non-dict layout"
 
     # Verify correct layout passes the guard
     class GoodCollectionInfo:
@@ -935,9 +935,9 @@ async def test_lifespan_assert_named_vec_layout() -> None:
                 vectors = {"main": object(), "alt_0": object()}  # dict with "main"
 
     good_cfg = getattr(GoodCollectionInfo.config.params, "vectors", None)
-    assert isinstance(good_cfg, dict) and "main" in good_cfg, (
-        "named-vec guard must pass for named-vec dict containing 'main'"
-    )
+    assert (
+        isinstance(good_cfg, dict) and "main" in good_cfg
+    ), "named-vec guard must pass for named-vec dict containing 'main'"
 
     # The actual RuntimeError is raised in main.py lifespan (covered by the named-vec fix
     # in implementation.md Phase 4; this test validates the guard logic is correct).

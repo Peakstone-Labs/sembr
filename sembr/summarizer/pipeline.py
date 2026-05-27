@@ -127,9 +127,9 @@ def _to_citation(m: Match, feed_name_map: dict[int, str] | None = None) -> Citat
 
 
 class IntentPromptCtxFetcher(Protocol):
-    async def __call__(self, intent_id: int) -> tuple[str, str, str, str]: ...
+    async def __call__(self, intent_id: int) -> tuple[str, str, str, str, int | None]: ...
 
-    # Returns: (system_template_name, instruction_template_name, intent_text, language)
+    # Returns: (system_template_name, instruction_template_name, intent_text, language, history_days)
 
 
 class FeedNameFetcher(Protocol):
@@ -159,6 +159,8 @@ class SummaryPipeline:
         get_feed_names: FeedNameFetcher | None = None,
         on_template_error: OnTemplateError | None = None,
         prompts_dir: Path = Path("/app/prompts"),
+        get_history_text: Callable[[int, int], Awaitable[str]] | None = None,
+        on_persist: OnSummaryCallback | None = None,
     ) -> None:
         self._llm = llm
         self._on_summary: OnSummaryCallback = on_summary or log_summaries
@@ -167,6 +169,8 @@ class SummaryPipeline:
         self._get_feed_names = get_feed_names
         self._on_template_error = on_template_error
         self._prompts_dir = prompts_dir
+        self._get_history_text = get_history_text
+        self._on_persist = on_persist
 
     async def compute_summary(self, matches: list[Match]) -> SummaryResult | None:
         """Build prompt, call LLM, return SummaryResult — or None for skip-class
@@ -208,6 +212,7 @@ class SummaryPipeline:
         instruction_tpl_name: str = "default"
         intent_text: str = ""
         language: str = "zh"
+        history_days: int | None = None
         if self._get_intent_prompt_ctx is not None:
             try:
                 (
@@ -215,6 +220,7 @@ class SummaryPipeline:
                     instruction_tpl_name,
                     intent_text,
                     language,
+                    history_days,
                 ) = await self._get_intent_prompt_ctx(intent_id)
             except Exception:
                 logger.warning(
@@ -261,6 +267,34 @@ class SummaryPipeline:
                     exc,
                 )
 
+        # Load raw template to check if {history} is present, then fetch history
+        # text so its char count is included in instruction_wrapper overhead (D5).
+        # Both load and render are wrapped together so TemplateNotFoundError /
+        # TemplateRenderError get tagged and propagated consistently.
+        history_text = ""
+        try:
+            raw_instruction = _templates.load_template(
+                self._prompts_dir, "instruction", instruction_tpl_name
+            )
+        except (TemplateNotFoundError, TemplateRenderError) as exc:
+            logger.error(
+                "SummaryPipeline: instruction template error for intent_id=%d: %s",
+                intent_id,
+                exc,
+            )
+            exc._sembr_template_kind = "instruction"
+            exc._sembr_template_name = instruction_tpl_name
+            raise
+        if "{history}" in raw_instruction and self._get_history_text and history_days is not None:
+            try:
+                history_text = await self._get_history_text(intent_id, history_days)
+            except Exception as exc:
+                logger.warning(
+                    "SummaryPipeline: history fetch failed for intent_id=%d: %s",
+                    intent_id,
+                    exc,
+                )
+
         # Render the instruction template with an empty articles slot so we know
         # how many characters the wrapper itself consumes; we'll re-render with
         # the real articles block once we've sized it to fit.
@@ -270,6 +304,7 @@ class SummaryPipeline:
                 instruction_tpl_name,
                 intent_text=intent_text,
                 articles="",
+                history=history_text,
             )
         except (TemplateNotFoundError, TemplateRenderError) as exc:
             logger.error(
@@ -326,6 +361,7 @@ class SummaryPipeline:
                 instruction_tpl_name,
                 intent_text=intent_text,
                 articles=articles_text,
+                history=history_text,
             )
         except (TemplateNotFoundError, TemplateRenderError) as exc:
             logger.error(
@@ -400,12 +436,69 @@ class SummaryPipeline:
         if result is None:
             return
 
+        await self._dispatch(result, persist=True, intent_id=intent_id)
+
+    async def _dispatch(
+        self,
+        result: SummaryResult,
+        *,
+        persist: bool,
+        intent_id: int,
+    ) -> None:
+        """Inner-try dispatch shared by handle() and fire_handle().
+
+        Encapsulates pre_push_hook + optional on_persist + on_summary in a
+        single never-raise block.  on_persist failures are isolated so they
+        cannot block on_summary (D8 / P0-1).
+        """
         try:
             if self._pre_push_hook is not None and not await self._pre_push_hook(result):
                 return
+            if persist and self._on_persist is not None:
+                try:
+                    await self._on_persist(result)
+                except Exception:
+                    logger.exception(
+                        "SummaryPipeline on_persist failed for intent_id=%s", intent_id
+                    )
             await self._on_summary(result)
         except Exception:
             logger.exception(
                 "SummaryPipeline dispatch (pre_push_hook / on_summary) error for intent_id=%s",
                 intent_id,
             )
+
+    async def fire_handle(self, matches: list[Match], persist: bool = False) -> None:
+        """Never-raise variant for fire endpoints.
+
+        Outer try wraps compute_summary (template/LLM errors); inner dispatch
+        via _dispatch with persist flag.
+        """
+        if not matches:
+            return
+        intent_id = matches[0].intent_id
+        try:
+            result = await self.compute_summary(matches)
+        except (TemplateNotFoundError, TemplateRenderError) as exc:
+            kind = getattr(exc, "_sembr_template_kind", "unknown")
+            name = getattr(exc, "_sembr_template_name", "unknown")
+            if self._on_template_error is not None:
+                try:
+                    await self._on_template_error(intent_id, kind, name, str(exc))
+                except Exception:
+                    logger.exception(
+                        "SummaryPipeline: on_template_error callback raised for intent_id=%d",
+                        intent_id,
+                    )
+            return
+        except Exception:
+            logger.exception(
+                "SummaryPipeline.fire_handle compute_summary unexpected error for intent_id=%s",
+                intent_id,
+            )
+            return
+
+        if result is None:
+            return
+
+        await self._dispatch(result, persist=persist, intent_id=intent_id)

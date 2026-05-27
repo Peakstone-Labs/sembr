@@ -57,7 +57,7 @@ def prompts_dir(tmp_path: Path) -> Path:
 
 
 async def _ctx(iid):
-    return "default", "default", "fed rate", "zh"
+    return "default", "default", "fed rate", "zh", None
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +193,7 @@ async def test_named_instruction_template_passed_to_llm(prompts_dir: Path) -> No
     llm.summarize = AsyncMock(side_effect=lambda p, **_: captured_prompts.append(p) or "ok")
 
     async def ctx(iid):
-        return "default", "custom", "fed rate", "zh"
+        return "default", "custom", "fed rate", "zh", None
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
@@ -211,7 +211,7 @@ async def test_default_instruction_template_includes_intent_text(prompts_dir: Pa
     llm.summarize = AsyncMock(side_effect=lambda p, **_: captured_prompts.append(p) or "ok")
 
     async def ctx(iid):
-        return "default", "default", "Federal Reserve rate decisions", "zh"
+        return "default", "default", "Federal Reserve rate decisions", "zh", None
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")
@@ -336,7 +336,7 @@ async def test_empty_intent_text_skips_tick() -> None:
     on_summary = AsyncMock()
 
     async def empty_ctx(iid):
-        return "default", "default", "", "zh"
+        return "default", "default", "", "zh", None
 
     pipeline = SummaryPipeline(llm=llm, on_summary=on_summary, get_intent_prompt_ctx=empty_ctx)
     m = _match("a", "Fed hikes", published_at="2026-01-01T10:00:00Z")

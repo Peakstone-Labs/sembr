@@ -34,6 +34,7 @@ async def _fire_run(
     task: FireTask,
     options: ScanOptions,
     app,
+    persist: bool = False,
 ) -> None:
     """Background task: scan → update task state → push if matches found."""
     try:
@@ -61,10 +62,10 @@ async def _fire_run(
         ]
 
         if matches:
-            on_match = app.state.on_match
-            if on_match is not None:
-                await on_match(matches)
-                task.pushed = True
+            pipeline = app.state.summary_pipeline
+            if pipeline is not None:
+                await pipeline.fire_handle(matches, persist=persist)
+                task.pushed = True  # fire_handle never-raise; pushed = did not raise
         # TODO(intent-control follow-up): notify_on_empty hook
 
         task.status = "done"
@@ -89,6 +90,7 @@ async def post_fire(
     lookback: int | None = Query(default=None, ge=300, le=2592000),
     skip_seen: bool | None = Query(default=None),
     threshold: float | None = Query(default=None, ge=0.20, le=0.95),
+    persist: bool = Query(default=False),
 ) -> dict[str, Any]:
     conn = get_conn()
     intent = await get_intent(conn, intent_id)
@@ -117,7 +119,7 @@ async def post_fire(
 
     task = create_task(intent_id)
 
-    bg = asyncio.create_task(_fire_run(task, options, request.app))
+    bg = asyncio.create_task(_fire_run(task, options, request.app, persist=persist))
     _BG_TASKS.add(bg)
     bg.add_done_callback(_BG_TASKS.discard)
 

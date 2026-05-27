@@ -62,7 +62,8 @@ from sembr.db.feeds import get_feed_names, init_feed_tables, list_feeds, seed_in
 from sembr.db.event_buffer import init_event_buffer_tables
 from sembr.db.intents import get_intent, init_intent_tables, list_intents
 from sembr.db.match_seen import init_match_seen_tables
-from sembr.db.sqlite import close_sqlite, init_sqlite
+from sembr.db.sqlite import close_sqlite, get_conn, init_sqlite
+from sembr.db.summary_history import format_history_text, init_summary_history_table, save_summary
 from sembr.matcher.event_buffer import sweep_timed_out as _event_sweep_timed_out
 from sembr.matcher.event_cache import EventIntentCache, load_event_cache
 from sembr.embedder.factory import build_embedder
@@ -113,11 +114,18 @@ async def _dispatch_notification(
         )
 
 
-async def _get_intent_prompt_ctx(conn, intent_id: int) -> tuple[str, str, str, str]:
-    intent = await get_intent(conn, intent_id)
+async def _get_intent_prompt_ctx(intent_id: int) -> tuple[str, str, str, str, int | None]:
+    intent = await get_intent(get_conn(), intent_id)
     if intent is None:
-        return "default", "default", "", "zh"
-    return intent.system_template, intent.instruction_template, intent.text, intent.language
+        return "default", "default", "", "zh", None
+    history_days = getattr(intent.schedule, "history_days", None)
+    return (
+        intent.system_template,
+        intent.instruction_template,
+        intent.text,
+        intent.language,
+        history_days,
+    )
 
 
 async def _dispatch_template_error(
@@ -170,6 +178,7 @@ async def lifespan(app: FastAPI):
     await init_intent_tables(conn)  # also chains init_intent_sub_texts_tables (FK CASCADE)
     await init_match_seen_tables(conn)  # after intents — FK dependency
     await init_event_buffer_tables(conn)  # after intents — FK dependency
+    await init_summary_history_table(conn)  # after intents — FK dependency
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client, embedder)
@@ -275,13 +284,15 @@ async def lifespan(app: FastAPI):
     email_ch = EmailChannel(settings)
     pipeline = SummaryPipeline(
         llm=llm_backend,
-        get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(conn, iid),
-        get_feed_names=lambda ids: get_feed_names(conn, ids),
-        on_summary=lambda r: _dispatch_notification(conn, email_ch, r),
+        get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(iid),
+        get_feed_names=lambda ids: get_feed_names(get_conn(), ids),
+        on_summary=lambda r: _dispatch_notification(get_conn(), email_ch, r),
         on_template_error=lambda iid, k, n, r: _dispatch_template_error(
-            conn, email_ch, iid, k, n, r
+            get_conn(), email_ch, iid, k, n, r
         ),
         prompts_dir=PROMPTS_DIR,
+        get_history_text=lambda iid, days: format_history_text(get_conn(), iid, days),
+        on_persist=lambda r: save_summary(get_conn(), r),
     )
     app.state.on_match = pipeline.handle
     # External fire endpoint reaches the pipeline through this handle; it must

@@ -600,9 +600,10 @@ async def test_embedder_worker_phase3b_upsert_then_delete(monkeypatch):
 
     await embedder_worker(embedder, qdrant)
 
-    assert call_order == ["upsert", "delete"], (
-        f"order violation: expected upsert→delete, got {call_order}"
-    )
+    assert call_order == [
+        "upsert",
+        "delete",
+    ], f"order violation: expected upsert→delete, got {call_order}"
     qdrant.client.upsert.assert_called_once()
     assert qdrant.client.upsert.call_args.kwargs["collection_name"] == ALIAS_NAME
 
@@ -776,12 +777,12 @@ def test_embedder_worker_no_more_wait_for_wrap():
     """Static check: _EMBED_TIMEOUT and asyncio.wait_for removed from scheduler.py."""
     source = pathlib.Path(__file__).parent.parent / "sembr" / "embedder" / "scheduler.py"
     content = source.read_text(encoding="utf-8")
-    assert "_EMBED_TIMEOUT" not in content, (
-        "_EMBED_TIMEOUT should have been removed from scheduler.py"
-    )
-    assert "asyncio.wait_for" not in content, (
-        "asyncio.wait_for should have been removed from scheduler.py"
-    )
+    assert (
+        "_EMBED_TIMEOUT" not in content
+    ), "_EMBED_TIMEOUT should have been removed from scheduler.py"
+    assert (
+        "asyncio.wait_for" not in content
+    ), "asyncio.wait_for should have been removed from scheduler.py"
 
 
 # ---------------------------------------------------------------------------

@@ -188,9 +188,9 @@ async def test_concurrent_writer_not_starved_during_qdrant_ttl():
     # latency assertion instead of "you broke the match_seen article_id index".
     async with conn.execute("PRAGMA index_list(match_seen)") as cur:
         names = {r[1] for r in await cur.fetchall()}
-    assert "idx_match_seen_article_id" in names, (
-        "test prerequisite: idx_match_seen_article_id must exist"
-    )
+    assert (
+        "idx_match_seen_article_id" in names
+    ), "test prerequisite: idx_match_seen_article_id must exist"
 
     feed_id = await _seed_feed(conn)
     # Seed 1000 feed_items + an intent and 5000 match_seen rows so
