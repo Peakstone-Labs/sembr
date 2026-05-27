@@ -177,7 +177,6 @@ async def test_flush_drains_all_groups_and_calls_on_match():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
-    app.state.on_match_event = None
 
     try:
         # Insert 2 distinct groups
@@ -206,7 +205,6 @@ async def test_flush_no_rows_is_noop():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
-    app.state.on_match_event = None
 
     try:
         await flush(conn, app, intent_id)
@@ -224,7 +222,6 @@ async def test_flush_on_match_exception_does_not_reraise(caplog):
     on_match = AsyncMock(side_effect=RuntimeError("push failed"))
     app = MagicMock()
     app.state.on_match = on_match
-    app.state.on_match_event = None
 
     try:
         await absorb(conn, intent_id, [_match("art-1", "Breaking news")], _EVENT_SCHEDULE)
@@ -259,7 +256,6 @@ async def test_sweep_triggers_flush_when_oldest_group_exceeds_max_wait():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
-    app.state.on_match_event = None
 
     cache = EventIntentCache()
     cache.add(
@@ -301,7 +297,6 @@ async def test_sweep_does_not_flush_when_not_yet_timed_out():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
-    app.state.on_match_event = None
 
     cache = EventIntentCache()
     cache.add(
@@ -392,7 +387,6 @@ async def test_sweep_isolates_per_intent_failures():
 
     app = MagicMock()
     app.state.on_match = _on_match
-    app.state.on_match_event = None
 
     try:
         await sweep_timed_out(conn, app, cache)

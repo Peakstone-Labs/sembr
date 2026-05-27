@@ -36,7 +36,6 @@ class CronSchedule(BaseModel):
     weekday: Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"] | None = None
     lookback_seconds: int = Field(default=86400, ge=300, le=2592000)
     skip_seen: bool = True
-    history_days: int | None = Field(default=None, ge=1, le=365)
 
     @model_validator(mode="after")
     def _weekday_constraint(self) -> "CronSchedule":

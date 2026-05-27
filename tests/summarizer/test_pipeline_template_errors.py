@@ -48,7 +48,7 @@ async def test_missing_instruction_template_calls_on_template_error(prompts_dir:
     on_template_error = AsyncMock()
 
     async def ctx(iid):
-        return "default", "ghost", "fed rate", "zh", None
+        return "default", "ghost", "fed rate", "zh"
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -75,7 +75,7 @@ async def test_missing_system_template_calls_on_template_error(prompts_dir: Path
     on_template_error = AsyncMock()
 
     async def ctx(iid):
-        return "ghost_system", "default", "fed rate", "zh", None
+        return "ghost_system", "default", "fed rate", "zh"
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -104,7 +104,7 @@ async def test_render_error_in_instruction_calls_on_template_error(prompts_dir: 
     on_template_error = AsyncMock()
 
     async def ctx(iid):
-        return "default", "bad", "fed rate", "zh", None
+        return "default", "bad", "fed rate", "zh"
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -130,7 +130,7 @@ async def test_happy_path_still_works(prompts_dir: Path) -> None:
     on_template_error = AsyncMock()
 
     async def ctx(iid):
-        return "default", "default", "AI news", "zh", None
+        return "default", "default", "AI news", "zh"
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -154,7 +154,7 @@ async def test_no_on_template_error_callback_still_doesnt_raise(prompts_dir: Pat
     llm.max_prompt_chars = 2_000_000
 
     async def ctx(iid):
-        return "default", "ghost", "fed rate", "zh", None
+        return "default", "ghost", "fed rate", "zh"
 
     pipeline = SummaryPipeline(
         llm=llm,

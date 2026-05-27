@@ -67,7 +67,7 @@ def _default_options() -> ScanOptions:
     )
 
 
-def _make_app(summary_pipeline=None):
+def _make_app(on_match=None):
     from fastapi import FastAPI
     from sembr.api.fire import router
 
@@ -75,7 +75,7 @@ def _make_app(summary_pipeline=None):
     app.include_router(router)
     app.state.qdrant = MagicMock()
     app.state.qdrant.client = MagicMock()
-    app.state.summary_pipeline = summary_pipeline
+    app.state.on_match = on_match
     return app
 
 
@@ -132,11 +132,11 @@ async def test_get_fire_status_returns_matches():
     assert len(task.matches) == 2
     assert task.matches[0]["article_id"] == "art-1"
     assert task.matches[0]["score"] == 0.85
-    assert task.pushed is False  # summary_pipeline is None
+    assert task.pushed is False  # on_match is None
 
 
 # ---------------------------------------------------------------------------
-# AC3: fire_handle is called when matches found, pushed=True
+# AC3: on_match is called when matches found, pushed=True
 # ---------------------------------------------------------------------------
 
 
@@ -145,9 +145,8 @@ async def test_fire_run_calls_on_match_when_matches():
     from sembr.api.fire import _fire_run
     from sembr.matcher.fire_tasks import create_task
 
-    pipeline = MagicMock()
-    pipeline.fire_handle = AsyncMock()
-    app = _make_app(summary_pipeline=pipeline)
+    on_match = AsyncMock()
+    app = _make_app(on_match=on_match)
     intent = _fake_intent(1)
     matches = [_fake_match()]
     task = create_task(1)
@@ -159,7 +158,7 @@ async def test_fire_run_calls_on_match_when_matches():
     ):
         await _fire_run(task, _default_options(), app)
 
-    pipeline.fire_handle.assert_awaited_once_with(matches, persist=False)
+    on_match.assert_awaited_once_with(matches)
     assert task.pushed is True
     assert task.status == "done"
 
@@ -174,9 +173,8 @@ async def test_fire_run_zero_hits_no_on_match():
     from sembr.api.fire import _fire_run
     from sembr.matcher.fire_tasks import create_task
 
-    pipeline = MagicMock()
-    pipeline.fire_handle = AsyncMock()
-    app = _make_app(summary_pipeline=pipeline)
+    on_match = AsyncMock()
+    app = _make_app(on_match=on_match)
     intent = _fake_intent(1)
     task = create_task(1)
 
@@ -187,7 +185,7 @@ async def test_fire_run_zero_hits_no_on_match():
     ):
         await _fire_run(task, _default_options(), app)
 
-    pipeline.fire_handle.assert_not_awaited()
+    on_match.assert_not_awaited()
     assert task.pushed is False
     assert task.match_count == 0
     assert task.status == "done"

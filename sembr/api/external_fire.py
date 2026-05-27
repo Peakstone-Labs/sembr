@@ -57,7 +57,6 @@ class ExternalFireRequest(BaseModel):
     threshold: float | None = Field(default=None, ge=0.20, le=0.95)
     skip_seen: bool | None = None
     feed_ids: list[int] | None = None
-    persist: bool = False
 
 
 class ExternalFireMatch(BaseModel):
@@ -203,16 +202,6 @@ async def post_external_fire(
         # summary_error=null — same as 0 hits but with matches present.
         summary = result.summary if result is not None else None
         summary_error = None
-        if body.persist and result is not None:
-            from sembr.db.summary_history import save_summary  # noqa: PLC0415
-
-            try:
-                await save_summary(get_conn(), result)
-            except Exception:
-                logger.exception(
-                    "external_fire intent_id=%d save_summary failed (response still success)",
-                    intent_id,
-                )
 
     return ExternalFireResponse(
         intent_id=intent_id,

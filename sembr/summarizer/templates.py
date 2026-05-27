@@ -10,11 +10,8 @@ on the next tick without a restart.
 
 Rendering uses ``str.format_map`` with a strict whitelist of placeholders:
 - system templates: ``{language}``
-- instruction templates: ``{intent_text}``, ``{articles}``, ``{history}``
+- instruction templates: ``{intent_text}``, ``{articles}``
 Any other ``{...}`` key in the file raises ``TemplateRenderError``.
-
-``{history}`` is optional: templates that omit it render normally; when present,
-the pipeline injects past-N-days summaries via ``CronSchedule.history_days``.
 """
 
 from __future__ import annotations
@@ -32,7 +29,7 @@ logger = logging.getLogger(__name__)
 _IDENT_RE = re.compile(r"^(?!\.)(?!.*\.\.)[^/\\]{1,100}$")
 
 _SYSTEM_PLACEHOLDERS: frozenset[str] = frozenset({"language"})
-_INSTRUCTION_PLACEHOLDERS: frozenset[str] = frozenset({"intent_text", "articles", "history"})
+_INSTRUCTION_PLACEHOLDERS: frozenset[str] = frozenset({"intent_text", "articles"})
 
 # Prompts root constant. Replaces the older Settings.prompts_dir field.
 PROMPTS_DIR: Final[Path] = Path("/app/prompts")
@@ -142,9 +139,8 @@ def render_instruction(
     *,
     intent_text: str,
     articles: str,
-    history: str = "",
 ) -> str:
-    """Load and render an instruction template.
+    """Load and render an instruction template, injecting ``{intent_text}`` and ``{articles}``.
 
     Raises:
         TemplateNotFoundError: file missing.
@@ -152,41 +148,11 @@ def render_instruction(
     """
     raw = load_template(prompts_dir, "instruction", name)
     try:
-        return raw.format_map(
-            _StrictMap(intent_text=intent_text, articles=articles, history=history)
-        )
+        return raw.format_map(_StrictMap(intent_text=intent_text, articles=articles))
     except KeyError as exc:
         raise TemplateRenderError(
             f"Instruction template '{name}' contains undeclared placeholder {{{exc.args[0]}}}. "
-            f"Available placeholders: {{intent_text}}, {{articles}}, {{history}}"
-        ) from exc
-
-
-def render_instruction_from_raw(
-    raw: str,
-    *,
-    intent_text: str,
-    articles: str,
-    history: str = "",
-) -> str:
-    """Render an already-loaded instruction template string without a disk read.
-
-    Used by ``SummaryPipeline.compute_summary`` to avoid re-reading the same
-    template file twice within one request (once for the wrapper measurement,
-    once for the final prompt).  The caller must have loaded the raw content
-    via ``load_template`` and validated it via ``try_render`` at save time.
-
-    Raises:
-        TemplateRenderError: unknown placeholder found in raw.
-    """
-    try:
-        return raw.format_map(
-            _StrictMap(intent_text=intent_text, articles=articles, history=history)
-        )
-    except KeyError as exc:
-        raise TemplateRenderError(
-            f"Instruction template contains undeclared placeholder {{{exc.args[0]}}}. "
-            f"Available placeholders: {{intent_text}}, {{articles}}, {{history}}"
+            f"Available placeholders: {{intent_text}}, {{articles}}"
         ) from exc
 
 

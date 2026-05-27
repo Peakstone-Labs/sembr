@@ -600,10 +600,9 @@ async def test_embedder_worker_phase3b_upsert_then_delete(monkeypatch):
 
     await embedder_worker(embedder, qdrant)
 
-    assert call_order == [
-        "upsert",
-        "delete",
-    ], f"order violation: expected upsert→delete, got {call_order}"
+    assert call_order == ["upsert", "delete"], (
+        f"order violation: expected upsert→delete, got {call_order}"
+    )
     qdrant.client.upsert.assert_called_once()
     assert qdrant.client.upsert.call_args.kwargs["collection_name"] == ALIAS_NAME
 

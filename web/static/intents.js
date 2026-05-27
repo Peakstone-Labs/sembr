@@ -33,7 +33,7 @@ function intentsTab() {
       open: false,
       phase: 'form',        // 'form' | 'running' | 'result'
       intent: null,
-      form: { lookback: 86400, skip_seen: true, threshold: 0.75, persist: false },
+      form: { lookback: 86400, skip_seen: true, threshold: 0.75 },
       taskId: null,
       statusUrl: null,
       result: null,
@@ -158,7 +158,7 @@ function intentsTab() {
         tags: [], tagInput: '',
         // cron schedule
         preset: 'daily', hour: 0, minute: 0, weekday: 'mon',
-        lookback_hours: 24, skip_seen: true, history_days: '',
+        lookback_hours: 24, skip_seen: true,
         // event schedule
         trigger_count: 3, max_wait_seconds: 1800,
         // templates
@@ -209,7 +209,6 @@ function intentsTab() {
           weekday:          s.weekday || 'mon',
           lookback_hours:   (s.lookback_seconds ?? 86400) / 3600,
           skip_seen:        s.skip_seen ?? true,
-          history_days:     s.history_days != null ? String(s.history_days) : '',
           // event fields
           trigger_count:    s.trigger_count    ?? 3,
           max_wait_seconds: s.max_wait_seconds ?? 1800,
@@ -403,11 +402,6 @@ function intentsTab() {
         const lb = parseFloat(f.lookback_hours);
         if (isNaN(lb) || lb < 0.5 || lb > 720)
           errors.lookback_hours = 'Must be between 0.5 and 720 hours';
-        if (f.history_days !== '') {
-          const hdNum = Number(f.history_days);
-          if (!Number.isInteger(hdNum) || hdNum < 1 || hdNum > 365)
-            errors.history_days = 'Must be a whole number between 1 and 365';
-        }
       } else {
         const tc = parseInt(f.trigger_count);
         if (isNaN(tc) || tc < 1 || tc > 10)
@@ -443,7 +437,6 @@ function intentsTab() {
           weekday:          f.preset === 'weekly' ? f.weekday : null,
           lookback_seconds: Math.round(parseFloat(f.lookback_hours) * 3600),
           skip_seen:        !!f.skip_seen,
-          history_days:     f.history_days !== '' ? Number(f.history_days) : null,
         }
         : {
           mode:             'event',
@@ -574,7 +567,6 @@ function intentsTab() {
           lookback:  (s.lookback_seconds ?? 86400) / 3600,
           skip_seen: s.skip_seen        ?? true,
           threshold: intent.threshold   ?? 0.75,
-          persist:   false,
         },
         taskId: null, statusUrl: null, result: null, error: null, _timer: null,
       };
@@ -602,7 +594,6 @@ function intentsTab() {
         lookback:  lb,
         skip_seen: form.skip_seen,
         threshold: thr,
-        persist:   form.persist,
       }).toString();
       this.fire.phase = 'running';
       try {
