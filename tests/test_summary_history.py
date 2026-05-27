@@ -247,3 +247,30 @@ def test_cron_schedule_history_days_null_in_json() -> None:
 
     s = CronSchedule.model_validate({"mode": "cron", "preset": "daily", "hour": 9, "minute": 0})
     assert s.history_days is None
+
+
+# ---------------------------------------------------------------------------
+# CASCADE delete (D1, QA)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_delete_cascade_history(mem_conn) -> None:
+    """DELETE intent → summary_history rows CASCADE-deleted (D1, QA)."""
+    result = _result(intent_id=1)
+    row_id = await save_summary(mem_conn, result, run_at="2026-05-26T09:00:00Z")
+
+    # Confirm the row exists
+    async with mem_conn.execute(
+        "SELECT id FROM summary_history WHERE id=?", (row_id,)
+    ) as cur:
+        assert await cur.fetchone() is not None
+
+    # Delete the intent — CASCADE must remove the summary_history row
+    await mem_conn.execute("DELETE FROM intents WHERE id=1")
+    await mem_conn.commit()
+
+    async with mem_conn.execute(
+        "SELECT id FROM summary_history WHERE id=?", (row_id,)
+    ) as cur:
+        assert await cur.fetchone() is None, "summary_history row should be cascade-deleted"

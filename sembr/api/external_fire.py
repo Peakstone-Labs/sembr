@@ -206,7 +206,13 @@ async def post_external_fire(
         if body.persist and result is not None:
             from sembr.db.summary_history import save_summary  # noqa: PLC0415
 
-            await save_summary(get_conn(), result)
+            try:
+                await save_summary(get_conn(), result)
+            except Exception:
+                logger.exception(
+                    "external_fire intent_id=%d save_summary failed (response still success)",
+                    intent_id,
+                )
 
     return ExternalFireResponse(
         intent_id=intent_id,

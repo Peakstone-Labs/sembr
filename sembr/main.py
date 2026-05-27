@@ -294,7 +294,10 @@ async def lifespan(app: FastAPI):
         get_history_text=lambda iid, days: format_history_text(get_conn(), iid, days),
         on_persist=lambda r: save_summary(get_conn(), r),
     )
-    app.state.on_match = pipeline.handle
+    app.state.on_match = pipeline.handle  # cron path: persist=True (default)
+    # Event-mode flush uses on_match_event so history is not written for
+    # event-mode intents (requirements.md Non-Goals).
+    app.state.on_match_event = lambda m: pipeline.handle(m, persist=False)
     # External fire endpoint reaches the pipeline through this handle; it must
     # be set in lifespan adjacent to on_match so both are wired before the
     # first request lands.

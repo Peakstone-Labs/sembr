@@ -239,6 +239,30 @@ async def test_pipeline_history_counts_in_budget(prompts_dir_with_history: Path)
 
 
 @pytest.mark.asyncio
+async def test_budget_deficit_returns_none_with_history(prompts_dir_with_history: Path) -> None:
+    """history + system + instruction > total_budget → compute_summary returns None (R2, QA)."""
+    llm = _make_llm()
+    llm.max_prompt_chars = 10  # impossibly tight budget; history alone exceeds it
+    long_history = "=== 2026-05-25 ===\n" + "x" * 500  # well over 10 chars
+
+    async def ctx(iid):
+        return "default", "default", "AI news", "zh", 7
+
+    get_history_text = AsyncMock(return_value=long_history)
+
+    pipeline = SummaryPipeline(
+        llm=llm,
+        get_intent_prompt_ctx=ctx,
+        get_history_text=get_history_text,
+        prompts_dir=prompts_dir_with_history,
+    )
+    result = await pipeline.compute_summary([_match()])
+
+    assert result is None, "budget deficit with long history must return None"
+    llm.summarize.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_pipeline_history_fetch_failure_is_logged_not_raised(
     prompts_dir_with_history: Path,
 ) -> None:
@@ -447,6 +471,56 @@ async def test_fire_handle_persist_on_persist_failure_no_raise(prompts_dir: Path
     )
     await pipeline.fire_handle([_match()], persist=True)
     on_summary.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_persist_false_skips_on_persist(prompts_dir: Path) -> None:
+    """handle(persist=False) → on_persist NOT called; on_summary IS called (event-mode path, 🔴-2)."""
+    llm = _make_llm()
+    on_persist = AsyncMock()
+    on_summary = AsyncMock()
+
+    async def ctx(iid):
+        return "default", "default", "AI news", "zh", None
+
+    pipeline = SummaryPipeline(
+        llm=llm,
+        get_intent_prompt_ctx=ctx,
+        on_persist=on_persist,
+        on_summary=on_summary,
+        prompts_dir=prompts_dir,
+    )
+    await pipeline.handle([_match()], persist=False)
+
+    on_persist.assert_not_called()
+    on_summary.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_persist_not_gated_by_pre_push_hook(prompts_dir: Path) -> None:
+    """pre_push_hook returning False still allows on_persist to run (🟡-4)."""
+    llm = _make_llm()
+    on_persist = AsyncMock()
+    on_summary = AsyncMock()
+
+    async def ctx(iid):
+        return "default", "default", "AI news", "zh", None
+
+    async def rejecting_hook(result):
+        return False
+
+    pipeline = SummaryPipeline(
+        llm=llm,
+        get_intent_prompt_ctx=ctx,
+        pre_push_hook=rejecting_hook,
+        on_persist=on_persist,
+        on_summary=on_summary,
+        prompts_dir=prompts_dir,
+    )
+    await pipeline.handle([_match()])
+
+    on_persist.assert_awaited_once()
+    on_summary.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -177,6 +177,7 @@ async def test_flush_drains_all_groups_and_calls_on_match():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     try:
         # Insert 2 distinct groups
@@ -205,6 +206,7 @@ async def test_flush_no_rows_is_noop():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     try:
         await flush(conn, app, intent_id)
@@ -222,6 +224,7 @@ async def test_flush_on_match_exception_does_not_reraise(caplog):
     on_match = AsyncMock(side_effect=RuntimeError("push failed"))
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     try:
         await absorb(conn, intent_id, [_match("art-1", "Breaking news")], _EVENT_SCHEDULE)
@@ -256,6 +259,7 @@ async def test_sweep_triggers_flush_when_oldest_group_exceeds_max_wait():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     cache = EventIntentCache()
     cache.add(
@@ -297,6 +301,7 @@ async def test_sweep_does_not_flush_when_not_yet_timed_out():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     cache = EventIntentCache()
     cache.add(
@@ -387,13 +392,14 @@ async def test_sweep_isolates_per_intent_failures():
 
     app = MagicMock()
     app.state.on_match = _on_match
+    app.state.on_match_event = None
 
     try:
         await sweep_timed_out(conn, app, cache)
         # Both intents must be attempted regardless of SQLite row order (no ORDER BY in sweep)
-        assert sorted(call_log) == sorted(
-            [i1.id, i2.id]
-        ), f"both intents must be attempted despite i1 raising; got call_log={call_log}"
+        assert sorted(call_log) == sorted([i1.id, i2.id]), (
+            f"both intents must be attempted despite i1 raising; got call_log={call_log}"
+        )
         # i2 buffer must actually be drained (strongest order-independent check)
         async with conn.execute(
             "SELECT COUNT(*) FROM event_pending WHERE intent_id=?", (i2.id,)
@@ -458,8 +464,8 @@ async def test_event_match_batch_swallows_dot_mismatch(caplog):
         with caplog.at_level(logging.WARNING, logger="sembr.matcher.event_match"):
             await event_match_batch(app, [point], conn)
 
-        assert any(
-            rec.levelname == "WARNING" for rec in caplog.records
-        ), "Risk 7: event_match_batch must log WARNING on internal failure"
+        assert any(rec.levelname == "WARNING" for rec in caplog.records), (
+            "Risk 7: event_match_batch must log WARNING on internal failure"
+        )
     finally:
         await conn.close()

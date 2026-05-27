@@ -750,9 +750,9 @@ def test_put_sub_texts_split_brain_rolled_back() -> None:
         get_resp = http.get(f"/intents/{iid}")
         assert get_resp.status_code == 200
         data = get_resp.json()
-        assert (
-            data["text"] == "ORIGINAL TEXT"
-        ), "PUT split-brain regression: intents row updated despite sub_texts write failure"
+        assert data["text"] == "ORIGINAL TEXT", (
+            "PUT split-brain regression: intents row updated despite sub_texts write failure"
+        )
         assert data["sub_texts"] == []
 
 

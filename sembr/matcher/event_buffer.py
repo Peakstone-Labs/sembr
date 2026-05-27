@@ -195,7 +195,9 @@ async def flush(conn: aiosqlite.Connection, app, intent_id: int) -> None:
                 )
             )
 
-    on_match = getattr(app.state, "on_match", None)
+    # Prefer on_match_event (event-mode path, persist=False) over the cron
+    # on_match handler so event-mode results are not persisted to history.
+    on_match = getattr(app.state, "on_match_event", None) or getattr(app.state, "on_match", None)
     if on_match is None:
         logger.debug("flush intent_id=%d: no on_match handler registered", intent_id)
         return

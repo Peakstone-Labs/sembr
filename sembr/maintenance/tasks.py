@@ -65,9 +65,9 @@ assert _ALL_STATUSES == _TERMINAL_STATUSES | _NON_TERMINAL_STATUSES, (
     f"all={_ALL_STATUSES} terminal={_TERMINAL_STATUSES} "
     f"non_terminal={_NON_TERMINAL_STATUSES}"
 )
-assert not (
-    _TERMINAL_STATUSES & _NON_TERMINAL_STATUSES
-), "_TERMINAL_STATUSES and _NON_TERMINAL_STATUSES must be disjoint"
+assert not (_TERMINAL_STATUSES & _NON_TERMINAL_STATUSES), (
+    "_TERMINAL_STATUSES and _NON_TERMINAL_STATUSES must be disjoint"
+)
 
 
 def create_task(

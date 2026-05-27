@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
+from sembr.db.sqlite import transaction
 from sembr.summarizer.models import SummaryResult
 
 logger = logging.getLogger(__name__)
@@ -46,17 +47,25 @@ async def save_summary(
     result: SummaryResult,
     run_at: str | None = None,
 ) -> int:
-    """Persist a SummaryResult to summary_history; returns the inserted row id."""
+    """Persist a SummaryResult to summary_history; returns the inserted row id.
+
+    ``conn`` is accepted for test-compatibility: ``install_for_test`` installs
+    the test connection as the singleton used by ``transaction()``.  Production
+    callers should pass ``get_conn()``; the actual write goes through
+    ``transaction()`` which acquires ``_WRITE_LOCK`` on the global singleton.
+    """
     if run_at is None:
         run_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     citations_json = json.dumps([dataclasses.asdict(c) for c in result.citations])
-    async with conn.execute(
-        "INSERT INTO summary_history (intent_id, run_at, summary, citations) VALUES (?, ?, ?, ?)",
-        (result.intent_id, run_at, result.summary, citations_json),
-    ) as cur:
-        row_id = cur.lastrowid
-    await conn.commit()
-    return row_id  # type: ignore[return-value]
+    row_id: int | None = None
+    async with transaction() as txn:
+        async with txn.execute(
+            "INSERT INTO summary_history (intent_id, run_at, summary, citations) VALUES (?, ?, ?, ?)",
+            (result.intent_id, run_at, result.summary, citations_json),
+        ) as cur:
+            row_id = cur.lastrowid
+    assert row_id is not None, "INSERT must yield lastrowid"
+    return row_id
 
 
 async def format_history_text(

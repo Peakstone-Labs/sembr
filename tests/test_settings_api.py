@@ -286,9 +286,9 @@ def test_save_passthrough_schedules_self_restart_after_rsshub(
     call_order = [c[0] for c in fake_rc.method_calls]
     rsshub_idx = call_order.index("restart_rsshub")
     schedule_idx = call_order.index("schedule_self_restart")
-    assert (
-        rsshub_idx < schedule_idx
-    ), f"schedule_self_restart must come after restart_rsshub, got order: {call_order}"
+    assert rsshub_idx < schedule_idx, (
+        f"schedule_self_restart must come after restart_rsshub, got order: {call_order}"
+    )
 
 
 def test_save_rejects_non_whitelist_key(client: TestClient, env_file: Path) -> None:

@@ -298,10 +298,11 @@ class SummaryPipeline:
         # Render the instruction template with an empty articles slot so we know
         # how many characters the wrapper itself consumes; we'll re-render with
         # the real articles block once we've sized it to fit.
+        # raw_instruction was already loaded above — reuse it to avoid a second
+        # disk read (render_instruction_from_raw applies _StrictMap directly).
         try:
-            instruction_wrapper = _templates.render_instruction(
-                self._prompts_dir,
-                instruction_tpl_name,
+            instruction_wrapper = _templates.render_instruction_from_raw(
+                raw_instruction,
                 intent_text=intent_text,
                 articles="",
                 history=history_text,
@@ -356,9 +357,8 @@ class SummaryPipeline:
             )
 
         try:
-            prompt = _templates.render_instruction(
-                self._prompts_dir,
-                instruction_tpl_name,
+            prompt = _templates.render_instruction_from_raw(
+                raw_instruction,
                 intent_text=intent_text,
                 articles=articles_text,
                 history=history_text,
@@ -384,7 +384,7 @@ class SummaryPipeline:
             other_sources=citations[1:] if len(citations) > 1 else [],
         )
 
-    async def handle(self, matches: list[Match]) -> None:
+    async def handle(self, matches: list[Match], *, persist: bool = True) -> None:
         """on_match callback entry point — must never raise.
 
         Two nested try blocks split the responsibility:
@@ -436,7 +436,7 @@ class SummaryPipeline:
         if result is None:
             return
 
-        await self._dispatch(result, persist=True, intent_id=intent_id)
+        await self._dispatch(result, persist=persist, intent_id=intent_id)
 
     async def _dispatch(
         self,
@@ -451,16 +451,16 @@ class SummaryPipeline:
         single never-raise block.  on_persist failures are isolated so they
         cannot block on_summary (D8 / P0-1).
         """
+        # Persist first — history is a system-of-record concern, independent of
+        # downstream dispatch decisions like pre_push_hook dedup.
+        if persist and self._on_persist is not None:
+            try:
+                await self._on_persist(result)
+            except Exception:
+                logger.exception("SummaryPipeline on_persist failed for intent_id=%s", intent_id)
         try:
             if self._pre_push_hook is not None and not await self._pre_push_hook(result):
                 return
-            if persist and self._on_persist is not None:
-                try:
-                    await self._on_persist(result)
-                except Exception:
-                    logger.exception(
-                        "SummaryPipeline on_persist failed for intent_id=%s", intent_id
-                    )
             await self._on_summary(result)
         except Exception:
             logger.exception(

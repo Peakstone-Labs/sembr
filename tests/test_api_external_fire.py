@@ -644,3 +644,51 @@ def test_extra_body_field_rejected_with_422() -> None:
         resp = client.post("/api/external/intents/1/fire", json={"feed_id": [3]})
 
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# persist flag — save_summary integration (D10, 🟡-1)
+# ---------------------------------------------------------------------------
+
+
+def test_post_persist_true_saves_summary() -> None:
+    """persist=True → save_summary is called once with the computed result."""
+    intent = _fake_intent()
+    matches = [_fake_match("art-1", 0.85)]
+    pipeline = _make_pipeline("saved digest")
+    app = _make_app(summary_pipeline=pipeline)
+    save_mock = AsyncMock()
+
+    with (
+        patch("sembr.api.external_fire.get_conn", return_value=MagicMock()),
+        patch("sembr.api.external_fire.get_intent", new=AsyncMock(return_value=intent)),
+        patch("sembr.api.external_fire.scan_once", new=AsyncMock(return_value=matches)),
+        patch("sembr.db.summary_history.save_summary", save_mock),
+    ):
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/api/external/intents/1/fire", json={"persist": True})
+
+    assert resp.status_code == 200
+    assert resp.json()["summary"] == "saved digest"
+    save_mock.assert_awaited_once()
+
+
+def test_post_persist_false_no_save() -> None:
+    """persist=False (default) → save_summary is never called."""
+    intent = _fake_intent()
+    matches = [_fake_match("art-1", 0.85)]
+    pipeline = _make_pipeline("no-persist digest")
+    app = _make_app(summary_pipeline=pipeline)
+    save_mock = AsyncMock()
+
+    with (
+        patch("sembr.api.external_fire.get_conn", return_value=MagicMock()),
+        patch("sembr.api.external_fire.get_intent", new=AsyncMock(return_value=intent)),
+        patch("sembr.api.external_fire.scan_once", new=AsyncMock(return_value=matches)),
+        patch("sembr.db.summary_history.save_summary", save_mock),
+    ):
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/api/external/intents/1/fire", json={})
+
+    assert resp.status_code == 200
+    save_mock.assert_not_called()
