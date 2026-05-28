@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import httpx
@@ -73,15 +73,15 @@ def _to_point(row: PendingRow, vector: list[float], model_version: str) -> Point
             "feed_id": row.feed_id,
             "embedding_model_version": model_version,
             # Integer epoch seconds so Qdrant Range filter in matcher scan can compare directly.
-            "ingested_at_ts": int(datetime.now(timezone.utc).timestamp()),
+            "ingested_at_ts": int(datetime.now(UTC).timestamp()),
         },
     )
 
 
 def add_embedder_worker_job(
     scheduler: AsyncIOScheduler,
-    embedder: "BaseEmbedder",
-    qdrant: "QdrantHandle",
+    embedder: BaseEmbedder,
+    qdrant: QdrantHandle,
     app=None,
 ) -> None:
     scheduler.add_job(
@@ -91,7 +91,7 @@ def add_embedder_worker_job(
         args=[embedder, qdrant, app],
         coalesce=True,
         max_instances=1,
-        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
+        next_run_time=datetime.now(UTC) + timedelta(seconds=30),
         replace_existing=True,
     )
 
@@ -108,7 +108,7 @@ async def _emit_embed_event(
 ) -> None:
     """Best-effort wrapper: observability faults must never poison embedder_worker."""
     try:
-        elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+        elapsed_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
         await log_embed_event(
             started_at=started_at,
             elapsed_ms=elapsed_ms,
@@ -123,7 +123,7 @@ async def _emit_embed_event(
         logger.warning("log_embed_event failed: %s", exc)
 
 
-async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=None) -> None:
+async def embedder_worker(embedder: BaseEmbedder, qdrant: QdrantHandle, app=None) -> None:
     # Embedder not yet loaded → not a call attempt; don't write an event row.
     if not embedder.is_loaded:
         return
@@ -155,7 +155,7 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
         embed_timeout,
     )
 
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     t0 = time.perf_counter()
     try:
         vectors: list[list[float]] = await embedder.aembed(texts, timeout=embed_timeout)
@@ -187,7 +187,9 @@ async def embedder_worker(embedder: "BaseEmbedder", qdrant: "QdrantHandle", app=
     # Upsert Qdrant first; delete pending rows only after confirmed success so a
     # crash mid-tick leaves the rows for re-embedding rather than losing them.
     # Only transient connection errors skip the retry-counter increment.
-    points = [_to_point(row, vec, embedder.model_version) for row, vec in zip(batch, vectors)]
+    points = [
+        _to_point(row, vec, embedder.model_version) for row, vec in zip(batch, vectors, strict=True)
+    ]
     try:
         await upsert_news_points(qdrant.client, points, wait=True)
     except (httpx.ConnectError, httpx.TimeoutException) as exc:

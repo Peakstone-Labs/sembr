@@ -12,8 +12,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from enum import Enum
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from enum import StrEnum
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
@@ -36,14 +37,14 @@ _LEVEL_MAP: dict[str, int] = {
 _LEVEL_NAMES = list(_LEVEL_MAP.keys())
 
 
-class LevelEnum(str, Enum):
+class LevelEnum(StrEnum):
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
 
 
-class TagName(str, Enum):
+class TagName(StrEnum):
     collector = "collector"
     embedder = "embedder"
     matcher = "matcher"
@@ -141,7 +142,7 @@ async def _log_generator(tag: str, request: Request) -> AsyncGenerator[str, None
                 if entry is not None:
                     yield f"event: log\ndata: {json.dumps(entry)}\n\n"
                     ping_deadline = asyncio.get_running_loop().time() + _PING_INTERVAL
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if asyncio.get_running_loop().time() >= ping_deadline:
                     yield ": ping\n\n"
                     ping_deadline = asyncio.get_running_loop().time() + _PING_INTERVAL

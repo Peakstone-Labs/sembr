@@ -9,7 +9,7 @@ missing assertion against the existing code, not new behaviour.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiosqlite
 import pytest
@@ -46,7 +46,7 @@ def _make_article(md5: str, body: str) -> RawArticle:
         title="Big body article",
         body=body,
         content_quality="summary",
-        published_at=datetime(2026, 5, 8, 12, 0, tzinfo=timezone.utc),
+        published_at=datetime(2026, 5, 8, 12, 0, tzinfo=UTC),
         feed_md5=md5,
     )
 

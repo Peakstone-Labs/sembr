@@ -9,6 +9,7 @@ is safe and avoids re-applying pragmas per request.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 
 import aiosqlite
@@ -98,19 +99,15 @@ async def transaction():
         try:
             yield _conn
         except BaseException:
-            try:
+            with contextlib.suppress(Exception):
                 await _conn.execute("ROLLBACK")
-            except Exception:
-                pass
             raise
         else:
             try:
                 await _conn.execute("COMMIT")
             except Exception:
-                try:
+                with contextlib.suppress(Exception):
                     await _conn.execute("ROLLBACK")
-                except Exception:
-                    pass
                 raise
 
 

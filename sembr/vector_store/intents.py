@@ -47,7 +47,7 @@ def multi_vec_collection_name(model_version: str) -> str:
     return f"intents_{model_version}_mv"
 
 
-async def _layout_is_named_vec(client: "AsyncQdrantClient", collection: str) -> bool:
+async def _layout_is_named_vec(client: AsyncQdrantClient, collection: str) -> bool:
     """True iff `collection` has a named-vector dict layout that includes the `main` slot.
 
     A False answer means either the collection does not exist, or it uses the
@@ -64,7 +64,7 @@ async def _layout_is_named_vec(client: "AsyncQdrantClient", collection: str) -> 
     return "main" in vectors_cfg
 
 
-async def _select_intent_main_texts(conn: "aiosqlite.Connection") -> list[tuple[int, str]]:
+async def _select_intent_main_texts(conn: aiosqlite.Connection) -> list[tuple[int, str]]:
     """Pulls (id, text) pairs for the migration re-embed. ORDER BY id for log determinism."""
     async with conn.execute("SELECT id, text FROM intents ORDER BY id ASC") as cur:
         rows = await cur.fetchall()
@@ -72,7 +72,7 @@ async def _select_intent_main_texts(conn: "aiosqlite.Connection") -> list[tuple[
 
 
 async def _build_mv_collection(
-    client: "AsyncQdrantClient",
+    client: AsyncQdrantClient,
     name: str,
     dim: int,
 ) -> None:
@@ -89,8 +89,8 @@ async def _build_mv_collection(
 
 
 async def _migrate_reembed_and_upsert(
-    client: "AsyncQdrantClient",
-    embedder: "BaseEmbedder",
+    client: AsyncQdrantClient,
+    embedder: BaseEmbedder,
     mv_name: str,
     rows: list[tuple[int, str]],
 ) -> None:
@@ -140,7 +140,7 @@ async def _migrate_reembed_and_upsert(
 
 
 async def _flip_alias(
-    client: "AsyncQdrantClient",
+    client: AsyncQdrantClient,
     alias_map: dict[str, str],
     target: str,
 ) -> None:
@@ -165,9 +165,9 @@ async def _flip_alias(
 
 
 async def ensure_intents_collection(
-    client: "AsyncQdrantClient",
-    embedder: "BaseEmbedder",
-    conn: "aiosqlite.Connection | None" = None,
+    client: AsyncQdrantClient,
+    embedder: BaseEmbedder,
+    conn: aiosqlite.Connection | None = None,
 ) -> None:
     """Bootstrap or migrate the intents collection to the named-vector layout.
 
@@ -262,7 +262,7 @@ async def ensure_intents_collection(
 
 
 async def upsert_intent_point(
-    client: "AsyncQdrantClient",
+    client: AsyncQdrantClient,
     intent_id: int,
     vectors: list[float] | dict[str, list[float]],
     payload: dict[str, Any],
@@ -288,7 +288,7 @@ async def upsert_intent_point(
 
 
 async def update_intent_payload(
-    client: "AsyncQdrantClient",
+    client: AsyncQdrantClient,
     intent_id: int,
     payload: dict[str, Any],
 ) -> None:
@@ -304,7 +304,7 @@ async def update_intent_payload(
     )
 
 
-async def delete_intent_point(client: "AsyncQdrantClient", intent_id: int) -> None:
+async def delete_intent_point(client: AsyncQdrantClient, intent_id: int) -> None:
     """Remove the entire intent point (all named vectors). Caller deletes SQLite row."""
     from qdrant_client.models import PointIdsList  # noqa: PLC0415
 

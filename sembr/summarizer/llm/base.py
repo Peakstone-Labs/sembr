@@ -41,5 +41,5 @@ class BaseLLMBackend(ABC):
     async def health(self) -> bool:
         """Return True if the backend is reachable."""
 
-    async def aclose(self) -> None:
+    async def aclose(self) -> None:  # noqa: B027 (no-op default — concrete backends override)
         """Release any held resources (e.g. httpx client). Default is a no-op."""

@@ -30,6 +30,7 @@ import sys
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from types import ModuleType
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -194,8 +195,9 @@ def test_post_intent_with_sub_texts() -> None:
         assert data["sub_texts"] == [{"language": "en", "text": "Strait of Hormuz daily"}]
 
         # DB must have sub_texts row
-        from sembr.db.intent_sub_texts import list_for_intent  # noqa: PLC0415
         import asyncio  # noqa: PLC0415
+
+        from sembr.db.intent_sub_texts import list_for_intent  # noqa: PLC0415
 
         sub_rows = asyncio.get_event_loop().run_until_complete(
             list_for_intent(conn_holder["conn"], intent_id)
@@ -405,9 +407,9 @@ def test_put_clear_all_sub_texts_calls_delete_vectors() -> None:
     vs["upsert"].assert_not_called()
     # delete_vectors MUST be called with the removed slot names
     vs["delete_vectors"].assert_awaited_once()
-    _, call_kwargs = vs["delete_vectors"].call_args.args, vs["delete_vectors"].call_args.kwargs
+    _call_kwargs = vs["delete_vectors"].call_args.kwargs
     # Verify "alt_0" was in the deleted vectors list (either via args or kwargs)
-    all_args = list(vs["delete_vectors"].call_args.args) + list(
+    _all_args = list(vs["delete_vectors"].call_args.args) + list(
         vs["delete_vectors"].call_args.kwargs.values()
     )
     # collect flat arguments for inspection
@@ -449,8 +451,9 @@ def test_put_label_only_change_skips_qdrant() -> None:
         assert put_resp.status_code == 200, put_resp.text
 
         # DB language should be updated
-        from sembr.db.intent_sub_texts import list_for_intent  # noqa: PLC0415
         import asyncio  # noqa: PLC0415
+
+        from sembr.db.intent_sub_texts import list_for_intent  # noqa: PLC0415
 
         sub_rows = asyncio.get_event_loop().run_until_complete(
             list_for_intent(conn_holder["conn"], iid)
@@ -487,6 +490,7 @@ def test_put_event_cache_sync_uses_named_vector_dict() -> None:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         import aiosqlite  # noqa: PLC0415
+
         from sembr.db.intents import create_intent  # noqa: PLC0415
 
         conn = await aiosqlite.connect(":memory:")
@@ -667,8 +671,10 @@ def test_translate_invalid_target_language() -> None:
 def test_summarizer_only_sees_main_text() -> None:
     """_get_intent_prompt_ctx in main.py returns intent.text (main), not sub_texts."""
     import asyncio  # noqa: PLC0415
+
     import aiosqlite  # noqa: PLC0415
-    from sembr.db.intents import init_intent_tables, create_intent  # noqa: PLC0415
+
+    from sembr.db.intents import create_intent, init_intent_tables  # noqa: PLC0415
     from sembr.models import IntentCreate  # noqa: PLC0415
 
     async def _run() -> tuple[str, str, str, str]:
@@ -701,7 +707,9 @@ def test_summarizer_only_sees_main_text() -> None:
             loaded.language,
         )
 
-    sys_tpl, inst_tpl, intent_text, language = asyncio.get_event_loop().run_until_complete(_run())
+    _sys_tpl, _inst_tpl, intent_text, _language = asyncio.get_event_loop().run_until_complete(
+        _run()
+    )
     assert intent_text == "main text only"
     assert intent_text != "should NOT appear in summarizer"
     # sub_texts should never leak into the summarizer prompt context
@@ -719,7 +727,6 @@ async def test_lifespan_migrates_existing_intents() -> None:
     from sembr.vector_store.intents import (  # noqa: PLC0415
         ensure_intents_collection,
         multi_vec_collection_name,
-        ALIAS_NAME,
     )
 
     model_ver = "bge-m3_v1"
@@ -787,9 +794,9 @@ async def test_lifespan_migrates_existing_intents() -> None:
 async def test_lifespan_idempotent_second_run() -> None:
     """ensure_intents_collection called twice with already-migrated state is a no-op."""
     from sembr.vector_store.intents import (  # noqa: PLC0415
+        ALIAS_NAME,
         ensure_intents_collection,
         multi_vec_collection_name,
-        ALIAS_NAME,
     )
 
     model_ver = "bge-m3_v1"
@@ -915,8 +922,6 @@ async def test_lifespan_assert_named_vec_layout() -> None:
     class FakeVectorsConfig:
         """Simulates the old unnamed-vector layout (VectorParams, not dict)."""
 
-        pass
-
     class FakeCollectionInfo:
         class config:
             class params:
@@ -932,7 +937,7 @@ async def test_lifespan_assert_named_vec_layout() -> None:
     class GoodCollectionInfo:
         class config:
             class params:
-                vectors = {"main": object(), "alt_0": object()}  # dict with "main"
+                vectors: ClassVar = {"main": object(), "alt_0": object()}  # dict with "main"
 
     good_cfg = getattr(GoodCollectionInfo.config.params, "vectors", None)
     assert isinstance(good_cfg, dict) and "main" in good_cfg, (

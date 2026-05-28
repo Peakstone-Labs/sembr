@@ -135,7 +135,7 @@ class EnvFile:
     # ── construction ──────────────────────────────────────────────────────
 
     @classmethod
-    def load(cls, path: Path) -> "EnvFile":
+    def load(cls, path: Path) -> EnvFile:
         if not path.exists():
             return cls(path, [])
         if path.is_dir():

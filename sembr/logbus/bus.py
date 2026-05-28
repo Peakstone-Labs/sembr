@@ -9,6 +9,7 @@ deque.append + N call_soon_threadsafe calls including fan-out scheduling).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from collections import deque
 from typing import Any
@@ -47,7 +48,7 @@ class LogBus:
         # Each subscriber records the tag it cares about (None = all tags).
         # emit() schedules a fan-out only for subscribers whose filter matches.
         self._subscribers: dict[asyncio.Queue[dict[str, Any] | None], str | None] = {}
-        self._tag_levels: dict[str, int] = {tag: 20 for tag in ALL_TAGS}  # INFO=20
+        self._tag_levels: dict[str, int] = dict.fromkeys(ALL_TAGS, 20)  # INFO=20
         self._loop: asyncio.AbstractEventLoop | None = None
 
     # ------------------------------------------------------------------
@@ -101,10 +102,8 @@ class LogBus:
             for q, want_tag in self._subscribers.items():
                 if want_tag is not None and want_tag != tag:
                     continue
-                try:
+                with contextlib.suppress(Exception):
                     loop.call_soon_threadsafe(_put_drop_oldest, q, entry)
-                except Exception:
-                    pass
 
     # ------------------------------------------------------------------
     # Subscribe / unsubscribe (called from asyncio context)

@@ -13,5 +13,5 @@ from __future__ import annotations
 from abc import ABC
 
 
-class BaseChannel(ABC):
+class BaseChannel(ABC):  # noqa: B024 (marker ABC — concrete channels define their own send())
     """Marker base. Concrete channels define their own send() signature."""

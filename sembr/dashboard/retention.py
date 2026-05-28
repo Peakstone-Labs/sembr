@@ -11,7 +11,7 @@ Embed log only enforces (a) — there's a single embedder, so a global age cap i
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _prune_logs(settings: Settings) -> None:
-    cutoff = (
-        datetime.now(timezone.utc) - timedelta(days=settings.dashboard_log_retention_days)
-    ).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=settings.dashboard_log_retention_days)).isoformat()
     max_per_feed = settings.dashboard_log_max_per_feed
     try:
         async with transaction() as conn:
@@ -59,7 +57,7 @@ def add_log_retention_job(scheduler: AsyncIOScheduler, settings: Settings) -> No
         id="dashboard_log_retention",
         coalesce=True,
         max_instances=1,
-        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=5),
+        next_run_time=datetime.now(UTC) + timedelta(minutes=5),
         replace_existing=True,
         args=[settings],
     )

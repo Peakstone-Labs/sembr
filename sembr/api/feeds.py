@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sqlite3
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from sembr.collector.scheduler import add_feed_job, remove_feed_job
-from sembr.db.feed_tags import get_tags, replace_tags_in_tx
+from sembr.db.feed_tags import replace_tags_in_tx
 from sembr.db.feeds import create_feed, delete_feed, get_feed, list_feeds_with_tags, update_feed
 from sembr.db.intents import get_intent, intents_remove_feed_id
 from sembr.db.sqlite import get_conn, transaction
@@ -46,13 +47,10 @@ async def post_feed(body: FeedCreate, request: Request) -> Feed:
             await delete_feed(conn, feed.id)
         except Exception as rollback_exc:
             logger.error("rollback failed for feed_id=%d: %s", feed.id, rollback_exc)
-        try:
-            # 💡-1 (review-loop1): use the unified entry point so newsapi
-            # rollback also calls maybe_drop_newsapi_master_job. RSS path
+        with contextlib.suppress(Exception):
+            # newsapi rollback also calls maybe_drop_newsapi_master_job. RSS path
             # behaves identically since the per-feed job is the only state.
             await remove_feed_job(scheduler, feed.id)
-        except Exception:
-            pass
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="failed to schedule feed"
         ) from exc

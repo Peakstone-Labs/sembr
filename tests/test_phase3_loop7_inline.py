@@ -5,9 +5,9 @@ Tests: _extract_vector variants, POST defensive copy, PUT re-enable 500,
 schedule-mode immutable 422, embedder_worker app=None guard.
 """
 
-import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 # ── a. _extract_vector: single-vector list ────────────────────────────────────
@@ -71,11 +71,13 @@ async def test_put_reenable_500_on_missing_vector():
     than the old `update_intent`. `get_intent` returns the existing snapshot
     first, then the post-writeback state (re-read), matching the actual flow.
     """
-    import fastapi
     import contextlib
+
+    import fastapi
+
     from sembr.api.intents import put_intent
-    from sembr.models import IntentUpdate, EventSchedule, SubTextSpec
     from sembr.matcher.event_cache import EventIntentCache
+    from sembr.models import EventSchedule, IntentUpdate
 
     intent_id = 99
     existing_intent = MagicMock()
@@ -141,8 +143,9 @@ async def test_put_reenable_500_on_missing_vector():
 async def test_d16_mode_immutable_422():
     """PUT changing schedule.mode from cron→event must yield 422 with 'immutable'."""
     import fastapi
+
     from sembr.api.intents import put_intent
-    from sembr.models import IntentUpdate, EventSchedule, CronSchedule
+    from sembr.models import CronSchedule, EventSchedule, IntentUpdate
 
     existing_intent = MagicMock()
     existing_intent.id = 7
@@ -175,8 +178,8 @@ async def test_d16_mode_immutable_422():
 @pytest.mark.asyncio
 async def test_embedder_worker_app_none_no_event_match():
     """embedder_worker(app=None) must NOT call event_match_batch."""
-    from sembr.embedder.scheduler import embedder_worker
     from sembr.db.articles import PendingRow
+    from sembr.embedder.scheduler import embedder_worker
 
     mock_embedder = MagicMock()
     mock_embedder.is_loaded = True

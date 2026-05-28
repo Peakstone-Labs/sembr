@@ -7,8 +7,8 @@ in matcher/callback.py. Feature 7 can wrap these in Pydantic render models.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
 
 
 @dataclass

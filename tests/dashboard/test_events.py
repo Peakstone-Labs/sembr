@@ -11,7 +11,7 @@ Cover:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -63,7 +63,7 @@ def test_log_fetch_event_truncates_error_message(tmp_path):
         long_msg = "x" * 1500
         await log_fetch_event(
             feed_id=1,
-            started_at=datetime(2026, 4, 30, 12, 0, tzinfo=timezone.utc),
+            started_at=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
             elapsed_ms=120,
             ok=False,
             items_seen=0,
@@ -92,7 +92,7 @@ def test_log_fetch_event_success_row(tmp_path):
         await _setup_db(db_path)
         await log_fetch_event(
             feed_id=1,
-            started_at=datetime(2026, 4, 30, 12, 0, tzinfo=timezone.utc),
+            started_at=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
             elapsed_ms=345,
             ok=True,
             items_seen=10,
@@ -122,7 +122,7 @@ def test_log_embed_event_writes_row(tmp_path):
     async def run():
         await _setup_db(db_path)
         await log_embed_event(
-            started_at=datetime(2026, 4, 30, 12, 0, tzinfo=timezone.utc),
+            started_at=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
             elapsed_ms=1450,
             ok=True,
             batch_size=32,
@@ -167,7 +167,7 @@ def test_log_event_propagates_db_failure_to_caller(tmp_path):
             with pytest.raises(Boom):
                 await log_fetch_event(
                     feed_id=1,
-                    started_at=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                    started_at=datetime(2026, 4, 30, tzinfo=UTC),
                     elapsed_ms=1,
                     ok=True,
                     items_seen=0,

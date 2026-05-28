@@ -13,10 +13,8 @@ Verifies that:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from sembr.dashboard import system_metrics as sm
 from sembr.dashboard.events import init_event_log_tables
@@ -57,7 +55,7 @@ def test_build_snapshot_includes_system_metrics(tmp_path):
         collector = sm.SystemMetricsCollector(interval_seconds=10)
         collector.append(
             sm._Sample(
-                sampled_at=datetime(2026, 5, 8, 12, 0, 0, tzinfo=timezone.utc),
+                sampled_at=datetime(2026, 5, 8, 12, 0, 0, tzinfo=UTC),
                 containers=[
                     ContainerMetric(
                         name="sembr-api",

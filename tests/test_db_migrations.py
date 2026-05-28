@@ -8,16 +8,14 @@ lookback_seconds / skip_seen from top-level columns into schedule JSON.
 
 from __future__ import annotations
 
-import asyncio
 import json
 
 import aiosqlite
 import pytest
 
-from sembr.db.intents import init_intent_tables, create_intent, get_intent
+from sembr.db.intents import create_intent, get_intent, init_intent_tables
 from sembr.db.sqlite import install_for_test
 from sembr.models import IntentCreate
-
 
 VALID_INTENT = IntentCreate(
     name="test",

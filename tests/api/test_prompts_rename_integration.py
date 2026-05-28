@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager, contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -62,7 +62,7 @@ def prompts_dir(tmp_path: Path) -> Path:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 async def _seed(conn: aiosqlite.Connection, name: str, *, instruction_template: str) -> int:

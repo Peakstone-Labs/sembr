@@ -9,25 +9,22 @@ since-cut / cohort cursor inherit).
 
 from __future__ import annotations
 
-import json
 import logging
-from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 import httpx
 import pytest
 import respx
 
-import sembr.collector.newsapi as newsapi_mod
 from sembr.collector.newsapi import (
+    RECOMMENDED_SOURCES,
     NewsApiMaster,
     NewsApiSource,
-    RECOMMENDED_SOURCES,
-    _PerFeedSince,
     _build_request_body,
     _classify_quality,
     _date_window,
+    _PerFeedSince,
     _should_stop_paginating,
     _to_raw_article,
     _universal_since_for_pagination,
@@ -35,7 +32,6 @@ from sembr.collector.newsapi import (
 )
 from sembr.collector.rss import FetchError
 from sembr.config import Settings
-
 
 # ---------------------------------------------------------------------------
 # normalize_source_uri — parity with FeedCreate.url newsapi branch
@@ -96,7 +92,7 @@ def test_classify_quality_thresholds(n: int, expected: str) -> None:
 def test_date_window_first_pull_uses_now_minus_1d() -> None:
     """All-null sinces → dateStart = (now - 1d).date()."""
     start, end = _date_window([None, None, None])
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     assert end == today.isoformat()
     expected_start = (today - timedelta(days=1)).isoformat()
     # Allow boundary at midnight where start could equal today already
@@ -105,15 +101,15 @@ def test_date_window_first_pull_uses_now_minus_1d() -> None:
 
 def test_date_window_partial_null_falls_back_to_now_minus_1d() -> None:
     """Any null since → fall back to first-pull window so the unseen feed isn't blind."""
-    yesterday = datetime.now(timezone.utc) - timedelta(days=3)
+    yesterday = datetime.now(UTC) - timedelta(days=3)
     start, _ = _date_window([yesterday, None])
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     assert start == (today - timedelta(days=1)).isoformat()
 
 
 def test_date_window_all_known_uses_min_since() -> None:
-    s1 = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
-    s2 = datetime(2026, 5, 3, 12, 0, tzinfo=timezone.utc)
+    s1 = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    s2 = datetime(2026, 5, 3, 12, 0, tzinfo=UTC)
     start, _ = _date_window([s1, s2])
     assert start == "2026-05-01"
 
@@ -320,9 +316,9 @@ async def _setup_inmem_db_with_feeds(rows: list[dict]) -> aiosqlite.Connection:
     """
     conn = await aiosqlite.connect(":memory:")
     await conn.execute("PRAGMA foreign_keys=ON")
-    from sembr.db.feeds import init_feed_tables
-    from sembr.db.articles import init_article_tables
     from sembr.dashboard.events import init_event_log_tables
+    from sembr.db.articles import init_article_tables
+    from sembr.db.feeds import init_feed_tables
 
     await init_feed_tables(conn)
     await init_article_tables(conn)
@@ -511,7 +507,7 @@ async def test_master_tick_total_results_overflow_warns(
     from sembr.config import get_settings
 
     get_settings.cache_clear()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cut = (now - timedelta(hours=2)).isoformat()
     conn = await _setup_inmem_db_with_feeds(
         [
@@ -647,7 +643,7 @@ async def test_master_tick_keeps_articles_older_than_cursor(monkeypatch, patched
     from sembr.config import get_settings
 
     get_settings.cache_clear()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cut = (now - timedelta(minutes=30)).isoformat()
     conn = await _setup_inmem_db_with_feeds(
         [
@@ -772,7 +768,7 @@ def test_should_stop_paginating_orientation_robust() -> None:
     Failure here means the upstream silently flipped articleSortBy and the
     'last article' heuristic would have given wrong answers — i.e. the
     drift-guard for Q1."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cut = now - timedelta(hours=2)
     # 3 articles: now, now-1h, now-3h. Oldest (now-3h) <= cut → stop.
     arts = [
@@ -792,7 +788,7 @@ def test_should_stop_paginating_orientation_robust() -> None:
 def test_should_stop_paginating_since_none_never_stops() -> None:
     """First-pull bootstrap: universal_since=None → defensive cap is the
     only stop mechanism, watermark never fires."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     arts = [_mk_article(now - timedelta(days=30))]
     assert _should_stop_paginating(arts, None) is False
 
@@ -800,7 +796,7 @@ def test_should_stop_paginating_since_none_never_stops() -> None:
 def test_should_stop_paginating_empty_page_returns_false() -> None:
     """Empty page is handled separately by the caller (`if not page_results`
     break); helper just must not crash and must return False."""
-    cut = datetime.now(timezone.utc)
+    cut = datetime.now(UTC)
     assert _should_stop_paginating([], cut) is False
     assert _should_stop_paginating([], None) is False
 
@@ -808,7 +804,7 @@ def test_should_stop_paginating_empty_page_returns_false() -> None:
 def test_should_stop_paginating_handles_missing_or_bad_datetime() -> None:
     """No parseable dateTime in any article → no signal to stop on → False
     (caller will rely on cap or empty-page break)."""
-    cut = datetime.now(timezone.utc)
+    cut = datetime.now(UTC)
     bad = [{"title": "no dt"}, {"dateTime": ""}, {"dateTime": "garbage"}]
     assert _should_stop_paginating(bad, cut) is False
 
@@ -818,7 +814,7 @@ def test_should_stop_paginating_indexing_lag_pushes_watermark_back() -> None:
     do NOT trigger the stop — pagination keeps walking to catch
     freshly-indexed articles whose published_at is below the cursor but
     that were indexed by NewsAPI after the previous tick."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cursor = now - timedelta(minutes=30)
     lag = timedelta(hours=2)
 
@@ -840,7 +836,7 @@ def test_should_stop_paginating_indexing_lag_pushes_watermark_back() -> None:
 
 
 def test_universal_since_min_when_all_set() -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     pf = {
         "a": _PerFeedSince(feed_id=1, since=now - timedelta(hours=2)),
         "b": _PerFeedSince(feed_id=2, since=now - timedelta(hours=5)),
@@ -851,7 +847,7 @@ def test_universal_since_min_when_all_set() -> None:
 
 
 def test_universal_since_none_when_any_feed_first_pull() -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     pf = {
         "a": _PerFeedSince(feed_id=1, since=now - timedelta(hours=2)),
         "b": _PerFeedSince(feed_id=2, since=None),
@@ -883,7 +879,7 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
     from sembr.config import get_settings
 
     get_settings.cache_clear()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cut = (now - timedelta(hours=4)).isoformat()
     conn = await _setup_inmem_db_with_feeds(
         [
@@ -998,7 +994,7 @@ async def test_master_tick_pagination_cap_dropped(monkeypatch, patched_get_conn,
     from sembr.config import get_settings
 
     get_settings.cache_clear()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cut = (now - timedelta(days=30)).isoformat()  # very far back
     conn = await _setup_inmem_db_with_feeds(
         [
@@ -1074,7 +1070,7 @@ async def test_master_tick_pagination_mid_failure_atomic(monkeypatch, patched_ge
     from sembr.config import get_settings
 
     get_settings.cache_clear()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cut = (now - timedelta(days=30)).isoformat()
     conn = await _setup_inmem_db_with_feeds(
         [
@@ -1142,7 +1138,7 @@ async def test_master_tick_steady_state_one_token(monkeypatch, patched_get_conn,
     from sembr.config import get_settings
 
     get_settings.cache_clear()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cut = (now - timedelta(hours=1)).isoformat()
     conn = await _setup_inmem_db_with_feeds(
         [

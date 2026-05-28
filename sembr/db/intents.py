@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiosqlite
 from pydantic import TypeAdapter
@@ -19,7 +19,11 @@ logger = logging.getLogger(__name__)
 
 from sembr.db.intent_sub_texts import (
     _replace_in_txn as _sub_texts_replace_in_txn,
+)
+from sembr.db.intent_sub_texts import (
     init_intent_sub_texts_tables,
+)
+from sembr.db.intent_sub_texts import (
     list_for_intent as _list_sub_texts_for_intent,
 )
 from sembr.db.sqlite import transaction
@@ -227,7 +231,7 @@ def _row_to_intent(row: tuple) -> Intent:
 
 
 def _now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _feed_filter_json(ff: FeedFilter | None) -> str:

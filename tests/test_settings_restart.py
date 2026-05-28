@@ -8,7 +8,6 @@ import signal
 import subprocess
 import time
 from subprocess import CompletedProcess
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,7 +18,6 @@ from sembr.api.settings_restart import (
     RSSHUB_SERVICE_NAME,
     RestartController,
 )
-
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 

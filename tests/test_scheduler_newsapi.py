@@ -13,8 +13,6 @@ Verifies:
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import aiosqlite
 import pytest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler

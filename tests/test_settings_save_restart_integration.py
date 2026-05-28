@@ -24,7 +24,6 @@ from sembr.api.settings import router
 from sembr.api.settings_restart import RestartController
 from sembr.config import get_settings
 
-
 SAMPLE_ENV = """\
 QDRANT_URL=http://qdrant:6333
 EMBEDDER_API_KEY=sk-test

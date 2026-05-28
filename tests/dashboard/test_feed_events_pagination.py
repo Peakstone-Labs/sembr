@@ -6,14 +6,14 @@ Companion to the Feeds tab UI change that limits drill-down to 10 rows + prev/ne
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from sembr.dashboard import read_model
 from sembr.dashboard.events import init_event_log_tables, log_fetch_event
 from sembr.db.feeds import init_feed_tables
-from sembr.db.sqlite import close_sqlite, get_conn, init_sqlite
+from sembr.db.sqlite import close_sqlite, init_sqlite
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ async def db(tmp_path):
     for i in range(25):
         await log_fetch_event(
             feed_id=1,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             elapsed_ms=10 + i,
             ok=True,
             items_seen=i,

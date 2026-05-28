@@ -7,15 +7,16 @@ Uses respx to mock httpx and aiosqlite in-memory for DB tests.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from textwrap import dedent
 
 import aiosqlite
+import httpx
 import pytest
 import respx
-import httpx
 from pydantic import ValidationError
 
+from sembr.collector.initial_feeds import INITIAL_FEEDS
 from sembr.collector.rss import FetchError, RSSSource, _compute_md5, _strip_html
 from sembr.db.feeds import (
     fingerprint_exists,
@@ -23,9 +24,7 @@ from sembr.db.feeds import (
     insert_fingerprint,
     seed_initial_feeds,
 )
-from sembr.collector.initial_feeds import INITIAL_FEEDS
 from sembr.models import FeedCreate
-
 
 # ---------------------------------------------------------------------------
 # Feed XML fixtures
@@ -217,7 +216,7 @@ async def test_rss_source_fetch_since_filter():
     respx.get("https://example-mixed.com/rss").mock(
         return_value=httpx.Response(200, content=_MIXED_FEED)
     )
-    since = datetime(2026, 4, 27, 10, 0, 0, tzinfo=timezone.utc)
+    since = datetime(2026, 4, 27, 10, 0, 0, tzinfo=UTC)
     src = RSSSource("https://example-mixed.com/rss")
     articles = await src.fetch(since=since)
     assert len(articles) == 1

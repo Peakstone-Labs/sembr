@@ -16,7 +16,6 @@ from pydantic import ValidationError
 from sembr.config import get_settings
 from sembr.models import Feed, FeedCreate
 
-
 # ---------------------------------------------------------------------------
 # RSS branch — backward compatible
 # ---------------------------------------------------------------------------
@@ -98,6 +97,7 @@ def test_frontend_hostname_regex_mirrors_backend() -> None:
     or users see backend 422 instead of a friendly client-side hint."""
     import re as _re
     from pathlib import Path
+
     from sembr.models import _NEWSAPI_HOSTNAME_RE
 
     js_path = Path(__file__).resolve().parent.parent / "web" / "static" / "feeds.js"

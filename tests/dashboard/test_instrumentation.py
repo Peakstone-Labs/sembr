@@ -11,20 +11,17 @@ Strategy:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
-import pytest
 
-from sembr.collector.rss import FetchError
 from sembr.collector import scheduler as collector_scheduler
+from sembr.collector.rss import FetchError
 from sembr.collector.scheduler import collect_feed
 from sembr.dashboard.events import init_event_log_tables
-from sembr.db.articles import PendingRow, init_article_tables
+from sembr.db.articles import init_article_tables
 from sembr.db.feeds import init_feed_tables
 from sembr.db.sqlite import close_sqlite, get_conn, init_sqlite
-from sembr.embedder import scheduler as embedder_scheduler
 from sembr.embedder.scheduler import embedder_worker
 
 

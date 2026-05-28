@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import typing
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
@@ -39,7 +39,7 @@ class ManualPruneTask:
     plan_summary: dict | None = None
     result_summary: dict | None = None
     error: str | None = None
-    _created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    _created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 _manual_prune_tasks: dict[str, ManualPruneTask] = {}
@@ -81,7 +81,7 @@ def create_task(
         feed_ids=list(feed_ids),
         older_than_days=older_than_days,
         status="planning",
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
     )
     _manual_prune_tasks[task.task_id] = task
     return task
@@ -99,7 +99,7 @@ def sweep_expired(ttl_seconds: int = _TASK_TTL_SECONDS) -> int:
     140k-row apply can run for several minutes and the user must be able to
     keep polling without hitting a phantom 404.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     to_remove: list[str] = []
     for k, v in _manual_prune_tasks.items():
         if v.status not in _TERMINAL_STATUSES:

@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from sembr.summarizer.templates import (
     BUILTIN_NAMES,
@@ -15,9 +16,9 @@ from sembr.summarizer.templates import (
     delete_template,
     list_templates,
     load_template,
+    rename_template,
     render_instruction,
     render_system,
-    rename_template,
     save_template_atomic,
     template_exists,
     try_render,
@@ -195,7 +196,7 @@ def test_unicode_filename_loads(prompts_dir: Path) -> None:
 
 def test_prompts_dir_constant() -> None:
     """PROMPTS_DIR is the canonical bind-mount path."""
-    assert PROMPTS_DIR == Path("/app/prompts")
+    assert Path("/app/prompts") == PROMPTS_DIR
 
 
 def test_builtin_names_includes_default() -> None:

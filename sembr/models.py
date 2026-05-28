@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import re
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -36,9 +36,10 @@ class CronSchedule(BaseModel):
     weekday: Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"] | None = None
     lookback_seconds: int = Field(default=86400, ge=300, le=2592000)
     skip_seen: bool = True
+    history_days: int | None = Field(default=None, ge=1, le=365)
 
     @model_validator(mode="after")
-    def _weekday_constraint(self) -> "CronSchedule":
+    def _weekday_constraint(self) -> CronSchedule:
         if self.preset == "weekly" and self.weekday is None:
             raise ValueError("weekday is required when preset='weekly'")
         if self.preset != "weekly" and self.weekday is not None:
@@ -56,7 +57,7 @@ class EventSchedule(BaseModel):
     max_wait_seconds: int = Field(default=1800, ge=60, le=86400)
 
 
-Schedule = Annotated[Union[CronSchedule, EventSchedule], Field(discriminator="mode")]
+Schedule = Annotated[CronSchedule | EventSchedule, Field(discriminator="mode")]
 
 
 class FeedFilter(BaseModel):
@@ -90,7 +91,7 @@ class FeedCreate(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
-    def _validate_url_per_source_type(self) -> "FeedCreate":
+    def _validate_url_per_source_type(self) -> FeedCreate:
         # source_type='newsapi' uses bare hostnames (matches NewsAPI.ai
         # source.uri format) and requires normalize-on-write so feeds.url's
         # UNIQUE constraint catches case/scheme/www. duplicates client-side.
@@ -257,7 +258,7 @@ class IntentCreate(BaseModel):
         try:
             ZoneInfo(v)
         except (ZoneInfoNotFoundError, KeyError):
-            raise ValueError(f"unknown timezone: {v!r}")
+            raise ValueError(f"unknown timezone: {v!r}") from None
         return v
 
     @field_validator("language")
@@ -306,7 +307,7 @@ class IntentUpdate(BaseModel):
         try:
             ZoneInfo(v)
         except (ZoneInfoNotFoundError, KeyError):
-            raise ValueError(f"unknown timezone: {v!r}")
+            raise ValueError(f"unknown timezone: {v!r}") from None
         return v
 
     @field_validator("language")

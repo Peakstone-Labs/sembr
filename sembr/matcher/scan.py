@@ -20,7 +20,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -35,6 +35,7 @@ from sembr.vector_store.qdrant import extract_named_vector
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+
     from sembr.models import Intent
 
 logger = logging.getLogger(__name__)
@@ -56,10 +57,14 @@ class ScanOptions:
     # external fire endpoint sets True so a Qdrant outage surfaces as 500
     # rather than masquerading as 0 hits.
     propagate_qdrant_errors: bool = False
+    # Replay anchor: backfill replays a past fire-time by pinning the lookback
+    # window to (past_fire_time - lookback_seconds, past_fire_time]. Normal
+    # cron ticks leave this None and the call site reads wall-clock now.
+    now: datetime | None = None
 
 
 async def scan_once(
-    intent: "Intent",
+    intent: Intent,
     options: ScanOptions,
     conn: aiosqlite.Connection,
     qdrant_client,
@@ -116,12 +121,22 @@ async def scan_once(
             )
             return []
 
-        lookback_cutoff_ts = int(datetime.now(timezone.utc).timestamp()) - options.lookback_seconds
+        effective_now = options.now if options.now is not None else datetime.now(UTC)
+        effective_now_ts = int(effective_now.timestamp())
+        lookback_cutoff_ts = effective_now_ts - options.lookback_seconds
 
+        # Upper bound (lte) is critical for backfill replays: without it, a
+        # run with options.now = past_fire_time would also match articles
+        # ingested AFTER past_fire_time (i.e. between the replayed moment
+        # and real-now). The oldest backfill iteration would scoop up every
+        # article in Qdrant, mark them all seen, and starve subsequent
+        # iterations. For normal cron (options.now is None), effective_now
+        # equals real-now and lte is a no-op since articles ingested in the
+        # future cannot exist.
         must_conditions: list = [
             FieldCondition(
                 key="ingested_at_ts",
-                range=Range(gte=lookback_cutoff_ts),
+                range=Range(gte=lookback_cutoff_ts, lte=effective_now_ts),
             )
         ]
         if options.feed_ids is not None:
@@ -155,7 +170,7 @@ async def scan_once(
         # Merge by article_id; keep max score across slots (dedupe).
         hits_by_id: dict[str, tuple[float, dict, str]] = {}  # article_id → (score, payload, slot)
         first_exc: BaseException | None = None
-        for slot, resp in zip(slot_list, responses):
+        for slot, resp in zip(slot_list, responses, strict=True):
             if isinstance(resp, BaseException):
                 if first_exc is None:
                     first_exc = resp
@@ -212,7 +227,7 @@ async def scan_once(
                     must=[
                         FieldCondition(
                             key="ingested_at_ts",
-                            range=Range(gte=lookback_cutoff_ts),
+                            range=Range(gte=lookback_cutoff_ts, lte=effective_now_ts),
                         ),
                         *_feed_cond,
                     ]
@@ -311,7 +326,7 @@ async def scan_once(
     ]
 
 
-async def run_intent_scan(intent_id: int, app: "FastAPI") -> None:
+async def run_intent_scan(intent_id: int, app: FastAPI) -> None:
     # The scan path reads pre-computed vectors from Qdrant; it does not call the
     # embedder. An earlier version skipped the tick when `embedder.is_loaded` was
     # False, which caused permanent silent misses when the SiliconFlow startup

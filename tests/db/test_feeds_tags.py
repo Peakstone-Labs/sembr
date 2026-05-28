@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 
@@ -29,10 +30,8 @@ async def tmp_db_path():
     finally:
         await close_sqlite()
         for suffix in ("", "-wal", "-shm"):
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(path + suffix)
-            except FileNotFoundError:
-                pass
 
 
 @pytest.fixture

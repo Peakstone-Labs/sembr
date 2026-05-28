@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -40,7 +40,7 @@ _QDRANT_RETRIEVE_BATCH = 1000
 _SQLITE_DELETE_CHUNK = 500
 
 
-async def _run_reconcile(qdrant_handle: "QdrantHandle", settings: Settings) -> None:
+async def _run_reconcile(qdrant_handle: QdrantHandle, settings: Settings) -> None:
     """Scan all ``feed_items.md5`` (excluding in-flight pending) and delete rows
     whose Qdrant point is missing.
 
@@ -125,11 +125,11 @@ async def _run_reconcile(qdrant_handle: "QdrantHandle", settings: Settings) -> N
 
 def add_reconcile_job(
     scheduler: AsyncIOScheduler,
-    qdrant_handle: "QdrantHandle",
+    qdrant_handle: QdrantHandle,
     settings: Settings,
 ) -> None:
     """Register the reconcile job with a 5-minute startup offset."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     scheduler.add_job(
         _run_reconcile,
         trigger=IntervalTrigger(

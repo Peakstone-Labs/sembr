@@ -13,8 +13,9 @@ Conventions:
 
 from __future__ import annotations
 
+import contextlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from apscheduler.jobstores.base import JobLookupError
@@ -24,7 +25,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
 
 if TYPE_CHECKING:
-    from sembr.models import CronSchedule, EventSchedule, Intent
+    from sembr.models import CronSchedule, Intent
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ def _job_id(intent_id: int) -> str:
     return f"matcher-intent-{intent_id}"
 
 
-def _build_cron_trigger(schedule: "CronSchedule", timezone_str: str) -> CronTrigger:
+def _build_cron_trigger(schedule: CronSchedule, timezone_str: str) -> CronTrigger:
     # Pass timezone as a string so APScheduler converts it to pytz internally.
     # Passing a ZoneInfo object causes type mismatches in APScheduler 3.x's
     # get_due_jobs() sorted-list comparison (ZoneInfo vs pytz datetimes),
@@ -53,7 +54,7 @@ def _build_cron_trigger(schedule: "CronSchedule", timezone_str: str) -> CronTrig
 
 def register_intent_job(
     scheduler: AsyncIOScheduler,
-    intent: "Intent",
+    intent: Intent,
     app,
     *,
     fire_immediately: bool = False,
@@ -76,7 +77,7 @@ def register_intent_job(
 
     # Compute expected next fire time directly from the trigger before add_job,
     # because job.next_run_time is None when the scheduler hasn't started yet.
-    expected_next = trigger.get_next_fire_time(None, datetime.now(timezone.utc))
+    expected_next = trigger.get_next_fire_time(None, datetime.now(UTC))
 
     scheduler.add_job(
         run_intent_scan,
@@ -111,14 +112,14 @@ def unregister_intent_job(scheduler: AsyncIOScheduler, intent_id: int) -> None:
         logger.debug("matcher job intent_id=%d already absent", intent_id)
 
 
-def reregister_intent_job(scheduler: AsyncIOScheduler, intent: "Intent", app) -> None:
+def reregister_intent_job(scheduler: AsyncIOScheduler, intent: Intent, app) -> None:
     """Replace an existing job with updated trigger/args."""
     register_intent_job(scheduler, intent, app)
 
 
 async def register_all_enabled(
     scheduler: AsyncIOScheduler,
-    intents: list["Intent"],
+    intents: list[Intent],
     app,
     qdrant_client,
 ) -> None:
@@ -151,3 +152,13 @@ async def register_all_enabled(
             registered,
             len(intents),
         )
+
+    # Safety-net resume: if the previous process crashed mid-backfill it may
+    # have left a matcher-intent-* job in paused state.  Resume every job that
+    # belongs to a matcher (prefix scoped — sweepers / feed jobs are left as
+    # operators configured them) so a stale pause doesn't silently silence an
+    # intent forever.  ``resume_job`` on an already-running job is a no-op.
+    for job in scheduler.get_jobs():
+        if job.id.startswith("matcher-intent-"):
+            with contextlib.suppress(JobLookupError):
+                scheduler.resume_job(job.id)

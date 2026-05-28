@@ -11,14 +11,13 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
 
 from sembr.dashboard import system_metrics as sm
 from sembr.dashboard.schemas import ContainerMetric
-
 
 # ── _Sample / Collector ───────────────────────────────────────────────────────
 
@@ -40,7 +39,7 @@ def _make_sample(t: datetime, cpu: float | None = 1.0, mem: int = 1024) -> sm._S
 
 def test_collector_append_respects_maxlen():
     c = sm.SystemMetricsCollector(interval_seconds=10, maxlen=3)
-    base = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    base = datetime(2026, 5, 8, tzinfo=UTC)
     for i in range(5):
         c.append(_make_sample(base + timedelta(seconds=i), cpu=float(i)))
     block = c.read()
@@ -52,7 +51,7 @@ def test_collector_append_respects_maxlen():
 
 def test_collector_unavailable_returns_none():
     c = sm.SystemMetricsCollector(interval_seconds=10)
-    c.append(_make_sample(datetime(2026, 5, 8, tzinfo=timezone.utc)))
+    c.append(_make_sample(datetime(2026, 5, 8, tzinfo=UTC)))
     c.mark_unavailable()
     assert c.read() is None
     c.mark_available()
@@ -66,7 +65,7 @@ def test_collector_empty_returns_none():
 
 def test_collector_disappearing_container_pads_with_none():
     c = sm.SystemMetricsCollector(interval_seconds=10, maxlen=3)
-    base = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    base = datetime(2026, 5, 8, tzinfo=UTC)
     # First sample: two containers
     c.append(
         sm._Sample(
@@ -215,7 +214,7 @@ def test_take_docker_sample_uses_compose_label_filter(monkeypatch):
     """Discovery filter must pin to the docker-compose project label."""
     fake_client = MagicMock()
     fake_client.containers.list.return_value = [
-        _fake_container("sembr-api", started=datetime(2026, 5, 8, tzinfo=timezone.utc))
+        _fake_container("sembr-api", started=datetime(2026, 5, 8, tzinfo=UTC))
     ]
 
     fake_docker = MagicMock()
@@ -226,7 +225,7 @@ def test_take_docker_sample_uses_compose_label_filter(monkeypatch):
     sample = sm._take_docker_sample(project="myproj")
     assert sample is not None
     # Assert filter shape exactly: label key is the compose project label
-    args, kwargs = fake_client.containers.list.call_args
+    _args, kwargs = fake_client.containers.list.call_args
     assert kwargs == {"filters": {"label": "com.docker.compose.project=myproj"}}
     assert len(sample.containers) == 1
     cm = sample.containers[0]
@@ -286,7 +285,7 @@ async def test_run_sampler_recovers_after_failure(monkeypatch):
         state["sample_calls"] += 1
         if state["sample_calls"] == 1:
             return None  # docker down
-        return _make_sample(datetime(2026, 5, 8, tzinfo=timezone.utc))
+        return _make_sample(datetime(2026, 5, 8, tzinfo=UTC))
 
     monkeypatch.setattr(sm, "_take_docker_sample", fake_sample)
     c = sm.SystemMetricsCollector(interval_seconds=10)
@@ -310,7 +309,7 @@ def test_add_system_metrics_job_registers_with_coalesce_and_replace_existing():
     sm.add_system_metrics_job(scheduler, collector, interval_seconds=10)
 
     scheduler.add_job.assert_called_once()
-    args, kwargs = scheduler.add_job.call_args
+    _args, kwargs = scheduler.add_job.call_args
     assert kwargs["id"] == "system-metrics-sample"
     assert kwargs["coalesce"] is True
     assert kwargs["replace_existing"] is True

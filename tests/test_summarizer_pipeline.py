@@ -81,7 +81,7 @@ async def test_compute_summary_returns_none_for_empty_intent_text(prompts_dir: P
     llm = _make_llm()
 
     async def ctx(iid):
-        return "default", "default", "", "zh"
+        return "default", "default", "", "zh", None
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     result = await pipeline.compute_summary([_match()])
@@ -109,7 +109,7 @@ async def test_compute_summary_returns_none_for_budget_deficit(prompts_dir: Path
     llm.max_prompt_chars = 10  # forces body_budget < 0
 
     async def ctx(iid):
-        return "default", "default", "AI news", "zh"
+        return "default", "default", "AI news", "zh", None
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     result = await pipeline.compute_summary([_match()])
@@ -128,7 +128,7 @@ async def test_compute_summary_raises_template_not_found(prompts_dir: Path) -> N
     llm = _make_llm()
 
     async def ctx(iid):
-        return "default", "ghost", "topic", "zh"
+        return "default", "ghost", "topic", "zh", None
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     with pytest.raises(TemplateNotFoundError):
@@ -143,7 +143,7 @@ async def test_compute_summary_raises_on_llm_error(prompts_dir: Path) -> None:
     llm.summarize = AsyncMock(side_effect=httpx.TimeoutException("upstream stalled"))
 
     async def ctx(iid):
-        return "default", "default", "AI news", "zh"
+        return "default", "default", "AI news", "zh", None
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     with pytest.raises(httpx.TimeoutException):
@@ -155,7 +155,7 @@ async def test_compute_summary_returns_summary_result(prompts_dir: Path) -> None
     llm = _make_llm("the digest")
 
     async def ctx(iid):
-        return "default", "default", "AI news", "zh"
+        return "default", "default", "AI news", "zh", None
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     result = await pipeline.compute_summary([_match()])
@@ -177,7 +177,7 @@ async def test_handle_still_never_raises_after_refactor(prompts_dir: Path) -> No
     llm.summarize = AsyncMock(side_effect=RuntimeError("LLM died"))
 
     async def ctx(iid):
-        return "default", "default", "AI news", "zh"
+        return "default", "default", "AI news", "zh", None
 
     pipeline = SummaryPipeline(llm=llm, get_intent_prompt_ctx=ctx, prompts_dir=prompts_dir)
     # Must not raise.
@@ -195,7 +195,7 @@ async def test_handle_calls_on_template_error_on_render_fail(prompts_dir: Path) 
     on_template_error = AsyncMock()
 
     async def ctx(iid):
-        return "default", "bad", "topic", "zh"
+        return "default", "bad", "topic", "zh", None
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -221,7 +221,7 @@ async def test_handle_calls_on_template_error_on_missing_template(prompts_dir: P
     on_template_error = AsyncMock()
 
     async def ctx(iid):
-        return "default", "ghost", "topic", "zh"
+        return "default", "ghost", "topic", "zh", None
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -255,7 +255,7 @@ async def test_handle_pre_push_hook_template_error_does_not_dispatch_on_template
         raise TemplateRenderError("email body render failed")
 
     async def ctx(iid):
-        return "default", "default", "topic", "zh"
+        return "default", "default", "topic", "zh", None
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -285,7 +285,7 @@ async def test_handle_on_summary_template_error_does_not_dispatch_on_template_er
         raise TemplateNotFoundError("email partial missing")
 
     async def ctx(iid):
-        return "default", "default", "topic", "zh"
+        return "default", "default", "topic", "zh", None
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -313,7 +313,7 @@ async def test_handle_dispatches_system_render_error_correctly(
     on_template_error = AsyncMock()
 
     async def ctx(iid):
-        return "broken", "default", "topic", "zh"
+        return "broken", "default", "topic", "zh", None
 
     pipeline = SummaryPipeline(
         llm=llm,

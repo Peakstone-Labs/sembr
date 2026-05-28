@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -79,7 +78,7 @@ async def test_migration_drops_custom_prompt_adds_template_columns() -> None:
     assert row[0] == "default", f"system_template should be 'default', got {row[0]!r}"
     assert row[1] == "default", f"instruction_template should be 'default', got {row[1]!r}"
 
-    Path(db_path).unlink(missing_ok=True)
+    Path(db_path).unlink(missing_ok=True)  # noqa: ASYNC240
 
 
 @pytest.mark.asyncio
@@ -99,4 +98,4 @@ async def test_migration_idempotent_on_fresh_db() -> None:
     assert "instruction_template" in columns
     assert "custom_prompt" not in columns
 
-    Path(db_path).unlink(missing_ok=True)
+    Path(db_path).unlink(missing_ok=True)  # noqa: ASYNC240

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
@@ -129,7 +129,7 @@ async def test_planning_includes_deleted_feed():
 async def test_planning_dead_uses_sqlite_groupby():
     conn = await _make_conn()
     await _seed_feed(conn, 7)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old = (now - timedelta(days=20)).isoformat()
     fresh = (now - timedelta(days=2)).isoformat()
     for i in range(3):
@@ -157,7 +157,7 @@ async def test_apply_dead_deletes_only_old():
     """S8 dead branch: actual delete only touches dead_articles, not feed_items."""
     conn = await _make_conn()
     await _seed_feed(conn, 7)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old = (now - timedelta(days=20)).isoformat()
     fresh = (now - timedelta(days=2)).isoformat()
     for i in range(3):
@@ -248,7 +248,7 @@ def test_sweep_skips_in_flight_planning_task():
     """
     task = mp_tasks.create_task("news", [6], 35)
     # status="planning" out of the box; force _created_at to look ancient
-    task._created_at = datetime.now(timezone.utc) - timedelta(seconds=400)
+    task._created_at = datetime.now(UTC) - timedelta(seconds=400)
     n = mp_tasks.sweep_expired(ttl_seconds=300)
     assert n == 0
     assert mp_tasks.get_task(task.task_id) is not None
@@ -257,7 +257,7 @@ def test_sweep_skips_in_flight_planning_task():
 def test_sweep_skips_in_flight_applying_task():
     task = mp_tasks.create_task("dead", [7], 14)
     task.status = "applying"
-    task._created_at = datetime.now(timezone.utc) - timedelta(seconds=10000)
+    task._created_at = datetime.now(UTC) - timedelta(seconds=10000)
     n = mp_tasks.sweep_expired(ttl_seconds=300)
     assert n == 0
     assert mp_tasks.get_task(task.task_id) is not None
@@ -277,7 +277,7 @@ def test_sweep_skips_planned_task_awaiting_user_confirm():
         "feeds": [],
         "total_would_delete": 0,
     }
-    task._created_at = datetime.now(timezone.utc) - timedelta(seconds=10000)
+    task._created_at = datetime.now(UTC) - timedelta(seconds=10000)
     n = mp_tasks.sweep_expired(ttl_seconds=300)
     assert n == 0
     assert mp_tasks.get_task(task.task_id) is not None
@@ -287,8 +287,8 @@ def test_sweep_drops_done_task_using_finished_at_anchor():
     task = mp_tasks.create_task("dead", [7], 14)
     task.status = "done"
     # _created_at is fresh, but finished_at is stale → must drop
-    task._created_at = datetime.now(timezone.utc)
-    task.finished_at = datetime.now(timezone.utc) - timedelta(seconds=400)
+    task._created_at = datetime.now(UTC)
+    task.finished_at = datetime.now(UTC) - timedelta(seconds=400)
     n = mp_tasks.sweep_expired(ttl_seconds=300)
     assert n == 1
     assert mp_tasks.get_task(task.task_id) is None
@@ -297,7 +297,7 @@ def test_sweep_drops_done_task_using_finished_at_anchor():
 def test_sweep_keeps_recently_done_task():
     task = mp_tasks.create_task("dead", [7], 14)
     task.status = "done"
-    task.finished_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+    task.finished_at = datetime.now(UTC) - timedelta(seconds=10)
     n = mp_tasks.sweep_expired(ttl_seconds=300)
     assert n == 0
     assert mp_tasks.get_task(task.task_id) is not None
@@ -308,7 +308,7 @@ def test_sweep_drops_error_task_using_created_at_when_no_finished():
     task = mp_tasks.create_task("news", [6], 35)
     task.status = "error"
     task.finished_at = None
-    task._created_at = datetime.now(timezone.utc) - timedelta(seconds=400)
+    task._created_at = datetime.now(UTC) - timedelta(seconds=400)
     n = mp_tasks.sweep_expired(ttl_seconds=300)
     assert n == 1
     assert mp_tasks.get_task(task.task_id) is None

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -39,11 +39,11 @@ def _news_cutoff_ts(older_than_days: int) -> int:
 
 
 def _dead_cutoff_iso(older_than_days: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(days=older_than_days)).isoformat()
+    return (datetime.now(UTC) - timedelta(days=older_than_days)).isoformat()
 
 
 async def _facet_news_counts(
-    qdrant_handle: "QdrantHandle",
+    qdrant_handle: QdrantHandle,
     feed_ids: list[int],
     cutoff_ts: int,
 ) -> dict[int, int]:
@@ -84,7 +84,7 @@ async def _facet_news_counts(
 
 
 async def _scroll_news_uuids(
-    qdrant_handle: "QdrantHandle",
+    qdrant_handle: QdrantHandle,
     feed_ids: list[int],
     cutoff_ts: int,
 ) -> list[str]:
@@ -123,7 +123,7 @@ async def _scroll_news_uuids(
     return out
 
 
-async def _delete_news_points(qdrant_handle: "QdrantHandle", uuids: list[str]) -> None:
+async def _delete_news_points(qdrant_handle: QdrantHandle, uuids: list[str]) -> None:
     from qdrant_client.models import PointIdsList  # noqa: PLC0415
 
     for i in range(0, len(uuids), _QDRANT_DELETE_BATCH):
@@ -164,7 +164,7 @@ async def _resolve_feed_names(feed_ids: list[int]) -> dict[int, str | None]:
     return {fid: found.get(fid) for fid in feed_ids}
 
 
-async def run_planning(task: ManualPruneTask, qdrant_handle: "QdrantHandle | None") -> None:
+async def run_planning(task: ManualPruneTask, qdrant_handle: QdrantHandle | None) -> None:
     """Compute the dry-run plan_summary and transition the task to ``planned``."""
     try:
         feed_names = await _resolve_feed_names(task.feed_ids)
@@ -206,10 +206,10 @@ async def run_planning(task: ManualPruneTask, qdrant_handle: "QdrantHandle | Non
         logger.exception("manual_prune planning failed for task_id=%s", task.task_id)
         task.status = "error"
         task.error = str(exc)
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
 
 
-async def _apply_news(task: ManualPruneTask, qdrant_handle: "QdrantHandle") -> dict:
+async def _apply_news(task: ManualPruneTask, qdrant_handle: QdrantHandle) -> dict:
     started_at = monotonic()
     cutoff_ts = _news_cutoff_ts(task.older_than_days)
     purge_uuids = await _scroll_news_uuids(
@@ -258,7 +258,7 @@ async def _apply_dead(task: ManualPruneTask) -> dict:
     }
 
 
-async def run_applying(task: ManualPruneTask, qdrant_handle: "QdrantHandle | None") -> None:
+async def run_applying(task: ManualPruneTask, qdrant_handle: QdrantHandle | None) -> None:
     """Execute the real delete and transition the task to ``done``."""
     try:
         if task.target == "news":
@@ -292,9 +292,9 @@ async def run_applying(task: ManualPruneTask, qdrant_handle: "QdrantHandle | Non
 
         task.result_summary = result
         task.status = "done"
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
     except Exception as exc:
         logger.exception("manual_prune apply failed for task_id=%s", task.task_id)
         task.status = "error"
         task.error = str(exc)
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)

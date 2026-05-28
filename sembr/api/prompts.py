@@ -224,7 +224,7 @@ async def get_template(kind: str, name: str, request: Request) -> TemplateDetail
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"template '{kind}/{name}' not found",
-        )
+        ) from None
 
     stat = path.stat()
     refs = await _refs_index()
@@ -273,7 +273,7 @@ async def create_template(kind: str, body: TemplateCreateRequest, request: Reque
                 "value": source_name,
                 "reason": "source template not found",
             },
-        )
+        ) from None
 
     # Step 4 — target non-existence check (creation, not overwrite).
     try:
@@ -399,7 +399,7 @@ async def delete_template_endpoint(kind: str, name: str, request: Request):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"template '{kind}/{name}' not found",
-        )
+        ) from None
 
     return None  # 204
 

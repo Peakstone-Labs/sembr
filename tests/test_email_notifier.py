@@ -93,8 +93,9 @@ def _make_channel(
 
 def test_published_at_rendered_in_shanghai_tz() -> None:
     """A UTC timestamp should display in Asia/Shanghai when configured."""
-    from sembr.notifier.email import _render_published_at
     from zoneinfo import ZoneInfo
+
+    from sembr.notifier.email import _render_published_at
 
     out = _render_published_at("2026-01-01T10:00:00Z", ZoneInfo("Asia/Shanghai"))
     # 10:00 UTC == 18:00 in Asia/Shanghai. Format is "YYYY-MM-DD HH:MM" (no TZ suffix).
@@ -103,8 +104,9 @@ def test_published_at_rendered_in_shanghai_tz() -> None:
 
 
 def test_published_at_naive_treated_as_utc() -> None:
-    from sembr.notifier.email import _render_published_at
     from zoneinfo import ZoneInfo
+
+    from sembr.notifier.email import _render_published_at
 
     out = _render_published_at("2026-01-01T10:00:00", ZoneInfo("UTC"))
     assert "2026-01-01" in out
@@ -112,8 +114,9 @@ def test_published_at_naive_treated_as_utc() -> None:
 
 
 def test_published_at_empty_returns_empty() -> None:
-    from sembr.notifier.email import _render_published_at
     from zoneinfo import ZoneInfo
+
+    from sembr.notifier.email import _render_published_at
 
     assert _render_published_at(None, ZoneInfo("UTC")) == ""
     assert _render_published_at("", ZoneInfo("UTC")) == ""

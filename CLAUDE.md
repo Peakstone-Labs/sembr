@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Internal development & strategy docs are kept in a **private sibling repository**, not in this repo.
 
+> **Private doc IDs must not appear in source code.** Design decision IDs from `sembr-dev-docs/` (patterns: `Dxx`, `Rxx`, `DDxx`, `SCxx`, `P0-x`) are for internal tracking only. Never write them into `.py` comments, docstrings, or public `.md` files — CI will reject the PR (`No private dev-doc references` job). Record traceability in `implementation.md` inside `sembr-dev-docs/` instead.
+
 - **Dev docs root**: `../sembr-dev-docs/development/` (relative to project root)
 - **Research root**: `../sembr-dev-docs/research/`
 

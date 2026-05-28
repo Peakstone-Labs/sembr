@@ -14,10 +14,8 @@ All tests are Windows-runnable (no Docker, no qdrant_client runtime needed).
 
 from __future__ import annotations
 
-import asyncio
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
 import pytest
@@ -26,7 +24,6 @@ from sembr.db.intents import create_intent, init_intent_tables
 from sembr.db.match_seen import clear_intent, init_match_seen_tables, insert_unseen_returning_new
 from sembr.db.sqlite import install_for_test
 from sembr.models import IntentCreate
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -118,8 +115,8 @@ async def test_on_delete_cascade(mem_conn) -> None:
 
 
 def test_to_point_includes_ingested_at_ts() -> None:
-    from sembr.embedder.scheduler import _to_point
     from sembr.db.articles import PendingRow
+    from sembr.embedder.scheduler import _to_point
 
     row = PendingRow(
         md5="a" * 32,
@@ -130,9 +127,9 @@ def test_to_point_includes_ingested_at_ts() -> None:
         feed_id=1,
         retry_count=0,
     )
-    before_ts = int(datetime.now(timezone.utc).timestamp())
+    before_ts = int(datetime.now(UTC).timestamp())
     point = _to_point(row, [0.1] * 1024, "bge-m3_v1")
-    after_ts = int(datetime.now(timezone.utc).timestamp())
+    after_ts = int(datetime.now(UTC).timestamp())
 
     assert "ingested_at_ts" in point.payload
     ts = point.payload["ingested_at_ts"]
@@ -227,7 +224,7 @@ async def test_scan_happy_path_triggers_callback(mem_conn) -> None:
     hit.score = 0.82
     hit.payload = {
         "title": "Fed Rate Cut",
-        "ingested_at_ts": int(datetime.now(timezone.utc).timestamp()),
+        "ingested_at_ts": int(datetime.now(UTC).timestamp()),
         "enabled": True,
     }
 
@@ -350,7 +347,7 @@ async def test_register_all_enabled_skips_vector_less_intent(mem_conn) -> None:
     """Intents whose Qdrant vector is missing (partial DELETE failure) must be skipped."""
     from sembr.matcher.jobs import register_all_enabled
 
-    intent = await create_intent(mem_conn, _INTENT_BODY)
+    _intent = await create_intent(mem_conn, _INTENT_BODY)
 
     mock_scheduler = MagicMock()
     app = MagicMock()
@@ -375,8 +372,10 @@ async def test_register_all_enabled_skips_vector_less_intent(mem_conn) -> None:
 def test_post_intent_rollback_on_register_job_failure() -> None:
     """If register_intent_job raises after Qdrant upsert, both are rolled back."""
     from contextlib import asynccontextmanager as acm
+
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from sembr.api.intents import router
 
     conn_holder: dict = {}

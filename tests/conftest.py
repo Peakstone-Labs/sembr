@@ -8,6 +8,7 @@ causes transaction() to hang indefinitely instead of failing fast.
 """
 
 import pytest
+
 from sembr.db import sqlite as _sqlite_mod
 
 

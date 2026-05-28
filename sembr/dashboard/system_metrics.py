@@ -28,13 +28,14 @@ null`` and the dashboard falls back to a "—" placeholder.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sembr.dashboard.schemas import ContainerMetric, SystemMetricsBlock
@@ -284,10 +285,8 @@ def _take_docker_sample(*, project: str | None = None) -> _Sample | None:
         )
     except DockerException as exc:
         logger.warning("system metrics: containers.list failed: %s", exc)
-        try:
+        with contextlib.suppress(Exception):
             client.close()
-        except Exception:
-            pass
         return None
 
     # Loop 2 💡-2: docker socket reachable but no compose containers matched
@@ -298,7 +297,7 @@ def _take_docker_sample(*, project: str | None = None) -> _Sample | None:
     if not containers:
         _emit_zero_container_warning(project)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     def _measure(container: object) -> ContainerMetric:
         """Fetch one container's snapshot. Caller runs us in a thread pool so
@@ -363,10 +362,8 @@ def _take_docker_sample(*, project: str | None = None) -> _Sample | None:
                 except Exception as exc:  # noqa: BLE001 — protect the fan-out from one bad container
                     logger.warning("system metrics: per-container measure failed: %s", exc)
 
-    try:
+    with contextlib.suppress(Exception):
         client.close()
-    except Exception:
-        pass
 
     return _Sample(sampled_at=now, containers=sorted(out, key=lambda c: c.name))
 
@@ -387,7 +384,7 @@ async def _run_sampler(collector: SystemMetricsCollector) -> None:
             asyncio.to_thread(_take_docker_sample),
             timeout=SAMPLE_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("system metrics: sample timed out after %ss", SAMPLE_TIMEOUT_SECONDS)
         collector.mark_unavailable()
         return
@@ -410,7 +407,7 @@ async def _run_sampler(collector: SystemMetricsCollector) -> None:
 
 
 def add_system_metrics_job(
-    scheduler: "AsyncIOScheduler",
+    scheduler: AsyncIOScheduler,
     collector: SystemMetricsCollector,
     interval_seconds: int,
 ) -> None:

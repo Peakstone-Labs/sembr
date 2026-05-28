@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import pathlib
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
@@ -19,9 +19,7 @@ import respx
 
 from sembr.collector.base import RawArticle
 from sembr.db.articles import (
-    PendingRow,
     _BODY_CAP_BYTES,
-    delete_pending,
     demote_md5s_to_dead,
     demote_to_dead,
     increment_retry,
@@ -33,11 +31,9 @@ from sembr.db.feeds import init_feed_tables
 from sembr.embedder.scheduler import (
     BATCH_SIZE,
     MAX_ATTEMPTS,
-    add_embedder_worker_job,
     embedder_worker,
 )
 from sembr.vector_store.news import ALIAS_NAME, md5_to_uuid
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -52,6 +48,7 @@ async def _make_conn() -> aiosqlite.Connection:
     the same in-memory DB as the rest of the test.
     """
     import asyncio as _asyncio
+
     from sembr.db import sqlite as _sqlite_mod
 
     conn = await aiosqlite.connect(":memory:")
@@ -78,7 +75,7 @@ def _make_article(md5: str = "a" * 32, body: str = "body text") -> RawArticle:
         title="Test Title",
         body=body,
         content_quality="summary",
-        published_at=datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc),
+        published_at=datetime(2026, 4, 27, 12, 0, tzinfo=UTC),
         feed_md5=md5,
     )
 
@@ -237,7 +234,7 @@ async def test_increment_retry_then_demote():
     )
     await conn.commit()
 
-    for i in range(MAX_ATTEMPTS - 1):
+    for _i in range(MAX_ATTEMPTS - 1):
         await increment_retry(conn, [md5])
     await increment_retry(conn, [md5])
     await demote_md5s_to_dead(conn, [md5], error_message="final error")
@@ -600,9 +597,10 @@ async def test_embedder_worker_phase3b_upsert_then_delete(monkeypatch):
 
     await embedder_worker(embedder, qdrant)
 
-    assert call_order == ["upsert", "delete"], (
-        f"order violation: expected upsert→delete, got {call_order}"
-    )
+    assert call_order == [
+        "upsert",
+        "delete",
+    ], f"order violation: expected upsert→delete, got {call_order}"
     qdrant.client.upsert.assert_called_once()
     assert qdrant.client.upsert.call_args.kwargs["collection_name"] == ALIAS_NAME
 

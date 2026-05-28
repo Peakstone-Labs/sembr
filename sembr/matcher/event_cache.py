@@ -20,6 +20,7 @@ from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
 
 if TYPE_CHECKING:
     import aiosqlite
+
     from sembr.models import EventSchedule
     from sembr.vector_store.qdrant import QdrantHandle
 
@@ -33,7 +34,7 @@ class EventIntentEntry:
     vectors: dict[str, list[float]] = field(default_factory=dict)
     threshold: float = 0.0
     feed_filter_ids: list[int] | None = None
-    schedule: "EventSchedule | None" = None
+    schedule: EventSchedule | None = None
 
 
 class EventIntentCache:
@@ -63,8 +64,8 @@ class EventIntentCache:
 
 async def load_event_cache(
     cache: EventIntentCache,
-    qdrant_handle: "QdrantHandle",
-    conn: "aiosqlite.Connection",
+    qdrant_handle: QdrantHandle,
+    conn: aiosqlite.Connection,
 ) -> None:
     """Load all event-mode intents from SQLite + Qdrant into cache at startup.
 

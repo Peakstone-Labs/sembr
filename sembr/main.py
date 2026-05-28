@@ -9,6 +9,7 @@ if Qdrant isn't up yet, /health reports 503 and the platform's readiness probe r
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -38,12 +39,14 @@ from sembr.api.feeds import router as feeds_router
 from sembr.api.feeds_fire import router as feeds_fire_router
 from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
+from sembr.api.history import router as history_router
 from sembr.api.intents import router as intents_router
 from sembr.api.maintenance import router as maintenance_router
 from sembr.api.prompts import router as prompts_router
 from sembr.api.restart import router as restart_router
 from sembr.api.settings import router as settings_router
 from sembr.api.translate import router as translate_router
+from sembr.collector.fire_tasks import sweep_expired as feed_fire_sweep_expired
 from sembr.collector.host_limiter import HostLimiter
 from sembr.collector.scheduler import add_feed_job, make_scheduler, set_host_limiter
 from sembr.config import get_settings
@@ -56,24 +59,30 @@ from sembr.dashboard.system_metrics import (
     SystemMetricsCollector,
     add_system_metrics_job,
 )
-from sembr.logbus.install import install_logbus
 from sembr.db.articles import init_article_tables
-from sembr.db.feeds import get_feed_names, init_feed_tables, list_feeds, seed_initial_feeds
 from sembr.db.event_buffer import init_event_buffer_tables
+from sembr.db.feeds import get_feed_names, init_feed_tables, list_feeds, seed_initial_feeds
 from sembr.db.intents import get_intent, init_intent_tables, list_intents
 from sembr.db.match_seen import init_match_seen_tables
-from sembr.db.sqlite import close_sqlite, init_sqlite
-from sembr.matcher.event_buffer import sweep_timed_out as _event_sweep_timed_out
-from sembr.matcher.event_cache import EventIntentCache, load_event_cache
+from sembr.db.sqlite import close_sqlite, get_conn, init_sqlite
+from sembr.db.summary_history import (
+    format_history_text,
+    init_summary_history_table,
+    migrate_summary_history_unique_index,
+    save_summary,
+)
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
-from sembr.collector.fire_tasks import sweep_expired as feed_fire_sweep_expired
+from sembr.logbus.install import install_logbus
 from sembr.maintenance import (
     add_dead_ttl_job,
     add_qdrant_ttl_job,
     add_reconcile_job,
     manual_prune_sweep_expired,
 )
+from sembr.matcher.backfill_tasks import sweep_expired as backfill_sweep_expired
+from sembr.matcher.event_buffer import sweep_timed_out as _event_sweep_timed_out
+from sembr.matcher.event_cache import EventIntentCache, load_event_cache
 from sembr.matcher.fire_tasks import sweep_expired
 from sembr.matcher.jobs import register_all_enabled
 from sembr.notifier.email import EmailChannel, EmailChannelConfig
@@ -81,7 +90,8 @@ from sembr.summarizer.llm.factory import build_llm_backend
 from sembr.summarizer.models import SummaryResult
 from sembr.summarizer.pipeline import SummaryPipeline
 from sembr.summarizer.templates import PROMPTS_DIR
-from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS, ensure_intents_collection
+from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
+from sembr.vector_store.intents import ensure_intents_collection
 from sembr.vector_store.news import ensure_news_collection
 from sembr.vector_store.qdrant import QdrantHandle
 
@@ -93,31 +103,28 @@ async def _dispatch_notification(
     email_ch: EmailChannel,
     result: SummaryResult,
 ) -> None:
-    # Mirrors the never-raise contract of EmailChannel.send — DB errors here must not
-    # abort the remaining groups in the same SummaryPipeline tick.
+    from sembr.notifier.dispatcher import dispatch_summary
+
     try:
-        intent = await get_intent(conn, result.intent_id)
-        if intent is None:
-            return
-        for ch in intent.channels:
-            if isinstance(ch, EmailChannelConfig):
-                await email_ch.send(
-                    result,
-                    config=ch,
-                    intent_name=intent.name,
-                    intent_timezone=intent.timezone,
-                )
+        await dispatch_summary(conn, email_ch, result, strict=False)
     except Exception:
         logger.error(
             "dispatch_notification failed for intent_id=%d", result.intent_id, exc_info=True
         )
 
 
-async def _get_intent_prompt_ctx(conn, intent_id: int) -> tuple[str, str, str, str]:
-    intent = await get_intent(conn, intent_id)
+async def _get_intent_prompt_ctx(intent_id: int) -> tuple[str, str, str, str, int | None]:
+    intent = await get_intent(get_conn(), intent_id)
     if intent is None:
-        return "default", "default", "", "zh"
-    return intent.system_template, intent.instruction_template, intent.text, intent.language
+        return "default", "default", "", "zh", None
+    history_days = getattr(intent.schedule, "history_days", None)
+    return (
+        intent.system_template,
+        intent.instruction_template,
+        intent.text,
+        intent.language,
+        history_days,
+    )
 
 
 async def _dispatch_template_error(
@@ -170,6 +177,11 @@ async def lifespan(app: FastAPI):
     await init_intent_tables(conn)  # also chains init_intent_sub_texts_tables (FK CASCADE)
     await init_match_seen_tables(conn)  # after intents — FK dependency
     await init_event_buffer_tables(conn)  # after intents — FK dependency
+    await init_summary_history_table(conn)  # after intents — FK dependency
+    # history-display: backfill writes via INSERT OR IGNORE keyed on
+    # (intent_id, run_at); migrate any pre-existing duplicates and add the
+    # UNIQUE index before the matcher / API can write.
+    await migrate_summary_history_unique_index(conn)
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client, embedder)
@@ -242,6 +254,14 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         replace_existing=True,
     )
+    # Sweep expired backfill tasks (24h TTL, swept every 5 min same as fire)
+    scheduler.add_job(
+        backfill_sweep_expired,
+        trigger=_IT(minutes=5),
+        id="backfill-tasks-sweep",
+        coalesce=True,
+        replace_existing=True,
+    )
     # ManualPruneTask in-memory store, swept every 5 min
     scheduler.add_job(
         manual_prune_sweep_expired,
@@ -275,15 +295,22 @@ async def lifespan(app: FastAPI):
     email_ch = EmailChannel(settings)
     pipeline = SummaryPipeline(
         llm=llm_backend,
-        get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(conn, iid),
-        get_feed_names=lambda ids: get_feed_names(conn, ids),
-        on_summary=lambda r: _dispatch_notification(conn, email_ch, r),
+        get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(iid),
+        get_feed_names=lambda ids: get_feed_names(get_conn(), ids),
+        on_summary=lambda r: _dispatch_notification(get_conn(), email_ch, r),
         on_template_error=lambda iid, k, n, r: _dispatch_template_error(
-            conn, email_ch, iid, k, n, r
+            get_conn(), email_ch, iid, k, n, r
         ),
         prompts_dir=PROMPTS_DIR,
+        get_history_text=lambda iid, days, now=None: format_history_text(
+            get_conn(), iid, days, now
+        ),
+        on_persist=lambda r: save_summary(get_conn(), r),
     )
-    app.state.on_match = pipeline.handle
+    app.state.on_match = pipeline.handle  # cron path: persist=True (default)
+    # Event-mode flush uses on_match_event so history is not written for
+    # event-mode intents (requirements.md Non-Goals).
+    app.state.on_match_event = lambda m: pipeline.handle(m, persist=False)
     # External fire endpoint reaches the pipeline through this handle; it must
     # be set in lifespan adjacent to on_match so both are wired before the
     # first request lands.
@@ -297,6 +324,7 @@ async def lifespan(app: FastAPI):
     # Translate endpoint reads the LLM backend from app.state. Wiring it here
     # keeps a single instance for summarizer + translator.
     app.state.llm_backend = llm_backend
+    app.state.email_channel = email_ch
     scheduler.start()
     # Log actual next_run_time for matcher jobs after scheduler.start() computes them.
     for job in scheduler.get_jobs():
@@ -319,10 +347,8 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(0)
             set_host_limiter(None)
             load_task.cancel()
-            try:
+            with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(load_task, timeout=2.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
             if hasattr(embedder, "aclose"):
                 await embedder.aclose()
             # Close qdrant first so any in-flight matcher coroutines that
@@ -336,7 +362,7 @@ async def lifespan(app: FastAPI):
         try:
             await asyncio.wait_for(_shutdown(), timeout=settings.lifespan_shutdown_timeout)
             logger.info("lifespan graceful shutdown complete")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "lifespan graceful shutdown timed out after %ss; forcing exit",
                 settings.lifespan_shutdown_timeout,
@@ -365,6 +391,7 @@ app.include_router(intents_router)
 app.include_router(translate_router)
 app.include_router(fire_router)
 app.include_router(external_fire_router)
+app.include_router(history_router)
 app.include_router(prompts_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)

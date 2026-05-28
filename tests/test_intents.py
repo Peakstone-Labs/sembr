@@ -582,7 +582,8 @@ def test_put_reenable_with_text_change_clears_match_seen() -> None:
     @asynccontextmanager
     async def lifespan(app):
         import aiosqlite
-        from sembr.db.intents import init_intent_tables, create_intent
+
+        from sembr.db.intents import create_intent, init_intent_tables
         from sembr.db.match_seen import init_match_seen_tables, insert_unseen_returning_new
         from sembr.models import IntentCreate
 
@@ -608,6 +609,7 @@ def test_put_reenable_with_text_change_clears_match_seen() -> None:
 
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from sembr.api.intents import router
 
     app = FastAPI(lifespan=lifespan)
@@ -647,7 +649,8 @@ def test_put_text_change_clear_intent_failure_not_silent() -> None:
     @asynccontextmanager
     async def lifespan(app):
         import aiosqlite
-        from sembr.db.intents import init_intent_tables, create_intent
+
+        from sembr.db.intents import create_intent, init_intent_tables
         from sembr.db.match_seen import init_match_seen_tables
         from sembr.models import IntentCreate
 
@@ -672,6 +675,7 @@ def test_put_text_change_clear_intent_failure_not_silent() -> None:
 
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from sembr.api.intents import router
 
     app = FastAPI(lifespan=lifespan)
@@ -715,8 +719,6 @@ def test_put_sub_texts_split_brain_rolled_back() -> None:
     intents row must NOT be left with the new values. The single-transaction
     pattern guarantees both writes commit or neither does.
     """
-    import pytest
-    from sembr.db.intent_sub_texts import list_for_intent as _list_subs
 
     embedder = _make_embedder()
     vs = _make_vs()
@@ -768,7 +770,6 @@ async def test_lifespan_recovery_id_mismatch() -> None:
     and recreate the collection — count alone is insufficient.
     """
     from sembr.vector_store.intents import (  # noqa: PLC0415
-        ALIAS_NAME,
         ensure_intents_collection,
         multi_vec_collection_name,
     )

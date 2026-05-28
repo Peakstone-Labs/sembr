@@ -26,8 +26,8 @@ from sembr.db.articles import init_article_tables
 from sembr.db.feeds import init_feed_tables
 from sembr.db.intents import init_intent_tables
 from sembr.db.match_seen import init_match_seen_tables
-from sembr.maintenance.reconcile import _run_reconcile
 from sembr.maintenance.qdrant_ttl import _run_qdrant_ttl
+from sembr.maintenance.reconcile import _run_reconcile
 from sembr.vector_store.news import md5_to_uuid
 
 

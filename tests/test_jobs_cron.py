@@ -8,17 +8,15 @@ and that the next_fire_time is computed correctly.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
-import pytest
 from apscheduler.triggers.cron import CronTrigger
 
 from sembr.matcher.jobs import _build_cron_trigger, register_intent_job
 from sembr.models import (
     CronSchedule,
     EventSchedule,
-    FeedFilter,
     Intent,
 )
 
@@ -30,7 +28,7 @@ VALID_CHANNELS = [{"type": "email", "to": ["a@example.com"]}]
 
 
 def _make_intent(**kwargs) -> Intent:
-    defaults = dict(
+    defaults = dict(  # noqa: C408
         id=1,
         name="test",
         text="test intent",
@@ -61,7 +59,7 @@ def test_build_cron_trigger_daily() -> None:
     trigger = _build_cron_trigger(schedule, "UTC")
     assert isinstance(trigger, CronTrigger)
     # Verify next fire time is tomorrow 08:30 UTC from a midnight reference
-    now = datetime(2026, 5, 1, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC)
     next_fire = trigger.get_next_fire_time(None, now)
     assert next_fire is not None
     assert next_fire.hour == 8
@@ -72,7 +70,7 @@ def test_build_cron_trigger_hourly() -> None:
     schedule = CronSchedule(preset="hourly", minute=15)
     trigger = _build_cron_trigger(schedule, "UTC")
     assert isinstance(trigger, CronTrigger)
-    now = datetime(2026, 5, 1, 10, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 1, 10, 0, 0, tzinfo=UTC)
     next_fire = trigger.get_next_fire_time(None, now)
     assert next_fire is not None
     assert next_fire.minute == 15
@@ -86,12 +84,12 @@ def test_build_cron_trigger_weekly_sat_shanghai() -> None:
 
     # 2026-05-06 is a Wednesday; next Sat = 2026-05-09
     # 09:00 Asia/Shanghai (UTC+8) = 2026-05-09 01:00:00 UTC
-    now = datetime(2026, 5, 6, 4, 0, 0, tzinfo=timezone.utc)  # Wed 12:00 Shanghai
+    now = datetime(2026, 5, 6, 4, 0, 0, tzinfo=UTC)  # Wed 12:00 Shanghai
     next_fire = trigger.get_next_fire_time(None, now)
     assert next_fire is not None
 
     # APScheduler returns the datetime in the trigger's timezone; convert to UTC to compare
-    next_fire_utc = next_fire.astimezone(timezone.utc)
+    next_fire_utc = next_fire.astimezone(UTC)
     # 09:00 Asia/Shanghai (UTC+8) = 2026-05-09 01:00:00 UTC
     assert next_fire_utc.year == 2026
     assert next_fire_utc.month == 5
@@ -104,7 +102,7 @@ def test_build_cron_trigger_weekly_mon_utc() -> None:
     schedule = CronSchedule(preset="weekly", weekday="mon", hour=7, minute=0)
     trigger = _build_cron_trigger(schedule, "UTC")
     # 2026-05-06 is Wednesday; next Monday = 2026-05-11
-    now = datetime(2026, 5, 6, 8, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 6, 8, 0, 0, tzinfo=UTC)
     next_fire = trigger.get_next_fire_time(None, now)
     assert next_fire is not None
     assert next_fire.weekday() == 0  # Monday = 0 in Python

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -15,8 +14,7 @@ from sembr.api import settings as settings_router_mod
 from sembr.api.settings import SENSITIVE_MASK, router
 from sembr.api.settings_envfile import USER_ADDITIONS_HEADER
 from sembr.api.settings_restart import RestartController
-from sembr.config import Settings, get_settings
-
+from sembr.config import get_settings
 
 SAMPLE_ENV = """\
 QDRANT_URL=http://qdrant:6333

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 import pytest
@@ -39,7 +39,7 @@ async def _seed_dead(conn, md5: str, failed_at_iso: str, feed_id: int = 1) -> No
 @pytest.mark.asyncio
 async def test_dead_ttl_basic_deletes_old_rows():
     conn = await _make_conn()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # 30 rows older than 14d, 70 fresh
     for i in range(30):
         old = (now - timedelta(days=20)).isoformat()
@@ -63,7 +63,7 @@ async def test_dead_ttl_basic_deletes_old_rows():
 @pytest.mark.asyncio
 async def test_dead_ttl_no_old_rows():
     conn = await _make_conn()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for i in range(5):
         fresh = (now - timedelta(days=1)).isoformat()
         await _seed_dead(conn, f"{i:032x}", fresh)

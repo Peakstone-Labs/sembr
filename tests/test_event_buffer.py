@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
@@ -16,7 +16,6 @@ from sembr.db.sqlite import install_for_test
 from sembr.matcher.callback import Match
 from sembr.matcher.event_buffer import absorb, flush, sweep_timed_out
 from sembr.models import EventSchedule, IntentCreate
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -177,6 +176,7 @@ async def test_flush_drains_all_groups_and_calls_on_match():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     try:
         # Insert 2 distinct groups
@@ -205,6 +205,7 @@ async def test_flush_no_rows_is_noop():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     try:
         await flush(conn, app, intent_id)
@@ -222,6 +223,7 @@ async def test_flush_on_match_exception_does_not_reraise(caplog):
     on_match = AsyncMock(side_effect=RuntimeError("push failed"))
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     try:
         await absorb(conn, intent_id, [_match("art-1", "Breaking news")], _EVENT_SCHEDULE)
@@ -256,6 +258,7 @@ async def test_sweep_triggers_flush_when_oldest_group_exceeds_max_wait():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     cache = EventIntentCache()
     cache.add(
@@ -276,7 +279,7 @@ async def test_sweep_triggers_flush_when_oldest_group_exceeds_max_wait():
             EventSchedule(trigger_count=10, max_wait_seconds=60),
         )
         # Backdate the created_at to simulate timeout
-        past = (datetime.now(timezone.utc) - timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        past = (datetime.now(UTC) - timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
         await conn.execute(
             "UPDATE event_pending SET created_at=? WHERE intent_id=?", (past, intent_id)
         )
@@ -297,6 +300,7 @@ async def test_sweep_does_not_flush_when_not_yet_timed_out():
     on_match = AsyncMock()
     app = MagicMock()
     app.state.on_match = on_match
+    app.state.on_match_event = None
 
     cache = EventIntentCache()
     cache.add(
@@ -371,7 +375,7 @@ async def test_sweep_isolates_per_intent_failures():
         await absorb(conn, iid, [m], EventSchedule(trigger_count=10, max_wait_seconds=60))
 
     # Backdate both in a single transaction after all absorbs are committed
-    past = (datetime.now(timezone.utc) - timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    past = (datetime.now(UTC) - timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
     for iid in [i1.id, i2.id]:
         await conn.execute("UPDATE event_pending SET created_at=? WHERE intent_id=?", (past, iid))
     await conn.commit()
@@ -387,6 +391,7 @@ async def test_sweep_isolates_per_intent_failures():
 
     app = MagicMock()
     app.state.on_match = _on_match
+    app.state.on_match_event = None
 
     try:
         await sweep_timed_out(conn, app, cache)

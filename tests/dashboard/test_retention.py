@@ -11,16 +11,14 @@ Cover:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from sembr.dashboard import retention
 from sembr.dashboard.events import init_event_log_tables
 from sembr.dashboard.retention import _prune_logs
 from sembr.db.feeds import init_feed_tables
-from sembr.db.sqlite import close_sqlite, get_conn, init_sqlite
+from sembr.db.sqlite import close_sqlite, init_sqlite
 
 
 def _settings(*, retention_days: int = 7, max_per_feed: int = 1000) -> MagicMock:
@@ -74,7 +72,7 @@ def test_prune_drops_rows_older_than_retention(tmp_path):
         await init_event_log_tables(conn)
         await _seed_feeds(conn, [1])
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old = now - timedelta(days=10)
         recent = now - timedelta(hours=1)
         await _insert_fetch_log(conn, 1, old)
@@ -106,7 +104,7 @@ def test_prune_enforces_per_feed_max(tmp_path):
         await init_event_log_tables(conn)
         await _seed_feeds(conn, [1, 2])
 
-        recent = datetime.now(timezone.utc) - timedelta(minutes=5)
+        recent = datetime.now(UTC) - timedelta(minutes=5)
         # 1500 rows for feed 1, 50 rows for feed 2
         for _ in range(1500):
             await _insert_fetch_log(conn, 1, recent)
