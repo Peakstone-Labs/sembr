@@ -99,3 +99,17 @@ Async fire status payload (`GET /intents/{id}/fire/{task_id}`):
 | `POST /api/prompts/templates/{kind}/{name}/rename` | Rename a template. Body: `{"new_name": "..."}`. |
 
 Template edits take effect on the next scheduler tick.
+
+## History (persisted cron summaries)
+
+| Method & path | Purpose |
+| --- | --- |
+| `GET /intents/{intent_id}/history?since=YYYY-MM-DD&until=YYYY-MM-DD&limit=50&offset=0` | List persisted summary rows for a cron-mode intent. Dates are interpreted in the intent's timezone. |
+| `DELETE /intents/{intent_id}/history/{row_id}` | Delete one history row and evict its citations from `match_seen` so a re-backfill can re-fire them. Returns 204. |
+| `POST /intents/{intent_id}/backfill` | Replay past cron fire-times through the scan+summarize pipeline. Body: `{"since": "YYYY-MM-DD", "until": "YYYY-MM-DD"}` (optional; defaults to Qdrant-bounded range). Returns `202 {task_id, status_url}`. |
+| `GET /intents/{intent_id}/backfill/{task_id}` | Poll backfill status. Shape: `{"task_id", "status": "pending"|"running"|"done"|"error", "progress": {"done": N, "total": M}, "error": null|"..."}`. |
+| `POST /intents/{intent_id}/history/aggregate` | Generate an LLM aggregate over selected history rows. Body: `{"since": "...", "until": "...", "subject": "..."}` (subject optional). Returns `{intent_id, summary, rows_used, rows_total}`. |
+| `POST /intents/{intent_id}/history/aggregate/send` | Same as aggregate but also dispatches the result via the intent's configured channels. Body: `{"since": "...", "until": "...", "subject": "..."}`. Returns per-channel outcome list with HTTP status reflecting overall success. |
+| `GET /intents/{intent_id}/history/export?since=YYYY-MM-DD&until=YYYY-MM-DD` | Export history rows as pretty-printed JSON (`indent=2`). Suitable for backup or external analysis. |
+
+All history endpoints require the intent to exist and have a cron-mode schedule. Event-mode intents return an empty list from `GET /history` and 422 from aggregate/backfill endpoints.

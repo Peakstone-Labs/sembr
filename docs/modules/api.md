@@ -27,11 +27,12 @@ Interactive API docs are auto-generated at **`/docs`** (Swagger UI) and **`/redo
 | `feeds.py` | `/feeds` | `POST /`, `GET /`, `PATCH /{id}`, `PATCH /{id}/tags`, `DELETE /{id}` |
 | `feeds_fire.py` | `/feeds` | `POST /{id}/fire?dry_run=`, `GET /{id}/fire/{task_id}` |
 | `intents.py` | `/intents` | `POST /`, `GET /`, `GET /{id}`, `PUT /{id}`, `DELETE /{id}` |
+| `history.py` | (none) | `GET /intents/{id}/history`, `DELETE /intents/{id}/history/{row_id}`, `POST /intents/{id}/backfill`, `GET /intents/{id}/backfill/{task_id}`, `POST /intents/{id}/history/aggregate`, `POST /intents/{id}/history/aggregate/send`, `GET /intents/{id}/history/export` |
 | `fire.py` | (none) | `POST /intents/{id}/fire`, `GET /intents/{id}/fire/{task_id}` |
 | `prompts.py` | `/api/prompts` | `GET /templates` (rich), `GET /templates/{kind}/{name}`, `POST /templates/{kind}`, `PUT /templates/{kind}/{name}`, `DELETE /templates/{kind}/{name}`, `POST /templates/{kind}/{name}/rename` |
 | `settings.py` | `/api/settings` | `GET /schema`, `GET /values`, `POST /save` |
 
-`fire.py` and `feeds_fire.py` are deliberately separate from the CRUD modules because they own a different lifecycle — they create a `FireTask` in memory, dispatch a background coroutine, and expose a polling endpoint. Splitting them keeps the CRUD routers small and lets the fire-task lifecycle evolve without disturbing the create/update path.
+`history.py`, `fire.py`, and `feeds_fire.py` are deliberately separate from the CRUD modules because they own a different lifecycle — they create a `FireTask` in memory, dispatch a background coroutine, and expose a polling endpoint. Splitting them keeps the CRUD routers small and lets the fire-task lifecycle evolve without disturbing the create/update path.
 
 ## Request flow patterns
 
@@ -73,6 +74,18 @@ Both `/intents/{id}/fire` and `/feeds/{id}/fire` follow the same shape:
 The status endpoint reads the same in-memory task. Because the storage is per-process, a multi-worker uvicorn deployment would route the GET to a worker that may not own the task. The 1.0 topology is single-worker.
 
 `POST /feeds/{id}/fire?dry_run=true` reuses the same host rate limiter that the scheduler uses (`get_host_limiter()` from `collector.scheduler`) so a dry-run cannot bypass the per-host concurrency ceiling.
+
+### History endpoints
+
+`history.py` manages persisted cron summary records and their lifecycle:
+
+**List / delete / export**: `GET /intents/{intent_id}/history` returns paginated summary rows with `since`/`until` date filtering and timezone-aware boundary conversion. `DELETE /intents/{intent_id}/history/{row_id}` removes one row and evicts its citations from `match_seen` so a re-backfill can re-match them. `GET /intents/{intent_id}/history/export` returns JSON with `indent=2`.
+
+**Backfill**: `POST /intents/{intent_id}/backfill` replays past cron fire-times through the standard scan+summarize pipeline, writing a `summary_history` row for each tick. The backfill anchors its lookback window against Qdrant's oldest `ingested_at_ts` so it never overshoots into a period that contains no articles. Status is polled via `GET /intents/{intent_id}/backfill/{task_id}` (same in-memory task pattern as the fire endpoints).
+
+**Aggregate**: `POST /intents/{intent_id}/history/aggregate` runs an LLM call over multiple history rows' summaries, water-filling them into the backend's prompt budget. `POST /intents/{intent_id}/history/aggregate/send` does the same and dispatches the result via the intent's configured channels.
+
+All history endpoints require the intent to have a cron-mode schedule (event-mode intents produce no history rows) and at least one configured channel. The aggregate endpoints additionally require `{history}` in the intent's system or instruction template — the prompt injection point is what the aggregate pipeline replaces with the joined history rows.
 
 ### Settings editor
 

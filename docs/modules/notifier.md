@@ -117,6 +117,30 @@ The path string surfaced inside the `send_error` body (`/app/prompts`) is read d
 
 The per-intent timezone lives on the `Intent` row (`intents.timezone`, schema default `'UTC'`). The dispatcher in `main.py` reads it at send time and threads it through `EmailChannel.send(intent_timezone=...)`.
 
+### Dispatcher (`dispatcher.py`)
+
+```python
+class ChannelOutcome:
+    type: str          # channel type discriminator
+    ok: bool
+    error: str | None
+
+async def dispatch_summary(
+    conn: aiosqlite.Connection,
+    email_ch: EmailChannel,
+    result: SummaryResult,
+    *,
+    strict: bool = False,
+    subject: str | None = None,
+) -> list[ChannelOutcome]
+```
+
+Routes a `SummaryResult` to every channel configured on the intent. Each channel runs independently — one failed delivery never aborts the others. In `strict=False` mode (the default cron tick path), errors are swallowed and logged. In `strict=True` mode (used by the aggregate-send endpoint), each `ChannelOutcome` includes the error message and the caller decides the HTTP status code.
+
+`dispatch_summary` is the single dispatch point for both the standard cron-summary path and the aggregate-send path. The aggregate path can optionally override the email subject; when `subject` is `None`, the channel computes its own default from the intent name and date range.
+
+`_email_config_type()` returns the `EmailChannelConfig` Pydantic model — useful for type-narrowing in callers that need to inspect the channel config before dispatch.
+
 ## Upstream dependencies
 
 - `config.Settings` — SMTP host / port / credentials / TLS flags

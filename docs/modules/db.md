@@ -32,6 +32,7 @@ For column-by-column schema (types, defaults, constraints, indexes), see [db Sch
 | `intents` | `intents.py` | User-defined monitoring intents (text, threshold, schedule, channels) |
 | `match_seen` | `match_seen.py` | (intent_id, article_id) dedup log — `ON DELETE CASCADE` from intents |
 | `event_pending` | `event_buffer.py` | Event-driven matcher buffer — DDL only; logic in `matcher.event_buffer` |
+| `summary_history` | `summary_history.py` | Persisted cron summary rows — `(intent_id, run_at)` unique, raw LLM output + citations JSON |
 
 ## Public interface
 
@@ -127,6 +128,25 @@ DDL-only module. Business logic for absorb/flush lives in `sembr/matcher/event_b
 ```python
 await init_event_buffer_tables(conn)
 ```
+
+### summary_history (`summary_history.py`)
+
+```python
+await init_summary_history_table(conn)
+await migrate_summary_history_unique_index(conn)  # one-shot DDL migration
+await save_summary(conn, intent_id, run_at, summary, citations) -> int
+await save_summary_or_skip(conn, intent_id, run_at, summary, citations) -> int | None
+await list_summaries(conn, intent_id, *, limit=50, offset=0) -> list[dict]
+await list_summaries_between(conn, intent_id, since_utc, until_utc) -> list[dict]
+await delete_summary(conn, row_id) -> bool
+await format_history_text(conn, intent_id, limit=50) -> str
+```
+
+`summary_history` stores one row per cron tick that produced a summary. The `(intent_id, run_at)` unique constraint prevents duplicate rows from a concurrent backfill and a normal cron tick firing for the same fire-time.
+
+`save_summary_or_skip` returns the row id on insert and `None` on unique-constraint conflict — the caller can distinguish "row persisted" from "already present" without an extra query.
+
+`format_history_text` joins the most recent N rows into a single Markdown-formatted string suitable for `{history}` placeholder injection in the summarizer pipeline.
 
 ## Concurrency model
 
