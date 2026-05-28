@@ -29,7 +29,7 @@ def intents_js() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Cache buster — design R9 + memory feedback_static_cache_buster.md
+# Cache buster — see memory feedback_static_cache_buster.md
 # ---------------------------------------------------------------------------
 
 
@@ -175,7 +175,7 @@ def test_citation_uuid_strip_dashes(intents_js: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Snippet truncation (D18)
+# Snippet truncation
 # ---------------------------------------------------------------------------
 
 
@@ -188,12 +188,12 @@ def test_history_snippet_truncates_at_120(intents_js: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# QA Owner tests — Aggregate frontend (D8, D16, D17)
+# QA Owner tests — Aggregate frontend
 # ---------------------------------------------------------------------------
 
 
 def test_aggregate_frontend_default_prompt_per_language(intents_js: str) -> None:
-    """D8: _defaultAggregatePrompt returns zh/en prompts that differ and both contain {history}.
+    """_defaultAggregatePrompt returns zh/en prompts that differ and both contain {history}.
 
     The function body is small and self-contained, so a simple text search
     of the JS file verifies both prompts exist with the placeholder.
@@ -214,7 +214,7 @@ def test_aggregate_frontend_default_prompt_per_language(intents_js: str) -> None
 
 
 def test_aggregate_frontend_modal_state_after_send(index_html: str, intents_js: str) -> None:
-    """D16: Modal state is preserved after Summarize + Send.
+    """Modal state is preserved after Summarize + Send.
 
     Verifies via static code analysis:
       1. closeSummarize() only sets open=false — does not reset state fields
@@ -270,7 +270,7 @@ def test_aggregate_frontend_modal_state_after_send(index_html: str, intents_js: 
 
 
 def test_static_cache_buster_intentsjs_bumped(index_html: str) -> None:
-    """D17: intents.js cache-buster present and >= 13 (not exact-match, so
+    """intents.js cache-buster present and >= 13 (not exact-match, so
     routine bumps don't break the gate; inequality catches a forgotten bump)."""
     m = re.search(r"intents\.js\?v=(\d+)", index_html)
     assert m is not None, "intents.js?v=N not found in index.html"

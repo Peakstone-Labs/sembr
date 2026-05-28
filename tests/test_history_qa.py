@@ -224,7 +224,7 @@ def _make_qdrant_with_oldest(ts: int | None) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# test_backfill_match_seen_writes (D5 + Option 5)
+# test_backfill_match_seen_writes Option 5
 # After a backfill with write_match_seen=True, match_seen table gains rows.
 # ---------------------------------------------------------------------------
 
@@ -281,7 +281,7 @@ async def test_backfill_match_seen_writes(db) -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_backfill_qdrant_outage_mid_run (R5)
+# test_backfill_qdrant_outage_mid_run Qdrant outage
 # scan_once returning [] mid-run (Qdrant outage) → backfill continues, not aborts.
 # ---------------------------------------------------------------------------
 
@@ -322,7 +322,7 @@ async def test_backfill_qdrant_outage_mid_run(db) -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_backfill_concurrent_with_normal_cron_first_tick_after_resume (R7)
+# test_backfill_concurrent_with_normal_cron_first_tick_after_resume (schedule snapshot)
 # After backfill completes and resumes job, scheduler.resume_job was called exactly once.
 # ---------------------------------------------------------------------------
 
@@ -354,7 +354,7 @@ async def test_backfill_concurrent_with_normal_cron_first_tick_after_resume(db) 
 
 
 # ---------------------------------------------------------------------------
-# test_backfill_lookback_anchor_correctness (D2 + D13)
+# test_backfill_lookback_anchor_correctness lookback anchor
 # ScanOptions.now= is passed to scan_once; verify the now= kwarg is exactly past_fire_time.
 # ---------------------------------------------------------------------------
 
@@ -362,7 +362,7 @@ async def test_backfill_concurrent_with_normal_cron_first_tick_after_resume(db) 
 async def test_backfill_lookback_anchor_correctness(db) -> None:
     """scan_once is called with now=past_fire_time so the lookback window anchors correctly.
 
-    Design D2/D13: effective_now = options.now when set, so lookback_cutoff_ts =
+    Design: effective_now = options.now when set, so lookback_cutoff_ts =
     past_fire_time.timestamp() - lookback_seconds.  We verify that the ScanOptions
     passed in each iteration have .now set to the corresponding past fire-time
     (oldest→newest order).
@@ -409,7 +409,7 @@ async def test_backfill_lookback_anchor_correctness(db) -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_backfill_uses_schedule_snapshot (R7 + review #7)
+# test_backfill_uses_schedule_snapshot (schedule snapshot)
 # Concurrent PUT that changes intent.schedule.preset must NOT affect in-flight backfill.
 # ---------------------------------------------------------------------------
 
@@ -483,7 +483,7 @@ async def test_backfill_uses_schedule_snapshot(db) -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_view_modal_xss_html_escaped (R3) — static JS
+# test_view_modal_xss_html_escaped (XSS guard) — static JS
 # DOMPurify.sanitize must wrap marked.parse in the View modal rendering path.
 # ---------------------------------------------------------------------------
 
@@ -531,7 +531,7 @@ def test_view_modal_xss_dompurify_vendor_present() -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_view_modal_markdown_renders_links (D10 + D19) — static JS
+# test_view_modal_markdown_renders_links (markdown rendering) — static JS
 # marked.parse must be called with {breaks: true, gfm: true} options.
 # ---------------------------------------------------------------------------
 
@@ -539,7 +539,7 @@ def test_view_modal_xss_dompurify_vendor_present() -> None:
 def test_view_modal_markdown_renders_links(intents_js: str) -> None:
     """marked.parse is called with {breaks: true, gfm: true} for correct link rendering.
 
-    Design D19: marked.parse(summary, {breaks: true, gfm: true}).  Ensures LLM
+    Design: marked.parse(summary, {breaks: true, gfm: true}).  Ensures LLM
     markdown output with [text](url) links is rendered to <a> tags.
     """
     assert "marked.parse" in intents_js, "marked.parse missing from intents.js"
@@ -561,7 +561,7 @@ def test_view_modal_marked_vendor_version() -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_backfill_button_disabled_during_running (D12 + Frontend) — static HTML
+# test_backfill_button_disabled_during_running (frontend) — static HTML
 # When backfill.phase === 'running', the form submit button must NOT be visible.
 # ---------------------------------------------------------------------------
 

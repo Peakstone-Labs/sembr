@@ -186,7 +186,7 @@ class TestAggregateErrors:
 
     @pytest.mark.asyncio
     async def test_even_newest_row_overflows_returns_422(self):
-        """R1: rows_used==0 and rows_total>0 -> 422 prompt template too long."""
+        """rows_used==0 and rows_total>0 -> 422 prompt template too long."""
         llm = MagicMock()
         llm.max_prompt_chars = 100  # tiny budget
         rows = [
@@ -254,7 +254,7 @@ class TestAggregateDateRangeErrors:
 
     @pytest.mark.asyncio
     async def test_range_exceeds_365_days_returns_422(self):
-        """D15+R9: date span > 365 days -> 422."""
+        """date span > 365 days -> 422."""
         with (
             patch("sembr.api.history.get_conn", return_value=_mock_conn()),
             patch("sembr.api.history.get_intent", AsyncMock(return_value=_fake_intent())),
@@ -268,7 +268,7 @@ class TestAggregateDateRangeErrors:
 
     @pytest.mark.asyncio
     async def test_since_after_until_returns_422(self):
-        """D6: since > until -> 422."""
+        """since > until -> 422."""
         with (
             patch("sembr.api.history.get_conn", return_value=_mock_conn()),
             patch("sembr.api.history.get_intent", AsyncMock(return_value=_fake_intent())),
@@ -417,7 +417,7 @@ class TestAggregateSend:
 
     @pytest.mark.asyncio
     async def test_send_intent_no_channels_returns_422(self):
-        """D9: intent.channels == [] -> 422, no SMTP attempted."""
+        """intent.channels == [] -> 422, no SMTP attempted."""
         rows = _fake_rows(1)
         intent = _fake_intent(channels=[])  # no channels configured
         email_ch = MagicMock()
