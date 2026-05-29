@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-05-29
+
+### Added
+
+- **History persistence** — cron match summaries are saved to a
+  `summary_history` SQLite table and survive restarts. Browse past
+  digests, delete individual rows (with `match_seen` eviction so a
+  re-backfill can re-fire them), and export date-filtered history as
+  pretty-printed JSON.
+- **Backfill** — replay past cron fire-times through the standard
+  scan+summarize pipeline. Bounded by Qdrant's oldest article timestamp
+  so it never overshoots into an empty window. In-memory task tracking
+  with a polling status endpoint.
+- **`{history}` placeholder** — inject recent summaries into the
+  summarizer prompt template so each digest carries prior context,
+  producing incremental analysis rather than isolated one-shot reports.
+- **Aggregate endpoints** — run an LLM call over multiple history rows'
+  summaries, water-filled into the backend's prompt budget. Two
+  variants: preview (`POST /aggregate`) and send via configured channels
+  (`POST /aggregate/send`).
+- **Frontend history UI** — history table with expand rows, timezone-aware
+  `run_at` display, Markdown rendering via marked.js (sanitized through
+  DOMPurify for XSS protection), Backfill button in expand pane, and
+  Summarize + Export modals with async guards.
+- **Dispatcher module** (`notifier/dispatcher.py`) — channel-routing
+  with per-outcome error tracking and a strict mode for the
+  aggregate-send path.
+- **`cron_recall` utility** (`matcher/cron_recall.py`) — compute past
+  fire-times for a cron schedule, timezone-aware, returning
+  newest-first UTC datetimes. Powers both the backfill orchestrator and
+  the history-list date-bounding logic.
+
+### Changed
+
+- The summarizer instruction template whitelist now accepts `{history}`
+  as a valid placeholder in addition to `{intent_text}` and `{articles}`.
+- `docs/modules/` updated across api, matcher, summarizer, notifier, and
+  db to document the new functionality.
+- `agent/sembr/references/endpoints.md` documents 7 new endpoints.
+
 ## [1.0.0] - 2026-05-16
 
 Initial public release of **sembr** — a self-hosted intent radar built on
