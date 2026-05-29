@@ -198,8 +198,8 @@ async def test_stream_generator_history_and_history_end(fresh_bus) -> None:
     req = _MockRequest(disconnect_after=0)  # disconnect immediately after history
     lines = await _collect_generator("api", req, max_chunks=50)
 
-    event_types = [l.split(":", 1)[1].strip() for l in lines if l.startswith("event:")]
-    data_lines = [l for l in lines if l.startswith("data:") and l != "data: {}"]
+    event_types = [ln.split(":", 1)[1].strip() for ln in lines if ln.startswith("event:")]
+    data_lines = [ln for ln in lines if ln.startswith("data:") and ln != "data: {}"]
 
     assert "log" in event_types, f"expected 'log' events, got {event_types}"
     assert "history-end" in event_types, f"expected history-end, got {event_types}"
@@ -227,7 +227,7 @@ async def test_stream_generator_filters_by_tag(fresh_bus) -> None:
 
     req = _MockRequest(disconnect_after=0)
     lines = await _collect_generator("api", req, max_chunks=50)
-    data_lines = [l for l in lines if l.startswith("data:") and l != "data: {}"]
+    data_lines = [ln for ln in lines if ln.startswith("data:") and ln != "data: {}"]
 
     for dl in data_lines:
         payload = json.loads(dl[len("data:") :].strip())
@@ -266,8 +266,8 @@ async def test_stream_generator_live_entry_after_history_end(fresh_bus) -> None:
     await task
 
     messages = []
-    for l in lines:
-        if l.startswith("data:") and "live_entry" in l:
-            messages.append(json.loads(l[len("data:") :].strip())["message"])
+    for ln in lines:
+        if ln.startswith("data:") and "live_entry" in ln:
+            messages.append(json.loads(ln[len("data:") :].strip())["message"])
 
     assert "live_entry" in messages, f"live entry not found in lines: {lines}"

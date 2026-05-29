@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -34,7 +34,7 @@ _QDRANT_DELETE_BATCH = 1000
 _SQLITE_DELETE_CHUNK = 500
 
 
-async def _scroll_expired_uuids(qdrant_handle: "QdrantHandle", cutoff_ts: int) -> list[str]:
+async def _scroll_expired_uuids(qdrant_handle: QdrantHandle, cutoff_ts: int) -> list[str]:
     """Scroll ``news_current`` and collect IDs of points with
     ``ingested_at_ts < cutoff_ts``.
 
@@ -73,7 +73,7 @@ async def _scroll_expired_uuids(qdrant_handle: "QdrantHandle", cutoff_ts: int) -
     return purge_uuids
 
 
-async def _delete_qdrant_points(qdrant_handle: "QdrantHandle", uuids: list[str]) -> None:
+async def _delete_qdrant_points(qdrant_handle: QdrantHandle, uuids: list[str]) -> None:
     from qdrant_client.models import PointIdsList  # noqa: PLC0415
 
     for i in range(0, len(uuids), _QDRANT_DELETE_BATCH):
@@ -126,7 +126,7 @@ async def _cascade_delete_sqlite(uuids: list[str]) -> tuple[int, int]:
     return deleted_fi, deleted_ms
 
 
-async def _run_qdrant_ttl(qdrant_handle: "QdrantHandle", settings: Settings) -> None:
+async def _run_qdrant_ttl(qdrant_handle: QdrantHandle, settings: Settings) -> None:
     started_at = monotonic()
     cutoff_ts = int(time.time()) - settings.qdrant_news_retention_days * 86400
 
@@ -169,11 +169,11 @@ async def _run_qdrant_ttl(qdrant_handle: "QdrantHandle", settings: Settings) -> 
 
 def add_qdrant_ttl_job(
     scheduler: AsyncIOScheduler,
-    qdrant_handle: "QdrantHandle",
+    qdrant_handle: QdrantHandle,
     settings: Settings,
 ) -> None:
     """Register the Qdrant TTL job with a 15-minute startup offset."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     scheduler.add_job(
         _run_qdrant_ttl,
         trigger=IntervalTrigger(

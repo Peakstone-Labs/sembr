@@ -11,6 +11,8 @@
 <link rel="stylesheet" href="/dashboard/style.css?v=12">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
+<script src="/dashboard/vendor/marked.min.js?v=2"></script>
+<script src="/dashboard/vendor/dompurify.min.js?v=2"></script>
 </head>
 <body x-data="dashboard()" x-init="init()">
 
@@ -1205,8 +1207,8 @@
           <th>Actions</th>
         </tr>
       </thead>
-      <tbody>
-        <template x-for="intent in cronList" :key="intent.id">
+      <template x-for="intent in cronList" :key="intent.id">
+        <tbody>
           <tr :class="intent.enabled ? '' : 'row-disabled'">
             <td style="max-width:260px;">
               <div style="font-weight:500;" x-text="intent.name"></div>
@@ -1237,13 +1239,65 @@
             <td>
               <div class="action-cell">
                 <button @click="openEdit(intent)">Edit</button>
+                <button @click="openHistory(intent)"
+                        :class="(expandedIntentId===intent.id && expanded.kind==='history') ? 'primary' : ''">History</button>
                 <button class="fire-btn" @click="openFire(intent)">Fire</button>
                 <button class="danger" @click="confirmDelete(intent)">Delete</button>
               </div>
             </td>
           </tr>
-        </template>
-      </tbody>
+          <tr x-show="expandedIntentId === intent.id && expanded.kind === 'history'"
+              class="intent-expand-row">
+            <td colspan="7">
+              <div x-show="expanded.loading" class="muted">
+                <span class="spinner"></span>&nbsp;Loading…
+              </div>
+              <div x-show="expanded.error" class="muted" style="color:#d33;"
+                   x-text="expanded.error"></div>
+              <div x-show="!expanded.loading && !expanded.error">
+                <!-- Header strip: mirror feeds' Edit-tags placement (intent-action inside the expand pane) -->
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                  <button @click="openBackfill(intent)">Backfill</button>
+                  <button @click="openSummarize(intent)">Summarize</button>
+                  <button @click="openExport(intent)">Export</button>
+                  <span class="muted" style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase;">
+                    <span x-text="expanded.rows.length"></span> row<span x-show="expanded.rows.length !== 1">s</span>
+                  </span>
+                </div>
+                <table x-show="expanded.rows.length > 0" style="width:100%;">
+                  <thead>
+                    <tr>
+                      <th style="width:160px;">Run at</th>
+                      <th>Snippet</th>
+                      <th style="width:100px;">Citations</th>
+                      <th style="width:140px;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="row in expanded.rows" :key="row.id">
+                      <tr>
+                        <td class="mono" x-text="fmtHistoryRunAt(row.run_at, intent.timezone)"></td>
+                        <td x-text="historySnippet(row)"></td>
+                        <td class="mono" x-text="(row.citations || []).length"></td>
+                        <td>
+                          <button @click="openHistoryView(row, intent)">View</button>
+                          <button class="danger" @click="confirmDeleteHistory(row, intent)">Delete</button>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+                <div x-show="expanded.rows.length === 0" class="muted" style="padding:12px 0;">
+                  No history rows yet. Run the cron a few times or use Backfill to seed.
+                </div>
+                <div x-show="expanded.hasMore" style="text-align:center; margin-top:8px;">
+                  <button @click="loadMoreHistory()">Load more</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </template>
     </table>
   </div>
 
@@ -1551,6 +1605,16 @@
                     </label>
                     <span class="field-hint">Skip articles already matched by this intent</span>
                   </div>
+
+                  <div class="form-field">
+                    <label class="field-label">History Window (days)</label>
+                    <input type="number" x-model="modal.form.history_days"
+                           min="1" max="365" step="1" placeholder="blank = disabled"
+                           :class="modal.errors.history_days ? 'field-err' : ''">
+                    <span class="field-err-msg" x-show="modal.errors.history_days"
+                          x-text="modal.errors.history_days"></span>
+                    <span class="field-hint">Days of past summaries injected as <code>{history}</code> in prompt. Leave blank to disable. Set 1–365 to inject past summaries.</span>
+                  </div>
                 </div>
               </div>
             </template>
@@ -1790,7 +1854,7 @@
             <label class="field-label">Threshold</label>
             <input type="number" x-model="fire.form.threshold" min="0.20" max="0.95" step="0.01">
           </div>
-          <div class="form-field" style="align-self:center; padding-top:20px;">
+          <div class="form-field form-grid-full" style="gap:10px;">
             <label class="toggle-wrap" style="cursor:pointer;">
               <span class="toggle">
                 <input type="checkbox" x-model="fire.form.skip_seen">
@@ -1798,6 +1862,14 @@
               </span>
               <span class="field-label" style="margin:0;">Skip seen</span>
             </label>
+            <label class="toggle-wrap" style="cursor:pointer;">
+              <span class="toggle">
+                <input type="checkbox" x-model="fire.form.persist">
+                <span class="toggle-slider"></span>
+              </span>
+              <span class="field-label" style="margin:0;">Persist result</span>
+            </label>
+            <span class="field-hint" style="margin-left:44px;">Save this run's summary to history (default: off)</span>
           </div>
         </div>
         <div x-show="fire.error" class="fire-warning" style="margin-top:12px;" x-text="fire.error"></div>
@@ -1866,6 +1938,246 @@
 
     </div><!-- /modal-panel fire -->
   </div><!-- /modal-overlay fire -->
+
+  <!-- ── History View modal (single-row detail) ── -->
+  <div class="modal-overlay" x-show="historyView.open" x-cloak @click.self="closeHistoryView()">
+    <div class="modal-panel" style="max-width:840px; max-height:88vh; overflow-y:auto;">
+      <div class="modal-header">
+        <span class="modal-title">
+          History · <span class="mono" x-text="fmtHistoryRunAt(historyView.row?.run_at, historyView.timezone)"></span>
+        </span>
+        <button class="modal-close" @click="closeHistoryView()">✕</button>
+      </div>
+      <div style="padding:8px 0;">
+        <div class="history-summary" style="line-height:1.6;" x-html="historyView.summaryHtml"></div>
+        <div x-show="historyView.citations.length > 0" style="margin-top:18px;">
+          <div class="muted" style="font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:6px;">
+            Citations
+          </div>
+          <table style="width:100%;">
+            <thead>
+              <tr><th style="width:32px;">#</th><th>Title</th><th style="width:80px;">Score</th><th style="width:80px;">Body</th></tr>
+            </thead>
+            <tbody>
+              <template x-for="(c, idx) in historyView.citations" :key="c.article_id || idx">
+                <tr>
+                  <td class="mono" x-text="idx + 1"></td>
+                  <td>
+                    <a :href="/^https?:\/\//i.test(c.url || '') ? c.url : '#'"
+                       target="_blank" rel="noopener noreferrer"
+                       x-text="c.title || '(no title)'"></a>
+                  </td>
+                  <td class="mono" x-text="c.score ? c.score.toFixed(3) : '—'"></td>
+                  <td><button @click="loadCitationBody(c)" x-text="c.bodyOpen ? 'Hide' : 'Show'"></button></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <template x-for="(c, idx) in historyView.citations" :key="'body-' + idx">
+            <div x-show="c.bodyOpen" style="margin-top:8px; padding:10px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px;">
+              <div class="muted" style="font-size:0.7rem;" x-text="(c.title || '') + ' — body'"></div>
+              <div x-show="c.bodyLoading" class="muted"><span class="spinner"></span></div>
+              <div x-show="c.bodyError" style="color:#d33; font-size:0.8rem;" x-text="c.bodyError"></div>
+              <pre x-show="c.body && !c.bodyError"
+                   style="white-space:pre-wrap; font-size:0.8rem; max-height:300px; overflow-y:auto;"
+                   x-text="c.body"></pre>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeHistoryView()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Backfill modal ── -->
+  <div class="modal-overlay" x-show="backfill.open" x-cloak @click.self="closeBackfill()">
+    <div class="modal-panel" style="max-width:560px;">
+      <div class="modal-header">
+        <span class="modal-title">Backfill History · <span x-text="backfill.intent?.name || ''"></span></span>
+        <button class="modal-close" @click="closeBackfill()">✕</button>
+      </div>
+
+      <div x-show="backfill.phase === 'form'">
+        <div class="muted" style="font-size:0.8rem; margin-bottom:10px;">
+          Replay the past <strong>N</strong> scheduled fire-times for this intent. Each run will
+          re-scan articles within the lookback window and write a summary to history.
+        </div>
+        <div class="muted" style="font-size:0.78rem; margin-bottom:14px; padding:8px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px;">
+          Backfilled runs mark articles as seen; future cron ticks will skip them.
+          The current period's fire-time is excluded (it just ran or is about to run).
+          If you close the browser, backfill continues in the background.
+        </div>
+        <div class="form-field">
+          <label class="field-label">Past runs (N)</label>
+          <input type="number" x-model.number="backfill.form.past_runs" min="1" max="365">
+          <span class="field-hint">1 to 365</span>
+        </div>
+        <div x-show="backfill.error" class="fire-warning" style="margin-top:12px;" x-text="backfill.error"></div>
+        <div x-show="backfill.depthError" class="fire-warning" style="margin-top:12px;">
+          Qdrant only covers back to <span class="mono" x-text="backfill.depthError?.oldest_date"></span>.
+          Maximum backfillable runs at this schedule: <strong x-text="backfill.depthError?.max_backfillable_runs"></strong>.
+        </div>
+        <div class="modal-footer">
+          <button @click="closeBackfill()">Cancel</button>
+          <button class="fire-btn" @click="runBackfill()">Run backfill</button>
+        </div>
+      </div>
+
+      <div x-show="backfill.phase === 'running'" style="text-align:center; padding:24px 0;">
+        <span class="spinner spinner-lg"></span>
+        <p style="margin-top:14px; color:var(--text-secondary); font-size:0.85rem;">
+          Replaying past runs… this can take a while for large N.
+        </p>
+        <div x-show="backfill.progress" style="margin-top:12px; font-size:0.82rem;">
+          <span class="mono">Done: <span x-text="backfill.progress?.done ?? 0"></span></span>
+          &nbsp;·&nbsp;
+          <span class="mono">Skipped: <span x-text="backfill.progress?.skipped ?? 0"></span></span>
+          &nbsp;·&nbsp;
+          <span class="mono">Empty: <span x-text="backfill.progress?.empty_runs ?? 0"></span></span>
+          &nbsp;/&nbsp;
+          <span class="mono">Total: <span x-text="backfill.progress?.total ?? 0"></span></span>
+        </div>
+      </div>
+
+      <div x-show="backfill.phase === 'result'">
+        <div x-show="backfill.error" class="fire-warning" x-text="backfill.error"></div>
+        <div x-show="!backfill.error && backfill.progress">
+          <div class="empty-state" style="padding:16px;">
+            Backfill complete.
+            <strong x-text="backfill.progress?.done ?? 0"></strong> rows written,
+            <strong x-text="backfill.progress?.skipped ?? 0"></strong> skipped (already existed),
+            <strong x-text="backfill.progress?.empty_runs ?? 0"></strong> runs had no matches.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeBackfill()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Summarize modal ── -->
+  <div class="modal-overlay" x-show="summarize.open" x-cloak @click.self="closeSummarize()">
+    <div class="modal-panel" style="max-width:720px;">
+      <div class="modal-header">
+        <span class="modal-title">Summarize History · <span x-text="summarize.intent?.name || ''"></span></span>
+        <button class="modal-close" @click="closeSummarize()">✕</button>
+      </div>
+
+      <div class="form-field" style="display:flex; gap:12px;">
+        <div style="flex:1;">
+          <label class="field-label">Since</label>
+          <input type="date" x-model="summarize.form.since" :disabled="summarize.loading">
+        </div>
+        <div style="flex:1;">
+          <label class="field-label">Until</label>
+          <input type="date" x-model="summarize.form.until" :disabled="summarize.loading">
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label class="field-label">Prompt (must contain <code>{history}</code>)</label>
+        <textarea x-model="summarize.form.prompt" rows="8" :disabled="summarize.loading"
+                  style="font-family:monospace; font-size:0.82rem;"></textarea>
+      </div>
+
+      <div x-show="summarize.error" class="fire-warning" style="margin-bottom:12px;" x-text="summarize.error"></div>
+
+      <div class="modal-footer">
+        <button @click="closeSummarize()" :disabled="summarize.loading">Close</button>
+        <button class="fire-btn" @click="runSummarize()" :disabled="summarize.loading">
+          <span x-show="summarize.loading" class="spinner"></span>
+          <span x-text="summarize.loading ? 'Running…' : 'Run'"></span>
+        </button>
+      </div>
+
+      <!-- Result area -->
+      <div x-show="summarize.result" style="margin-top:14px; border-top:1px solid var(--border); padding-top:12px;">
+        <div class="muted" style="font-size:0.78rem; margin-bottom:8px;">
+          <span x-text="summarize.result.rows_used"></span> / <span x-text="summarize.result.rows_total"></span> rows used
+          <span x-show="summarize.result.rows_dropped > 0">
+            · <span x-text="summarize.result.rows_dropped"></span> dropped
+          </span>
+        </div>
+
+        <div x-show="summarize.result.summary" style="max-height:400px; overflow-y:auto; background:var(--bg-secondary);
+                    border:1px solid var(--border); border-radius:4px; padding:14px; font-size:0.85rem;
+                    line-height:1.6;"
+             x-html="(() => { const md = summarize.result?.summary; if (!md) return ''; const html = marked.parse(md); return DOMPurify.sanitize(html); })()">
+        </div>
+        <div x-show="!summarize.result.summary" class="muted" style="padding:16px;">
+          No history rows in this date range.
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:12px;" x-show="summarize.result.summary">
+          <button @click="copySummary()" :disabled="!summarize.result?.summary">Copy</button>
+          <button @click="downloadSummary()" :disabled="!summarize.result?.summary">Download .md</button>
+          <button class="fire-btn" @click="sendSummarize()" :disabled="summarize.sendLoading || !summarize.cachedSinceUntil">
+            <span x-show="summarize.sendLoading" class="spinner"></span>
+            <span x-text="summarize.sendLoading ? 'Sending…' : 'Send'"></span>
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Export modal ── -->
+  <div class="modal-overlay" x-show="export_.open" x-cloak @click.self="closeExport()">
+    <div class="modal-panel" style="max-width:480px;">
+      <div class="modal-header">
+        <span class="modal-title">Export History · <span x-text="export_.intent?.name || ''"></span></span>
+        <button class="modal-close" @click="closeExport()">✕</button>
+      </div>
+
+      <div class="muted" style="font-size:0.8rem; margin-bottom:10px;">
+        Download summary history rows as a JSON file. Range capped at 365 days.
+      </div>
+
+      <div class="form-field" style="display:flex; gap:12px;">
+        <div style="flex:1;">
+          <label class="field-label">Since</label>
+          <input type="date" x-model="export_.form.since" :disabled="export_.loading">
+        </div>
+        <div style="flex:1;">
+          <label class="field-label">Until</label>
+          <input type="date" x-model="export_.form.until" :disabled="export_.loading">
+        </div>
+      </div>
+
+      <div x-show="export_.error" class="fire-warning" style="margin-bottom:12px;" x-text="export_.error"></div>
+
+      <div class="modal-footer">
+        <button @click="closeExport()" :disabled="export_.loading">Cancel</button>
+        <button class="fire-btn" @click="runExport()" :disabled="export_.loading">
+          <span x-show="export_.loading" class="spinner"></span>
+          <span x-text="export_.loading ? 'Exporting…' : 'Export'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Delete history row confirm ── -->
+  <div class="modal-overlay" x-show="delHistory.open" x-cloak @click.self="closeDeleteHistory()">
+    <div class="modal-panel" style="max-width:420px;">
+      <div class="modal-header">
+        <span class="modal-title">Delete history row?</span>
+        <button class="modal-close" @click="closeDeleteHistory()">✕</button>
+      </div>
+      <div class="muted" style="font-size:0.85rem; margin:12px 0;">
+        Permanently delete the summary from
+        <span class="mono" x-text="fmtHistoryRunAt(delHistory.row?.run_at, delHistory.timezone)"></span>?
+        This cannot be undone.
+      </div>
+      <div class="modal-footer">
+        <button @click="closeDeleteHistory()">Cancel</button>
+        <button class="danger" @click="deleteHistoryRow()">Delete</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Toast container ── -->
   <div class="toast-container">
@@ -2438,7 +2750,7 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=3"></script>
+<script src="/dashboard/intents.js?v=15"></script>
 <script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=12"></script>

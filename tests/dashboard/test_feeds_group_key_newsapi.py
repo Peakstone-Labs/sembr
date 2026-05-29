@@ -12,9 +12,9 @@ from __future__ import annotations
 import aiosqlite
 import pytest
 
+from sembr.dashboard.events import init_event_log_tables
 from sembr.dashboard.read_model import list_feeds_with_meta
 from sembr.db.feeds import init_feed_tables
-from sembr.dashboard.events import init_event_log_tables
 
 
 @pytest.mark.asyncio

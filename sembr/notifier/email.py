@@ -4,11 +4,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 import smtplib
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.mime.text import MIMEText
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -109,7 +110,7 @@ def _render_published_at(raw: str | None, tz: ZoneInfo) -> str:
         return raw[:10] if len(raw) >= 10 else raw
     if dt.tzinfo is None:
         # Naive timestamps from feeds are conventionally UTC.
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     local = dt.astimezone(tz)
     return local.strftime("%Y-%m-%d %H:%M")
 
@@ -158,6 +159,7 @@ class EmailChannel(BaseChannel):
         config: EmailChannelConfig,
         intent_name: str,
         intent_timezone: str,
+        subject: str | None = None,
     ) -> None:
         try:
             await self._send(
@@ -165,6 +167,7 @@ class EmailChannel(BaseChannel):
                 config=config,
                 intent_name=intent_name,
                 intent_timezone=intent_timezone,
+                subject=subject,
             )
         except Exception:
             logger.error(
@@ -174,6 +177,28 @@ class EmailChannel(BaseChannel):
                 exc_info=True,
             )
 
+    async def send_strict(
+        self,
+        result: SummaryResult,
+        *,
+        config: EmailChannelConfig,
+        intent_name: str,
+        intent_timezone: str,
+        subject: str | None = None,
+    ) -> None:
+        """Like :meth:`send` but raises on failure instead of silently logging.
+
+        Raises :class:`smtplib.SMTPException`, :class:`jinja2.TemplateError`, or
+        other exceptions from the underlying ``_send`` implementation.
+        """
+        await self._send(
+            result,
+            config=config,
+            intent_name=intent_name,
+            intent_timezone=intent_timezone,
+            subject=subject,
+        )
+
     async def _send(
         self,
         result: SummaryResult,
@@ -181,6 +206,7 @@ class EmailChannel(BaseChannel):
         config: EmailChannelConfig,
         intent_name: str,
         intent_timezone: str,
+        subject: str | None = None,
     ) -> None:
         s = self._settings
         if not s.smtp_host:
@@ -199,14 +225,14 @@ class EmailChannel(BaseChannel):
         tz = _resolve_zoneinfo(intent_timezone)
         rendered = _build_rendered_citations(citations, tz)
         summary_html = _summary_to_html(result.summary, len(rendered))
-        digest_date = datetime.now(tz).strftime("%Y%m%d")
+        digest_date = subject if subject else datetime.now(tz).strftime("%Y%m%d")
         html_body = self._render_html(intent_name, summary_html, rendered, digest_date)
 
-        subject = f"[Sembr] {intent_name} - {digest_date}"
+        email_subject = subject if subject else f"[Sembr] {intent_name} - {digest_date}"
 
         msg = MIMEText(html_body, "html", "utf-8")
 
-        msg["Subject"] = subject
+        msg["Subject"] = email_subject
         msg["From"] = s.smtp_from or s.smtp_username
         # EmailStr is a subclass of str; explicit cast keeps the smtplib API contract clean.
         to_addrs = [str(a) for a in config.to]
@@ -324,7 +350,5 @@ class EmailChannel(BaseChannel):
             server.send_message(msg, to_addrs=rcpts)
         finally:
             # Suppress quit() errors so they don't shadow the original send/login exception.
-            try:
+            with contextlib.suppress(smtplib.SMTPException):
                 server.quit()
-            except smtplib.SMTPException:
-                pass

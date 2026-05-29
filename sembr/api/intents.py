@@ -18,8 +18,6 @@ from sembr.db.intents import (
     delete_intent,
     get_intent,
     list_intents,
-    update_intent,
-    update_intent_raw,
 )
 from sembr.db.match_seen import clear_intent
 from sembr.db.sqlite import get_conn, transaction
@@ -208,11 +206,9 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
     )
 
     if body.sub_texts is not None:
-        sub_texts_added, sub_texts_edited, sub_texts_deleted = _diff_sub_texts(
-            current.sub_texts, body.sub_texts
-        )
+        sub_texts_added, sub_texts_edited, _ = _diff_sub_texts(current.sub_texts, body.sub_texts)
     else:
-        sub_texts_added = sub_texts_edited = sub_texts_deleted = False
+        sub_texts_added = sub_texts_edited = False
 
     needs_reembed = text_changed or sub_texts_added or sub_texts_edited
 
@@ -420,9 +416,8 @@ async def put_intent(intent_id: int, body: IntentUpdate, request: Request) -> In
                 register_intent_job(scheduler, updated, request.app, fire_immediately=True)
             else:
                 unregister_intent_job(scheduler, intent_id)
-        elif updated.enabled:
-            if text_changed or schedule_changed:
-                reregister_intent_job(scheduler, updated, request.app)
+        elif updated.enabled and (text_changed or schedule_changed):
+            reregister_intent_job(scheduler, updated, request.app)
     except Exception as exc:
         logger.warning(
             "matcher job sync failed for intent_id=%d: %s (recovers on restart)", intent_id, exc
@@ -468,5 +463,12 @@ async def delete_intent_handler(intent_id: int, request: Request) -> Response:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="intent vector deleted but database record removal failed",
         ) from exc
+
+    # Drop the backfill-lock entry for this intent so the module dict doesn't
+    # accumulate zombie locks across create/delete churn. Lazy import keeps
+    # the api/intents module independent of matcher internals.
+    from sembr.matcher.backfill_tasks import forget_intent_lock  # noqa: PLC0415
+
+    forget_intent_lock(intent_id)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

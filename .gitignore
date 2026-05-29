@@ -60,6 +60,9 @@ logs/
 secrets/
 sembr.yaml
 
+# Claude Code
+CLAUDE.md
+
 # Docker
 .docker/
 

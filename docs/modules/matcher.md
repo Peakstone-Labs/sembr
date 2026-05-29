@@ -127,6 +127,47 @@ In-memory state, single-process. `throttle_check` consults `_last_fire_at[intent
 
 The fire path runs `scan_once` with `write_match_seen=False`, so manually firing an intent never updates `match_seen` — it shows the operator what would match right now without affecting the next scheduled tick.
 
+### Cron recall (`cron_recall.py`)
+
+```python
+def past_n_fire_times(
+    schedule: CronSchedule,
+    timezone: str,
+    n: int,
+    *,
+    now: datetime | None = None,
+) -> list[datetime]
+```
+
+Computes the `n` most recent past fire-times for a cron schedule in a given timezone, returning them newest-first as UTC-aware datetimes. The current interval is always excluded (a daily 09:00 schedule queried at 14:00 still skips today's 09:00). Used by the backfill orchestrator and the history-list date-bounding logic.
+
+The `now` parameter allows pinning wall-clock for deterministic tests. DST transitions are handled on a best-effort basis — the function documents this limitation explicitly in its docstring.
+
+### Backfill (`backfill.py`, `backfill_tasks.py`)
+
+```python
+async def probe_oldest_news_ts(qdrant_client) -> int | None
+async def run_backfill(
+    scheduler: AsyncIOScheduler,
+    intent: Intent,
+    app,
+    *,
+    task_id: str,
+    since_utc: str | None = None,
+    until_utc: str | None = None,
+) -> None
+```
+
+Replays past cron fire-times through the standard scan+summarize pipeline. The orchestrator:
+
+1. Takes a schedule snapshot from the intent row before any concurrent PUT can mutate it
+2. Computes past fire-times via `past_n_fire_times`
+3. If `since_utc` is not specified, bounds the lower end by Qdrant's oldest `ingested_at_ts` so fire-times before any article existed are skipped
+4. For each past fire-time, runs `scan_once` with `now` pinned so the lookback window is anchored to the replayed tick, not to wall-clock
+5. Writes a `summary_history` row per tick
+
+In-memory task tracking mirrors the fire-task registry. A running backfill can be observed via `GET /intents/{intent_id}/backfill/{task_id}`.
+
 ## Configuration
 
 | Field | Default | Notes |

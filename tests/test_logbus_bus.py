@@ -91,7 +91,7 @@ def test_snapshot_register_atomic(fresh_bus) -> None:
     loop = asyncio.new_event_loop()
     bus.set_loop(loop)
 
-    received: list[int] = []
+    _received: list[int] = []
     stop = threading.Event()
 
     def _emitter():
@@ -124,7 +124,7 @@ def test_snapshot_register_atomic(fresh_bus) -> None:
 
     # Every ts that arrived after subscribe must be in live_ts OR snapshot_ts
     all_ts = set(range(100))
-    missing = all_ts - snapshot_ts - live_ts
+    _missing = all_ts - snapshot_ts - live_ts
     # Due to ring buffer maxlen=5, some early entries will be evicted — that's expected.
     # But any entry emitted AFTER the snapshot must appear in live_ts.
     bus.unsubscribe(q)

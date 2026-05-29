@@ -10,7 +10,6 @@ import pytest
 
 from sembr.summarizer.pipeline import SummaryPipeline
 
-
 # ---------------------------------------------------------------------------
 # Verify the on-disk default system template carries the language contract.
 # ---------------------------------------------------------------------------
@@ -67,7 +66,7 @@ async def test_pipeline_injects_language_en_into_system_prompt(prompts_dir: Path
     llm.max_prompt_chars = 2_000_000
 
     async def ctx_fetcher(intent_id: int):
-        return "default", "default", "Bitcoin price movements", "en"
+        return "default", "default", "Bitcoin price movements", "en", None
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -91,7 +90,7 @@ async def test_pipeline_injects_language_zh_into_system_prompt(prompts_dir: Path
     llm.max_prompt_chars = 2_000_000
 
     async def ctx_fetcher(intent_id: int):
-        return "default", "default", "比特币价格动向", "zh"
+        return "default", "default", "比特币价格动向", "zh", None
 
     pipeline = SummaryPipeline(
         llm=llm,
@@ -134,7 +133,7 @@ async def test_pipeline_named_system_template_uses_language(prompts_dir: Path) -
     llm.max_prompt_chars = 2_000_000
 
     async def ctx_fetcher(intent_id: int):
-        return "brief", "default", "topic", "ja"
+        return "brief", "default", "topic", "ja", None
 
     pipeline = SummaryPipeline(
         llm=llm,

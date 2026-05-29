@@ -14,7 +14,6 @@ import pytest
 
 from sembr.api import settings_restart
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -63,7 +62,7 @@ async def _run_conditional_exit(force_exit_mock, timeout: float = 8.0) -> None:
 
     try:
         await asyncio.wait_for(_shutdown(), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
     finally:
         if settings_restart.is_restart_requested():
@@ -111,7 +110,7 @@ async def test_lifespan_timeout_triggers_log_no_exit(
     with caplog.at_level(logging.ERROR, logger="sembr.main"):
         try:
             await asyncio.wait_for(_shutdown_that_hangs(), timeout=0.05)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         finally:
             if settings_restart.is_restart_requested():
@@ -135,7 +134,7 @@ async def test_lifespan_self_restart_calls_force_exit_after_timeout(
 
     try:
         await asyncio.wait_for(_shutdown_that_hangs(), timeout=0.05)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
     finally:
         if settings_restart.is_restart_requested():

@@ -16,7 +16,7 @@ def test_phase_is_deterministic_across_calls() -> None:
 
 def test_phase_within_bounds() -> None:
     period = 1800
-    for fid in range(0, 100):
+    for fid in range(100):
         phase = derive_phase_seconds(fid, period)
         assert 0 <= phase < period
 

@@ -14,7 +14,6 @@ cohort. Tested in two regimes:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 
 import aiosqlite
 import pytest

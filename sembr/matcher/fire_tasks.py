@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class FireTask:
     matches: list[dict] = field(default_factory=list)
     pushed: bool = False
     push_error: str | None = None  # always None — pipeline.handle never-raise; reserved for future
-    _created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    _created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # Module-level dict; reset between tests via _reset_for_testing()
@@ -45,10 +45,10 @@ def create_task(intent_id: int) -> FireTask:
         task_id=str(uuid4()),
         intent_id=intent_id,
         status="running",
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
     )
     _fire_tasks[task.task_id] = task
-    _last_fire_at[intent_id] = datetime.now(timezone.utc)
+    _last_fire_at[intent_id] = datetime.now(UTC)
     return task
 
 
@@ -65,7 +65,7 @@ def throttle_check(intent_id: int, rate_seconds: int = _FIRE_RATE_LIMIT_SECONDS)
     last = _last_fire_at.get(intent_id)
     if last is None:
         return True
-    return (datetime.now(timezone.utc) - last).total_seconds() >= rate_seconds
+    return (datetime.now(UTC) - last).total_seconds() >= rate_seconds
 
 
 def check_and_record_fire(intent_id: int, rate_seconds: int = _FIRE_RATE_LIMIT_SECONDS) -> bool:
@@ -83,7 +83,7 @@ def check_and_record_fire(intent_id: int, rate_seconds: int = _FIRE_RATE_LIMIT_S
     bucket — see external-fire-api design D-A5.
     """
     last = _last_fire_at.get(intent_id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if last is not None and (now - last).total_seconds() < rate_seconds:
         return False
     _last_fire_at[intent_id] = now
@@ -92,7 +92,7 @@ def check_and_record_fire(intent_id: int, rate_seconds: int = _FIRE_RATE_LIMIT_S
 
 def sweep_expired(ttl_seconds: int = _TASK_TTL_SECONDS) -> int:
     """Remove tasks older than ttl_seconds. APScheduler calls this every 5 minutes."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     to_remove = [
         k for k, v in _fire_tasks.items() if (now - v._created_at).total_seconds() > ttl_seconds
     ]

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class FeedFireTask:
     articles_new: int = 0
     articles: list[dict] = field(default_factory=list)
     error: str | None = None
-    _created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    _created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 _feed_fire_tasks: dict[str, FeedFireTask] = {}
@@ -46,12 +46,12 @@ def create_task(feed_id: int, dry_run: bool) -> FeedFireTask:
         feed_id=feed_id,
         dry_run=dry_run,
         status="running",
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
     )
     _feed_fire_tasks[task.task_id] = task
     if not dry_run:
         # Only real runs consume the rate-limit bucket
-        _last_fire_at[feed_id] = datetime.now(timezone.utc)
+        _last_fire_at[feed_id] = datetime.now(UTC)
     return task
 
 
@@ -64,12 +64,12 @@ def throttle_check(feed_id: int, rate_seconds: int = _FIRE_RATE_LIMIT_SECONDS) -
     last = _last_fire_at.get(feed_id)
     if last is None:
         return True
-    return (datetime.now(timezone.utc) - last).total_seconds() >= rate_seconds
+    return (datetime.now(UTC) - last).total_seconds() >= rate_seconds
 
 
 def sweep_expired(ttl_seconds: int = _TASK_TTL_SECONDS) -> int:
     """Remove tasks older than ttl_seconds. APScheduler calls this every 5 minutes."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     to_remove = [
         k
         for k, v in _feed_fire_tasks.items()

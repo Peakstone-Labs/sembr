@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import nullcontext
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -48,7 +48,7 @@ async def _feed_dry_run(
     if source_cls is None:
         task.status = "error"
         task.error = f"unknown source_type: {source_type!r}"
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
         return
 
     timeout = float(config.get("timeout", 30.0))
@@ -65,13 +65,13 @@ async def _feed_dry_run(
     except FetchError as exc:
         task.status = "error"
         task.error = str(exc)
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
         return
     except Exception as exc:
         logger.exception("dry_run fetch failed for feed_url=%r: %s", feed_url, exc)
         task.status = "error"
         task.error = str(exc)
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
         return
 
     result_articles = []
@@ -94,7 +94,7 @@ async def _feed_dry_run(
     task.articles_new = new_count
     task.articles = result_articles
     task.status = "done"
-    task.finished_at = datetime.now(timezone.utc)
+    task.finished_at = datetime.now(UTC)
 
 
 async def _feed_real_run(
@@ -114,7 +114,7 @@ async def _feed_real_run(
         task.status = "error"
         task.error = str(exc)
     finally:
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
 
 
 @router.post("/{feed_id}/fire", status_code=status.HTTP_202_ACCEPTED)

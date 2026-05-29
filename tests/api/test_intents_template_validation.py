@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import tempfile
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch

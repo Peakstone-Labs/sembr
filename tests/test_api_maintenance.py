@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import tempfile
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -99,10 +101,8 @@ def app_factory():
 
     for path in paths:
         for suffix in ("", "-wal", "-shm"):
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(path + suffix)
-            except FileNotFoundError:
-                pass
 
 
 @pytest.fixture
@@ -129,10 +129,8 @@ def app_with_auth_factory(monkeypatch):
     get_settings.cache_clear()
     for path in paths:
         for suffix in ("", "-wal", "-shm"):
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(path + suffix)
-            except FileNotFoundError:
-                pass
 
 
 def _wait_for_status(client: TestClient, task_id: str, target: str, timeout: float = 5.0) -> dict:
@@ -166,7 +164,6 @@ def test_feed_universe_alive_and_deleted(app_factory):
     app = app_factory(qdrant)
     with TestClient(app) as c:
         # Seed feed 6, 12 in SQLite; 99 only in Qdrant → "deleted"
-        from sembr.db.feeds import init_feed_tables  # already inited in lifespan
 
         # Insert via raw conn since there's no public seed helper here
         async def _seed():
@@ -330,7 +327,8 @@ def test_manual_prune_dead_path_does_not_call_qdrant(app_factory):
     with TestClient(app) as c:
 
         async def _seed():
-            from datetime import datetime, timedelta, timezone
+            from datetime import datetime, timedelta
+
             from sembr.db.sqlite import get_conn
 
             conn = get_conn()
@@ -338,7 +336,7 @@ def test_manual_prune_dead_path_does_not_call_qdrant(app_factory):
                 "INSERT INTO feeds (id, name, url, poll_interval_minutes) "
                 "VALUES (7, 'X', 'http://x', 30)"
             )
-            old = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
+            old = (datetime.now(UTC) - timedelta(days=20)).isoformat()
             for i in range(3):
                 await conn.execute(
                     "INSERT INTO dead_articles "

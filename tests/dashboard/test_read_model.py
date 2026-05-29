@@ -12,10 +12,8 @@ Cover (per test plan):
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from sembr.dashboard.events import init_event_log_tables
 from sembr.dashboard.read_model import build_snapshot
@@ -69,7 +67,7 @@ def test_build_snapshot_feed_sparkline_has_24_buckets(tmp_path):
         conn = await _setup(tmp_path)
         await conn.execute("INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')")
         # one ok event 1h ago
-        ts = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        ts = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
         await conn.execute(
             "INSERT INTO feed_fetch_log "
             "(feed_id, started_at, elapsed_ms, ok, items_seen, items_new, "
@@ -95,7 +93,7 @@ def test_build_snapshot_consecutive_failures_three_fail_then_ok_resets(tmp_path)
         await conn.execute("INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')")
         # Insert oldest first; row id is monotonic so DESC(id) == newest-first.
         # Order from oldest → newest: fail, fail, fail, ok. Latest is ok ⇒ streak=0.
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i, ok in enumerate([0, 0, 0, 1]):
             ts = (now - timedelta(minutes=10 * (4 - i))).isoformat()
             err = ("FetchError", "boom") if ok == 0 else (None, None)
@@ -125,7 +123,7 @@ def test_build_snapshot_consecutive_failures_four_fail(tmp_path):
     async def run():
         conn = await _setup(tmp_path)
         await conn.execute("INSERT INTO feeds (id, name, url) VALUES (1, 'f', 'http://x')")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(4):
             ts = (now - timedelta(minutes=10 * (4 - i))).isoformat()
             await conn.execute(
@@ -198,7 +196,7 @@ def test_fetch_24h_all_feeds_uses_two_queries_regardless_of_feed_count(tmp_path)
     aiosqlite.Connection.execute() is called exactly twice (one for the
     per-(feed, hour) aggregate, one for the recent-rows window function).
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from sembr.dashboard.read_model import _fetch_24h_all_feeds
 
@@ -210,7 +208,7 @@ def test_fetch_24h_all_feeds_uses_two_queries_regardless_of_feed_count(tmp_path)
                 (fid, f"f{fid}", f"http://example.com/{fid}"),
             )
             for j in range(3):
-                ts = (datetime.now(timezone.utc) - timedelta(minutes=10 * (3 - j))).isoformat()
+                ts = (datetime.now(UTC) - timedelta(minutes=10 * (3 - j))).isoformat()
                 await conn.execute(
                     "INSERT INTO feed_fetch_log "
                     "(feed_id, started_at, elapsed_ms, ok, items_seen, items_new, "
@@ -231,7 +229,7 @@ def test_fetch_24h_all_feeds_uses_two_queries_regardless_of_feed_count(tmp_path)
 
         conn.execute = counting_execute  # type: ignore[assignment]
         try:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             result = await _fetch_24h_all_feeds(conn, [1, 2, 3, 4, 5], now)
         finally:
             conn.execute = original_execute  # type: ignore[assignment]

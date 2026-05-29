@@ -23,7 +23,8 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from sembr.db.sqlite import get_conn
-from sembr.maintenance import manual_prune, tasks as mp_tasks
+from sembr.maintenance import manual_prune
+from sembr.maintenance import tasks as mp_tasks
 from sembr.vector_store.news import ALIAS_NAME
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,7 @@ async def get_feed_universe(request: Request) -> dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Qdrant facet failed: {exc}",
-        )
+        ) from exc
     qdrant_feed_ids = {int(h.value) for h in res.hits}
 
     conn = get_conn()

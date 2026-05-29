@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from contextlib import asynccontextmanager
@@ -13,8 +14,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sembr.api.feeds import router as feeds_router
-from sembr.dashboard.routes import router as dashboard_router
 from sembr.dashboard.events import init_event_log_tables
+from sembr.dashboard.routes import router as dashboard_router
 from sembr.db.feeds import init_feed_tables
 from sembr.db.sqlite import close_sqlite, init_sqlite
 
@@ -48,10 +49,8 @@ def client():
             yield c
 
     for suffix in ("", "-wal", "-shm"):
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(path + suffix)
-        except FileNotFoundError:
-            pass
 
 
 def _seed_feeds(client: TestClient, n: int) -> None:

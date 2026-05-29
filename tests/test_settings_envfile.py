@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 from sembr.api.settings_envfile import (
+    KEY_PATTERN,
     USER_ADDITIONS_HEADER,
     EnvFile,
-    KEY_PATTERN,
     _quote_for_write,
     _strip_inline_comment_and_quotes,
 )

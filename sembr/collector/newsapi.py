@@ -31,7 +31,7 @@ import hashlib
 import logging
 from contextlib import nullcontext
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import httpx
@@ -155,8 +155,8 @@ def _parse_date_time(raw: str) -> datetime:
     s = raw.strip().replace("Z", "+00:00")
     dt = datetime.fromisoformat(s)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 @dataclass
@@ -255,7 +255,7 @@ class NewsApiSource(BaseSource):
             raise FetchError("NEWSAPI_API_KEY is empty; cannot fetch newsapi feed")
 
         if since is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             date_start = (now - timedelta(days=_FIRE_LOOKBACK_DAYS)).date().isoformat()
             date_end = now.date().isoformat()
         else:
@@ -380,7 +380,7 @@ class NewsApiMaster:
             if self._host_limiter is not None
             else nullcontext()
         )
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
 
         # Per-feed feed_fetch_log row on EVERY failure path (cap, HTTP, JSON,
         # malformed body) so the dashboard sparkline can tell "feed stuck on
@@ -388,7 +388,7 @@ class NewsApiMaster:
         # atomicity unchanged; this only marks the failed *attempt* in the log
         # table. Mirrors collect_feed's RSS failure-row pattern.
         async def _emit_failure_logs(error_class: str, error_message: str) -> None:
-            elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+            elapsed_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
             for slot in per_feed.values():
                 try:
                     await log_fetch_event(
@@ -566,7 +566,7 @@ class NewsApiMaster:
         # fetch_event so the dashboard sparkline and last_collected_at progress
         # together. items_seen / items_new reflect totals across all fetched
         # pages (accumulated in slot during the dispatch loop above).
-        elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+        elapsed_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
         for slot in per_feed.values():
             await update_last_collected(conn, slot.feed_id)
             try:
@@ -597,10 +597,10 @@ def _date_window(sinces: list[datetime | None]) -> tuple[str, str]:
     """dateStart = min(non-null since).date() OR (now-1d).date() on first pull.
     dateEnd = now.date(). Both ISO 'YYYY-MM-DD' (newsapi only accepts day
     granularity)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     non_null = [s for s in sinces if s is not None]
     if non_null and len(non_null) == len(sinces):
-        start = min(non_null).astimezone(timezone.utc).date()
+        start = min(non_null).astimezone(UTC).date()
     else:
         start = (now - timedelta(days=1)).date()
     return start.isoformat(), now.date().isoformat()

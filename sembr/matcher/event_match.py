@@ -31,7 +31,7 @@ def _dot(a: list[float], b: list[float]) -> float:
     """
     if len(a) != len(b):
         raise ValueError(f"vector length mismatch: {len(a)} vs {len(b)}")
-    return sum(x * y for x, y in zip(a, b))
+    return sum(x * y for x, y in zip(a, b, strict=True))
 
 
 async def event_match_batch(
@@ -57,7 +57,7 @@ async def _event_match_batch_inner(
 ) -> None:
     from sembr.matcher.event_buffer import absorb, flush  # noqa: PLC0415
 
-    cache: "EventIntentCache" = app.state.event_intent_cache
+    cache: EventIntentCache = app.state.event_intent_cache
     if len(cache) == 0:
         return
 

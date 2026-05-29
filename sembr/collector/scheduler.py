@@ -7,9 +7,10 @@ Each feed gets its own IntervalTrigger job so poll_interval_minutes is exact.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -23,7 +24,7 @@ from sembr.collector.rss import FetchError, RSSSource
 from sembr.config import Settings, get_settings
 from sembr.dashboard.events import log_fetch_event
 from sembr.db.articles import insert_article_pending
-from sembr.db.feeds import fingerprint_exists, insert_fingerprint, update_last_collected
+from sembr.db.feeds import update_last_collected
 from sembr.db.sqlite import get_conn
 from sembr.models import Feed
 
@@ -75,7 +76,7 @@ async def _emit_fetch_event(
 ) -> None:
     """Best-effort wrapper: observability faults must never poison collect_feed."""
     try:
-        elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+        elapsed_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
         await log_fetch_event(
             feed_id=feed_id,
             started_at=started_at,
@@ -119,10 +120,8 @@ async def collect_feed(
         ) as cur:
             row = await cur.fetchone()
         if row and row[0]:
-            try:
+            with contextlib.suppress(ValueError):
                 since = datetime.fromisoformat(row[0].replace("Z", "+00:00"))
-            except ValueError:
-                pass
 
     timeout = float(config.get("timeout", 30.0))
     source = source_cls(feed_url, timeout=timeout)
@@ -140,11 +139,11 @@ async def collect_feed(
     # started_at: limiter acquired → we are about to call source.fetch
     # On exception inside acquire (rare), started_at falls back to queued_at.
     # (Loop 2 review #🟡-2)
-    queued_at = datetime.now(timezone.utc)
+    queued_at = datetime.now(UTC)
     started_at = queued_at
     try:
         async with fetch_ctx:
-            started_at = datetime.now(timezone.utc)
+            started_at = datetime.now(UTC)
             articles = await source.fetch(since=since)
     except FetchError as exc:
         # Don't advance last_collected_at on failure — next run will retry the
@@ -249,7 +248,7 @@ async def add_feed_job(scheduler: AsyncIOScheduler, feed: Feed) -> None:
         args=[feed.id, feed.name, str(feed.url), feed.source_type, feed.config],
         coalesce=True,
         max_instances=1,
-        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=phase_s),
+        next_run_time=datetime.now(UTC) + timedelta(seconds=phase_s),
         replace_existing=True,
     )
 

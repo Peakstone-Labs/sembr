@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from sembr.embedder.base import BaseEmbedder
 
 
-def build_embedder(settings: "Settings") -> "BaseEmbedder":
+def build_embedder(settings: Settings) -> BaseEmbedder:
     if settings.embedder_backend == "siliconflow":
         from sembr.embedder.openai_compat import SiliconFlowEmbedder
 

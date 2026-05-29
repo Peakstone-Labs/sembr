@@ -3,12 +3,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from sembr.collector.fire_tasks import (
-    FeedFireTask,
     _reset_for_testing,
     create_task,
     get_task,
@@ -70,9 +69,7 @@ def test_sweep_expired_removes_old_tasks() -> None:
     # Backdate _created_at to simulate expiry
     from sembr.collector import fire_tasks as _ft
 
-    _ft._feed_fire_tasks[task.task_id]._created_at = datetime.now(timezone.utc) - timedelta(
-        seconds=7200
-    )
+    _ft._feed_fire_tasks[task.task_id]._created_at = datetime.now(UTC) - timedelta(seconds=7200)
 
     removed = sweep_expired(ttl_seconds=3600)
     assert removed == 1

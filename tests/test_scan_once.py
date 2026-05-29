@@ -82,11 +82,13 @@ def _install_qdrant_stub() -> None:
 _install_qdrant_stub()
 
 # Import after stub is in place
+from datetime import UTC
+
 from sembr.db.intents import create_intent, init_intent_tables  # noqa: E402
 from sembr.db.match_seen import init_match_seen_tables  # noqa: E402
 from sembr.db.sqlite import install_for_test  # noqa: E402
 from sembr.matcher.scan import ScanOptions, scan_once  # noqa: E402
-from sembr.models import FeedFilter, IntentCreate  # noqa: E402
+from sembr.models import IntentCreate  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -305,3 +307,88 @@ async def test_scan_once_skip_seen_false_returns_all_writes_match_seen(db) -> No
     matches = await scan_once(intent, options, db, qdrant)
     assert len(matches) == 2
     assert {m.article_id for m in matches} == {"c1", "c2"}
+
+
+# ---------------------------------------------------------------------------
+# ScanOptions.now injection (history-display backfill)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_scan_once_now_injection_anchors_lookback(db) -> None:
+    """options.now pins lookback_cutoff_ts to (now - lookback_seconds)."""
+    from datetime import datetime  # noqa: PLC0415
+
+    intent = await create_intent(db, _INTENT_BODY)
+    qdrant = _make_qdrant(hits=[])
+    past_now = datetime(2026, 5, 20, 9, 0, tzinfo=UTC)
+    options = ScanOptions(
+        lookback_seconds=86400,
+        threshold=0.75,
+        skip_seen=False,
+        feed_ids=None,
+        write_match_seen=False,
+        now=past_now,
+    )
+    await scan_once(intent, options, db, qdrant)
+
+    call_kwargs = qdrant.query_points.call_args.kwargs
+    q_filter = call_kwargs["query_filter"]
+    ingested_cond = next(c for c in q_filter.must if c.key == "ingested_at_ts")
+    expected_gte = int(past_now.timestamp()) - 86400
+    assert ingested_cond.range.gte == expected_gte
+
+
+@pytest.mark.asyncio
+async def test_scan_once_now_injection_clamps_upper_bound(db) -> None:
+    """Backfill regression: ingested_at_ts must be clamped to (now - lookback, now].
+
+    Without the upper bound, a backfill replay at past_fire_time would also
+    match articles ingested between past_fire_time and real-now — the oldest
+    iteration would scoop up everything in Qdrant and starve subsequent runs
+    via match_seen.
+    """
+    from datetime import datetime  # noqa: PLC0415
+
+    intent = await create_intent(db, _INTENT_BODY)
+    qdrant = _make_qdrant(hits=[])
+    past_now = datetime(2026, 5, 20, 9, 0, tzinfo=UTC)
+    options = ScanOptions(
+        lookback_seconds=86400,
+        threshold=0.75,
+        skip_seen=False,
+        feed_ids=None,
+        write_match_seen=False,
+        now=past_now,
+    )
+    await scan_once(intent, options, db, qdrant)
+
+    call_kwargs = qdrant.query_points.call_args.kwargs
+    q_filter = call_kwargs["query_filter"]
+    ingested_cond = next(c for c in q_filter.must if c.key == "ingested_at_ts")
+    assert ingested_cond.range.gte == int(past_now.timestamp()) - 86400
+    assert ingested_cond.range.lte == int(past_now.timestamp())
+
+
+@pytest.mark.asyncio
+async def test_scan_once_now_default_is_wall_clock(db) -> None:
+    """options.now=None (default) reads datetime.now(timezone.utc) — within 5s of test time."""
+    from datetime import datetime  # noqa: PLC0415
+
+    intent = await create_intent(db, _INTENT_BODY)
+    qdrant = _make_qdrant(hits=[])
+    options = ScanOptions(
+        lookback_seconds=3600,
+        threshold=0.75,
+        skip_seen=False,
+        feed_ids=None,
+        write_match_seen=False,
+    )
+    before = int(datetime.now(UTC).timestamp())
+    await scan_once(intent, options, db, qdrant)
+    after = int(datetime.now(UTC).timestamp())
+
+    call_kwargs = qdrant.query_points.call_args.kwargs
+    q_filter = call_kwargs["query_filter"]
+    ingested_cond = next(c for c in q_filter.must if c.key == "ingested_at_ts")
+    assert before - 3600 <= ingested_cond.range.gte <= after - 3600 + 1

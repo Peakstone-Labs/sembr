@@ -4,13 +4,11 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from sembr.matcher.fire_tasks import (
-    FireTask,
     _fire_tasks,
     _last_fire_at,
     _reset_for_testing,
@@ -77,7 +75,7 @@ def test_task_status_updated_after_completion() -> None:
     task.status = "done"
     task.match_count = 7
     task.pushed = True
-    task.finished_at = datetime.now(timezone.utc)
+    task.finished_at = datetime.now(UTC)
 
     fetched = get_task(task.task_id)
     assert fetched is not None
@@ -95,7 +93,7 @@ def test_task_status_updated_after_completion() -> None:
 def test_sweep_expired_removes_old_tasks() -> None:
     task = create_task(1)
     # Backdate the task's _created_at to beyond TTL
-    task._created_at = datetime.now(timezone.utc) - timedelta(seconds=3700)
+    task._created_at = datetime.now(UTC) - timedelta(seconds=3700)
 
     removed = sweep_expired(ttl_seconds=3600)
     assert removed == 1
@@ -111,7 +109,7 @@ def test_sweep_expired_keeps_fresh_tasks() -> None:
 
 def test_sweep_expired_mixed() -> None:
     old = create_task(1)
-    old._created_at = datetime.now(timezone.utc) - timedelta(seconds=3700)
+    old._created_at = datetime.now(UTC) - timedelta(seconds=3700)
     fresh = create_task(2)
 
     removed = sweep_expired(ttl_seconds=3600)
@@ -149,7 +147,7 @@ def test_check_and_record_fire_after_window_returns_true() -> None:
     """Window expired: True; timestamp advances."""
     assert check_and_record_fire(8) is True
     # Backdate to outside the rate window
-    _last_fire_at[8] = datetime.now(timezone.utc) - timedelta(seconds=120)
+    _last_fire_at[8] = datetime.now(UTC) - timedelta(seconds=120)
     old = _last_fire_at[8]
     assert check_and_record_fire(8) is True
     assert _last_fire_at[8] > old
@@ -181,6 +179,5 @@ def test_check_and_record_fire_blocks_subsequent_async_path() -> None:
 def test_check_and_record_fire_sync_signature() -> None:
     """D-A9 hard constraint: must remain a sync function. Adding async/await
     re-opens the TOCTOU window the helper was created to close."""
-    import asyncio  # noqa: PLC0415
 
     assert not asyncio.iscoroutinefunction(check_and_record_fire)

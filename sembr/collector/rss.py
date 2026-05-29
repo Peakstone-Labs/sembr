@@ -8,7 +8,7 @@ import html
 import logging
 import re
 from calendar import timegm
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from html.parser import HTMLParser
 
 import feedparser
@@ -68,7 +68,7 @@ def _entry_published(entry: feedparser.FeedParserDict) -> datetime | None:
         tp = getattr(entry, "updated_parsed", None)
     if tp is None:
         return None
-    return datetime.fromtimestamp(timegm(tp), tz=timezone.utc)
+    return datetime.fromtimestamp(timegm(tp), tz=UTC)
 
 
 def _best_body(entry: feedparser.FeedParserDict) -> tuple[str, str]:

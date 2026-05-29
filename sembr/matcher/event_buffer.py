@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from difflib import SequenceMatcher
 from typing import TYPE_CHECKING
 
@@ -34,14 +34,14 @@ _GROUPER = GroupingStep(threshold=_MERGE_THRESHOLD)
 
 
 def _now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 async def absorb(
     conn: aiosqlite.Connection,
     intent_id: int,
-    batch_matches: list["Match"],
-    schedule: "EventSchedule",
+    batch_matches: list[Match],
+    schedule: EventSchedule,
 ) -> bool:
     """Merge batch_matches into event_pending; return True if flush should follow.
 
@@ -195,7 +195,9 @@ async def flush(conn: aiosqlite.Connection, app, intent_id: int) -> None:
                 )
             )
 
-    on_match = getattr(app.state, "on_match", None)
+    # Prefer on_match_event (event-mode path, persist=False) over the cron
+    # on_match handler so event-mode results are not persisted to history.
+    on_match = getattr(app.state, "on_match_event", None) or getattr(app.state, "on_match", None)
     if on_match is None:
         logger.debug("flush intent_id=%d: no on_match handler registered", intent_id)
         return
@@ -215,7 +217,7 @@ async def flush(conn: aiosqlite.Connection, app, intent_id: int) -> None:
 async def sweep_timed_out(
     conn: aiosqlite.Connection,
     app,
-    event_intent_cache: "EventIntentCache",
+    event_intent_cache: EventIntentCache,
 ) -> None:
     """Flush intents whose oldest buffered group has exceeded max_wait_seconds.
 
@@ -226,7 +228,7 @@ async def sweep_timed_out(
 
     _default_max_wait: int = EventSchedule.model_fields["max_wait_seconds"].default
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async with conn.execute(
         "SELECT intent_id, MIN(created_at) AS earliest FROM event_pending GROUP BY intent_id"

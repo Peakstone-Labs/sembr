@@ -9,7 +9,7 @@ their own connections.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiosqlite
 
@@ -245,7 +245,7 @@ async def insert_fingerprint(conn: aiosqlite.Connection, md5: str, feed_id: int)
 
 
 async def update_last_collected(conn: aiosqlite.Connection, feed_id: int) -> None:
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     async with transaction() as txn:
         await txn.execute(
             "UPDATE feeds SET last_collected_at=? WHERE id=?",

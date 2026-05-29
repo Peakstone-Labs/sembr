@@ -4,16 +4,14 @@
 from __future__ import annotations
 
 import asyncio
-import json
 
 import aiosqlite
 import pytest
 
 from sembr.db import sqlite as _sqlite_mod
 from sembr.db.feeds import (
-    _ensure_enabled_column,  # type: ignore[attr-defined]
-    init_feed_tables,
     get_feed,
+    init_feed_tables,
     update_feed,
 )
 

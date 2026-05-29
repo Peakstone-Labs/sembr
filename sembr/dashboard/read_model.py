@@ -17,7 +17,7 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiosqlite
@@ -32,15 +32,15 @@ from sembr.dashboard.schemas import (
     EmbedCallEvent,
     EmbedderBlock,
     EmbedderCalls24h,
-    Fetch24hBlock,
     FeedFetchEvent,
     FeedListResponse,
     FeedRow,
     FeedRowExtended,
+    Fetch24hBlock,
     SnapshotResponse,
 )
-from sembr.db.feeds import list_feeds
 from sembr.db.feed_tags import list_all_tags
+from sembr.db.feeds import list_feeds
 from sembr.db.sqlite import sqlite_ok
 from sembr.vector_store.news import ALIAS_NAME as _NEWS_ALIAS
 
@@ -50,7 +50,7 @@ _SPARKLINE_BUCKETS = 24
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _hour_buckets_back(now: datetime, hours: int = _SPARKLINE_BUCKETS) -> list[str]:
@@ -172,7 +172,7 @@ async def _embedder_calls_24h(conn: aiosqlite.Connection, now: datetime) -> Embe
 
     p95_ms = 0
     if total > 0:
-        p95_offset = max(0, int(round(0.95 * total)) - 1)
+        p95_offset = max(0, round(0.95 * total) - 1)
         async with conn.execute(
             "SELECT elapsed_ms FROM embed_call_log "
             "WHERE started_at >= ? "
@@ -232,7 +232,7 @@ async def _component_status(qdrant_handle: Any | None, embedder: Any | None) -> 
     else:
         try:
             ok = await asyncio.wait_for(qdrant_handle.ping(), timeout=_QDRANT_TIMEOUT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             ok = False
         qdrant_status = "ok" if ok else "down"
     embedder_status = getattr(embedder, "status", "error") if embedder is not None else "error"
@@ -721,7 +721,7 @@ async def list_feeds_with_meta(
                 job_id = "source_newsapi_master" if source_type == "newsapi" else f"feed_{fid}"
                 job = scheduler.get_job(job_id)
                 if job is not None and job.next_run_time is not None:
-                    next_run_iso = job.next_run_time.astimezone(timezone.utc).isoformat()
+                    next_run_iso = job.next_run_time.astimezone(UTC).isoformat()
             except Exception:
                 next_run_iso = None
         try:

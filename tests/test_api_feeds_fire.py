@@ -3,19 +3,19 @@
 
 from __future__ import annotations
 
-import asyncio
+import contextlib
 import os
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from sembr.api.feeds_fire import router as feeds_fire_router
 from sembr.api.feeds import router as feeds_router
+from sembr.api.feeds_fire import router as feeds_fire_router
 from sembr.collector.fire_tasks import _reset_for_testing
 from sembr.db.feeds import init_feed_tables
 from sembr.db.intents import init_intent_tables
@@ -52,10 +52,8 @@ def client():
             yield c
 
     for suffix in ("", "-wal", "-shm"):
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(path + suffix)
-        except FileNotFoundError:
-            pass
 
 
 def _create_feed(client: TestClient, enabled: bool = True) -> dict:
@@ -81,7 +79,7 @@ def test_feeds_fire_dry_run_no_writes(client: TestClient) -> None:
         task.articles_fetched = 1
         task.articles_new = 1
         task.status = "done"
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
 
     with patch("sembr.api.feeds_fire._feed_dry_run", side_effect=fake_dry_run):
         resp = client.post(f"/feeds/{feed_id}/fire?dry_run=true")
@@ -105,7 +103,7 @@ def test_feeds_fire_real_run_writes_log(client: TestClient) -> None:
 
     async def instant_run(task, fid, fname, furl, stype, cfg):
         task.status = "done"
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
 
     with patch("sembr.api.feeds_fire._feed_real_run", side_effect=instant_run):
         resp = client.post(f"/feeds/{feed_id}/fire?dry_run=false")
@@ -129,7 +127,7 @@ def test_feeds_fire_real_run_throttle_429(client: TestClient) -> None:
 
     async def instant_run(task, fid, fname, furl, stype, cfg):
         task.status = "done"
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
 
     with patch("sembr.api.feeds_fire._feed_real_run", side_effect=instant_run):
         r1 = client.post(f"/feeds/{feed_id}/fire?dry_run=false")
@@ -148,7 +146,7 @@ def test_feeds_fire_dry_run_no_throttle(client: TestClient) -> None:
 
     async def instant_dry(task, feed_url, source_type, config, since):
         task.status = "done"
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
 
     with patch("sembr.api.feeds_fire._feed_dry_run", side_effect=instant_dry):
         for _ in range(5):
@@ -167,7 +165,7 @@ def test_feeds_fire_disabled_feed_real_run_works(client: TestClient) -> None:
 
     async def instant_run(task, fid, fname, furl, stype, cfg):
         task.status = "done"
-        task.finished_at = datetime.now(timezone.utc)
+        task.finished_at = datetime.now(UTC)
 
     with patch("sembr.api.feeds_fire._feed_real_run", side_effect=instant_run):
         resp = client.post(f"/feeds/{feed_id}/fire?dry_run=false")

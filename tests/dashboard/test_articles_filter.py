@@ -13,7 +13,6 @@ Three concerns:
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock

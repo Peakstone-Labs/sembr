@@ -3,9 +3,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-import aiosqlite
 import pytest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
@@ -55,7 +54,7 @@ async def test_fire_advances_next_run_time_to_now() -> None:
         await ensure_newsapi_master_job(sch, get_settings())
         before = sch.get_job(NEWSAPI_MASTER_JOB_ID).next_run_time
         # Sanity: APScheduler's IntervalTrigger first run is well in the future
-        assert before > datetime.now(timezone.utc) + timedelta(seconds=10)
+        assert before > datetime.now(UTC) + timedelta(seconds=10)
 
         client = TestClient(_make_app(sch))
         r = client.post("/api/dashboard/sources/newsapi/fire")
@@ -66,7 +65,7 @@ async def test_fire_advances_next_run_time_to_now() -> None:
         after = sch.get_job(NEWSAPI_MASTER_JOB_ID).next_run_time
         # next_run_time should now be ~now, much earlier than the original.
         assert after < before
-        assert after <= datetime.now(timezone.utc) + timedelta(seconds=2)
+        assert after <= datetime.now(UTC) + timedelta(seconds=2)
     finally:
         sch.shutdown(wait=False)
 

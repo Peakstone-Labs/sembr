@@ -182,6 +182,45 @@ class GroupingStep:
 |---|---|---|
 | `llm_api_base_url` | `https://api.siliconflow.cn/v1` | OpenAI-compatible base; SiliconFlow shares its key with the embedder |
 | `llm_api_key` | `""` (empty) | Empty value logs a warning at startup; every LLM call returns 401 |
+### Aggregate pipeline (`aggregate.py`)
+
+```python
+class AggregateResult:
+    summary: str
+    rows_used: int
+    rows_total: int
+
+async def aggregate_history(
+    rows: list[dict],
+    *,
+    llm: BaseLLMBackend,
+    system_tpl: str,
+    inst_tpl: str,
+    language: str,
+    history_placeholder: str = "{history}",
+) -> AggregateResult
+```
+
+Aggregates multiple history-row summaries through a single LLM call. The pipeline:
+
+1. Joins the per-row summary text into a single `{history}` block
+2. Renders the intent's system and instruction templates, replacing `{history}` with the joined text (the template must contain `{history}` or the call short-circuits with `rows_used=0`)
+3. Water-fills the joined history text into the backend's prompt budget, truncating the oldest rows first when the combined text exceeds capacity — so the LLM sees the most recent summaries in full
+4. Calls the LLM backend with the rendered prompt
+5. Returns the LLM-produced aggregate summary plus `rows_used`/`rows_total` counts
+
+`aggregate_history` is the shared core used by both the preview endpoint (`POST .../aggregate`) and the send endpoint (`POST .../aggregate/send`). The send path delegates delivery to `dispatch_summary` in `notifier.dispatcher`.
+
+### Template placeholders
+
+The history feature adds one placeholder beyond the per-call ones documented above:
+
+| Kind | Additional placeholder | Purpose |
+|---|---|---|
+| system / instruction | `{history}` | Joined summary rows from `summary_history`, replaced by the aggregate pipeline |
+
+`{history}` is only meaningful inside aggregate calls — the standard tick-based pipeline never sees it.
+
 | `llm_model` | `deepseek-ai/DeepSeek-V4-Flash` | Passed verbatim as `"model"` in the request body |
 | `llm_timeout_seconds` | `60.0` | Per-request HTTP timeout |
 | `llm_max_prompt_chars` | `2_000_000` | Total prompt-side character budget for the LLM backend (system + instruction + articles). Tune to the configured model's context window: 2_000_000 is roomy for DeepSeek-V4-Flash (1M token ctx); drop to ~16_000 for an 8K-token local model. Pipeline reserves 15% for the LLM response and water-fills bodies into the rest |

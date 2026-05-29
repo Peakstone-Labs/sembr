@@ -15,7 +15,6 @@ import yaml
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-
 _YAML_PATH = Path("sembr.yaml")
 
 # Single source of truth for the NEWSAPI_CATEGORIES candidate list.

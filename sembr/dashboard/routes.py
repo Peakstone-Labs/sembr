@@ -13,7 +13,8 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time as dtime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from datetime import time as dtime
 
 from apscheduler.jobstores.base import JobLookupError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -24,7 +25,6 @@ from sembr.collector.newsapi import RECOMMENDED_SOURCES as _NEWSAPI_RECOMMENDED
 from sembr.collector.scheduler import (
     NEWSAPI_MASTER_JOB_ID,
     SOURCE_REGISTRY,
-    ensure_newsapi_master_job,
 )
 from sembr.config import get_settings
 from sembr.dashboard import read_model
@@ -166,7 +166,7 @@ async def post_newsapi_fire(request: Request) -> NewsApiFireResponse:
                 "enabled feed with source_type='newsapi' first"
             ),
         )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     try:
         scheduler.modify_job(NEWSAPI_MASTER_JOB_ID, next_run_time=now)
     except JobLookupError as exc:
@@ -222,8 +222,8 @@ def _parse_iso_date(value: str, *, end_of_day: bool = False) -> datetime:
             detail=f"invalid date: {value!r} (expected YYYY-MM-DD)",
         ) from exc
     if end_of_day:
-        return datetime.combine(d, dtime.min, tzinfo=timezone.utc) + timedelta(days=1)
-    return datetime.combine(d, dtime.min, tzinfo=timezone.utc)
+        return datetime.combine(d, dtime.min, tzinfo=UTC) + timedelta(days=1)
+    return datetime.combine(d, dtime.min, tzinfo=UTC)
 
 
 @router.get("/articles", response_model=list[ArticleListItem])

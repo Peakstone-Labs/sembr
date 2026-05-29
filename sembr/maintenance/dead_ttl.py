@@ -9,7 +9,7 @@ of embedder failures, not vector-store lifecycle.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from time import monotonic
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 async def _run_dead_ttl(settings: Settings) -> None:
     started_at = monotonic()
     cutoff_iso = (
-        datetime.now(timezone.utc) - timedelta(days=settings.dead_articles_retention_days)
+        datetime.now(UTC) - timedelta(days=settings.dead_articles_retention_days)
     ).isoformat()
     deleted = 0
     try:
@@ -50,7 +50,7 @@ async def _run_dead_ttl(settings: Settings) -> None:
 
 def add_dead_ttl_job(scheduler: AsyncIOScheduler, settings: Settings) -> None:
     """Register the dead-articles TTL job with a 25-minute startup offset."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     scheduler.add_job(
         _run_dead_ttl,
         trigger=IntervalTrigger(
