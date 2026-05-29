@@ -1,0 +1,2116 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Intent-driven news monitoring via Reverse RAG">
+      
+      
+      
+        <link rel="canonical" href="https://peakstone-labs.github.io/sembr/deployment/public/">
+      
+      
+        <link rel="prev" href="../../modules/dashboard/">
+      
+      
+        <link rel="next" href="../../contributing/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Public server - sembr</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#deploying-sembr-on-a-public-facing-server" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="sembr" class="md-header__button md-logo" aria-label="sembr" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            sembr
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Public server
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Peakstone-Labs/sembr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Peakstone-Labs/sembr
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../modules/" class="md-tabs__link">
+          
+  
+  
+  Modules
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Deployment
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../zh/" class="md-tabs__link">
+          
+  
+  
+  中文文档
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="sembr" class="md-nav__button md-logo" aria-label="sembr" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    sembr
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Peakstone-Labs/sembr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Peakstone-Labs/sembr
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/db/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/db-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/embedder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    embedder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/vector-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    vector_store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/collector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    collector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/summarizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    summarizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/notifier/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    notifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/logbus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    logbus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    api
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public server
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tldr-7-step-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TL;DR (7-step checklist)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-generate-a-strong-dashboard_token" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate a strong DASHBOARD_TOKEN
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-bind-sembr-to-loopback-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Bind sembr to loopback only
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Bind sembr to loopback only">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3a-api-service-pick-one-of-two-ways" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3a. API service — pick one of two ways
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3b-qdrant-and-rsshub-mandatory-compose-edit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3b. qdrant and rsshub — mandatory compose edit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3c-need-to-hit-it-from-your-laptop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3c. Need to hit it from your laptop?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-set-up-a-reverse-proxy-with-tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Set up a reverse proxy with TLS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Set up a reverse proxy with TLS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-caddy-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A: Caddy (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-nginx-certbot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B: nginx + certbot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-c-cloudflare-tunnel-no-inbound-port-at-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option C: Cloudflare Tunnel (no inbound port at all)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-d-trycloudflare-ephemeral-zero-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option D: trycloudflare (ephemeral, zero registration)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-firewall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Firewall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-ssh-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. SSH hardening
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Backups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-known-limits-as-of-v10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Known limits (as of v1.0)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-reporting-security-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Reporting security issues
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    中文文档
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    中文文档
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    简介
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速上手
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    配置参考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tldr-7-step-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TL;DR (7-step checklist)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-generate-a-strong-dashboard_token" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate a strong DASHBOARD_TOKEN
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-bind-sembr-to-loopback-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Bind sembr to loopback only
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Bind sembr to loopback only">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3a-api-service-pick-one-of-two-ways" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3a. API service — pick one of two ways
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3b-qdrant-and-rsshub-mandatory-compose-edit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3b. qdrant and rsshub — mandatory compose edit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3c-need-to-hit-it-from-your-laptop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3c. Need to hit it from your laptop?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-set-up-a-reverse-proxy-with-tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Set up a reverse proxy with TLS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Set up a reverse proxy with TLS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-caddy-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A: Caddy (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-nginx-certbot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B: nginx + certbot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-c-cloudflare-tunnel-no-inbound-port-at-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option C: Cloudflare Tunnel (no inbound port at all)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-d-trycloudflare-ephemeral-zero-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option D: trycloudflare (ephemeral, zero registration)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-firewall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Firewall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-ssh-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. SSH hardening
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Backups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-known-limits-as-of-v10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Known limits (as of v1.0)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-reporting-security-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Reporting security issues
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/Peakstone-Labs/sembr/edit/main/docs/deployment/public.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="deploying-sembr-on-a-public-facing-server">Deploying sembr on a Public-Facing Server<a class="headerlink" href="#deploying-sembr-on-a-public-facing-server" title="Permanent link">&para;</a></h1>
+<p>This guide is for users who want to run sembr on a cloud VM (DigitalOcean / Hetzner / Vultr / EC2 / …) and reach the dashboard from anywhere on the internet.</p>
+<div class="admonition tip">
+<p class="admonition-title">Prefer an AI agent walk through this?</p>
+<p><a href="https://github.com/Peakstone-Labs/sembr/blob/main/agent/PUBLIC_INSTALL.md"><code>agent/PUBLIC_INSTALL.md</code></a> in the repo is an interactive, step-by-step version of the page below for an LLM agent with shell access on the VM. Hand the URL to your agent. The rest of this page is the manual walk-through.</p>
+</div>
+<div class="admonition danger">
+<p class="admonition-title">Default config is <strong>not</strong> public-internet safe</p>
+<p>Out of the box, sembr binds to <code>0.0.0.0:8000</code> in plaintext with <code>DASHBOARD_TOKEN</code> empty. If you <code>docker compose up</code> on a VM with a public IP and open port 8000 in the firewall, <strong>the dashboard is open to the world with no authentication</strong> — and so are Qdrant's 6333/6334 and RSSHub's 1200, which are <em>also</em> published on <code>0.0.0.0</code> regardless of <code>SEMBR_BIND_ADDR</code>. This default is chosen to keep LAN / home-server setups frictionless; the steps below walk you through the changes you must make before exposing sembr publicly.</p>
+</div>
+<p>The recommended path is still a private network (Tailscale / WireGuard / VPN) — see <a href="../../getting-started/">Getting Started</a>. Use this guide only if you actually need a public endpoint.</p>
+<hr />
+<h2 id="tldr-7-step-checklist">TL;DR (7-step checklist)<a class="headerlink" href="#tldr-7-step-checklist" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Set a strong <strong><code>DASHBOARD_TOKEN</code></strong> in <code>.env</code>.</li>
+<li>Bind the <strong>API</strong> to loopback (set <code>SEMBR_BIND_ADDR=127.0.0.1</code> in <code>.env</code>, <strong>or</strong> patch <code>docker-compose.yml</code>).</li>
+<li><strong>Also bind qdrant (6333/6334) and rsshub (1200) to loopback</strong> in <code>docker-compose.yml</code> — these don't honour <code>SEMBR_BIND_ADDR</code> and you cannot rely on ufw to close them (Docker bypasses ufw INPUT for published ports).</li>
+<li>Put sembr behind a <strong>reverse proxy with TLS</strong> (Caddy is the easiest), <strong>or</strong> use a <strong>Cloudflare Tunnel</strong> for no inbound port at all.</li>
+<li><strong>Firewall</strong>: allow 443 (skip if Cloudflare Tunnel), allow 22 for SSH, deny everything else.</li>
+<li><strong>Verify</strong> with <code>curl</code> and <code>nmap</code> from outside the VM, probing 8000 / 6333 / 6334 / 1200 are all closed.</li>
+<li><strong>VM hygiene</strong> (SSH hardening, fail2ban, backups, unattended-upgrades) — not sembr-specific, but you're now running a public VM. Sections 6, 8 and 9 below cover them.</li>
+</ol>
+<p>The rest of this page walks through each step.</p>
+<hr />
+<h2 id="1-prerequisites">1. Prerequisites<a class="headerlink" href="#1-prerequisites" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Cloud VM with a public IPv4 (and IPv6 if your DNS is dual-stacked)</li>
+<li>A domain name pointing at the VM (<code>A</code> record for IPv4, <code>AAAA</code> for IPv6) — Let's Encrypt and most reverse-proxy auto-TLS flows need a real domain</li>
+<li>Root / sudo access on the VM</li>
+<li>An SSH <strong>key</strong> already in <code>~/.ssh/authorized_keys</code> (do <strong>not</strong> rely on a password)</li>
+<li>Docker + Docker Compose installed</li>
+</ul>
+<h2 id="2-generate-a-strong-dashboard_token">2. Generate a strong <code>DASHBOARD_TOKEN</code><a class="headerlink" href="#2-generate-a-strong-dashboard_token" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>openssl<span class="w"> </span>rand<span class="w"> </span>-hex<span class="w"> </span><span class="m">32</span>
+</code></pre></div>
+<p>Put the output into <code>.env</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">DASHBOARD_TOKEN</span><span class="o">=</span><span class="s">&lt;paste the 64-character hex string here&gt;</span>
+</code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Empty token = open dashboard</p>
+<p>If <code>DASHBOARD_TOKEN</code> is empty, the auth middleware is bypassed entirely (so local-dev still works without configuration). sembr will log an <code>ERROR</code> at startup if it detects an empty token, but <strong>it will still start</strong> — do not ignore that line.</p>
+</div>
+<h2 id="3-bind-sembr-to-loopback-only">3. Bind sembr to loopback only<a class="headerlink" href="#3-bind-sembr-to-loopback-only" title="Permanent link">&para;</a></h2>
+<p>The shipped <code>docker-compose.yml</code> publishes the API on <code>0.0.0.0:8000</code> so home / LAN setups work out of the box. For a public-internet host you want the opposite: the API reachable only from the local machine, and the only inbound path the reverse proxy you'll set up in the next step.</p>
+<h3 id="3a-api-service-pick-one-of-two-ways">3a. API service — pick one of two ways<a class="headerlink" href="#3a-api-service-pick-one-of-two-ways" title="Permanent link">&para;</a></h3>
+<p><strong>Option 1 (recommended): set <code>SEMBR_BIND_ADDR</code> in <code>.env</code>.</strong> The compose file is wired to honour it (<code>${SEMBR_BIND_ADDR:-0.0.0.0}:${SEMBR_HOST_PORT:-8000}:8000</code>), so no compose edit is needed:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># .env</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="na">SEMBR_BIND_ADDR</span><span class="o">=</span><span class="s">127.0.0.1</span>
+</code></pre></div>
+<p>Then <code>docker compose up -d --force-recreate api</code>.</p>
+<p><strong>Option 2: edit <code>docker-compose.yml</code> directly</strong> if you prefer that style. Replace the api service's <code>ports:</code> line with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="w">  </span><span class="nt">api</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;127.0.0.1:${SEMBR_HOST_PORT:-8000}:8000&quot;</span><span class="w">   </span><span class="c1"># hardcoded 127.0.0.1: prefix</span>
+</code></pre></div>
+<h3 id="3b-qdrant-and-rsshub-mandatory-compose-edit">3b. qdrant and rsshub — mandatory compose edit<a class="headerlink" href="#3b-qdrant-and-rsshub-mandatory-compose-edit" title="Permanent link">&para;</a></h3>
+<p><code>qdrant</code> (6333 / 6334) and <code>rsshub</code> (1200) are hardcoded to <code>0.0.0.0</code> in <code>docker-compose.yml</code>. They do not honour <code>SEMBR_BIND_ADDR</code>, and <strong>you cannot rely on ufw to close them</strong> — Docker inserts its own iptables rules into the FORWARD chain (via the <code>DOCKER</code> chain) that take precedence over ufw's INPUT rules. A published port on <code>0.0.0.0</code> is reachable from the public internet regardless of what <code>ufw status</code> shows, unless you also install <code>ufw-docker</code> or disable Docker's iptables (which breaks bridge networking).</p>
+<p>So edit <code>docker-compose.yml</code> and prefix <code>127.0.0.1:</code> to each of these three port lines:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="w">  </span><span class="nt">rsshub</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;127.0.0.1:1200:1200&quot;</span><span class="w">   </span><span class="c1"># was &quot;1200:1200&quot;</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">qdrant</span><span class="p">:</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;127.0.0.1:6333:6333&quot;</span><span class="w">   </span><span class="c1"># was &quot;6333:6333&quot;</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;127.0.0.1:6334:6334&quot;</span><span class="w">   </span><span class="c1"># was &quot;6334:6334&quot;</span>
+</code></pre></div>
+<p>None of these need to be reachable from anywhere off the VM — the API container talks to them over the docker network regardless of the published port.</p>
+<p>Then bring them back up with the new bindings:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>--force-recreate<span class="w"> </span>api<span class="w"> </span>qdrant<span class="w"> </span>rsshub
+</code></pre></div>
+<h3 id="3c-need-to-hit-it-from-your-laptop">3c. Need to hit it from your laptop?<a class="headerlink" href="#3c-need-to-hit-it-from-your-laptop" title="Permanent link">&para;</a></h3>
+<p>Don't undo the loopback bind — use SSH port-forwarding instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>ssh<span class="w"> </span>-L<span class="w"> </span><span class="m">8000</span>:127.0.0.1:8000<span class="w"> </span>user@your.vm.ip
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># now hit http://localhost:8000 from your laptop</span>
+</code></pre></div>
+<h2 id="4-set-up-a-reverse-proxy-with-tls">4. Set up a reverse proxy with TLS<a class="headerlink" href="#4-set-up-a-reverse-proxy-with-tls" title="Permanent link">&para;</a></h2>
+<p>Pick one. <strong>Caddy is recommended</strong> for first-time deployments — it handles Let's Encrypt automatically with zero certbot machinery.</p>
+<h3 id="option-a-caddy-recommended">Option A: Caddy (recommended)<a class="headerlink" href="#option-a-caddy-recommended" title="Permanent link">&para;</a></h3>
+<p>Install Caddy on the host (<a href="https://caddyserver.com/docs/install">official instructions</a>), then create <code>/etc/caddy/Caddyfile</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>your.domain.com {
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    encode gzip zstd
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    # Optional belt-and-braces: only allow GET/POST/PUT/DELETE
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    @methods {
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>        not method GET POST PUT DELETE OPTIONS HEAD
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    }
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    respond @methods 405
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    # SSE needs flush_interval so events arrive immediately
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>    reverse_proxy 127.0.0.1:8000 {
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>        flush_interval -1
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>        header_up X-Forwarded-Proto {scheme}
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>        header_up X-Forwarded-For {remote_host}
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    }
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    # Reasonable defaults — sembr will set its own response headers
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>    # once the SecureHeaders middleware lands; until then these help.
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>    header {
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>        Strict-Transport-Security &quot;max-age=31536000; includeSubDomains&quot;
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>        X-Content-Type-Options nosniff
+<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>        X-Frame-Options DENY
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>        Referrer-Policy strict-origin-when-cross-origin
+<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>        -Server
+<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>    }
+<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>}
+</code></pre></div>
+<p>Then:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>caddy
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>sudo<span class="w"> </span>systemctl<span class="w"> </span>reload<span class="w"> </span>caddy
+</code></pre></div>
+<p>Caddy fetches a Let's Encrypt cert on first request and renews automatically.</p>
+<h3 id="option-b-nginx-certbot">Option B: nginx + certbot<a class="headerlink" href="#option-b-nginx-certbot" title="Permanent link">&para;</a></h3>
+<p>If you prefer nginx, here's a minimal config (<code>/etc/nginx/sites-available/sembr</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">server</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="kn">listen</span><span class="w"> </span><span class="mi">80</span><span class="p">;</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="kn">server_name</span><span class="w"> </span><span class="s">your.domain.com</span><span class="p">;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="kn">return</span><span class="w"> </span><span class="mi">301</span><span class="w"> </span><span class="s">https://</span><span class="nv">$host$request_uri</span><span class="p">;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">}</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="k">server</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">    </span><span class="kn">listen</span><span class="w"> </span><span class="mi">443</span><span class="w"> </span><span class="s">ssl</span><span class="w"> </span><span class="s">http2</span><span class="p">;</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">    </span><span class="kn">server_name</span><span class="w"> </span><span class="s">your.domain.com</span><span class="p">;</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">    </span><span class="c1"># certbot manages these two:</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">    </span><span class="kn">ssl_certificate</span><span class="w">     </span><span class="s">/etc/letsencrypt/live/your.domain.com/fullchain.pem</span><span class="p">;</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">    </span><span class="kn">ssl_certificate_key</span><span class="w"> </span><span class="s">/etc/letsencrypt/live/your.domain.com/privkey.pem</span><span class="p">;</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">    </span><span class="kn">add_header</span><span class="w"> </span><span class="s">Strict-Transport-Security</span><span class="w"> </span><span class="s">&quot;max-age=31536000</span><span class="p">;</span><span class="w"> </span><span class="kn">includeSubDomains&quot;</span><span class="w"> </span><span class="s">always</span><span class="p">;</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="w">    </span><span class="kn">add_header</span><span class="w"> </span><span class="s">X-Content-Type-Options</span><span class="w"> </span><span class="s">&quot;nosniff&quot;</span><span class="w"> </span><span class="s">always</span><span class="p">;</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a><span class="w">    </span><span class="kn">add_header</span><span class="w"> </span><span class="s">X-Frame-Options</span><span class="w"> </span><span class="s">&quot;DENY&quot;</span><span class="w"> </span><span class="s">always</span><span class="p">;</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="w">    </span><span class="kn">add_header</span><span class="w"> </span><span class="s">Referrer-Policy</span><span class="w"> </span><span class="s">&quot;strict-origin-when-cross-origin&quot;</span><span class="w"> </span><span class="s">always</span><span class="p">;</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="w">    </span><span class="kn">client_max_body_size</span><span class="w"> </span><span class="mi">5m</span><span class="p">;</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="w">    </span><span class="kn">location</span><span class="w"> </span><span class="s">/</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="w">        </span><span class="kn">proxy_pass</span><span class="w"> </span><span class="s">http://127.0.0.1:8000</span><span class="p">;</span>
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="w">        </span><span class="kn">proxy_http_version</span><span class="w"> </span><span class="mi">1</span><span class="s">.1</span><span class="p">;</span>
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a><span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">Host</span><span class="w">              </span><span class="nv">$host</span><span class="p">;</span>
+<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a><span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Real-IP</span><span class="w">         </span><span class="nv">$remote_addr</span><span class="p">;</span>
+<a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a><span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Forwarded-For</span><span class="w">   </span><span class="nv">$proxy_add_x_forwarded_for</span><span class="p">;</span>
+<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a><span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Forwarded-Proto</span><span class="w"> </span><span class="nv">$scheme</span><span class="p">;</span>
+<a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a>
+<a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a><span class="w">        </span><span class="c1"># SSE / streaming</span>
+<a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a><span class="w">        </span><span class="kn">proxy_buffering</span><span class="w"> </span><span class="no">off</span><span class="p">;</span>
+<a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a><span class="w">        </span><span class="kn">proxy_read_timeout</span><span class="w"> </span><span class="s">1h</span><span class="p">;</span>
+<a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a><span class="p">}</span>
+</code></pre></div>
+<p>Then enable the site, drop the default site to avoid a "duplicate listen 80" conflict (<code>/etc/nginx/sites-enabled/default</code> ships enabled on a fresh nginx install and also binds port 80), and run certbot:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>sudo<span class="w"> </span>rm<span class="w"> </span>-f<span class="w"> </span>/etc/nginx/sites-enabled/default
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>sudo<span class="w"> </span>ln<span class="w"> </span>-s<span class="w"> </span>/etc/nginx/sites-available/sembr<span class="w"> </span>/etc/nginx/sites-enabled/sembr
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>sudo<span class="w"> </span>nginx<span class="w"> </span>-t<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>reload<span class="w"> </span>nginx
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>sudo<span class="w"> </span>certbot<span class="w"> </span>--nginx<span class="w"> </span>-d<span class="w"> </span>your.domain.com
+</code></pre></div>
+<h3 id="option-c-cloudflare-tunnel-no-inbound-port-at-all">Option C: Cloudflare Tunnel (no inbound port at all)<a class="headerlink" href="#option-c-cloudflare-tunnel-no-inbound-port-at-all" title="Permanent link">&para;</a></h3>
+<p>The strongest option if you don't want any inbound port open on the VM. Install <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/"><code>cloudflared</code></a>, authenticate, create a tunnel, route <code>your.domain.com</code> → <code>http://127.0.0.1:8000</code>. Cloudflare terminates TLS; your firewall can be <strong>deny-all-inbound</strong> except SSH.</p>
+<div class="admonition warning">
+<p class="admonition-title">SSE limit</p>
+<p>Cloudflare's edge terminates idle SSE / streaming connections after ~100 s on the free plan. The dashboard's <strong>Logs</strong> tab uses SSE, so it will silently stop updating through a Cloudflare Tunnel. Everything else (intent / feed CRUD, fire, settings, the digest pipeline) works normally. Caddy and nginx don't have this limit — pick A or B if real-time Logs matter.</p>
+</div>
+<h3 id="option-d-trycloudflare-ephemeral-zero-registration">Option D: trycloudflare (ephemeral, zero registration)<a class="headerlink" href="#option-d-trycloudflare-ephemeral-zero-registration" title="Permanent link">&para;</a></h3>
+<p>If you just want sembr reachable on the public internet <strong>right now</strong>, without registering a domain or signing into anything, the simplest path is Cloudflare's anonymous quick tunnel:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># After Steps 1–3 (token + loopback bind) are done and sembr is up locally:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>cloudflared<span class="w"> </span>tunnel<span class="w"> </span>--url<span class="w"> </span>http://127.0.0.1:8000
+</code></pre></div>
+<p>You'll get a URL like <code>https://xyz-abc.trycloudflare.com</code> printed to stdout that proxies to your sembr. <strong>It's ephemeral</strong> — restart the tunnel process and the URL changes. Use <code>nohup cloudflared tunnel --url ... &amp; disown</code> if you want it to survive your SSH session ending; for survival across reboots, graduate to Option C (proper tunnel) or A/B with a registered domain. Same SSE limit applies as Option C.</p>
+<h2 id="5-firewall">5. Firewall<a class="headerlink" href="#5-firewall" title="Permanent link">&para;</a></h2>
+<div class="admonition danger">
+<p class="admonition-title">ufw does <strong>not</strong> reliably close Docker-published ports</p>
+<p>Docker inserts its own iptables rules in the <code>DOCKER</code> chain (off <code>FORWARD</code>) that take precedence over ufw's <code>INPUT</code> rules. A service published on <code>0.0.0.0:N</code> via compose will answer on the public IP regardless of <code>ufw deny</code>. The <strong>only</strong> reliable way to close 8000 / 6333 / 6334 / 1200 is the compose-level loopback bind from step 3 — ufw is for the host's <em>non-Docker</em> surface (SSH, anything you installed directly on the metal). Don't skip step 3 thinking ufw will compensate.</p>
+</div>
+<p>Using <code>ufw</code> (Ubuntu / Debian default):</p>
+<p><strong>Caddy / nginx (options A and B) — allow 80 + 443:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>default<span class="w"> </span>deny<span class="w"> </span>incoming
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>default<span class="w"> </span>allow<span class="w"> </span>outgoing
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">443</span>/tcp
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">80</span>/tcp<span class="w">                 </span><span class="c1"># for Let&#39;s Encrypt HTTP-01 + redirect</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span>from<span class="w"> </span>&lt;YOUR_HOME_IP&gt;<span class="w"> </span>to<span class="w"> </span>any<span class="w"> </span>port<span class="w"> </span><span class="m">22</span><span class="w"> </span>proto<span class="w"> </span>tcp
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># OR if your home IP changes:</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">22</span>/tcp
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>sudo<span class="w"> </span>ufw<span class="w"> </span><span class="nb">enable</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>status<span class="w"> </span>verbose
+</code></pre></div>
+<p><strong>Cloudflare Tunnel / trycloudflare (options C and D) — SSH only, no 80 or 443 needed:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>default<span class="w"> </span>deny<span class="w"> </span>incoming
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>default<span class="w"> </span>allow<span class="w"> </span>outgoing
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">22</span>/tcp<span class="w">                 </span><span class="c1"># or restrict to your home IP</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>sudo<span class="w"> </span>ufw<span class="w"> </span><span class="nb">enable</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>sudo<span class="w"> </span>ufw<span class="w"> </span>status<span class="w"> </span>verbose
+</code></pre></div>
+<p>The tunnel is an outbound connection from the VM to Cloudflare; no inbound port is required.</p>
+<h2 id="6-ssh-hardening">6. SSH hardening<a class="headerlink" href="#6-ssh-hardening" title="Permanent link">&para;</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Generic public-VM hygiene, not sembr-specific</p>
+<p>The items in this section harden the VM you're running sembr on. They're not part of sembr itself and apply identically whatever you're hosting. If your VM is already SSH-hardened (key-only auth, no root login, fail2ban configured), skip to section 7. We include them here because the most common way a sembr deployment falls is through the host's management plane, not through sembr's HTTP surface.</p>
+</div>
+<p>Edit <code>/etc/ssh/sshd_config</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>PermitRootLogin no
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>PasswordAuthentication no
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>ChallengeResponseAuthentication no
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>KbdInteractiveAuthentication no
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>UsePAM yes
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>AllowUsers &lt;your-username&gt;
+</code></pre></div>
+<p>Reload:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>sudo<span class="w"> </span>systemctl<span class="w"> </span>reload<span class="w"> </span>ssh
+</code></pre></div>
+<p>Optional but recommended:</p>
+<ul>
+<li>Install <code>fail2ban</code> or <code>crowdsec</code> to ban repeated SSH probe IPs.</li>
+<li>Run <code>unattended-upgrades</code> (Debian/Ubuntu) so kernel/openssh patches land without manual <code>apt upgrade</code>.</li>
+</ul>
+<h2 id="7-verify">7. Verify<a class="headerlink" href="#7-verify" title="Permanent link">&para;</a></h2>
+<p>From a machine <strong>not</strong> on the VM:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># Health is intentionally auth-free</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>curl<span class="w"> </span>-i<span class="w"> </span>https://your.domain.com/health
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="c1"># → HTTP/2 200</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="c1"># API is protected — without a token you get 401.</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="c1"># /intents is the actual gated path; /api/dashboard/* is also gated. There is</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="c1"># no /api/intents — earlier versions of this doc mistakenly used that path.</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>curl<span class="w"> </span>-i<span class="w"> </span>https://your.domain.com/intents
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="c1"># → HTTP/2 401</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="c1"># With a wrong token, still 401</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>curl<span class="w"> </span>-i<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;X-Dashboard-Token: nope&quot;</span><span class="w"> </span>https://your.domain.com/intents
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="c1"># → HTTP/2 401</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="c1"># With the real token, 200</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>curl<span class="w"> </span>-i<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;X-Dashboard-Token: </span><span class="nv">$DASHBOARD_TOKEN</span><span class="s2">&quot;</span><span class="w"> </span>https://your.domain.com/intents
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="c1"># → HTTP/2 200</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="c1"># Every non-public port must be unreachable from outside the VM. 8000 = api,</span>
+<a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a><span class="c1"># 6333/6334 = qdrant, 1200 = rsshub. If ANY of these answers, step 3 wasn&#39;t</span>
+<a id="__codelineno-16-21" name="__codelineno-16-21" href="#__codelineno-16-21"></a><span class="c1"># applied — see &quot;ufw does not close Docker ports&quot; warning above step 5.</span>
+<a id="__codelineno-16-22" name="__codelineno-16-22" href="#__codelineno-16-22"></a>nmap<span class="w"> </span>-p<span class="w"> </span><span class="m">80</span>,443,8000,6333,6334,1200,22<span class="w"> </span>your.domain.com
+<a id="__codelineno-16-23" name="__codelineno-16-23" href="#__codelineno-16-23"></a><span class="c1"># → 80/tcp   filtered or 301-redirected to 443 (Caddy/nginx); closed (Cloudflare)</span>
+<a id="__codelineno-16-24" name="__codelineno-16-24" href="#__codelineno-16-24"></a><span class="c1"># → 443/tcp  open (Caddy/nginx); closed (Cloudflare Tunnel — TLS is on CF&#39;s edge)</span>
+<a id="__codelineno-16-25" name="__codelineno-16-25" href="#__codelineno-16-25"></a><span class="c1"># → 8000/tcp filtered or closed   ← critical</span>
+<a id="__codelineno-16-26" name="__codelineno-16-26" href="#__codelineno-16-26"></a><span class="c1"># → 6333/tcp filtered or closed   ← critical (Qdrant has no auth)</span>
+<a id="__codelineno-16-27" name="__codelineno-16-27" href="#__codelineno-16-27"></a><span class="c1"># → 6334/tcp filtered or closed   ← critical</span>
+<a id="__codelineno-16-28" name="__codelineno-16-28" href="#__codelineno-16-28"></a><span class="c1"># → 1200/tcp filtered or closed   ← critical (RSSHub is an SSRF gadget)</span>
+<a id="__codelineno-16-29" name="__codelineno-16-29" href="#__codelineno-16-29"></a><span class="c1"># → 22/tcp   open (or filtered, if you restricted it)</span>
+</code></pre></div>
+<p>If <code>nmap</code> shows any of 8000 / 6333 / 6334 / 1200 as <code>open</code>, you skipped step 3 (or only did 3a, not 3b) — fix the compose port bindings before letting anyone use the public URL.</p>
+<h2 id="8-backups">8. Backups<a class="headerlink" href="#8-backups" title="Permanent link">&para;</a></h2>
+<p><code>docker-compose.yml</code> bind-mounts two host directories that hold all state:</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>./data/</code></td>
+<td>SQLite DB + Qdrant collection + cached articles</td>
+</tr>
+<tr>
+<td><code>./.env</code></td>
+<td>All your secrets and tokens (treat as crown jewels)</td>
+</tr>
+<tr>
+<td><code>./prompts/</code></td>
+<td>Custom prompt templates</td>
+</tr>
+</tbody>
+</table>
+<p>Minimal nightly backup with <code>rsync</code> to an off-site box:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># /etc/cron.daily/sembr-backup</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="c1">#!/bin/bash</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="nb">set</span><span class="w"> </span>-e
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nv">DEST</span><span class="o">=</span>user@backup.host:/srv/backups/sembr/<span class="k">$(</span>hostname<span class="k">)</span>/<span class="k">$(</span>date<span class="w"> </span>+%F<span class="k">)</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>rsync<span class="w"> </span>-az<span class="w"> </span>--delete<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">    </span>--exclude<span class="o">=</span><span class="s1">&#39;.git&#39;</span><span class="w"> </span>--exclude<span class="o">=</span><span class="s1">&#39;__pycache__&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">    </span>/opt/sembr/data<span class="w"> </span>/opt/sembr/.env<span class="w"> </span>/opt/sembr/prompts<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">    </span><span class="s2">&quot;</span><span class="nv">$DEST</span><span class="s2">&quot;</span>
+</code></pre></div>
+<p>Encrypt <code>.env</code> at rest on the backup host (e.g., <code>age</code> or <code>restic</code>) — it contains the SiliconFlow / LLM / SMTP keys.</p>
+<h2 id="9-monitoring">9. Monitoring<a class="headerlink" href="#9-monitoring" title="Permanent link">&para;</a></h2>
+<p>Lightweight options that work with the existing <code>/health</code> endpoint:</p>
+<ul>
+<li><strong><a href="https://uptimerobot.com">UptimeRobot</a></strong> — free tier polls <code>/health</code> every 5 minutes, emails / pings on failure</li>
+<li><strong><a href="https://uptime.kuma.pet">Uptime Kuma</a></strong> — self-hosted, fancier dashboards</li>
+<li><strong><a href="https://ntfy.sh">ntfy</a> + cron</strong> — quick-and-dirty: <code>curl -fs https://your.domain.com/health || curl -d "sembr down" ntfy.sh/your-topic</code></li>
+</ul>
+<p>Check the <strong>SiliconFlow billing dashboard</strong> weekly. Until rate-limit middleware lands (see Known Limits below), a leaked token can rack up embedder costs quickly.</p>
+<h2 id="10-known-limits-as-of-v10">10. Known limits (as of v1.0)<a class="headerlink" href="#10-known-limits-as-of-v10" title="Permanent link">&para;</a></h2>
+<p>These are areas where sembr does <strong>not yet</strong> provide built-in defense. Each will be tracked in a future release; until then, the reverse proxy is the place to enforce them.</p>
+<table>
+<thead>
+<tr>
+<th>Gap</th>
+<th>Mitigation today</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>No per-IP rate limit middleware</strong> — <code>DASHBOARD_TOKEN</code> can be brute-forced, and authenticated abusers can run up your embedder bill</td>
+<td>Use Caddy's <code>rate_limit</code> plugin or nginx <code>limit_req_zone</code> against <code>/api/intents</code> and <code>/api/external/*</code>. Cap at e.g. 60 req/min/IP.</td>
+</tr>
+<tr>
+<td><strong>No global body-size limit in app</strong></td>
+<td>Set <code>client_max_body_size 5m;</code> in nginx, or <code>request_body { max_size 5MB }</code> in Caddy</td>
+</tr>
+<tr>
+<td><strong>Sembr container runs as root</strong></td>
+<td>Don't mount additional host volumes beyond what compose ships with.</td>
+</tr>
+<tr>
+<td><strong>Docker socket mounted into the API container</strong> — needed for the in-app "restart RSSHub" button; means compromising the API ≈ root on the host</td>
+<td><strong>For public deployments the recommended default is to comment out the <code>/var/run/docker.sock:/var/run/docker.sock</code> mount</strong> in <code>docker-compose.yml</code>. Without the socket the api container's blast radius is bounded; with it, an api-container RCE (or a stolen <code>DASHBOARD_TOKEN</code> plus any code path that touches the docker API) escalates to host root. You only lose the dashboard's "Restart RSSHub" button — <code>docker compose restart rsshub</code> from SSH still works. Keep the mount only if you actively rely on the button.</td>
+</tr>
+<tr>
+<td><strong>No 2FA / SSO</strong> — single shared <code>DASHBOARD_TOKEN</code> for all admins</td>
+<td>Rotate the token if anyone with access leaves. Treat it like an SSH key.</td>
+</tr>
+<tr>
+<td><strong><code>/health</code> is unauthenticated</strong> — by design, so monitors can poll without holding a token</td>
+<td>This endpoint returns liveness only; no sensitive data leaks through it.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="11-reporting-security-issues">11. Reporting security issues<a class="headerlink" href="#11-reporting-security-issues" title="Permanent link">&para;</a></h2>
+<p>If you find a vulnerability in sembr itself (not in your deployment), please <strong>do not</strong> open a public GitHub issue. Use GitHub's <a href="https://github.com/Peakstone-Labs/sembr/security/advisories/new">Private Vulnerability Reporting</a> instead. See <a href="https://github.com/Peakstone-Labs/sembr/blob/main/SECURITY.md"><code>SECURITY.md</code></a> for full details.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
