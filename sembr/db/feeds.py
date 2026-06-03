@@ -244,12 +244,17 @@ async def insert_fingerprint(conn: aiosqlite.Connection, md5: str, feed_id: int)
     await conn.commit()
 
 
-async def update_last_collected(conn: aiosqlite.Connection, feed_id: int) -> None:
-    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+async def update_last_collected(
+    conn: aiosqlite.Connection,
+    feed_id: int,
+    *,
+    at: datetime | None = None,
+) -> None:
+    ts = (at if at is not None else datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ")
     async with transaction() as txn:
         await txn.execute(
             "UPDATE feeds SET last_collected_at=? WHERE id=?",
-            (now, feed_id),
+            (ts, feed_id),
         )
 
 
