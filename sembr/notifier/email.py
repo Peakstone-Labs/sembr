@@ -64,6 +64,27 @@ def _normalize_markdown(text: str) -> str:
     return text.strip()
 
 
+_TABLE_STYLES = {
+    "<table>": '<table style="border-collapse:collapse;width:100%;margin:10px 0;">',
+    "<th>": '<th style="background:#e6ebff;border:1px solid #c5cdff;padding:6px 10px;font-weight:600;text-align:left;font-size:13px;">',
+    "<td>": '<td style="border:1px solid #dde;padding:6px 10px;font-size:13px;">',
+}
+"""Inline styles for markdown-generated table elements.
+
+<style> blocks are stripped by Outlook and some webmail clients (Gmail in
+certain configurations).  Inlining on the element itself gives the widest
+email-client coverage while keeping the template-side CSS as a fallback for
+clients that honour it.
+"""
+
+
+def _add_table_inline_styles(html: str) -> str:
+    """Post-process python-markdown table output with inline styles."""
+    for tag, styled in _TABLE_STYLES.items():
+        html = html.replace(tag, styled)
+    return html
+
+
 def _summary_to_html(summary: str, num_citations: int) -> Markup:
     """Render the LLM's Markdown summary to safe-marked HTML for the template.
 
@@ -80,6 +101,7 @@ def _summary_to_html(summary: str, num_citations: int) -> Markup:
         return ""  # silent drop — LLM hallucinated an out-of-range index
 
     html = _INLINE_REF_RE.sub(_replace, html)
+    html = _add_table_inline_styles(html)
     return Markup(html)
 
 
