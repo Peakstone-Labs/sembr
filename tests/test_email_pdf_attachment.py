@@ -10,6 +10,7 @@ WeasyPrint native toolchain. Tests that assert on real PDF content are gated by
 from __future__ import annotations
 
 import io
+import os
 from datetime import datetime
 from email.message import Message
 from unittest.mock import MagicMock, patch
@@ -22,9 +23,20 @@ from sembr.summarizer.models import Citation, SummaryResult
 
 _FAKE_PDF = b"%PDF-1.7\nfake pdf payload\n%%EOF"
 
+# Real WeasyPrint renders are opt-in via SEMBR_PDF_RENDER_TESTS=1 and meant to run
+# locally / inside Docker — never in CI. Importing and running WeasyPrint (native
+# Pango/Cairo) inside the test process leaves a lingering non-daemon thread on
+# Linux that blocks interpreter shutdown, hanging the CI job long after the suite
+# has reported its results. CI therefore exercises only the mocked structure and
+# contract tests; the actual render path is validated locally and via the Docker
+# round-trip. macOS exits cleanly, so local opt-in is safe.
+_RUN_PDF_RENDER_TESTS = os.environ.get("SEMBR_PDF_RENDER_TESTS") == "1"
+
 
 def _weasyprint_renders() -> bool:
-    """True only if WeasyPrint can actually produce a PDF on this host."""
+    """True only if real-render tests are opted in AND WeasyPrint can render here."""
+    if not _RUN_PDF_RENDER_TESTS:
+        return False
     try:
         from weasyprint import HTML
 
@@ -35,7 +47,7 @@ def _weasyprint_renders() -> bool:
 
 requires_pdf = pytest.mark.skipif(
     not _weasyprint_renders(),
-    reason="WeasyPrint native libraries unavailable on this host",
+    reason="real-render tests need SEMBR_PDF_RENDER_TESTS=1 plus WeasyPrint native libs",
 )
 
 
