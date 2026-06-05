@@ -115,6 +115,9 @@ RECOMMENDED_SOURCES: list[dict[str, Any]] = [
     {"uri": "theatlantic.com", "title": "The Atlantic", "paywalled": False},
     {"uri": "newyorker.com", "title": "New Yorker", "paywalled": False},
     {"uri": "vox.com", "title": "Vox", "paywalled": False},
+    # Macro policy / central bank research
+    {"uri": "bis.org", "title": "BIS", "paywalled": False},
+    {"uri": "cepr.org", "title": "CEPR / VoxEU", "paywalled": False},
 ]
 
 
@@ -410,11 +413,20 @@ class NewsApiMaster:
                     )
 
         # Atomic semantics — accumulate all pages' results in memory; any page
-        # failure → return early without dispatch (no pending_articles insert,
-        # no update_last_collected). Failure paths DO emit ok=False
-        # feed_fetch_log rows. Memory budget: max_pages=10 × 100 articles ×
-        # ~5KB ≈ 5MB; cap=20 → ~10MB worst case.
+        # HTTP/JSON/format failure → return early without dispatch. Failure
+        # paths emit ok=False feed_fetch_log rows. Memory budget: max_pages=10
+        # × 100 articles × ~5KB ≈ 5MB; cap=20 → ~10MB worst case.
+        #
+        # cap_reached is NOT treated as a failure: all fetched pages are valid,
+        # so we dispatch them and advance each feed's cursor to the oldest
+        # article timestamp seen. The next tick starts from that date, re-fetches
+        # overlapping articles (MD5 dedup discards duplicates), and progresses
+        # further into the backlog. This converges across ticks regardless of
+        # backlog depth; HTTP errors still drop the tick entirely.
         all_results: list[dict[str, Any]] = []
+        # Set to oldest article datetime when cap is reached mid-backlog so the
+        # dispatch section can use it for partial cursor advance instead of now().
+        cap_oldest_dt: datetime | None = None
         async with limiter_ctx:
             async with httpx.AsyncClient(timeout=settings.newsapi_timeout_seconds) as client:
                 stopped_naturally = False
@@ -497,25 +509,30 @@ class NewsApiMaster:
                         break
 
                 if not stopped_naturally:
-                    # Defensive cap reached without watermark trigger. Treat
-                    # as soft failure (same atomicity rule as HTTP errors):
-                    # don't dispatch, don't advance cursor. Next tick retries
-                    # with the same dateStart. Operator response: lower the
-                    # poll cadence or raise newsapi_max_pages in Settings.
+                    # max_pages exhausted without watermark — backlog deeper
+                    # than one tick can cover. Find the oldest article datetime
+                    # in the batch so dispatch can set the cursor there; next
+                    # tick starts from that date and works further back.
+                    for raw in all_results:
+                        raw_dt = raw.get("dateTime") if isinstance(raw, dict) else None
+                        if not isinstance(raw_dt, str) or not raw_dt:
+                            continue
+                        try:
+                            dt = _parse_date_time(raw_dt)
+                            if cap_oldest_dt is None or dt < cap_oldest_dt:
+                                cap_oldest_dt = dt
+                        except ValueError:
+                            pass
                     logger.warning(
                         "newsapi master tick: max_pages=%d cap reached "
-                        "(since=%s, %d feeds); dropping tick to retry next cycle",
+                        "(since=%s, %d feeds, %d articles); dispatching partial "
+                        "batch, cursor → %s",
                         max_pages,
                         universal_since,
                         len(per_feed),
+                        len(all_results),
+                        cap_oldest_dt,
                     )
-                    await _emit_failure_logs(
-                        "cap_reached",
-                        f"newsapi master tick: max_pages={max_pages} cap reached "
-                        f"without watermark stop (since={universal_since}); "
-                        f"dropping tick to retry next cycle",
-                    )
-                    return
 
         # Unified dispatch — only reached after all fetched pages returned 2xx
         # + valid JSON. From this point on, behavior matches the legacy
@@ -566,9 +583,13 @@ class NewsApiMaster:
         # fetch_event so the dashboard sparkline and last_collected_at progress
         # together. items_seen / items_new reflect totals across all fetched
         # pages (accumulated in slot during the dispatch loop above).
+        #
+        # cap_oldest_dt is non-None when the tick was cap_reached: advance each
+        # cursor to the oldest article seen rather than now() so the next tick
+        # starts from that date and continues working through the backlog.
         elapsed_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
         for slot in per_feed.values():
-            await update_last_collected(conn, slot.feed_id)
+            await update_last_collected(conn, slot.feed_id, at=cap_oldest_dt)
             try:
                 await log_fetch_event(
                     feed_id=slot.feed_id,

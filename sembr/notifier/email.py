@@ -10,6 +10,9 @@ import re
 import smtplib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.message import Message
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -39,6 +42,9 @@ class EmailChannelConfig(BaseModel):
     to: list[EmailStr] = Field(min_length=1, max_length=50)
     cc: list[EmailStr] = Field(default_factory=list, max_length=20)
     bcc: list[EmailStr] = Field(default_factory=list, max_length=20)
+    # Opt-in per intent. Default off so existing configs deserialize unchanged
+    # and the message structure stays single-part text/html as before.
+    attach_pdf: bool = False
 
 
 logger = logging.getLogger(__name__)
@@ -64,6 +70,27 @@ def _normalize_markdown(text: str) -> str:
     return text.strip()
 
 
+_TABLE_STYLES = {
+    "<table>": '<table style="border-collapse:collapse;width:100%;margin:10px 0;">',
+    "<th>": '<th style="background:#e6ebff;border:1px solid #c5cdff;padding:6px 10px;font-weight:600;text-align:left;font-size:13px;">',
+    "<td>": '<td style="border:1px solid #dde;padding:6px 10px;font-size:13px;">',
+}
+"""Inline styles for markdown-generated table elements.
+
+<style> blocks are stripped by Outlook and some webmail clients (Gmail in
+certain configurations).  Inlining on the element itself gives the widest
+email-client coverage while keeping the template-side CSS as a fallback for
+clients that honour it.
+"""
+
+
+def _add_table_inline_styles(html: str) -> str:
+    """Post-process python-markdown table output with inline styles."""
+    for tag, styled in _TABLE_STYLES.items():
+        html = html.replace(tag, styled)
+    return html
+
+
 def _summary_to_html(summary: str, num_citations: int) -> Markup:
     """Render the LLM's Markdown summary to safe-marked HTML for the template.
 
@@ -80,6 +107,7 @@ def _summary_to_html(summary: str, num_citations: int) -> Markup:
         return ""  # silent drop — LLM hallucinated an out-of-range index
 
     html = _INLINE_REF_RE.sub(_replace, html)
+    html = _add_table_inline_styles(html)
     return Markup(html)
 
 
@@ -143,6 +171,29 @@ def _resolve_zoneinfo(name: str) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
+# Bound worst-case memory: WeasyPrint holds the whole layout tree in memory, so
+# an unbounded summary can balloon to hundreds of MB. Measured against the raw
+# summary *markdown* (the renderer's input), not the rendered HTML, so truncation
+# happens before HTML generation and never lands inside emitted markup. Far
+# beyond any real digest.
+_PDF_SUMMARY_MAX_CHARS = 32_000
+
+_SLUG_UNSAFE_RE = re.compile(r"[^A-Za-z0-9]+")
+
+
+def _safe_slug(name: str) -> str:
+    """Make a filesystem-safe attachment slug from an intent name.
+
+    Runs of non-alphanumeric characters collapse to a single underscore and the
+    result is capped at 50 chars. Names that are entirely non-ASCII (e.g. a
+    Chinese intent name) collapse to the empty string, so we fall back to a
+    stable default — the attachment must always have a usable filename.
+    """
+    slug = _SLUG_UNSAFE_RE.sub("_", name).strip("_")
+    slug = slug[:50].strip("_")
+    return slug or "digest"
+
+
 class EmailChannel(BaseChannel):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -168,6 +219,7 @@ class EmailChannel(BaseChannel):
                 intent_name=intent_name,
                 intent_timezone=intent_timezone,
                 subject=subject,
+                _pdf_strict=False,
             )
         except Exception:
             logger.error(
@@ -189,7 +241,8 @@ class EmailChannel(BaseChannel):
         """Like :meth:`send` but raises on failure instead of silently logging.
 
         Raises :class:`smtplib.SMTPException`, :class:`jinja2.TemplateError`, or
-        other exceptions from the underlying ``_send`` implementation.
+        other exceptions from the underlying ``_send`` implementation (including
+        PDF generation failures when ``attach_pdf`` is enabled).
         """
         await self._send(
             result,
@@ -197,6 +250,7 @@ class EmailChannel(BaseChannel):
             intent_name=intent_name,
             intent_timezone=intent_timezone,
             subject=subject,
+            _pdf_strict=True,
         )
 
     async def _send(
@@ -207,6 +261,7 @@ class EmailChannel(BaseChannel):
         intent_name: str,
         intent_timezone: str,
         subject: str | None = None,
+        _pdf_strict: bool = True,
     ) -> None:
         s = self._settings
         if not s.smtp_host:
@@ -230,7 +285,43 @@ class EmailChannel(BaseChannel):
 
         email_subject = subject if subject else f"[Sembr] {intent_name} - {digest_date}"
 
-        msg = MIMEText(html_body, "html", "utf-8")
+        html_part = MIMEText(html_body, "html", "utf-8")
+
+        # PDF attachment is per-intent opt-in. The filename date is derived from
+        # the current time in the intent timezone — never from `subject`, which
+        # callers may set to an arbitrary string.
+        pdf_part: MIMEApplication | None = None
+        if config.attach_pdf:
+            pdf_date = datetime.now(tz).strftime("%Y%m%d")
+            try:
+                pdf_bytes = await asyncio.to_thread(
+                    self._generate_pdf_bytes, intent_name, rendered, result.summary, pdf_date
+                )
+            except Exception:
+                if _pdf_strict:
+                    raise
+                # Non-strict path: deliver the email without the attachment
+                # rather than dropping the digest entirely.
+                logger.error(
+                    "EmailChannel: PDF generation failed for intent_id=%d; "
+                    "sending without attachment",
+                    result.intent_id,
+                    exc_info=True,
+                )
+            else:
+                pdf_part = MIMEApplication(pdf_bytes, _subtype="pdf")
+                filename = f"sembr_{_safe_slug(intent_name)}_{pdf_date}.pdf"
+                pdf_part.add_header("Content-Disposition", "attachment", filename=filename)
+
+        # Single-part text/html when there's no PDF (unchanged default); a
+        # multipart/mixed wrapper only when an attachment is present.
+        msg: Message
+        if pdf_part is not None:
+            msg = MIMEMultipart("mixed")
+            msg.attach(html_part)
+            msg.attach(pdf_part)
+        else:
+            msg = html_part
 
         msg["Subject"] = email_subject
         msg["From"] = s.smtp_from or s.smtp_username
@@ -263,6 +354,49 @@ class EmailChannel(BaseChannel):
             citations=citations,
             digest_date=digest_date,
         )
+
+    def _generate_pdf_bytes(
+        self,
+        intent_name: str,
+        citations: list[_RenderedCitation],
+        summary: str,
+        digest_date: str,
+    ) -> bytes:
+        """Render the digest to a print-ready A4 PDF (synchronous, CPU-bound).
+
+        Called via ``asyncio.to_thread`` like ``_send_sync``. WeasyPrint pulls in
+        heavy native libraries (Pango/Cairo), so it's imported lazily here: the
+        module — and the bulk of the test suite — never needs the PDF toolchain
+        unless an intent actually opts into an attachment.
+
+        Takes the raw summary *markdown* (not pre-rendered HTML) so truncation
+        lands on the source text and the markdown renderer always emits
+        well-formed HTML. The PDF template renders citations itself (monochrome,
+        no score badge), so the rendered-citation list is passed straight through.
+        """
+        from weasyprint import HTML  # noqa: PLC0415 — heavy native dep, load on demand
+
+        # Cap the source markdown, then render. Truncating before HTML generation
+        # means a slice can never split an emitted tag; the marker is added as its
+        # own paragraph (blank line) so it renders as a distinct block.
+        text = summary
+        if len(text) > _PDF_SUMMARY_MAX_CHARS:
+            text = text[:_PDF_SUMMARY_MAX_CHARS] + "\n\n…[truncated for PDF]"
+        body = _summary_to_html(text, len(citations))
+
+        tmpl = self._env.get_template("email_digest_pdf.html.jinja2")
+        html_str = tmpl.render(
+            intent_name=intent_name,
+            summary_html=body,
+            citations=citations,
+            digest_date=digest_date,
+        )
+        pdf_bytes = HTML(string=html_str).write_pdf()
+        # Guard against a renderer returning empty/garbage so a malformed
+        # attachment never reaches a recipient.
+        if not pdf_bytes.startswith(b"%PDF-"):
+            raise RuntimeError("WeasyPrint produced output without a %PDF- header")
+        return pdf_bytes
 
     async def send_error(
         self,
@@ -333,7 +467,7 @@ class EmailChannel(BaseChannel):
             prompts_dir=PROMPTS_DIR.as_posix(),
         )
 
-    def _send_sync(self, msg: MIMEText, rcpts: list[str]) -> None:
+    def _send_sync(self, msg: Message, rcpts: list[str]) -> None:
         s = self._settings
         if s.smtp_use_ssl:
             server: smtplib.SMTP = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port)

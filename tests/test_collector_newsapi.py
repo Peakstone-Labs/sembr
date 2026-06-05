@@ -985,10 +985,17 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_master_tick_pagination_cap_dropped(monkeypatch, patched_get_conn, caplog) -> None:
-    """Every fetched page's articles are newer than
-    universal_since (watermark never fires) → cap=10 reached → integral
-    drop: pending_articles=0, last_collected_at unchanged, no fetch_event.
+async def test_master_tick_pagination_cap_dispatches_partial(
+    monkeypatch, patched_get_conn, caplog
+) -> None:
+    """Cap reached without watermark → dispatch the partial batch and advance.
+
+    Every fetched page's articles are newer than universal_since (watermark
+    never fires) → cap=10 reached. Instead of dropping the whole tick, the
+    master dispatches all fetched articles and advances each feed's cursor to
+    the oldest article timestamp in the batch (not now()), so the next tick
+    continues working back through the backlog rather than re-fetching the same
+    newest pages forever.
     """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
@@ -1002,63 +1009,69 @@ async def test_master_tick_pagination_cap_dropped(monkeypatch, patched_get_conn,
         ]
     )
     patched_get_conn(conn)
+    try:
+        # Each of the 10 pages returns articles all dated within the last hour
+        # (well above cut). Watermark stop never fires; cap fires after page 10.
+        def _fresh_page(idx: int) -> dict:
+            return _page_envelope(
+                [
+                    {
+                        "url": f"https://r.com/p{idx}-{i}",
+                        "title": f"P{idx}-{i}",
+                        "body": "x" * 200,
+                        "dateTime": (now - timedelta(minutes=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "source": {"uri": "reuters.com"},
+                    }
+                    for i in range(2)
+                ],
+                total=2000,
+            )
 
-    # Each of the 10 pages returns articles all dated within last hour
-    # (well above cut). Watermark stop never fires; cap fires after page 10.
-    def _fresh_page(idx: int) -> dict:
-        return _page_envelope(
-            [
-                {
-                    "url": f"https://r.com/p{idx}-{i}",
-                    "title": f"P{idx}-{i}",
-                    "body": "x" * 200,
-                    "dateTime": (now - timedelta(minutes=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    "source": {"uri": "reuters.com"},
-                }
-                for i in range(2)
-            ],
-            total=2000,
+        side_effects = [
+            httpx.Response(200, json=_fresh_page(p), headers={"req-tokens": "1.000"})
+            for p in range(1, 11)
+        ]
+        route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+            side_effect=side_effects
         )
 
-    side_effects = [
-        httpx.Response(200, json=_fresh_page(p), headers={"req-tokens": "1.000"})
-        for p in range(1, 11)
-    ]
-    route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
-        side_effect=side_effects
-    )
+        with caplog.at_level(logging.WARNING):
+            await NewsApiMaster().tick()
 
-    with caplog.at_level(logging.WARNING):
-        await NewsApiMaster().tick()
-
-    # All 10 pages fetched (cap=10 default).
-    assert route.call_count == 10
-    # Cap warning issued.
-    assert any("max_pages=10 cap reached" in r.getMessage() for r in caplog.records), [
-        r.getMessage() for r in caplog.records
-    ]
-    # Cap reached without watermark → no dispatch → 0 articles, no cursor advance.
-    async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
-        n = (await cur.fetchone())[0]
-    assert n == 0
-    async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
-        row = await cur.fetchone()
-    assert row[0] == cut  # unchanged
-    # Loop 6 🟡-1 v1.1: cap-reached path now writes one ok=False fetch_log
-    # row per feed (was 0 in v1.0 + Loop 5; review.md 🟡-1) so the
-    # dashboard sparkline reflects the stuck state.
-    async with conn.execute(
-        "SELECT feed_id, ok, items_seen, items_new, error_class FROM feed_fetch_log"
-    ) as cur:
-        log_rows = await cur.fetchall()
-    assert len(log_rows) == 1
-    fid, ok, seen, new, err = log_rows[0]
-    assert fid == 1
-    assert ok == 0
-    assert seen == 0
-    assert new == 0
-    assert err == "cap_reached"
-    await conn.close()
+        # All 10 pages fetched (cap=10 default).
+        assert route.call_count == 10
+        # Cap warning issued.
+        assert any("max_pages=10 cap reached" in r.getMessage() for r in caplog.records), [
+            r.getMessage() for r in caplog.records
+        ]
+        # Cap reached → the already-fetched batch is dispatched (2 articles ×
+        # 10 pages = 20), not dropped.
+        async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
+            n = (await cur.fetchone())[0]
+        assert n == 20
+        # Cursor advances off the old value toward the oldest article in the
+        # batch, so the next tick resumes from there instead of refreezing.
+        async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
+            row = await cur.fetchone()
+        assert row[0] is not None
+        assert row[0] != cut
+        # One ok=True fetch_event per feed reflecting the dispatched totals.
+        async with conn.execute(
+            "SELECT feed_id, ok, items_seen, items_new, error_class FROM feed_fetch_log"
+        ) as cur:
+            log_rows = await cur.fetchall()
+        assert len(log_rows) == 1
+        fid, ok, seen, new, err = log_rows[0]
+        assert fid == 1
+        assert ok == 1
+        assert seen == 20
+        assert new == 20
+        assert err is None
+    finally:
+        # Close the aiosqlite connection unconditionally: a bare assert failure
+        # before an end-of-test close() leaks the connection's background thread
+        # and hangs interpreter shutdown (and the whole CI job).
+        await conn.close()
 
 
 @respx.mock
