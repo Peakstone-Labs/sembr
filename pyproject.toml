@@ -51,6 +51,7 @@ dependencies = [
     "markdown>=3.6,<4",
     "email-validator>=2.0,<3",
     "docker>=7.0,<8",
+    "weasyprint>=63,<64",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +61,7 @@ dev = [
     "respx>=0.21,<0.23",
     "ruff>=0.6,<0.8",
     "mkdocs-material>=9.5,<10",
+    "pypdf>=4,<6",
 ]
 
 [project.urls]

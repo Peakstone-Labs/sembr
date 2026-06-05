@@ -7,7 +7,13 @@ ENV PYTHONUNBUFFERED=1 \
 # Install Docker CLI + Compose plugin so the API container can drive RSSHub
 # restarts via `docker compose up --force-recreate` against the host daemon
 # mounted at /var/run/docker.sock.  Uses the official docker.com apt repo
-# (not the Debian backport) per design.md Risk R1.
+# (not the Debian backport).
+#
+# The same layer also installs WeasyPrint's native dependencies (Pango/Cairo +
+# fonts) so the optional PDF digest attachment can render. fonts-noto-cjk is
+# included because sembr digests are frequently Chinese; without it WeasyPrint
+# renders CJK text as tofu boxes. Merged into this single RUN to avoid an extra
+# image layer.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
@@ -20,6 +26,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
        > /etc/apt/sources.list.d/docker.list \
     && apt-get update && apt-get install -y --no-install-recommends \
        docker-ce-cli docker-compose-plugin \
+       libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
+       libffi-dev libcairo2 fonts-liberation fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv
