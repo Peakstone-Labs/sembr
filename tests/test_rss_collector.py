@@ -287,7 +287,7 @@ async def test_seed_idempotent():
 
 @pytest.mark.asyncio
 async def test_seed_inserts_newsapi_source_type():
-    """All 30 RECOMMENDED_SOURCES seeded with source_type='newsapi'."""
+    """All 32 RECOMMENDED_SOURCES seeded with source_type='newsapi'."""
     from sembr.collector.newsapi import RECOMMENDED_SOURCES
 
     async with aiosqlite.connect(":memory:") as conn:
@@ -295,7 +295,7 @@ async def test_seed_inserts_newsapi_source_type():
         await seed_initial_feeds(conn)
         async with conn.execute("SELECT COUNT(*) FROM feeds WHERE source_type='newsapi'") as cur:
             n = (await cur.fetchone())[0]
-    assert n == len(RECOMMENDED_SOURCES) == 30
+    assert n == len(RECOMMENDED_SOURCES) == 32
 
 
 # ---------------------------------------------------------------------------
