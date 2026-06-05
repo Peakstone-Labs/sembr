@@ -227,6 +227,7 @@ function intentsTab() {
         toEmails: [], toInput: '',
         ccEmails: [], ccInput: '',
         bccEmails: [], bccInput: '',
+        attachPdf: false,
       };
     },
 
@@ -281,6 +282,7 @@ function intentsTab() {
           toEmails: [...(ch.to  || [])], toInput: '',
           ccEmails: [...(ch.cc  || [])], ccInput: '',
           bccEmails: [...(ch.bcc || [])], bccInput: '',
+          attachPdf: !!ch.attach_pdf,
         },
       };
     },
@@ -532,6 +534,7 @@ function intentsTab() {
           to:   f.toEmails,
           cc:   f.ccEmails,
           bcc:  f.bccEmails,
+          attach_pdf: f.attachPdf,
         }],
       };
 
