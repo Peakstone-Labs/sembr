@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-05
+
+### Added
+
+- **Email PDF attachment** — opt-in per-intent PDF copy of the digest,
+  attached to the notification email (`multipart/mixed`). Rendered by
+  WeasyPrint from a dedicated A4 print template with clickable source
+  URLs; CJK fonts bundled in the Docker image. The toggle lives in the
+  intent editor's *Channels · Email* section and is off by default, so
+  existing intents are unchanged.
+
+### Fixed
+
+- **NewsAPI `cap_reached`** now dispatches the already-fetched batch and
+  advances each feed's cursor to the oldest article in the batch, instead
+  of dropping the entire tick — fixing an infinite retry loop on deep
+  backlogs.
+- **Email digest tables** now render with visible borders in Outlook and
+  Gmail (inline styles plus a CSS fallback).
+
 ## [1.1.0] - 2026-05-29
 
 ### Added
@@ -195,5 +215,7 @@ LLM-analyzed digests to your inbox on whatever schedule you set.
   `busy_timeout=5000`; bind-mounted to host `./data/`.
 - Apache-2.0 license; SPDX header required on every `.py` (CI strict gate).
 
-[Unreleased]: https://github.com/Peakstone-Labs/sembr/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Peakstone-Labs/sembr/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Peakstone-Labs/sembr/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/Peakstone-Labs/sembr/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Peakstone-Labs/sembr/releases/tag/v1.0.0
