@@ -157,6 +157,8 @@ Next digest fires on schedule. Done.
 
 RSS routes that need a JS-rendering origin (most CN sources, Twitter) go through the bundled **[RSSHub](https://rsshub.app)** sidecar — no extra setup. NewsAPI.ai's free signup token covers roughly 30 days of normal polling; get one at [newsapi.ai](https://newsapi.ai) and drop it into `.env`. Full per-feed list: [docs/getting-started.md](docs/getting-started.md).
 
+Want **WeChat Official Accounts (微信公众号)**? They have no official feed API, but you can self-host a third-party bridge as an optional add-on — see [docs/deployment/wechat-official-accounts.md](docs/deployment/wechat-official-accounts.md).
+
 <p align="center">
   <img src="assets/screenshots/feeds.jpeg" alt="sembr Feeds tab — Reuters row expanded showing real article titles + URLs, with the rest of the 70-feed list visible below" width="900">
   <br>

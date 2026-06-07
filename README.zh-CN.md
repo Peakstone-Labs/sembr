@@ -156,6 +156,8 @@ curl -X POST http://localhost:8000/intents \
 
 需要 JS 渲染的 RSS 路由（多数中文源、Twitter）走内置 **[RSSHub](https://rsshub.app)** sidecar，开箱即用。NewsAPI.ai 注册送的免费 token 大约够用一个月正常轮询；去 [newsapi.ai](https://newsapi.ai) 申请一个，填进 `.env` 即可。完整每条源的列表见 [docs/getting-started.md](docs/getting-started.md)。
 
+想接入**微信公众号**？它没有官方订阅 API，但你可以自托管一个第三方桥作为可选附加项 —— 见 [docs/zh/deployment/wechat-official-accounts.md](docs/zh/deployment/wechat-official-accounts.md)。
+
 <p align="center">
   <img src="assets/screenshots/feeds.jpeg" alt="sembr Feeds tab —— Reuters 展开显示真实文章标题 + URL，下方还有 70 条 feeds 中的其余" width="900">
   <br>

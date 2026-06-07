@@ -66,8 +66,10 @@ nav:
     - dashboard: modules/dashboard.md
   - Deployment:
     - Public server: deployment/public.md
+    - WeChat Official Accounts (add-on): deployment/wechat-official-accounts.md
   - Contributing: contributing.md
   - 中文文档:
     - 简介: zh/index.md
     - 快速上手: zh/getting-started.md
     - 配置参考: zh/configuration.md
+    - 微信公众号接入（附加）: zh/deployment/wechat-official-accounts.md
