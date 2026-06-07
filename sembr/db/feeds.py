@@ -223,12 +223,29 @@ async def get_feed(conn: aiosqlite.Connection, feed_id: int) -> Feed | None:
     return feed
 
 
+async def delete_feed_in_tx(txn: aiosqlite.Connection, feed_id: int) -> bool:
+    """DELETE the feed row inside an ALREADY-OPEN transaction (issues no BEGIN /
+    COMMIT of its own).
+
+    Twin of ``delete_feed`` for callers that must delete the feed *and* cascade
+    other tables atomically in a single transaction — see
+    ``api.feeds.remove_feed``, which runs ``intents_remove_feed_id`` (a bare
+    UPDATE) and this DELETE under one ``transaction()``. Calling the public
+    ``delete_feed`` there instead would issue a *second* BEGIN on top of the
+    implicit transaction the bare UPDATE already opened (SQLite: "cannot start a
+    transaction within a transaction"), and because that BEGIN raises inside
+    ``transaction()``'s ``__aenter__`` the self-healing ROLLBACK never runs —
+    poisoning the shared connection for every later writer. Mirrors the in-txn
+    helper pattern of ``feed_tags.replace_tags_in_tx``.
+    """
+    await txn.execute("DELETE FROM feeds WHERE id=?", (feed_id,))
+    async with txn.execute("SELECT changes()") as cur:
+        return (await cur.fetchone())[0] > 0
+
+
 async def delete_feed(conn: aiosqlite.Connection, feed_id: int) -> bool:
     async with transaction() as txn:
-        await txn.execute("DELETE FROM feeds WHERE id=?", (feed_id,))
-        async with txn.execute("SELECT changes()") as cur:
-            n = (await cur.fetchone())[0]
-    return n > 0
+        return await delete_feed_in_tx(txn, feed_id)
 
 
 async def fingerprint_exists(conn: aiosqlite.Connection, md5: str) -> bool:

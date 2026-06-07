@@ -11,7 +11,14 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from sembr.collector.scheduler import add_feed_job, remove_feed_job
 from sembr.db.feed_tags import replace_tags_in_tx
-from sembr.db.feeds import create_feed, delete_feed, get_feed, list_feeds_with_tags, update_feed
+from sembr.db.feeds import (
+    create_feed,
+    delete_feed,
+    delete_feed_in_tx,
+    get_feed,
+    list_feeds_with_tags,
+    update_feed,
+)
 from sembr.db.intents import get_intent, intents_remove_feed_id
 from sembr.db.sqlite import get_conn, transaction
 from sembr.matcher.jobs import reregister_intent_job
@@ -136,10 +143,17 @@ async def remove_feed(feed_id: int, request: Request) -> Response:
         if not await cur.fetchone():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="feed not found")
 
-    # Cascade — remove feed_id from all intent feed_filter.ids (no commit yet)
-    cascaded_intents = await intents_remove_feed_id(conn, feed_id)
-    # delete_feed issues conn.commit(), committing both the cascade UPDATE and the DELETE atomically
-    await delete_feed(conn, feed_id)
+    # Cascade + delete MUST share ONE transaction. intents_remove_feed_id issues
+    # a bare UPDATE (which opens an implicit transaction under the connection's
+    # deferred isolation_level) and delete_feed_in_tx issues a bare DELETE, so
+    # both land atomically under this single explicit transaction(). Using the
+    # public delete_feed here instead would open a SECOND BEGIN on that implicit
+    # transaction → "cannot start a transaction within a transaction", which
+    # (raising inside transaction()'s __aenter__, before its self-heal ROLLBACK)
+    # leaves the shared connection wedged for every later writer.
+    async with transaction() as txn:
+        cascaded_intents = await intents_remove_feed_id(txn, feed_id)
+        await delete_feed_in_tx(txn, feed_id)
 
     await remove_feed_job(request.app.state.scheduler, feed_id)
 
