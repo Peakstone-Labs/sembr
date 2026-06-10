@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-10
+
 ### Added
 
 - **Wisburg source** — new `wisburg-report` feed type pulling
@@ -227,7 +229,8 @@ LLM-analyzed digests to your inbox on whatever schedule you set.
   `busy_timeout=5000`; bind-mounted to host `./data/`.
 - Apache-2.0 license; SPDX header required on every `.py` (CI strict gate).
 
-[Unreleased]: https://github.com/Peakstone-Labs/sembr/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Peakstone-Labs/sembr/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Peakstone-Labs/sembr/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Peakstone-Labs/sembr/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Peakstone-Labs/sembr/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Peakstone-Labs/sembr/releases/tag/v1.0.0
