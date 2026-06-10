@@ -837,13 +837,20 @@
             <div class="form-field form-grid-full">
               <label class="field-label">URL <span class="req">*</span></label>
               <input type="text" x-model="create.form.url" maxlength="2048"
-                     :placeholder="create.form.source_type === 'newsapi' ? 'reuters.com' : 'https://example.com/rss.xml'"
-                     :list="create.form.source_type === 'newsapi' ? 'newsapi-sources-datalist' : null"
+                     :placeholder="create.form.source_type === 'newsapi' ? 'reuters.com' : (create.form.source_type === 'wisburg-report' ? 'https://api-omen.wisburg.com/api/reports' : 'https://example.com/rss.xml')"
+                     :list="create.form.source_type === 'newsapi' ? 'newsapi-sources-datalist' : (create.form.source_type === 'wisburg-report' ? 'wisburg-endpoints-datalist' : null)"
                      :class="create.errors.url ? 'field-err' : ''">
               <datalist id="newsapi-sources-datalist">
                 <template x-for="src in recommendedSources" :key="src.uri">
                   <option :value="src.uri" :label="src.title + (src.paywalled ? ' (paywalled)' : '')"></option>
                 </template>
+              </datalist>
+              <!-- Static: the three wisburg-report endpoints (whitelisted in
+                   sembr/collector/wisburg.py ENDPOINT_URLS — keep in sync) -->
+              <datalist id="wisburg-endpoints-datalist">
+                <option value="https://api-omen.wisburg.com/api/reports" label="研报笔记 (reports)"></option>
+                <option value="https://api-omen.wisburg.com/api/earningscalls" label="电话会纪要 (earningscalls)"></option>
+                <option value="https://api-omen.wisburg.com/api/am-reports" label="资管报告 (am-reports)"></option>
               </datalist>
               <span class="field-err-msg" x-show="create.errors.url" x-text="create.errors.url"></span>
             </div>

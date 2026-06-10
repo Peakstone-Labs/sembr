@@ -119,6 +119,24 @@ class FeedCreate(BaseModel):
             from sembr.config import get_settings  # noqa: PLC0415
 
             self.poll_interval_minutes = get_settings().newsapi_poll_interval_minutes
+        elif self.source_type == "wisburg-report":
+            # Whitelist of three canonical endpoint URLs. Normalize-on-write
+            # so feeds.url's UNIQUE constraint catches case/scheme/slash
+            # variants of the same endpoint (same rationale as the newsapi
+            # branch above). Lazy import mirrors the newsapi pattern —
+            # collector imports from models, not vice versa, so no cycle.
+            from sembr.collector.wisburg import (  # noqa: PLC0415
+                ENDPOINT_URLS,
+                normalize_wisburg_url,
+            )
+
+            normalized = normalize_wisburg_url(self.url)
+            if normalized not in ENDPOINT_URLS:
+                raise ValueError(
+                    "wisburg-report feed url must be one of: "
+                    f"{', '.join(sorted(ENDPOINT_URLS))}; got {self.url!r}"
+                )
+            self.url = normalized
         else:
             if not self.url.lower().startswith(("http://", "https://")):
                 raise ValueError("url must start with http:// or https://")

@@ -21,6 +21,7 @@ from sembr.collector.host_limiter import HostLimiter
 from sembr.collector.newsapi import NewsApiSource, newsapi_master_tick
 from sembr.collector.phase import derive_jitter_seconds, derive_phase_seconds
 from sembr.collector.rss import FetchError, RSSSource
+from sembr.collector.wisburg import WisburgSource
 from sembr.config import Settings, get_settings
 from sembr.dashboard.events import log_fetch_event
 from sembr.db.articles import insert_article_pending
@@ -51,6 +52,7 @@ logger = logging.getLogger(__name__)
 SOURCE_REGISTRY: dict[str, type[BaseSource]] = {
     "rss": RSSSource,
     "newsapi": NewsApiSource,
+    "wisburg-report": WisburgSource,
 }
 
 NEWSAPI_MASTER_JOB_ID = "source_newsapi_master"
