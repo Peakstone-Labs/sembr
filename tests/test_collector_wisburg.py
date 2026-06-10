@@ -81,7 +81,7 @@ def test_endpoint_urls_are_already_normalized() -> None:
 
 
 # ---------------------------------------------------------------------------
-# fetch — happy path (D4/D7/D8/D9)
+# fetch — happy path
 # ---------------------------------------------------------------------------
 
 
@@ -122,7 +122,7 @@ async def test_fetch_happy_path(monkeypatch) -> None:
     assert a.title == "瑞银：科技股配置"
     assert a.body.startswith("### 主要观点")
     assert a.content_quality == "summary"
-    # +08:00 input → UTC aware (D9)
+    # +08:00 input → UTC aware
     assert a.published_at == datetime(2026, 6, 9, 20, 36, 23, tzinfo=UTC)
     assert a.feed_md5 == _md5_url_title(a.url, a.title)
     # Bearer header attached to both list and detail calls
@@ -131,7 +131,7 @@ async def test_fetch_happy_path(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# fetch — window math (D4 / O4 / O6)
+# fetch — window math (overlap / first-pull / clamp)
 # ---------------------------------------------------------------------------
 
 
@@ -182,7 +182,7 @@ async def test_fetch_window_clamped_to_7d(monkeypatch, caplog) -> None:
 
 
 # ---------------------------------------------------------------------------
-# fetch — pagination (D4)
+# fetch — pagination
 # ---------------------------------------------------------------------------
 
 
@@ -222,7 +222,7 @@ async def test_fetch_pagination_follows_cursor_until_short_page(monkeypatch) -> 
 
 
 # ---------------------------------------------------------------------------
-# fetch — N+1 failure semantics (D5 / O5)
+# fetch — N+1 failure semantics
 # ---------------------------------------------------------------------------
 
 
@@ -277,8 +277,8 @@ async def test_fetch_detail_500_raises_fetcherror(monkeypatch) -> None:
 @respx.mock
 @pytest.mark.anyio
 async def test_fetch_all_bad_ids_raises_fetcherror(monkeypatch) -> None:
-    """Loop-1 review 🟡-1: id contract drift must not become a silent empty
-    success that advances the cursor past the whole window."""
+    """An id contract drift must not become a silent empty success that
+    advances the cursor past the whole window."""
     _use_key(monkeypatch)
     respx.get(REPORTS_URL).mock(
         return_value=httpx.Response(
@@ -322,7 +322,7 @@ async def test_fetch_isolated_bad_id_skipped(monkeypatch) -> None:
 @respx.mock
 @pytest.mark.anyio
 async def test_fetch_missing_title_skipped(monkeypatch, caplog) -> None:
-    """Deviation #3: a detail without title is skipped, not inserted."""
+    """A detail without title is skipped, not inserted."""
     _use_key(monkeypatch)
     respx.get(REPORTS_URL).mock(
         return_value=httpx.Response(
@@ -348,8 +348,8 @@ async def test_fetch_missing_title_skipped(monkeypatch, caplog) -> None:
 @respx.mock
 @pytest.mark.anyio
 async def test_fetch_zero_delivered_warns(monkeypatch, caplog) -> None:
-    """Loop-1 review 🟡-2: list non-empty but 0 delivered must leave a loud
-    breadcrumb (cursor will still advance; overlap is the only retry)."""
+    """List non-empty but 0 delivered must leave a loud breadcrumb
+    (cursor will still advance; overlap is the only retry)."""
     _use_key(monkeypatch)
     respx.get(REPORTS_URL).mock(
         return_value=httpx.Response(
@@ -427,7 +427,7 @@ async def test_fetch_unknown_endpoint_raises(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# registry + schema wiring (D3 / D12)
+# registry + schema wiring
 # ---------------------------------------------------------------------------
 
 

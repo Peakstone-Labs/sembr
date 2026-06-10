@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""FeedCreate validation for source_type='wisburg-report' (design D2).
+"""FeedCreate validation for source_type='wisburg-report'.
 
 The url must normalize onto the three-member ENDPOINT_URLS whitelist;
 anything else (other wisburg endpoints, arbitrary URLs) is rejected with an
@@ -50,12 +50,12 @@ def test_wisburg_url_whitelist_accepts_and_normalizes(raw: str, expected: str) -
 def test_wisburg_url_outside_whitelist_rejected(bad: str) -> None:
     with pytest.raises(ValidationError) as exc_info:
         FeedCreate(name="wisburg", url=bad, source_type="wisburg-report")
-    # Error message must teach the caller the valid values (design D2)
+    # Error message must teach the caller the valid values
     assert "am-reports" in str(exc_info.value)
 
 
 def test_wisburg_poll_interval_not_coerced() -> None:
-    """Unlike newsapi, wisburg feeds keep their per-feed interval (design D14)."""
+    """Unlike newsapi, wisburg feeds keep their per-feed poll interval."""
     feed = FeedCreate(
         name="wisburg",
         url=REPORTS_URL,

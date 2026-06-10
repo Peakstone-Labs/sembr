@@ -2,13 +2,13 @@
 """QA-owned test cases for wisburg-api feature (Loop 2).
 
 Covers the QA rows of the wisburg-api design Test Strategy table:
-  - test_fetch_empty_summary_skipped    (D8)    — explicit independent case
-  - test_fetch_max_pages_cap_warns_and_delivers (R1) — 6-page full mock
-  - test_fetch_429_raises_fetcherror    (R4/D5) — list and detail 429
+  - test_fetch_empty_summary_skipped    — explicit independent case
+  - test_fetch_max_pages_cap_warns_and_delivers — 6-page full mock
+  - test_fetch_429_raises_fetcherror    — list and detail 429
   - test_collect_feed_e2e_dedup         (SC#5)  — two collect_feed runs same window
-  - test_fire_dry_run_wisburg           (D16)   — _feed_dry_run NEW/DUP classification
-  - test_health_reflects_key            (D10)   — confirmed already covered by dev test
-  - test_published_at_tz_conversion     (D9)    — bad-format -> None branch
+  - test_fire_dry_run_wisburg           — _feed_dry_run NEW/DUP classification
+  - test_health_reflects_key            — confirmed already covered by dev test
+  - test_published_at_tz_conversion     — bad-format -> None branch
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def _detail(
 
 
 # ---------------------------------------------------------------------------
-# D8 — empty summary skipped (independent QA case)
+# empty summary skipped (independent QA case)
 # Note: test_fetch_zero_delivered_warns (dev) covers the "whole batch skipped"
 # path; this QA case pins the single-item skip path: one article has empty
 # summary, the remaining valid article IS returned.
@@ -71,7 +71,7 @@ def _detail(
 @respx.mock
 @pytest.mark.asyncio
 async def test_fetch_empty_summary_skipped(monkeypatch, caplog) -> None:
-    """D8: detail with empty summary is skipped; other items in the same batch
+    """Detail with empty summary is skipped; other items in the same batch
     are returned normally. The skip emits a warning for the empty item."""
     _use_key(monkeypatch)
     respx.get(REPORTS_URL).mock(
@@ -106,14 +106,14 @@ async def test_fetch_empty_summary_skipped(monkeypatch, caplog) -> None:
 
 
 # ---------------------------------------------------------------------------
-# R1 — max pages cap warns and delivers (6 full pages => 500 items + warning)
+# max pages cap warns and delivers (6 full pages => 500 items + warning)
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
 @pytest.mark.asyncio
 async def test_fetch_max_pages_cap_warns_and_delivers(monkeypatch, caplog) -> None:
-    """R1: when 6 full pages are available, _fetch_list stops at _MAX_PAGES=5
+    """When 6 full pages are available, _fetch_list stops at _MAX_PAGES=5
     (500 items), logs a warning about the cap, and returns the first 500."""
     _use_key(monkeypatch)
 
@@ -161,14 +161,14 @@ async def test_fetch_max_pages_cap_warns_and_delivers(monkeypatch, caplog) -> No
 
 
 # ---------------------------------------------------------------------------
-# R4/D5 — 429 on list or detail raises FetchError
+# 429 on list or detail raises FetchError
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
 @pytest.mark.asyncio
 async def test_fetch_429_list_raises_fetcherror(monkeypatch) -> None:
-    """R4/D5: HTTP 429 on the list endpoint must raise FetchError (not return [])."""
+    """HTTP 429 on the list endpoint must raise FetchError (not return [])."""
     _use_key(monkeypatch)
     respx.get(REPORTS_URL).mock(return_value=httpx.Response(429))
 
@@ -179,7 +179,7 @@ async def test_fetch_429_list_raises_fetcherror(monkeypatch) -> None:
 @respx.mock
 @pytest.mark.asyncio
 async def test_fetch_429_detail_raises_fetcherror(monkeypatch) -> None:
-    """R4/D5: HTTP 429 on a detail request must raise FetchError (not skip the item)."""
+    """HTTP 429 on a detail request must raise FetchError (not skip the item)."""
     _use_key(monkeypatch)
     respx.get(REPORTS_URL).mock(
         return_value=httpx.Response(
@@ -290,14 +290,14 @@ async def test_collect_feed_e2e_dedup(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# D16 — fire dry_run walks WisburgSource → NEW/DUP classification
+# fire dry_run walks WisburgSource → NEW/DUP classification
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
 @pytest.mark.asyncio
 async def test_fire_dry_run_wisburg(monkeypatch) -> None:
-    """D16: _feed_dry_run with WisburgSource must correctly classify articles as
+    """_feed_dry_run with WisburgSource must correctly classify articles as
     NEW or DUP by checking fingerprint_exists without writing to the DB.
 
     Pattern: pre-seed one article fingerprint in feed_items, then fire dry_run
@@ -367,13 +367,13 @@ async def test_fire_dry_run_wisburg(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# D10 — health_reflects_key (QA verification: dev already has this; confirm)
+# health_reflects_key (QA verification: dev already has this; confirm)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_health_reflects_key_qa_verification(monkeypatch) -> None:
-    """D10 QA verification: confirm health() returns False for empty key and
+    """QA verification: confirm health() returns False for empty key and
     True for non-empty key without making any remote requests."""
     from sembr.config import get_settings
 
@@ -388,13 +388,13 @@ async def test_health_reflects_key_qa_verification(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# D9 — published_at_tz_conversion: bad format -> None (QA branch)
+# published_at_tz_conversion: bad format -> None (QA branch)
 # The dev happy path tests the +08:00 -> UTC path; QA owns the error branch.
 # ---------------------------------------------------------------------------
 
 
 def test_published_at_bad_format_returns_none() -> None:
-    """D9 QA: malformed datetime strings must return None without raising."""
+    """Malformed datetime strings must return None without raising."""
     bad_inputs = [
         "not-a-date",
         "2026/06/10 04:00:00",  # wrong separators — fromisoformat rejects slash-separated

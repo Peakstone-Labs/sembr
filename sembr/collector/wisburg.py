@@ -8,7 +8,7 @@ identity is encoded in ``feed.url`` (a member of ``ENDPOINT_URLS``) so the
 feeds-table UNIQUE constraint blocks duplicate feeds per endpoint and
 ``HostLimiter`` groups all wisburg feeds onto one host semaphore.
 
-Wire shape (probed 2026-06-10, see dev-docs wisburg-api/context.md):
+Wire shape (probed against the live API, 2026-06-10):
 
 - list  ``GET <endpoint>?first=100&startTime=<iso>&after=<cursor>`` returns
   only ``{id,title,datetime}`` per item — the body requires one extra
@@ -20,7 +20,7 @@ Wire shape (probed 2026-06-10, see dev-docs wisburg-api/context.md):
   so incremental sync leans on ``startTime`` watermarks, never deep paging.
 - rate limit 1000 req/h (response headers; not in their docs).
 
-Failure semantics (design O5): the cursor in ``collect_feed`` advances
+Failure semantics: the cursor in ``collect_feed`` advances
 unconditionally after a successful fetch, so returning a partial batch would
 permanently lose the failed items. Any transient failure (HTTP error,
 timeout, bad envelope) therefore raises ``FetchError`` — nothing was
@@ -47,12 +47,12 @@ WISBURG_BASE_URL = "https://api-omen.wisburg.com"
 
 # The three streams shipped in this round share one source_type because their
 # list/detail schemas are identical; a future wisburg stream with a different
-# shape gets its own source_type (requirements Resolved #3).
+# shape gets its own source_type.
 ENDPOINT_URLS: frozenset[str] = frozenset(
     f"{WISBURG_BASE_URL}/api/{slug}" for slug in ("reports", "earningscalls", "am-reports")
 )
 
-# Window constants (design D4 / O4 / O6). Module constants, not Settings —
+# Window constants. Module constants, not Settings —
 # they encode probed upstream behaviour, not user preference.
 #
 # _OVERLAP: wisburg's `datetime` looks like batch-ingestion time (items
@@ -171,7 +171,7 @@ class WisburgSource(BaseSource):
             # Whole-window skip (all details missing title/summary). The
             # cursor still advances after we return, so these items only get
             # retried while the _OVERLAP window covers them — leave a loud
-            # breadcrumb for the ingest-gap audit (design R2 runbook).
+            # breadcrumb for the periodic ingest-gap audit.
             logger.warning(
                 "wisburg fetch[%s]: %d list items but 0 delivered (all skipped); "
                 "cursor will still advance — items rely on the %s overlap to be "
@@ -232,7 +232,7 @@ class WisburgSource(BaseSource):
     async def _fetch_details(
         self, client: httpx.AsyncClient, items: list[dict]
     ) -> list[RawArticle]:
-        """Sequential N+1 detail pass (design D6: ~300ms/req × tens of items;
+        """Sequential N+1 detail pass (~300ms/req × tens of items per day;
         serialism + HostLimiter makes 429 practically unreachable)."""
         articles: list[RawArticle] = []
         bad_id_count = 0
@@ -242,7 +242,7 @@ class WisburgSource(BaseSource):
                 # Isolated malformed item: skip. But if EVERY item has a
                 # non-int id the upstream id contract drifted — that's
                 # handled after the loop as a FetchError (same tier as the
-                # D11 envelope guards), not a silent empty success that
+                # envelope guards), not a silent empty success that
                 # would advance the cursor past the whole window.
                 bad_id_count += 1
                 logger.warning("wisburg fetch[%s]: list item without int id: %r", self._url, item)
@@ -284,7 +284,7 @@ class WisburgSource(BaseSource):
                 continue
             if not summary:
                 # Skip rather than insert a stub: MD5 dedup would lock the
-                # stub in forever (design D8); the 1h overlap re-reads the
+                # stub in forever; the 1h overlap re-reads the
                 # item next tick once upstream fills the summary in.
                 logger.warning(
                     "wisburg fetch[%s]: detail %d has empty summary, skipped", self._url, item_id
@@ -295,8 +295,8 @@ class WisburgSource(BaseSource):
                 RawArticle(
                     # API detail URL: stable, unique per id, and a real
                     # resolvable resource — chosen over a guessed
-                    # www.wisburg.com page link (design O3: that route does
-                    # not exist; a later pattern change would also shift the
+                    # www.wisburg.com page link (that route does not
+                    # exist; a later pattern change would also shift the
                     # md5 fingerprint and re-import everything).
                     url=detail_url,
                     title=title,
