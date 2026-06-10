@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Wisburg source** — new `wisburg-report` feed type pulling
+  [Wisburg](https://wisburg.com)'s open-API research-note streams:
+  institutional research notes (`/api/reports`), earnings-call
+  transcripts (`/api/earningscalls`), and asset-management reports
+  (`/api/am-reports`). One feed per stream — pick the endpoint URL from
+  the datalist in the create-feed form; articles carry Wisburg's
+  pre-digested markdown summary as the body. Requires `WISBURG_API_KEY`
+  (Wisburg developer console). Incremental sync starts from the last
+  24 h on first pull — no historical backfill.
+
 ## [1.2.0] - 2026-06-05
 
 ### Added
