@@ -111,6 +111,7 @@ Templates are read on every digest tick (no caching) — host-side edits take ef
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PROXY_HOSTS` | `rsshub:1200` | Comma-separated `host[:port]` entries that front many backends (the bundled RSSHub instance is the canonical example). For these hosts the per-host concurrency limiter additionally segments by the first URL path segment, so backends behind one proxy don't share a single semaphore |
+| `WISBURG_API_KEY` | — | Bearer key for `wisburg-report` feeds ([Wisburg developer console](https://www.wisburg.com/user/developer?tab=apikeys)). Empty disables Wisburg feeds: fetches fail without advancing the cursor and recover on the next poll once the key is set |
 
 ## RSSHub passthrough variables
 

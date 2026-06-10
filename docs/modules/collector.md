@@ -59,6 +59,40 @@ Per-fetch behaviour:
 - Strips HTML tags AND decodes entities (`&amp;` → `&`) so the embedder sees the text the article meant
 - `since` filtering is "err on inclusion": entries without a usable `published_parsed` / `updated_parsed` are kept and rely on the downstream MD5 dedup
 
+### Wisburg source (`wisburg.py`)
+
+```python
+class WisburgSource(BaseSource):
+    def __init__(self, url: str, timeout: float = 30.0)
+
+ENDPOINT_URLS: frozenset[str]        # the three whitelisted endpoint URLs
+def normalize_wisburg_url(s) -> str  # shared with FeedCreate's url validator
+```
+
+`source_type="wisburg-report"` — Wisburg open-API research-note streams
+(`/api/reports`, `/api/earningscalls`, `/api/am-reports`). The endpoint
+identity is the `feed.url` itself (whitelist-validated on write), so the
+feeds-table UNIQUE constraint blocks duplicate feeds per endpoint. Auth is a
+single Bearer key (`WISBURG_API_KEY`); empty key → `FetchError` on fetch and
+`health() == False`.
+
+Per-fetch behaviour:
+
+- **N+1 fetch**: the list endpoint returns only `{id,title,datetime}`; each
+  item costs one extra `GET <endpoint>/<id>` for the markdown `summary`
+  (stored as `body`, `content_quality="summary"`). Detail calls run
+  sequentially — upstream allows 1000 req/h and daily volume is tens of items
+- **Watermark**: `startTime = max(since − 1h, now − 7d)`; first pull uses
+  `now − 1d`. The 1h overlap re-reads the trailing edge (MD5 dedup absorbs
+  it); the 7d clamp keeps a stale cursor from turning into a backfill
+- **All-or-nothing failure**: any transient failure (HTTP error, timeout,
+  non-success response envelope) raises `FetchError` so the cursor doesn't
+  advance past never-inserted items. Only terminal per-item misses are
+  skipped with a warning: detail 404/410, missing title, empty summary
+- Article `url` is the API detail URL
+  (`https://api-omen.wisburg.com/api/<endpoint>/<id>`) — stable and unique,
+  which keeps the `MD5(url+title)` fingerprint stable across ticks
+
 ### Deterministic phase + jitter (`phase.py`)
 
 ```python
@@ -152,6 +186,8 @@ Loaded by `db.feeds.seed_initial_feeds` on first startup. Already-seeded URLs ar
 | host-limiter `max_per_host` | `2` | hard-coded in `main.lifespan`; promote to a setting if you need per-deployment tuning |
 | feed-fire rate limit | `60 s` | hard-coded in `fire_tasks._FIRE_RATE_LIMIT_SECONDS` |
 | feed-fire task TTL | `3600 s` | hard-coded in `fire_tasks._TASK_TTL_SECONDS` |
+| `wisburg_api_key` | `""` | Bearer key for `source_type="wisburg-report"`; empty disables wisburg feeds |
+| wisburg window constants | `1h` overlap / `7d` clamp / `1d` first pull / 5 pages | hard-coded in `wisburg.py` module constants (they encode probed upstream behaviour, not user preference) |
 
 Per-feed `timeout` lives in the feed's `config` JSON column; defaults to `30.0` if absent.
 

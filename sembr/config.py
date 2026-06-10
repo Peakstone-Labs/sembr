@@ -263,6 +263,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    wisburg_api_key: SecretStr = Field(
+        default="",
+        description=(
+            "Wisburg open-API key (wisburg.com/user/developer). Empty = "
+            "Wisburg feeds disabled. Rate limit is 1000 requests/hour."
+        ),
+    )
+
     @field_validator("newsapi_categories")
     @classmethod
     def _newsapi_categories_valid(cls, v: str) -> str:
