@@ -348,9 +348,9 @@ async def test_fire_dry_run_wisburg(monkeypatch) -> None:
     assert task.articles_new == 1
 
     statuses = {a["url"]: a["status"] for a in task.articles}
-    assert (
-        statuses[known_url] == "DUP"
-    ), f"Expected DUP for known article, got {statuses[known_url]}"
+    assert statuses[known_url] == "DUP", (
+        f"Expected DUP for known article, got {statuses[known_url]}"
+    )
     assert statuses[f"{REPORTS_URL}/202"] == "NEW", "Expected NEW for fresh article"
 
     # Dry run must NOT have written any new rows to feed_items
