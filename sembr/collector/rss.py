@@ -155,5 +155,15 @@ class RSSSource(BaseSource):
                     "default": 30.0,
                     "description": "HTTP timeout in seconds",
                 },
+                "ignore_published_watermark": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Dedup by MD5 only, ignoring the published-at watermark. "
+                        "Enable for sources that stamp every item with a coarse or "
+                        "back-dated timestamp (e.g. daily research reports), which "
+                        "the watermark would otherwise skip entirely."
+                    ),
+                },
             },
         }
