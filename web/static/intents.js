@@ -1052,23 +1052,48 @@ function intentsTab() {
       }
     },
 
-    // Helper: render markdown with diff highlights injected before rendering.
-    // Walks the corrections list and wraps each before/after substring in a
-    // coloured span so the user sees exactly what changed at a glance.
+    // Render diff-highlighted markdown by applying corrections to raw text,
+    // then marking changed spans inline.  Matches the backend _apply_corrections
+    // algorithm: context-anchored match first, then first-occurrence fallback,
+    // ONE correction at a time.  This way highlights appear only at the exact
+    // positions that were actually changed — not everywhere the needle text happens
+    // to appear in the document.
     _renderDiffMarkdown(rawText, corrections, side) {
-      let text = rawText;
-      for (const c of (corrections || [])) {
-        const needle = side === 'original' ? c.before : c.after;
-        if (!needle) continue;
-        const cls = side === 'original' ? 'diff-del' : 'diff-ins';
-        // Escape regex-special chars in the literal needle.
-        const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        text = text.replace(new RegExp(escaped, 'g'), '<span class="' + cls + '">' + needle + '</span>');
+      if (!corrections || corrections.length === 0) {
+        return this._renderMarkdown(rawText);
       }
+      // Resolve positions from the raw text first, then sort back-to-front
+      // so span insertions don't shift earlier positions (same as backend
+      // _apply_corrections: context-anchored match, first-occurrence fallback,
+      // ONE occurrence per correction).
+      const ops = [];
+      for (const c of corrections) {
+        const quote = c.before;
+        if (!quote) continue;
+        let idx = -1;
+        if (c.context) {
+          const pos = rawText.indexOf(c.context + quote);
+          if (pos !== -1) idx = pos + c.context.length;
+        }
+        if (idx === -1) idx = rawText.indexOf(quote);
+        if (idx === -1) continue;
+        ops.push({ idx, quote, replacement: c.after || '' });
+      }
+      ops.sort((a, b) => b.idx - a.idx);
+
+      let origText = rawText;
+      let corrText = rawText;
+      for (const op of ops) {
+        const delSpan = '<span class="diff-del">' + op.quote + '</span>';
+        const insSpan = '<span class="diff-ins">' + op.replacement + '</span>';
+        origText = origText.slice(0, op.idx) + delSpan + origText.slice(op.idx + op.quote.length);
+        corrText = corrText.slice(0, op.idx) + insSpan + corrText.slice(op.idx + op.quote.length);
+      }
+      const text = side === 'original' ? origText : corrText;
       return this._renderMarkdown(text);
     },
 
-    // Helper: plain markdown render (used by openHistoryView and as fallback).
+    // Helper: plain markdown render (used by openHistoryView and as fallback). (used by openHistoryView and as fallback).
     _renderMarkdown(text) {
       try {
         if (window.marked && window.DOMPurify) {
