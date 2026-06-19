@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -163,6 +163,7 @@ class SummaryPipeline:
         prompts_dir: Path = Path("/app/prompts"),
         get_history_text: Callable[[int, int, datetime | None], Awaitable[str]] | None = None,
         on_persist: OnSummaryCallback | None = None,
+        get_review_gate: Callable[[int], Awaitable[bool]] | None = None,
     ) -> None:
         self._llm = llm
         self._on_summary: OnSummaryCallback = on_summary or log_summaries
@@ -173,6 +174,7 @@ class SummaryPipeline:
         self._prompts_dir = prompts_dir
         self._get_history_text = get_history_text
         self._on_persist = on_persist
+        self._get_review_gate = get_review_gate
 
     async def compute_summary(
         self,
@@ -213,6 +215,10 @@ class SummaryPipeline:
             return None
 
         intent_id = matches[0].intent_id
+        # Unified time anchor (D12): computed once at the top so gate audit
+        # run_at and SummaryResult.run_at are byte-identical, enabling reliable
+        # (intent_id, run_at) join between audit logs and summary_history.
+        effective_now = now or datetime.now(tz=UTC)
         ordered = sorted(
             matches,
             key=lambda m: (m.payload.get("published_at") or "", m.article_id),
@@ -298,7 +304,7 @@ class SummaryPipeline:
             raise
         if "{history}" in raw_instruction and self._get_history_text and history_days is not None:
             try:
-                history_text = await self._get_history_text(intent_id, history_days, now)
+                history_text = await self._get_history_text(intent_id, history_days, effective_now)
             except Exception as exc:
                 logger.warning(
                     "SummaryPipeline: history fetch failed for intent_id=%d: %s",
@@ -386,6 +392,31 @@ class SummaryPipeline:
 
         summary = await self._llm.summarize(prompt, system=system_prompt)
 
+        # --- review gate (D1/D3): optional LLM fact-check, only when flag is ON ---
+        run_at_str = effective_now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if self._get_review_gate is not None:
+            try:
+                gate_on = await self._get_review_gate(intent_id)
+            except Exception:
+                logger.warning(
+                    "SummaryPipeline: review_gate fetcher failed for intent_id=%d; "
+                    "treating as OFF (fail-open)",
+                    intent_id,
+                )
+                gate_on = False
+            if gate_on:
+                from sembr.summarizer.review import run_review_gate  # noqa: PLC0415
+
+                summary = await run_review_gate(
+                    llm=self._llm,
+                    intent_id=intent_id,
+                    summary_raw=summary,
+                    articles_text=articles_text,
+                    language=language,
+                    run_at=run_at_str,
+                    prompts_dir=str(self._prompts_dir),
+                )
+
         citations = [_to_citation(m, feed_name_map) for m in ordered]
         return SummaryResult(
             intent_id=intent_id,
@@ -393,6 +424,7 @@ class SummaryPipeline:
             citations=citations,
             primary=citations[0] if citations else None,
             other_sources=citations[1:] if len(citations) > 1 else [],
+            run_at=run_at_str,
         )
 
     async def handle(self, matches: list[Match], *, persist: bool = True) -> None:

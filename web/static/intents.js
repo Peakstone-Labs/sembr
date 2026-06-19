@@ -221,6 +221,7 @@ function intentsTab() {
         trigger_count: 3, max_wait_seconds: 1800,
         // templates
         system_template: 'default', instruction_template: 'default',
+        review_gate: false,
         // feed filter
         feedFilterMode: 'all', feedIds: [],
         // channels
@@ -275,6 +276,7 @@ function intentsTab() {
           // templates
           system_template:      intent.system_template      || 'default',
           instruction_template: intent.instruction_template || 'default',
+          review_gate:          intent.review_gate         ?? false,
           // feed filter: null or {ids:null} → all (全扫); {ids:[...]} → specific
           feedFilterMode: (ff === null || ff === undefined || ff.ids === null || ff.ids === undefined) ? 'all' : 'specific',
           feedIds: ff?.ids ? [...ff.ids] : [],
@@ -528,6 +530,7 @@ function intentsTab() {
         schedule,
         system_template:      f.system_template      || 'default',
         instruction_template: f.instruction_template || 'default',
+        review_gate:          !!f.review_gate,
         feed_filter:          f.feedFilterMode === 'all' ? null : { ids: f.feedIds },
         channels: [{
           type: 'email',

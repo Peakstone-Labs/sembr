@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS intents (
     schedule             TEXT    NOT NULL DEFAULT '{}',
     timezone             TEXT    NOT NULL DEFAULT 'UTC',
     language             TEXT    NOT NULL DEFAULT 'zh',
+    review_gate          INTEGER NOT NULL DEFAULT 0,
     created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
 )
@@ -73,6 +74,7 @@ _MIGRATIONS = [
     "ALTER TABLE intents ADD COLUMN schedule TEXT NOT NULL DEFAULT '{}'",
     "ALTER TABLE intents ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'",
     "ALTER TABLE intents ADD COLUMN language TEXT NOT NULL DEFAULT 'zh'",
+    "ALTER TABLE intents ADD COLUMN review_gate INTEGER NOT NULL DEFAULT 0",
 ]
 
 # Backfill old scan_interval_seconds into the new schedule JSON column.
@@ -134,6 +136,7 @@ _SELECT_INTENTS = (
     "SELECT id,name,text,threshold,enabled,channels,tags,"
     "system_template,instruction_template,"
     "feed_filter,schedule,timezone,language,"
+    "review_gate,"
     "created_at,updated_at FROM intents"
 )
 
@@ -209,7 +212,7 @@ def _row_to_intent(row: tuple) -> Intent:
     # row indices: 0=id 1=name 2=text 3=threshold 4=enabled 5=channels 6=tags
     #              7=system_template 8=instruction_template
     #              9=feed_filter 10=schedule 11=timezone 12=language
-    #              13=created_at 14=updated_at
+    #              13=review_gate 14=created_at 15=updated_at
     schedule = _SCHEDULE_ADAPTER.validate_python(json.loads(row[10]))
     return Intent(
         id=row[0],
@@ -225,8 +228,9 @@ def _row_to_intent(row: tuple) -> Intent:
         schedule=schedule,
         timezone=row[11],
         language=row[12],
-        created_at=row[13],
-        updated_at=row[14],
+        review_gate=bool(row[13]),
+        created_at=row[14],
+        updated_at=row[15],
     )
 
 
@@ -250,8 +254,9 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
                    (name,text,threshold,enabled,channels,tags,
                     system_template,instruction_template,
                     feed_filter,schedule,timezone,language,
+                    review_gate,
                     created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 body.name,
                 body.text,
@@ -265,6 +270,7 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
                 schedule_json,
                 body.timezone,
                 body.language,
+                int(body.review_gate),
                 now,
                 now,
             ),
@@ -340,6 +346,7 @@ async def _update_intent_in_txn(
     )
     new_timezone = body.timezone if body.timezone is not None else current.timezone
     new_language = body.language if body.language is not None else current.language
+    new_review_gate = body.review_gate if body.review_gate is not None else current.review_gate
 
     channels_json = json.dumps([c.model_dump() for c in new_channels], ensure_ascii=False)
     tags_json = json.dumps(new_tags, ensure_ascii=False)
@@ -351,6 +358,7 @@ async def _update_intent_in_txn(
            SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
                system_template=?,instruction_template=?,
                feed_filter=?,schedule=?,timezone=?,language=?,
+               review_gate=?,
                updated_at=?
            WHERE id=?""",
         (
@@ -366,6 +374,7 @@ async def _update_intent_in_txn(
             schedule_json,
             new_timezone,
             new_language,
+            int(new_review_gate),
             now,
             intent_id,
         ),
@@ -403,6 +412,7 @@ async def _update_intent_raw_in_txn(
            SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
                system_template=?,instruction_template=?,
                feed_filter=?,schedule=?,timezone=?,language=?,
+               review_gate=?,
                updated_at=?
            WHERE id=?""",
         (
@@ -418,6 +428,7 @@ async def _update_intent_raw_in_txn(
             schedule_json,
             snapshot.timezone,
             snapshot.language,
+            int(snapshot.review_gate),
             snapshot.updated_at,
             intent_id,
         ),

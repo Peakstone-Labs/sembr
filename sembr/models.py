@@ -261,6 +261,7 @@ class IntentCreate(BaseModel):
     feed_filter: FeedFilter | None = None
     timezone: str = "UTC"
     language: str = "zh"
+    review_gate: bool = False
 
     @field_validator("tags")
     @classmethod
@@ -306,6 +307,7 @@ class IntentUpdate(BaseModel):
     feed_filter: FeedFilter | None = None
     timezone: str | None = None
     language: str | None = None
+    review_gate: bool | None = None
 
     @field_validator("tags")
     @classmethod
@@ -364,6 +366,7 @@ class Intent(BaseModel):
     feed_filter: FeedFilter | None
     timezone: str
     language: str
+    review_gate: bool
     created_at: str
     updated_at: str
 

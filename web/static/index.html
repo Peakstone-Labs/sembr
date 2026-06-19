@@ -1466,6 +1466,16 @@
               <span class="field-err-msg" x-show="modal.errors.timezone" x-text="modal.errors.timezone"></span>
             </div>
 
+            <div class="form-field">
+              <label class="field-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                <input type="checkbox" x-model="modal.form.review_gate" style="width:auto;margin:0;">
+                Review gate
+              </label>
+              <span class="field-hint" style="display:block;margin-top:4px;">
+                After digest generation, run a second LLM pass to fact-check against source articles and auto-correct hallucinations. Adds ~1 extra LLM call per tick — slower but more accurate.
+              </span>
+            </div>
+
             <div class="form-field form-grid-full">
               <label class="field-label">Tags <span class="field-hint" style="text-transform:none; letter-spacing:0;">(max 10, 50 chars each)</span></label>
               <div class="tags-wrap" style="margin-bottom:8px;">
@@ -2768,7 +2778,7 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=16"></script>
+<script src="/dashboard/intents.js?v=17"></script>
 <script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=12"></script>

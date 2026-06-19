@@ -9,9 +9,9 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
@@ -154,8 +154,9 @@ async def test_pipeline_history_injected_in_prompt(prompts_dir_with_history: Pat
     result = await pipeline.compute_summary([_match()])
 
     assert result is not None
-    get_history_text.assert_awaited_once_with(1, 7, None)
-    # The actual prompt passed to LLM must contain the history text
+    get_history_text.assert_awaited_once_with(1, 7, ANY)
+    # Verify effective_now is a concrete UTC datetime (D12)
+    assert isinstance(get_history_text.call_args[0][2], datetime)
     call_args = llm.summarize.call_args
     prompt_arg = call_args[0][0] if call_args[0] else call_args[1].get("prompt", "")
     assert history_text in prompt_arg
@@ -596,4 +597,5 @@ async def test_compute_summary_now_default_passes_none(
         prompts_dir=prompts_dir_with_history,
     )
     await pipeline.compute_summary([_match()])
-    get_history_text.assert_awaited_once_with(1, 7, None)
+    get_history_text.assert_awaited_once_with(1, 7, ANY)
+    # D12: effective_now is a concrete datetime, not None

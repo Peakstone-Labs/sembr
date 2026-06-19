@@ -127,6 +127,26 @@ async def _get_intent_prompt_ctx(intent_id: int) -> tuple[str, str, str, str, in
     )
 
 
+async def _get_review_gate(intent_id: int) -> bool:
+    """Read the review_gate flag for *intent_id*.
+
+    Called by SummaryPipeline.compute_summary before the gate step.
+    Returns False when the intent is missing or the flag is off — the gate
+    is opt-in, so any failure to fetch defaults to OFF (fail-open).
+    """
+    try:
+        intent = await get_intent(get_conn(), intent_id)
+    except Exception:
+        logger.warning(
+            "_get_review_gate: get_intent failed for intent_id=%d, treating as OFF",
+            intent_id,
+        )
+        return False
+    if intent is None:
+        return False
+    return bool(intent.review_gate)
+
+
 async def _dispatch_template_error(
     conn: aiosqlite.Connection,
     email_ch: EmailChannel,
@@ -305,7 +325,8 @@ async def lifespan(app: FastAPI):
         get_history_text=lambda iid, days, now=None: format_history_text(
             get_conn(), iid, days, now
         ),
-        on_persist=lambda r: save_summary(get_conn(), r),
+        on_persist=lambda r: save_summary(get_conn(), r, run_at=r.run_at),
+        get_review_gate=lambda iid: _get_review_gate(iid),
     )
     app.state.on_match = pipeline.handle  # cron path: persist=True (default)
     # Event-mode flush uses on_match_event so history is not written for

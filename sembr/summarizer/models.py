@@ -35,6 +35,11 @@ class SummaryResult:
     citations: list[Citation] = field(default_factory=list)
     primary: Citation | None = None
     other_sources: list[Citation] = field(default_factory=list)
+    # Fire-time anchor set by compute_summary (unified effective_now from D12).
+    # None when the caller hasn't threaded the anchor through (legacy paths);
+    # non-None enables deterministic (intent_id, run_at) join between gate
+    # audit logs and summary_history rows.
+    run_at: str | None = None
 
 
 PrePushHook = Callable[["SummaryResult"], Awaitable[bool]]
