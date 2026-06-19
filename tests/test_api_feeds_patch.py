@@ -167,3 +167,50 @@ def test_feeds_patch_interval_disabled_no_reschedule(client: TestClient) -> None
     assert resp.status_code == 200
     # disabled feed — no job added
     client._mock_add.assert_not_called()
+
+
+# config edit on an enabled feed must re-register so the running APScheduler job
+# picks up the new args. Regression: a config-only edit (e.g. toggling
+# ignore_published_watermark) used to update the DB but leave the in-memory job
+# with the stale config, so scheduled ticks kept filtering on the watermark and
+# silently collected nothing while the fire path (fresh DB read) worked.
+def test_feeds_patch_config_reschedules(client: TestClient) -> None:
+    feed = _create_feed(client, name="cfg", url="https://cfg.example.com/rss")
+    feed_id = feed["id"]
+
+    client._mock_add.reset_mock()
+    resp = client.patch(f"/feeds/{feed_id}", json={"config": {"ignore_published_watermark": True}})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["config"]["ignore_published_watermark"] is True
+    # add_feed_job called so the running job re-reads the new config
+    client._mock_add.assert_called_once()
+
+
+# config no-op PATCH on an enabled feed must NOT touch the scheduler
+def test_feeds_patch_config_noop_no_reschedule(client: TestClient) -> None:
+    feed = _create_feed(client, name="cfgnoop", url="https://cfgnoop.example.com/rss")
+    feed_id = feed["id"]
+    # Set an initial config, then PATCH the identical value
+    client.patch(f"/feeds/{feed_id}", json={"config": {"timeout": 30.0}})
+    client._mock_add.reset_mock()
+
+    resp = client.patch(f"/feeds/{feed_id}", json={"config": {"timeout": 30.0}})
+    assert resp.status_code == 200, resp.text
+    # Value unchanged — scheduler must not be touched
+    client._mock_add.assert_not_called()
+    client._mock_remove.assert_not_called()
+
+
+# config edit on a DISABLED feed must NOT add a job (no active job to refresh)
+def test_feeds_patch_config_disabled_no_reschedule(client: TestClient) -> None:
+    feed = _create_feed(client, name="cfgoff", url="https://cfgoff.example.com/rss")
+    feed_id = feed["id"]
+
+    client.patch(f"/feeds/{feed_id}", json={"enabled": False})
+    client._mock_add.reset_mock()
+    client._mock_remove.reset_mock()
+
+    resp = client.patch(f"/feeds/{feed_id}", json={"config": {"ignore_published_watermark": True}})
+    assert resp.status_code == 200, resp.text
+    client._mock_add.assert_not_called()
+    client._mock_remove.assert_not_called()
