@@ -1483,20 +1483,15 @@
               </div>
             </div>
 
-            <div class="form-field" style="align-self:center;">
-              <label class="toggle-wrap" style="cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:32px;">
+              <label class="toggle-wrap" style="cursor:pointer;" title="Second LLM pass to fact-check against source articles and auto-correct hallucinations.">
                 <span class="toggle">
                   <input type="checkbox" x-model="modal.form.review_gate">
                   <span class="toggle-slider"></span>
                 </span>
                 <span class="field-label" style="margin:0;">Review gate</span>
               </label>
-              <span class="field-hint" style="display:block;margin-top:4px;font-size:0.75rem;">
-                Second LLM pass to fact-check against source articles and auto-correct hallucinations. One extra LLM call per tick, slower but more accurate.
-              </span>
-            </div>
 
-            <div class="form-field" style="align-self:center;">
               <label class="toggle-wrap" style="cursor:pointer;">
                 <span class="toggle">
                   <input type="checkbox" x-model="modal.form.enabled">
@@ -2781,7 +2776,7 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=18"></script>
+<script src="/dashboard/intents.js?v=19"></script>
 <script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=12"></script>
