@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=12">
+<link rel="stylesheet" href="/dashboard/style.css?v=13">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -2235,34 +2235,41 @@
 
   <!-- ── Review comparison modal ── -->
   <div class="modal-overlay" x-show="reviewCompare.open" x-cloak @click.self="closeReviewCompare()">
-    <div class="modal-panel" style="max-width:960px; max-height:90vh; overflow-y:auto;">
+    <div class="modal-panel" style="max-width:1020px; max-height:92vh; display:flex; flex-direction:column;">
       <div class="modal-header">
         <span class="modal-title">Review result</span>
         <button class="modal-close" @click="closeReviewCompare()">✕</button>
       </div>
-      <div x-show="reviewCompare.corrections.length > 0" style="margin-bottom:12px;">
+      <div x-show="reviewCompare.corrections.length > 0" style="margin-bottom:10px;">
         <span class="muted" style="font-size:0.78rem;" x-text="reviewCompare.corrections.length + ' correction(s) found'"></span>
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-        <div>
-          <div class="muted" style="font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:4px;">Original</div>
-          <div class="history-summary" style="line-height:1.6; max-height:50vh; overflow-y:auto; padding:8px; border:1px solid var(--border); border-radius:4px; background:var(--bg-secondary);" x-html="reviewCompare.originalHtml"></div>
+      <!-- Sync-scroll diff panels -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0; border:1px solid var(--border); border-radius:4px; overflow:hidden; flex:1; min-height:0;">
+        <div style="display:flex; flex-direction:column; border-right:1px solid var(--border);">
+          <div style="padding:6px 10px; font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; background:var(--bg-secondary); border-bottom:1px solid var(--border); color:var(--text-dim);">Original</div>
+          <div class="diff-panel" style="flex:1; overflow-y:auto; padding:10px; line-height:1.65; font-size:0.85rem;" x-ref="diffScrollOrig"
+               @scroll="_syncDiffScroll($event, 'orig')">
+            <div class="history-summary" x-html="reviewCompare.originalHtml"></div>
+          </div>
         </div>
-        <div>
-          <div class="muted" style="font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:4px;">Corrected</div>
-          <div class="history-summary" style="line-height:1.6; max-height:50vh; overflow-y:auto; padding:8px; border:1px solid var(--border); border-radius:4px; background:var(--bg-secondary);" x-html="reviewCompare.correctedHtml"></div>
+        <div style="display:flex; flex-direction:column;">
+          <div style="padding:6px 10px; font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; background:var(--bg-secondary); border-bottom:1px solid var(--border); color:var(--text-dim);">Corrected</div>
+          <div class="diff-panel" style="flex:1; overflow-y:auto; padding:10px; line-height:1.65; font-size:0.85rem;" x-ref="diffScrollCorr"
+               @scroll="_syncDiffScroll($event, 'corr')">
+            <div class="history-summary" x-html="reviewCompare.correctedHtml"></div>
+          </div>
         </div>
       </div>
-      <!-- Corrections detail -->
-      <div x-show="reviewCompare.corrections.length > 0" style="margin-top:16px;">
-        <div class="muted" style="font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:6px;">Corrections detail</div>
+      <!-- Corrections detail (collapsible) -->
+      <details x-show="reviewCompare.corrections.length > 0" style="margin-top:12px;" open>
+        <summary style="cursor:pointer; font-size:0.78rem; color:var(--text-dim); margin-bottom:6px;">Corrections detail</summary>
         <table style="width:100%;">
           <thead>
             <tr>
-              <th style="width:20px;">#</th>
-              <th style="width:100px;">Error class</th>
-              <th style="width:40%;">Before</th>
-              <th style="width:40%;">After</th>
+              <th style="width:22px;">#</th>
+              <th style="width:110px;">Error class</th>
+              <th style="width:42%;">Before</th>
+              <th style="width:42%;">After</th>
             </tr>
           </thead>
           <tbody>
@@ -2270,13 +2277,13 @@
               <tr>
                 <td class="mono" x-text="idx + 1"></td>
                 <td><code x-text="c.error_class"></code></td>
-                <td style="font-size:0.8rem; max-width:300px; word-break:break-all;"><span style="background:#ffdddd; padding:1px 3px;" x-text="c.before"></span></td>
-                <td style="font-size:0.8rem; max-width:300px; word-break:break-all;"><span style="background:#ddffdd; padding:1px 3px;" x-text="c.after || '(deleted)'"></span></td>
+                <td style="font-size:0.8rem; max-width:300px; word-break:break-all;"><span class="diff-del" style="padding:1px 4px; border-radius:3px;" x-text="c.before"></span></td>
+                <td style="font-size:0.8rem; max-width:300px; word-break:break-all;"><span class="diff-ins" style="padding:1px 4px; border-radius:3px;" x-text="c.after || '(deleted)'"></span></td>
               </tr>
             </template>
           </tbody>
         </table>
-      </div>
+      </details>
       <div x-show="reviewCompare.error" style="color:#d33; font-size:0.82rem; margin-top:8px;" x-text="reviewCompare.error"></div>
       <div class="modal-footer">
         <button @click="closeReviewCompare()">Close</button>
@@ -2859,7 +2866,7 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=25"></script>
+<script src="/dashboard/intents.js?v=26"></script>
 <script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=12"></script>

@@ -988,9 +988,9 @@ function intentsTab() {
           return;
         }
 
-        // Render markdown for old/new comparison
-        const originalHtml = this._renderMarkdown(data.original);
-        const correctedHtml = this._renderMarkdown(data.corrected);
+        // Render diff-highlighted markdown for old/new comparison
+        const originalHtml = this._renderDiffMarkdown(data.original, data.corrections, 'original');
+        const correctedHtml = this._renderDiffMarkdown(data.corrected, data.corrections, 'corrected');
         this.reviewCompare = {
           open: true,
           row,
@@ -1052,7 +1052,23 @@ function intentsTab() {
       }
     },
 
-    // Helper: render markdown for comparison display
+    // Helper: render markdown with diff highlights injected before rendering.
+    // Walks the corrections list and wraps each before/after substring in a
+    // coloured span so the user sees exactly what changed at a glance.
+    _renderDiffMarkdown(rawText, corrections, side) {
+      let text = rawText;
+      for (const c of (corrections || [])) {
+        const needle = side === 'original' ? c.before : c.after;
+        if (!needle) continue;
+        const cls = side === 'original' ? 'diff-del' : 'diff-ins';
+        // Escape regex-special chars in the literal needle.
+        const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        text = text.replace(new RegExp(escaped, 'g'), '<span class="' + cls + '">' + needle + '</span>');
+      }
+      return this._renderMarkdown(text);
+    },
+
+    // Helper: plain markdown render (used by openHistoryView and as fallback).
     _renderMarkdown(text) {
       try {
         if (window.marked && window.DOMPurify) {
@@ -1063,6 +1079,20 @@ function intentsTab() {
       return '<pre style="white-space:pre-wrap;">' +
         (text || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) +
         '</pre>';
+    },
+
+    // Sync scroll between the two diff panels so they scroll together.
+    _syncDiffScroll(ev, from) {
+      if (this._diffSyncing) return;
+      this._diffSyncing = true;
+      const orig = this.$refs.diffScrollOrig;
+      const corr = this.$refs.diffScrollCorr;
+      if (orig && corr) {
+        if (from === 'orig') corr.scrollTop = orig.scrollTop;
+        else orig.scrollTop = corr.scrollTop;
+      }
+      // Reset the guard after a microtask so the next genuine scroll event fires.
+      setTimeout(() => { this._diffSyncing = false; }, 20);
     },
 
     // ── Backfill modal ─────────────────────────────────────

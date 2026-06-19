@@ -361,6 +361,11 @@ async def run_review_gate(
 
     # 5. Empty corrections → zero-touch
     if not corrections:
+        logger.info(
+            "review_gate zero corrections for intent_id=%d; raw (first 500 chars): %r",
+            intent_id,
+            raw_response[:500],
+        )
         return summary_raw, []
 
     # 6. Apply corrections + audit (never-raise — any unexpected failure

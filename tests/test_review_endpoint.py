@@ -692,12 +692,15 @@ def test_review_comparison_modal_structure(index_html: str):
 
 
 def test_review_comparison_modal_markdown_rendering(intents_js: str):
-    """T21 (cont): Comparison modal must render markdown via _renderMarkdown for both columns."""
-    assert "this._renderMarkdown(data.original)" in intents_js, (
-        "Missing originalHtml markdown rendering"
+    """T21 (cont): Comparison modal must render diff-highlighted markdown for both columns."""
+    assert "_renderDiffMarkdown" in intents_js, (
+        "Missing _renderDiffMarkdown method"
     )
-    assert "this._renderMarkdown(data.corrected)" in intents_js, (
-        "Missing correctedHtml markdown rendering"
+    assert "diff-del" in intents_js, (
+        "Missing diff-del class for original highlights"
+    )
+    assert "diff-ins" in intents_js, (
+        "Missing diff-ins class for corrected highlights"
     )
     assert "reviewCompare" in intents_js, "Missing reviewCompare state"
 

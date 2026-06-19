@@ -2074,6 +2074,27 @@ main.dashboard-main .panel:hover,
 }
 
 /* ══════════════════════════════════════════════════════════
+   Review comparison — diff highlights
+   ══════════════════════════════════════════════════════════ */
+
+.diff-panel::-webkit-scrollbar { width: 6px; }
+.diff-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.diff-del {
+  background: #ffd7d7;
+  text-decoration: line-through;
+  text-decoration-color: #d33;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.diff-ins {
+  background: #d7ffd7;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* ══════════════════════════════════════════════════════════
    Inline SVG icons (Lucide-style, stroke-based, currentColor)
    ══════════════════════════════════════════════════════════ */
 
