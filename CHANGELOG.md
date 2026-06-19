@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Feed config edits now reach the running scheduler** — editing a feed's
+  `config` (e.g. toggling `ignore_published_watermark`) while the feed stayed
+  enabled persisted to the database but left the already-registered polling job
+  running with the old config, so scheduled collection kept applying the stale
+  setting while a manual fire (which re-reads the database each call) appeared to
+  work. The PATCH handler now re-registers the job when `config` changes, the
+  same way it already does for a poll-interval change.
+
 ## [1.3.0] - 2026-06-10
 
 ### Added

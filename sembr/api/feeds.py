@@ -106,6 +106,14 @@ async def patch_feed(feed_id: int, body: FeedUpdate, request: Request) -> Feed:
         "poll_interval_minutes" in set_fields
         and body.poll_interval_minutes != old_feed.poll_interval_minutes
     )
+    # add_feed_job bakes config into the APScheduler job's args at registration
+    # time (scheduler.py:261), so a config edit is invisible to the already-
+    # registered job until we re-register it. Most damaging case: toggling
+    # config.ignore_published_watermark persists to the DB but the running job
+    # keeps the stale config, so the scheduled tick keeps filtering on the
+    # published_at watermark and silently collects nothing — while the fire path
+    # (which re-reads DB config every call) works, masking the bug.
+    config_changed = "config" in set_fields and body.config != old_feed.config
 
     if was_enabled and not now_enabled:
         # true→false: remove job immediately (in-flight collect_feed not interrupted)
@@ -113,8 +121,9 @@ async def patch_feed(feed_id: int, body: FeedUpdate, request: Request) -> Feed:
     elif not was_enabled and now_enabled:
         # false→true: add job (phase re-randomised for spread)
         await add_feed_job(scheduler, updated)
-    elif now_enabled and interval_changed:
-        # still enabled, new interval: reschedule with new trigger
+    elif now_enabled and (interval_changed or config_changed):
+        # still enabled, but the trigger interval or baked-in config changed:
+        # re-register (replace_existing=True) so the running job picks it up.
         await add_feed_job(scheduler, updated)
 
     return updated
