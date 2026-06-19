@@ -1081,19 +1081,6 @@ function intentsTab() {
         '</pre>';
     },
 
-    // Sync scroll between the two diff panels so they scroll together.
-    _syncDiffScroll(ev, from) {
-      if (this._diffSyncing) return;
-      this._diffSyncing = true;
-      const orig = this.$refs.diffScrollOrig;
-      const corr = this.$refs.diffScrollCorr;
-      if (orig && corr) {
-        if (from === 'orig') corr.scrollTop = orig.scrollTop;
-        else orig.scrollTop = corr.scrollTop;
-      }
-      // Reset the guard after a microtask so the next genuine scroll event fires.
-      setTimeout(() => { this._diffSyncing = false; }, 20);
-    },
 
     // ── Backfill modal ─────────────────────────────────────
     openBackfill(intent) {
