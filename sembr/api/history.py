@@ -63,6 +63,7 @@ class ReviewResponse(BaseModel):
     original: str
     corrected: str
     corrections: list[dict]
+    gate_diagnostics: str = ""  # "ok" = LLM ran; "no_changes" = clean; "fail_open" = gate errored
 
 
 def _task_to_payload(task) -> dict[str, Any]:
@@ -199,50 +200,62 @@ async def review_history_row(intent_id: int, row_id: int, request: Request) -> d
             },
         )
 
-    # D13: budget check — manual review should refuse early if too long,
-    # rather than calling the gate and getting a silent fail-open.
-    llm = request.app.state.llm_backend
-    from sembr.summarizer.review import (  # noqa: PLC0415
-        _BUDGET_SAFETY_RATIO,
-    )
+    # --- Pre-flight: verify review templates exist on disk (fast, no DB/Qdrant) ---
+    # Without these, run_review_gate will fail-open instantly and the user sees a
+    # misleading "Review passed" toast.  Fail early with a clear error instead.
     from sembr.summarizer.templates import (  # noqa: PLC0415
-        load_template,
-        render_instruction_from_raw,
-        render_system,
+        load_template as _load_tpl,
+        render_instruction_from_raw as _render_inst,
+        render_system as _render_sys,
     )
+    from sembr.summarizer.review import _BUDGET_SAFETY_RATIO  # noqa: PLC0415
 
     _prompts_dir = Path("/app/prompts")
     try:
-        review_system = render_system(_prompts_dir, "review", language=intent.language)
-        raw_instruction = load_template(_prompts_dir, "instruction", "review")
-        review_user = render_instruction_from_raw(
+        review_system = _render_sys(_prompts_dir, "review", language=intent.language)
+        raw_instruction = _load_tpl(_prompts_dir, "instruction", "review")
+        review_user = _render_inst(
             raw_instruction,
             intent_text=summary_raw,
             articles=articles_text,
         )
-    except Exception as template_exc:
-        # Template issues shouldn't block — delegate to run_review_gate's own
-        # budget check.  Gate fail-open means the user may see "Review passed"
-        # instead of a clear 422, so log a warning for diagnostics.
-        logger.warning(
-            "review endpoint budget check skipped for intent_id=%d row_id=%d: %s; "
-            "delegating to run_review_gate internal check",
-            intent_id, row_id, template_exc,
+    except FileNotFoundError as missing_tpl:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "review_templates_missing",
+                "message": (
+                    f"Review template not found: {missing_tpl}. "
+                    "Ensure prompts/system/review.md and prompts/instruction/review.md "
+                    "exist in the prompts directory."
+                ),
+            },
+        ) from missing_tpl
+    except Exception as tpl_exc:
+        # Template render errors (syntax, bad placeholders) — surface to operator
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "review_template_error",
+                "message": f"Failed to render review template: {tpl_exc}",
+            },
+        ) from tpl_exc
+
+    # --- Budget check (D13): refuse early if digest+articles too long ---
+    llm = request.app.state.llm_backend
+    total_chars = len(review_system) + len(review_user)
+    limit = int(llm.max_prompt_chars * _BUDGET_SAFETY_RATIO)
+    if total_chars > limit:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "digest_too_long",
+                "message": (
+                    f"Digest is too long to review ({total_chars} chars, "
+                    f"budget {limit}). Consider reviewing a shorter digest."
+                ),
+            },
         )
-    else:
-        total_chars = len(review_system) + len(review_user)
-        limit = int(llm.max_prompt_chars * _BUDGET_SAFETY_RATIO)
-        if total_chars > limit:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={
-                    "code": "digest_too_long",
-                    "message": (
-                        f"Digest is too long to review ({total_chars} chars, "
-                        f"budget {limit}). Consider reviewing a shorter digest."
-                    ),
-                },
-            )
 
     # Run the review gate
     run_at = target_row.get("run_at", "")
@@ -255,10 +268,18 @@ async def review_history_row(intent_id: int, row_id: int, request: Request) -> d
         run_at,
     )
 
+    # Distinguish "LLM found nothing" from "gate failed silently"
+    gate_diagnostics = "ok"
+    if corrected == summary_raw and not corrections:
+        # Could be "no issues found" OR "gate errored and returned original".
+        # The gate logs on fail-open, so operators can check docker logs.
+        gate_diagnostics = "no_changes_or_fail_open"
+
     return {
         "original": summary_raw,
         "corrected": corrected,
         "corrections": corrections,
+        "gate_diagnostics": gate_diagnostics,
     }
 
 
