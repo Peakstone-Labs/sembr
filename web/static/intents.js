@@ -1081,6 +1081,19 @@ function intentsTab() {
         '</pre>';
     },
 
+    // Sync-scroll guard: prevent scroll event loops when one panel's
+    // programmatic scrollTop triggers the other's @scroll handler.
+    syncDiffScroll(from) {
+      if (this._scrollLock) return;
+      this._scrollLock = true;
+      const orig = this.$refs.diffScrollOrig;
+      const corr = this.$refs.diffScrollCorr;
+      if (orig && corr) {
+        if (from === 'orig') corr.scrollTop = orig.scrollTop;
+        else orig.scrollTop = corr.scrollTop;
+      }
+      setTimeout(() => { this._scrollLock = false; }, 30);
+    },
 
     // ── Backfill modal ─────────────────────────────────────
     openBackfill(intent) {
