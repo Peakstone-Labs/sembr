@@ -266,6 +266,65 @@ async def delete_summary(
             return cur.rowcount == 1
 
 
+async def get_summary_by_id(
+    conn: aiosqlite.Connection,
+    intent_id: int,
+    row_id: int,
+) -> dict | None:
+    """Fetch a single summary_history row by its primary key.
+
+    Returns the same dict shape as :func:`list_summaries` (``id``,
+    ``intent_id``, ``run_at``, ``summary``, ``citations``).  Returns ``None``
+    when the row doesn't exist or doesn't belong to *intent_id*.
+    """
+    async with conn.execute(
+        "SELECT id, intent_id, run_at, summary, citations "
+        "FROM summary_history WHERE id = ? AND intent_id = ?",
+        (row_id, intent_id),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return None
+    try:
+        citations = json.loads(row[4])
+    except (TypeError, ValueError):
+        citations = []
+    return {
+        "id": row[0],
+        "intent_id": row[1],
+        "run_at": row[2],
+        "summary": row[3],
+        "citations": citations,
+    }
+
+
+async def update_summary(
+    conn: aiosqlite.Connection,
+    intent_id: int,
+    row_id: int,
+    new_summary: str,
+) -> bool:
+    """Replace the ``summary`` field of a single history row (D5).
+
+    Returns ``True`` when a row was updated; ``False`` when the row didn't
+    exist or didn't belong to ``intent_id``.  ``run_at`` and ``citations`` are
+    left untouched — this is intentionally an in-place fix of the summary text
+    only.
+
+    Wrapped in ``transaction()`` to match the convention of every other
+    write function in this module (``save_summary``, ``save_summary_or_skip``,
+    ``delete_summary``).  The single UPDATE is already atomic at the SQLite
+    level; the explicit transaction boundary keeps the door open for future
+    additions (e.g. an audit table write) without forgetting the wrapper.
+    """
+    async with transaction() as txn:
+        async with txn.execute(
+            "UPDATE summary_history SET summary = ? WHERE id = ? AND intent_id = ?",
+            (new_summary, row_id, intent_id),
+        ) as cur:
+            return cur.rowcount == 1
+
+
 async def format_history_text(
     conn: aiosqlite.Connection,
     intent_id: int,

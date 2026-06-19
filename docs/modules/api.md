@@ -81,11 +81,13 @@ The status endpoint reads the same in-memory task. Because the storage is per-pr
 
 **List / delete / export**: `GET /intents/{intent_id}/history` returns paginated summary rows with `since`/`until` date filtering and timezone-aware boundary conversion. `DELETE /intents/{intent_id}/history/{row_id}` removes one row and evicts its citations from `match_seen` so a re-backfill can re-match them. `GET /intents/{intent_id}/history/export` returns JSON with `indent=2`.
 
+**Review**: `POST /intents/{intent_id}/history/{row_id}/review` runs the review gate (`sembr.summarizer.review.run_review_gate`) against a persisted history row. It fetches source article bodies from Qdrant (strict mode: any body missing → 422 `source_articles_expired`), builds an articles text block matching the cron path's `[N]` format with `feed.name` inserted in the Source line, calls the LLM, and returns `{original, corrected, corrections: [{error_class, before, after, matched}]}`. The caller can then inspect the diff and decide whether to apply. `PATCH /intents/{intent_id}/history/{row_id}` replaces the `summary` field of a single history row with the corrected text (body: `{summary: str}`, returns 204). The review endpoint is synchronous (may take 10-30s depending on LLM latency); the PATCH is a simple UPDATE wrapped in `transaction()`.
+
 **Backfill**: `POST /intents/{intent_id}/backfill` replays past cron fire-times through the standard scan+summarize pipeline, writing a `summary_history` row for each tick. The backfill anchors its lookback window against Qdrant's oldest `ingested_at_ts` so it never overshoots into a period that contains no articles. Status is polled via `GET /intents/{intent_id}/backfill/{task_id}` (same in-memory task pattern as the fire endpoints).
 
 **Aggregate**: `POST /intents/{intent_id}/history/aggregate` runs an LLM call over multiple history rows' summaries, water-filling them into the backend's prompt budget. `POST /intents/{intent_id}/history/aggregate/send` does the same and dispatches the result via the intent's configured channels.
 
-All history endpoints require the intent to have a cron-mode schedule (event-mode intents produce no history rows) and at least one configured channel. The aggregate endpoints additionally require `{history}` in the intent's system or instruction template — the prompt injection point is what the aggregate pipeline replaces with the joined history rows.
+All history endpoints require the intent to have a cron-mode schedule (event-mode intents produce no history rows) and at least one configured channel (the review and PATCH endpoints are exceptions — they only need the history row to exist, no channel check). The aggregate endpoints additionally require `{history}` in the intent's system or instruction template — the prompt injection point is what the aggregate pipeline replaces with the joined history rows.
 
 ### Settings editor
 

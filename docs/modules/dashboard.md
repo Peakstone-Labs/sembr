@@ -212,6 +212,12 @@ UI behaviour:
 
 If the rename rollback itself fails (filesystem error during reverse `os.rename`), the server returns HTTP 500 with a manual-recovery message. The operator's recovery path is: read the LogBus entry (logs at ERROR with both old and new paths plus the SQLite error), `docker compose exec api ls /app/prompts/{kind}/`, and either move the file back manually or run a UPDATE statement to align the intents column with the actual on-disk filename.
 
+## Intents tab — History actions
+
+The Intents tab includes a per-intent History expander (`web/static/intents.js`). Each history row has three actions: **View** (renders the summary markdown with citations in a modal), **Review** (runs the review gate against the row using `POST .../review` — shows the LLM's corrections as a side-by-side before/after comparison, then applies them via `PATCH .../{row_id}` on user confirmation), and **Delete** (removes the row and cascades to `match_seen`). The Review button is independent of the intent's `review_gate` flag — any history row can be manually reviewed regardless of whether automated cron review is enabled.
+
+The review comparison modal (`reviewCompare` in `intents.js`) renders the original and corrected digest side-by-side with a corrections detail table below, listing each correction's error class, before/after text with red/green highlighting, and the matched status. The confirmation step replaces only the `summary` field — `run_at` and `citations` are left unchanged.
+
 ## Known constraints
 
 - **Single-process state**: the SSE subscriber registry, the LogBus ring buffer, and the in-process tag-level overrides all live in module-level Python state. A multi-worker uvicorn deployment shows each worker its own slice of logs — a tab open against worker 1 sees nothing emitted from worker 2. The 1.0 topology is single-worker; multi-worker deployments need an external aggregator (Loki, Vector, etc.)

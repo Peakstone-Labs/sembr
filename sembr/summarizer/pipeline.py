@@ -407,7 +407,7 @@ class SummaryPipeline:
             if gate_on:
                 from sembr.summarizer.review import run_review_gate  # noqa: PLC0415
 
-                summary = await run_review_gate(
+                summary, _review_corrections = await run_review_gate(
                     llm=self._llm,
                     intent_id=intent_id,
                     summary_raw=summary,

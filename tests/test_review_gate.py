@@ -219,7 +219,7 @@ async def test_gate_applies_correction(prompts_dir):
     review_json = '{"corrections":[{"error_class":"source_attribution","quote":"SourceA","replacement":"SourceB","cited":[1]}]}'
 
     llm = _make_llm([review_json])
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,
@@ -238,7 +238,7 @@ async def test_gate_zero_corrections_verbatim(prompts_dir):
     summary = "GDP grew 5.2%."
     articles = "[1] Source\nSource: https://x.com/1"
     llm = _make_llm(['{"corrections":[]}'])
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,
@@ -257,7 +257,7 @@ async def test_gate_llm_error_failopen(prompts_dir):
     llm.summarize = AsyncMock(side_effect=RuntimeError("API down"))
     llm.max_prompt_chars = 200_000
     summary = "original"
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,
@@ -274,7 +274,7 @@ async def test_gate_bad_json_failopen(prompts_dir):
     """Non-JSON response → original returned."""
     llm = _make_llm(["just some text, not JSON at all"])
     summary = "original digest"
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,
@@ -293,7 +293,7 @@ async def test_gate_budget_exceeded_skips(prompts_dir):
     llm.max_prompt_chars = 50  # impossibly small
     llm.summarize = AsyncMock()
     summary = "digest text that is fairly long for a 50 char budget"
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,
@@ -310,7 +310,7 @@ async def test_gate_budget_exceeded_skips(prompts_dir):
 async def test_gate_language_en_renders(prompts_dir):
     """Template renders correctly with language='en'."""
     llm = _make_llm(['{"corrections":[]}'])
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         "digest",
@@ -349,7 +349,7 @@ async def test_gate_template_missing_failopen(prompts_dir):
     (prompts_dir / "instruction" / "review.md").unlink()
     llm = _make_llm(["{}"])
     summary = "original"
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,
@@ -372,7 +372,7 @@ async def test_gate_audit_summary_logged(caplog, prompts_dir):
     llm = _make_llm([review_json])
     summary = "Some real text. made up claim. More text."
     with caplog.at_level(logging.WARNING):
-        result = await run_review_gate(
+        result, _corrections = await run_review_gate(
             llm,
             1,
             summary,
@@ -543,7 +543,7 @@ async def test_review_gate_golden_fed_6_14(prompts_dir):
         '"context":"According to "}]}'
     )
     llm = _make_llm([review_json])
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,
@@ -568,7 +568,7 @@ async def test_review_gate_clean_digest_untouched(prompts_dir):
     )
     articles = "[1] Source from PBOC official release."
     llm = _make_llm(['{"corrections":[]}'])
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,
@@ -595,7 +595,7 @@ async def test_review_gate_cross_article_number(prompts_dir):
         '"quote":"[3]","replacement":"[2]","cited":[2]}]}'
     )
     llm = _make_llm([review_json])
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,
@@ -622,7 +622,7 @@ async def test_review_gate_fabricated_fact(prompts_dir):
         '"quote":"The government announced a 10% stimulus package. ","replacement":"","cited":[1]}]}'
     )
     llm = _make_llm([review_json])
-    result = await run_review_gate(
+    result, _corrections = await run_review_gate(
         llm,
         1,
         summary,

@@ -250,3 +250,66 @@ The history feature adds one placeholder beyond the per-call ones documented abo
 - **`health()` does not validate the model name**: it pings `/models` for reachability. A misconfigured `llm_model` (typo, removed from upstream) will only surface on the first real `summarize` call.
 - **No retry policy on transient LLM errors**: `summarize` raises on the first non-2xx; the pipeline logs and drops the tick. Cron mode re-tries naturally on the next schedule; event mode loses the buffered batch (it was already cleared by `flush` before `on_summary`). A future change should add a small retry budget for 429 / 5xx specifically.
 - **Default fallback strings have been removed**: earlier versions of the pipeline carried hardcoded copies of `default.md` for both system and instruction templates. Those were never used at runtime — template errors route to `on_template_error` instead — and have been deleted to avoid two versions of the same prompt drifting apart. The on-disk `prompts/system/default.md` and `prompts/instruction/default.md` are now the single source of truth.
+
+## Review gate (`review.py`)
+
+> Optional LLM fact-check pass after digest generation. When enabled per-intent (`review_gate` flag on the `intents` table), the pipeline calls a second LLM round to verify the digest against the source articles and surgically fix hallucinations, misattributions, fabricated facts, and wrong citation indices. The UI also exposes a manual review trigger on any history row (independent of the flag).
+
+### Public interface
+
+```python
+async def run_review_gate(
+    llm: BaseLLMBackend,
+    intent_id: int,
+    summary_raw: str,
+    articles_text: str,
+    language: str,
+    run_at: str,
+    prompts_dir: str | None = None,
+) -> tuple[str, list[dict]]
+```
+
+Contractually never-raise — every failure path returns `(summary_raw, [])`. Returns `(corrected_summary, corrections)` where `corrections` is `[{error_class, before, after, matched}]`. The `matched` field distinguishes corrections that were successfully applied (`matched=True`) from those whose `quote` wasn't found in the digest text (`matched=False`).
+
+Corrections that *are* applied are also written to the audit sink (`_emit_review_correction` → WARNING log with `grep review_gate_audit`). The dual return (string + list) lets cron callers discard the list (`summary, _ = await run_review_gate(...)`) while the manual review endpoint passes it to the UI for before/after display.
+
+```python
+async def build_articles_text_from_citations(
+    citations: list[dict],
+    body_fetcher: Callable[[str], Awaitable[str | None]],
+    feed_name_map: dict[int, str],
+) -> str | None
+```
+
+Builds an articles block from history citations for manual review. `body_fetcher(stripped_md5: str) -> str | None` fetches article body from Qdrant (strict mode: any body missing → `None`). `feed_name_map` is a pre-resolved `{feed_id: feed_name}` dict. The output format matches cron path `[N] title\nbody\nSource: ...` with `feed_name` inserted for stronger source-attribution checking. Returns `None` when any article body is unavailable.
+
+### Internal functions (tested via stub-LLM tests)
+
+| Function | Purpose |
+|----------|---------|
+| `_nfkc(text) -> str` | NFKC normalisation (D13) — handles fullwidth/halfwidth and composed/decomposed differences |
+| `_parse_review_json(raw) -> dict` | 6-layer JSON recovery (D4) — fences → braces → trailing commas → `json.loads` → `ast.literal_eval` |
+| `_apply_corrections(summary_raw, corrections) -> tuple[str, list[dict]]` | Exact-substring patch engine (D3) with context-anchored disambiguation |
+| `_emit_review_correction(intent_id, run_at, error_class, before, after) -> None` | Single audit sink (D6) — WARNING log line; future B replaces this one function body with a DB write |
+
+### Template placeholders
+
+The review gate uses its own system and instruction templates (`prompts/system/review.md`, `prompts/instruction/review.md`). The instruction template reuses the `{intent_text}` placeholder to carry the digest text (the `_StrictMap` whitelist does not include `{digest}`, so `{intent_text}` is the agreed-upon slot — in this context it holds the digest being reviewed, not the intent's topic text).
+
+| Kind | Placeholder | Purpose |
+|------|-------------|---------|
+| system | `{language}` | Language of review comments |
+| instruction | `{intent_text}` | The digest text to review |
+| instruction | `{articles}` | Source articles block in `[N]` format |
+
+### Flow (inside `run_review_gate`)
+
+1. Render review system + instruction templates from disk
+2. Budget check: total chars must fit within `llm.max_prompt_chars * 0.85`
+3. Call review LLM with the rendered prompt
+4. Parse JSON response (6-layer recovery)
+5. Empty corrections → return `(summary_raw, [])` (zero-touch)
+6. Apply corrections via `_apply_corrections` (exact-substring patch with NFKC normalisation)
+7. Emit audit log entries for matched corrections, warn on unmatched
+
+Every step has independent fail-open: any exception returns the original summary unchanged with an empty corrections list. The gate is opt-in at the intent level (`review_gate` flag in `intents` table) and defaults to OFF — un-flagged intents incur zero extra LLM cost.

@@ -99,6 +99,26 @@ function intentsTab() {
       timezone: 'UTC',      // intent.timezone snapshot for run_at formatting
     },
 
+    // ── Review gate state ──────────────────────────────────
+    review: {
+      open: false,
+      running: false,
+      row: null,
+      timezone: 'UTC',
+      error: null,
+    },
+
+    reviewCompare: {
+      open: false,
+      row: null,             // the history row being reviewed
+      originalHtml: '',
+      correctedHtml: '',
+      correctedRaw: '',      // raw markdown for PATCH
+      corrections: [],       // [{error_class, before, after, matched}]
+      applying: false,
+      error: null,
+    },
+
     del: {
       open: false,
       intentId: null,
@@ -912,6 +932,137 @@ function intentsTab() {
       } catch (e) {
         this.showToast('Network error: ' + e.message, 'error');
       }
+    },
+
+    // ── Review gate ────────────────────────────────────────
+    openReviewConfirm(row, intent) {
+      this.review = {
+        open: true,
+        running: false,
+        row,
+        timezone: intent?.timezone || 'UTC',
+        error: null,
+      };
+    },
+
+    closeReview() {
+      this.review = {
+        open: false, running: false, row: null,
+        timezone: 'UTC', error: null,
+      };
+    },
+
+    async runReview() {
+      const row = this.review.row;
+      if (!row) return;
+      this.review.running = true;
+      this.review.error = null;
+      try {
+        const res = await this._request(
+          'POST',
+          `/intents/${row.intent_id}/history/${row.id}/review`
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const code = data?.detail?.code;  // object-detail from 422 responses
+          if (code === 'source_articles_expired') {
+            this.showToast('Source articles are no longer available in Qdrant; cannot review', 'error');
+          } else if (code === 'digest_too_long') {
+            this.showToast('Digest is too long to review (exceeds LLM token budget)', 'error');
+          } else if (code === 'empty_summary') {
+            this.showToast('Digest is empty, nothing to review', 'info');
+          } else if (code === 'no_citations') {
+            this.showToast('No citations to check against', 'info');
+          } else {
+            this.showToast('Review failed: ' + this._extractError(data, 'HTTP ' + res.status), 'error');
+          }
+          this.review.running = false;
+          return;
+        }
+        const data = await res.json();
+        this.closeReview();
+
+        // D8: 0 corrections → just toast, don't open comparison modal
+        if (!data.corrections || data.corrections.length === 0) {
+          this.showToast('Review passed — no issues found', 'info');
+          return;
+        }
+
+        // Render markdown for old/new comparison
+        const originalHtml = this._renderMarkdown(data.original);
+        const correctedHtml = this._renderMarkdown(data.corrected);
+        this.reviewCompare = {
+          open: true,
+          row,
+          originalHtml,
+          correctedHtml,
+          correctedRaw: data.corrected,
+          corrections: data.corrections,
+          applying: false,
+          error: null,
+        };
+      } catch (e) {
+        this.review.error = 'Network error: ' + e.message;
+        this.review.running = false;
+      }
+    },
+
+    closeReviewCompare() {
+      this.reviewCompare = {
+        open: false, row: null,
+        originalHtml: '', correctedHtml: '', correctedRaw: '',
+        corrections: [], applying: false, error: null,
+      };
+    },
+
+    async applyReview() {
+      const row = this.reviewCompare.row;
+      if (!row) return;
+      this.reviewCompare.applying = true;
+      this.reviewCompare.error = null;
+      try {
+        // PATCH the history row with the corrected summary (raw markdown stored from runReview)
+        const patchRes = await this._request(
+          'PATCH',
+          `/intents/${row.intent_id}/history/${row.id}`,
+          { summary: this.reviewCompare.correctedRaw }
+        );
+        if (!patchRes.ok) {
+          this.reviewCompare.error = `Failed to save: HTTP ${patchRes.status}`;
+          this.reviewCompare.applying = false;
+          return;
+        }
+        // D4: refresh the full history list so the row shows the corrected text
+        this.showToast('Corrections applied', 'info');
+        this.closeReviewCompare();
+        // Refresh the history rows inline (D4: full list re-fetch)
+        const intentId = row.intent_id;
+        if (this.expanded.intentId === intentId) {
+          this.expanded.offset = 0;
+          this.expanded.rows = [];
+          this.expanded.loading = true;
+          try {
+            await this._loadHistoryPage(intentId);
+          } catch (_) { /* best-effort refresh */ }
+          this.expanded.loading = false;
+        }
+      } catch (e) {
+        this.reviewCompare.error = 'Network error: ' + e.message;
+        this.reviewCompare.applying = false;
+      }
+    },
+
+    // Helper: render markdown for comparison display
+    _renderMarkdown(text) {
+      try {
+        if (window.marked && window.DOMPurify) {
+          const raw = window.marked.parse(text || '', { breaks: true, gfm: true });
+          return window.DOMPurify.sanitize(raw);
+        }
+      } catch (e) { /* fall through */ }
+      return '<pre style="white-space:pre-wrap;">' +
+        (text || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) +
+        '</pre>';
     },
 
     // ── Backfill modal ─────────────────────────────────────

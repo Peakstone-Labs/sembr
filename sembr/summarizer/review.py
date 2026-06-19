@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 _REVIEW_SYSTEM_TEMPLATE = "review"
 _REVIEW_INSTRUCTION_TEMPLATE = "review"
 _BUDGET_SAFETY_RATIO = 0.85
+_ENTRY_SEPARATOR = "\n\n"
 
 # Trailing comma before ] or } — JavaScript-style, rejected by json.loads.
 _TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
@@ -93,7 +95,7 @@ def _apply_corrections(summary_raw: str, corrections: list[dict]) -> tuple[str, 
     never found get ``matched=False`` and the correction is skipped; the
     caller should log them as "unmatched" warnings.
 
-    The caller (``_run_review_gate``) wraps this in a try/except so any
+    The caller (``run_review_gate``) wraps this in a try/except so any
     unexpected failure degrades safely to the original summary.
     """
     audit_entries: list[dict] = []
@@ -184,6 +186,75 @@ def _emit_review_correction(
     )
 
 
+# ---------------------------------------------------------------------------
+# D2: build articles text from citations (for manual review endpoint)
+# ---------------------------------------------------------------------------
+
+
+async def build_articles_text_from_citations(
+    citations: list[dict],
+    body_fetcher: Callable[[str], Awaitable[str | None]],
+    feed_name_map: dict[int, str],
+) -> str | None:
+    """Build an articles block from history citations for review-gate consumption.
+
+    For each citation, fetches the article body via *body_fetcher* (strict
+    mode: any body missing → returns None), then assembles a block matching
+    the cron-path ``[N] title\\nbody\\nSource: ...`` format, with ``feed_name``
+    inserted into the Source line (D6).
+
+    *body_fetcher* receives the stripped-md5 (32-char hex, no dashes —
+    D14).  *feed_name_map* is a pre-resolved ``{feed_id: feed_name}`` dict.
+
+    Returns ``None`` when any article body cannot be retrieved (strict mode);
+    otherwise returns the assembled articles text string.
+    """
+    entries: list[str] = []
+    for i, citation in enumerate(citations, start=1):
+        if not isinstance(citation, dict):
+            continue
+        article_id = citation.get("article_id", "")
+        if not article_id:
+            continue
+
+        # D14: strip dashes from UUID-format article_id before Qdrant lookup.
+        # get_article_detail (read_model.py:638) requires 32-char hex via
+        # uuid.UUID(hex=md5), which rejects dashes.
+        md5_hex = article_id.replace("-", "")
+
+        body = await body_fetcher(md5_hex)
+        if body is None:
+            return None  # strict mode — one missing body aborts the whole review
+
+        title = citation.get("title", "")
+        url = citation.get("url", "")
+        feed_id = citation.get("source")
+        feed_name = feed_name_map.get(feed_id) if isinstance(feed_id, int) else None
+
+        # D6: Source line with feed_name + url. Fallback rules:
+        # (a) feed_name None/empty + url present → "Source: {url}"
+        # (b) feed_name present + url empty → "Source: {feed_name}"
+        # (c) feed_name None + url empty → "Source: (unknown)"
+        # (d) both present → "Source: {feed_name} ({url})"
+        if feed_name and url:
+            source_line = f"Source: {feed_name} ({url})"
+        elif feed_name:
+            source_line = f"Source: {feed_name}"
+        elif url:
+            source_line = f"Source: {url}"
+        else:
+            source_line = "Source: (unknown)"
+
+        entries.append(f"[{i}] {title}\n{body}\n{source_line}")
+
+    return _ENTRY_SEPARATOR.join(entries) if entries else ""
+
+
+# ---------------------------------------------------------------------------
+# Main gate orchestrator
+# ---------------------------------------------------------------------------
+
+
 async def run_review_gate(
     llm: BaseLLMBackend,
     intent_id: int,
@@ -192,10 +263,12 @@ async def run_review_gate(
     language: str,
     run_at: str,
     prompts_dir: str | None = None,
-) -> str:
+) -> tuple[str, list[dict]]:
     """Run the review gate over *summary_raw* using *llm*.
 
-    Never raises — every failure path returns *summary_raw* unchanged (fail-open).
+    Never raises — every failure path returns ``(summary_raw, [])`` unchanged
+    (fail-open).  D1: returns ``(corrected_summary, corrections)`` where
+    *corrections* is a list of ``{error_class, before, after, matched}``.
 
     Parameters match the data already available inside ``compute_summary``:
     *llm* is the shared backend, *articles_text* is the already-built article
@@ -228,13 +301,13 @@ async def run_review_gate(
             intent_id,
             exc,
         )
-        return summary_raw
+        return summary_raw, []
     except Exception:
         logger.exception(
             "review_gate unexpected template error for intent_id=%d; fail-open",
             intent_id,
         )
-        return summary_raw
+        return summary_raw, []
 
     # 2. Budget check (D5)
     total_chars = len(review_system) + len(review_user)
@@ -250,9 +323,9 @@ async def run_review_gate(
             total_chars,
             limit,
         )
-        return summary_raw
+        return summary_raw, []
     logger.debug(
-        "review_gate budget ok for intent_id=%d: " "digest=%d system=%d total=%d limit=%d",
+        "review_gate budget ok for intent_id=%d: digest=%d system=%d total=%d limit=%d",
         intent_id,
         len(summary_raw),
         len(review_system),
@@ -265,7 +338,7 @@ async def run_review_gate(
         raw_response = await llm.summarize(review_user, system=review_system)
     except Exception:
         logger.exception("review_gate LLM call failed for intent_id=%d; fail-open", intent_id)
-        return summary_raw
+        return summary_raw, []
 
     # 4. Parse JSON
     try:
@@ -276,7 +349,7 @@ async def run_review_gate(
             intent_id,
             raw_response[:200],
         )
-        return summary_raw
+        return summary_raw, []
 
     corrections = parsed.get("corrections", [])
     if not isinstance(corrections, list):
@@ -284,11 +357,11 @@ async def run_review_gate(
             "review_gate 'corrections' is not a list for intent_id=%d; fail-open",
             intent_id,
         )
-        return summary_raw
+        return summary_raw, []
 
     # 5. Empty corrections → zero-touch
     if not corrections:
-        return summary_raw
+        return summary_raw, []
 
     # 6. Apply corrections + audit (never-raise — any unexpected failure
     # in string ops or audit emission degrades to fail-open; R7).
@@ -299,7 +372,7 @@ async def run_review_gate(
             "review_gate _apply_corrections failed for intent_id=%d; fail-open",
             intent_id,
         )
-        return summary_raw
+        return summary_raw, []
 
     n_matched = 0
     n_unmatched = 0
@@ -338,4 +411,15 @@ async def run_review_gate(
             intent_id,
         )
 
-    return corrected
+    # D1: return both corrected summary and corrections for callers that need
+    # the diff (manual review endpoint).  Cron gate ignores the second element.
+    corrections_list: list[dict] = [
+        {
+            "error_class": e["error_class"],
+            "before": e["before"],
+            "after": e["after"],
+            "matched": e["matched"],
+        }
+        for e in audit_entries
+    ]
+    return corrected, corrections_list

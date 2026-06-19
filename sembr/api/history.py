@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -19,9 +20,16 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from sembr.db.feeds import get_feed_names as db_get_feed_names
 from sembr.db.intents import get_intent
 from sembr.db.sqlite import get_conn
-from sembr.db.summary_history import delete_summary, list_summaries, list_summaries_between
+from sembr.db.summary_history import (
+    delete_summary,
+    get_summary_by_id,
+    list_summaries,
+    list_summaries_between,
+    update_summary,
+)
 from sembr.matcher.backfill import probe_oldest_news_ts, run_backfill
 from sembr.matcher.backfill_tasks import (
     create_task,
@@ -45,6 +53,16 @@ _BG_TASKS: set[asyncio.Task] = set()
 
 class BackfillRequest(BaseModel):
     past_runs: int = Field(ge=1, le=365)
+
+
+class PatchHistoryRequest(BaseModel):
+    summary: str = Field(min_length=1, max_length=100_000)
+
+
+class ReviewResponse(BaseModel):
+    original: str
+    corrected: str
+    corrections: list[dict]
 
 
 def _task_to_payload(task) -> dict[str, Any]:
@@ -102,6 +120,174 @@ async def delete_history_row(intent_id: int, row_id: int):
 
     deleted = await delete_summary(conn, intent_id, row_id)
     if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="history row not found")
+
+
+# ---------------------------------------------------------------------------
+# POST /intents/{id}/history/{row_id}/review
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/intents/{intent_id}/history/{row_id}/review",
+    response_model=ReviewResponse,
+)
+async def review_history_row(intent_id: int, row_id: int, request: Request) -> dict[str, Any]:
+    """Run the review gate over a persisted history row and return the diff.
+
+    Returns the original summary, corrected summary, and the list of
+    corrections so the UI can render a before/after comparison.
+    """
+    from sembr.dashboard.read_model import get_article_detail
+    from sembr.summarizer.review import (
+        build_articles_text_from_citations,
+        run_review_gate,
+    )
+
+    conn = get_conn()
+    intent = await get_intent(conn, intent_id)
+    if intent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
+
+    # Fetch the specific history row by primary key (single-row query, no full scan)
+    target_row = await get_summary_by_id(conn, intent_id, row_id)
+    if target_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="history row not found")
+
+    summary_raw: str = target_row["summary"]
+    citations: list[dict] = target_row.get("citations", [])
+
+    if not summary_raw.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "empty_summary", "message": "Digest is empty, nothing to review"},
+        )
+
+    if not citations:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "no_citations", "message": "No citations to check against"},
+        )
+
+    # Resolve feed names for source attribution checking (D6)
+    feed_ids: list[int] = []
+    for c in citations:
+        if isinstance(c, dict) and isinstance(c.get("source"), int):
+            feed_ids.append(c["source"])
+    feed_name_map = await db_get_feed_names(conn, list(set(feed_ids)))
+
+    # D14: body_fetcher strips dashes from UUID-format article_id before
+    # Qdrant lookup, matching get_article_detail's uuid.UUID(hex=md5) contract.
+    qclient = request.app.state.qdrant.client
+
+    async def _fetch_body(md5_hex: str) -> str | None:
+        detail = await get_article_detail(conn, qclient, md5_hex, "qdrant")
+        if detail is None:
+            return None
+        return detail.body or ""  # empty body != expired (D6-c)
+
+    # D2: build articles_text for review gate consumption
+    articles_text = await build_articles_text_from_citations(
+        citations, _fetch_body, feed_name_map
+    )
+    if articles_text is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "source_articles_expired",
+                "message": "One or more source articles are no longer available in Qdrant",
+            },
+        )
+
+    # D13: budget check — manual review should refuse early if too long,
+    # rather than calling the gate and getting a silent fail-open.
+    llm = request.app.state.llm_backend
+    from sembr.summarizer.review import (  # noqa: PLC0415
+        _BUDGET_SAFETY_RATIO,
+    )
+    from sembr.summarizer.templates import (  # noqa: PLC0415
+        load_template,
+        render_instruction_from_raw,
+        render_system,
+    )
+
+    _prompts_dir = Path("/app/prompts")
+    try:
+        review_system = render_system(_prompts_dir, "review", language=intent.language)
+        raw_instruction = load_template(_prompts_dir, "instruction", "review")
+        review_user = render_instruction_from_raw(
+            raw_instruction,
+            intent_text=summary_raw,
+            articles=articles_text,
+        )
+    except Exception as template_exc:
+        # Template issues shouldn't block — delegate to run_review_gate's own
+        # budget check.  Gate fail-open means the user may see "Review passed"
+        # instead of a clear 422, so log a warning for diagnostics.
+        logger.warning(
+            "review endpoint budget check skipped for intent_id=%d row_id=%d: %s; "
+            "delegating to run_review_gate internal check",
+            intent_id, row_id, template_exc,
+        )
+    else:
+        total_chars = len(review_system) + len(review_user)
+        limit = int(llm.max_prompt_chars * _BUDGET_SAFETY_RATIO)
+        if total_chars > limit:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "digest_too_long",
+                    "message": (
+                        f"Digest is too long to review ({total_chars} chars, "
+                        f"budget {limit}). Consider reviewing a shorter digest."
+                    ),
+                },
+            )
+
+    # Run the review gate
+    run_at = target_row.get("run_at", "")
+    corrected, corrections = await run_review_gate(
+        llm,
+        intent_id,
+        summary_raw,
+        articles_text,
+        intent.language,
+        run_at,
+    )
+
+    return {
+        "original": summary_raw,
+        "corrected": corrected,
+        "corrections": corrections,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PATCH /intents/{id}/history/{row_id}
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/intents/{intent_id}/history/{row_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+async def patch_history_row(intent_id: int, row_id: int, body: PatchHistoryRequest):
+    """Replace the summary field of a history row (D4).
+
+    Note: only ``summary`` is updated — ``citations`` and ``run_at`` are left
+    untouched.  The corrected summary may reference article numbers that are
+    absent from the original citations array (if the review gate removed or
+    renumbered citations).  Use DELETE + backfill to fully regenerate a row
+    with synchronized citations.
+    """
+    conn = get_conn()
+    intent = await get_intent(conn, intent_id)
+    if intent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
+
+    updated = await update_summary(conn, intent_id, row_id, body.summary)
+    if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="history row not found")
 
 
