@@ -415,6 +415,7 @@ class SummaryPipeline:
                     language=language,
                     run_at=run_at_str,
                     prompts_dir=str(self._prompts_dir),
+                    history_text=history_text,
                 )
 
         citations = [_to_citation(m, feed_name_map) for m in ordered]

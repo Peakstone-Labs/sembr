@@ -25,6 +25,7 @@ from sembr.db.intents import get_intent
 from sembr.db.sqlite import get_conn
 from sembr.db.summary_history import (
     delete_summary,
+    format_history_text,
     get_summary_by_id,
     list_summaries,
     list_summaries_between,
@@ -200,6 +201,35 @@ async def review_history_row(intent_id: int, row_id: int, request: Request) -> d
             },
         )
 
+    # Fetch history context that was available when this digest was generated.
+    # The digest may reference facts carried over from past summaries via the
+    # {history} placeholder — without this, the review LLM would falsely flag
+    # them as "fabricated".
+    history_text = ""
+    try:
+        history_days = getattr(intent.schedule, "history_days", None)
+        if history_days and history_days > 0:
+            # Parse the digest's run_at as the time anchor so we only see
+            # summaries that existed at that moment (same logic as backfill).
+            from datetime import timezone as tzinfo_module  # noqa: PLC0415
+
+            run_at_str = target_row.get("run_at", "")
+            if run_at_str:
+                try:
+                    run_at_dt = datetime.fromisoformat(run_at_str.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    run_at_dt = None
+            else:
+                run_at_dt = None
+            history_text = await format_history_text(conn, intent_id, history_days, run_at_dt)
+    except Exception as hist_exc:
+        logger.warning(
+            "review endpoint history fetch failed for intent_id=%d: %s; "
+            "proceeding without history context",
+            intent_id, hist_exc,
+        )
+        history_text = ""
+
     # --- Pre-flight: verify review templates exist on disk (fast, no DB/Qdrant) ---
     # Without these, run_review_gate will fail-open instantly and the user sees a
     # misleading "Review passed" toast.  Fail early with a clear error instead.
@@ -218,6 +248,7 @@ async def review_history_row(intent_id: int, row_id: int, request: Request) -> d
             raw_instruction,
             intent_text=summary_raw,
             articles=articles_text,
+            history=history_text,
         )
     except FileNotFoundError as missing_tpl:
         raise HTTPException(
@@ -266,6 +297,7 @@ async def review_history_row(intent_id: int, row_id: int, request: Request) -> d
         articles_text,
         intent.language,
         run_at,
+        history_text=history_text,
     )
 
     # Distinguish "LLM found nothing" from "gate failed silently"

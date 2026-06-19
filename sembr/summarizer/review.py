@@ -263,6 +263,7 @@ async def run_review_gate(
     language: str,
     run_at: str,
     prompts_dir: str | None = None,
+    history_text: str = "",
 ) -> tuple[str, list[dict]]:
     """Run the review gate over *summary_raw* using *llm*.
 
@@ -270,10 +271,11 @@ async def run_review_gate(
     (fail-open).  D1: returns ``(corrected_summary, corrections)`` where
     *corrections* is a list of ``{error_class, before, after, matched}``.
 
-    Parameters match the data already available inside ``compute_summary``:
-    *llm* is the shared backend, *articles_text* is the already-built article
-    block (same ``[N]`` numbering as the digest), *run_at* is the unified
-    ``effective_now`` (D12).
+    *history_text* is the past summaries that were available when the digest
+    was generated (formatted by ``format_history_text``).  The review LLM is
+    told that claims carried over from history are NOT fabricated — this
+    prevents false positives when a digest built on prior summaries references
+    facts that aren't in the current batch of source articles.
     """
     from sembr.summarizer.templates import (  # noqa: PLC0415 (avoid cycle at module level)
         TemplateNotFoundError,
@@ -293,6 +295,7 @@ async def run_review_gate(
             raw_instruction,
             intent_text=summary_raw,
             articles=articles_text,
+            history=history_text,
         )
     except (TemplateNotFoundError, TemplateRenderError, FileNotFoundError) as exc:
         logger.warning(
