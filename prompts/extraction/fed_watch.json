@@ -1,0 +1,63 @@
+{
+  "sections": [
+    {
+      "key": "policy_narrative",
+      "label": "§1 政策叙事与预期",
+      "fields": []
+    },
+    {
+      "key": "official_remark",
+      "label": "§1.1 FOMC 官员表态",
+      "fields": [
+        {"name": "speaker", "type": "string", "description": "官员/发声主体名，如 Powell、沃什"},
+        {"name": "role", "type": "string", "description": "职务，如 Fed 主席、St. Louis 联储主席"},
+        {"name": "original_en", "type": "string", "description": "仅当 source_type=primary_en：支撑本条的英文原句（逐字）", "role": "meta"}
+      ]
+    },
+    {
+      "key": "policy_signal",
+      "label": "§1.2 政策信号",
+      "fields": [
+        {"name": "signal_kind", "type": "string", "description": "minutes/beige_book/testimony/dot_plot/SEP/official_report"}
+      ]
+    },
+    {
+      "key": "data_release",
+      "label": "§2 经济数据与市场解读",
+      "fields": [
+        {"name": "indicator", "type": "string", "description": "数据名，如 CPI、非农、PCE"},
+        {"name": "direction", "type": "enum", "enum": ["beat", "miss", "inline", "up", "down", "flat", "na"], "description": "§2 超预期/低于预期/持平；§3 上行/下行"},
+        {"name": "market_interpretation", "type": "string", "description": "市场如何解读（软着陆/滞胀担忧…）"}
+      ]
+    },
+    {
+      "key": "financial_condition",
+      "label": "§3 金融条件",
+      "fields": [
+        {"name": "channel", "type": "enum", "enum": ["credit_banking", "liquidity", "usd_rates", "na"], "description": "§3 子通道"},
+        {"name": "driver", "type": "string", "description": "美元/利率驱动叙事：通胀补偿/实际利率/期限溢价"}
+      ]
+    },
+    {
+      "key": "global_cb",
+      "label": "§4 全球央行联动",
+      "fields": [
+        {"name": "cb", "type": "string", "description": "央行名：ECB/BOJ/PBoC/BOE/RBA/…"}
+      ]
+    }
+  ],
+  "article_fields": [
+    {"name": "source_org", "type": "string", "description": "本篇发布机构（银行/投行/媒体名）。source_name 可能泛化，真名常埋标题/正文/署名——必须找出来；确无线索才 null。每条 claim 归属默认继承它。"},
+    {"name": "thesis", "type": "string", "description": "本篇核心论点/判断/建议，1-2 句。供下游写资产影响/反共识等推断节用。"}
+  ],
+  "common_claim_fields": [
+    {"name": "stance", "type": "enum", "enum": ["hawkish", "dovish", "neutral", "na"], "description": "鹰/鸽/中性；无法判断填 na"},
+    {"name": "source_type", "type": "enum", "enum": ["primary_en", "primary_cn", "secondary_cn", "social_unverified"], "description": "来源性质，决定双语/转述处理", "role": "meta"},
+    {"name": "attribution", "type": "string", "description": "转引时的报道方，如 '金十'、'华尔街见闻'；一手则 null（默认继承 source_org）", "role": "meta"},
+    {"name": "is_projection", "type": "bool", "description": "True=预测/预期/展望（未发生）；False=既成事实", "role": "flag", "label": "Projection"},
+    {"name": "single_source", "type": "bool", "description": "单一信源/未证实（推文等）", "role": "flag", "label": "Single source"},
+    {"name": "time_ref", "type": "string", "description": "事件时间，尽量 MM/DD HH:MM TZ", "role": "meta"},
+    {"name": "regime_signal", "type": "object", "description": "§5 四象限原料：对增长(growth)/通胀(inflation) 的方向含义，各取 up/down/na"},
+    {"name": "metrics", "type": "array", "description": "证据数字列表，每项 {name, value(逐字), unit, period}"}
+  ]
+}

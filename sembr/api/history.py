@@ -20,8 +20,14 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from sembr.db.intents import get_intent
+from sembr.db.mr_cache import get_extraction
 from sembr.db.sqlite import get_conn
-from sembr.db.summary_history import delete_summary, list_summaries, list_summaries_between
+from sembr.db.summary_history import (
+    delete_summary,
+    get_summary,
+    list_summaries,
+    list_summaries_between,
+)
 from sembr.matcher.backfill import probe_oldest_news_ts, run_backfill
 from sembr.matcher.backfill_tasks import (
     create_task,
@@ -34,6 +40,23 @@ from sembr.models import CronSchedule
 from sembr.summarizer.aggregate import MissingPlaceholderError, aggregate_history
 from sembr.summarizer.llm.base import LLMError
 from sembr.summarizer.models import Citation, SummaryResult
+from sembr.summarizer.mr_extract import run_extract_sources
+from sembr.summarizer.mr_extract_tasks import (
+    create_task as create_extract_task,
+)
+from sembr.summarizer.mr_extract_tasks import (
+    get_task as get_extract_task,
+)
+from sembr.summarizer.mr_extract_tasks import (
+    release_row,
+    try_acquire_row,
+)
+from sembr.summarizer.spec import (
+    SpecError,
+    SpecNotFoundError,
+    compile_validator,
+    load_spec,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -385,3 +408,145 @@ async def get_export(
         media_type="application/json",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+# ---------------------------------------------------------------------------
+# map sub-feature: source extraction
+#
+# These three endpoints live under /api/* (not the /intents/* prefix the rest of
+# this router uses) so the DashboardToken middleware returns a 401 JSON instead of
+# a 302 to the login page — they are fetched, not navigated. The auth middleware's
+# _PROTECTED_PREFIXES carries a matching `/api/intents/` entry.
+# ---------------------------------------------------------------------------
+
+
+def _resolve_spec_name(intent) -> str:
+    # Empty extraction_template falls back to the system_template's spec name.
+    return intent.extraction_template or intent.system_template
+
+
+def _load_spec_or_http(intent):
+    """Load the intent's extraction spec; translate spec problems to HTTP errors.
+
+    Surfaced synchronously (not via the background task) so a missing/broken spec
+    is an immediate 422/500 the caller can act on (design Risk: spec 缺失/坏).
+    """
+    spec_name = _resolve_spec_name(intent)
+    try:
+        return load_spec(spec_name)
+    except SpecNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "spec_not_found", "spec": spec_name, "message": str(exc)},
+        ) from exc
+    except (SpecError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"extraction spec {spec_name!r} is invalid: {exc}",
+        ) from exc
+
+
+def _extract_task_to_payload(task) -> dict[str, Any]:
+    return {
+        "task_id": task.task_id,
+        "intent_id": task.intent_id,
+        "row_id": task.row_id,
+        "status": task.status,
+        "started_at": task.started_at.isoformat(),
+        "finished_at": task.finished_at.isoformat() if task.finished_at else None,
+        "progress": {
+            "done": task.progress.done,
+            "skipped": task.progress.skipped,
+            "errors": task.progress.errors,
+            "total": task.progress.total,
+        },
+        "errors": task.errors,
+        "error_reason": task.error_reason,
+    }
+
+
+@router.post(
+    "/api/intents/{intent_id}/history/{row_id}/extract-sources",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def post_extract_sources(
+    intent_id: int,
+    row_id: int,
+    request: Request,
+    override: bool = Query(
+        default=False,
+        description="Re-extract and overwrite already-cached citations; off skips cache hits.",
+    ),
+) -> dict[str, Any]:
+    conn = get_conn()
+    intent = await get_intent(conn, intent_id)
+    if intent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
+
+    row = await get_summary(conn, intent_id, row_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="history row not found")
+
+    spec = _load_spec_or_http(intent)
+    validator = compile_validator(spec)
+    citations = [c for c in row["citations"] if isinstance(c, dict)]
+
+    # Per-digest concurrency gate (atomic sync try-acquire; see backfill rationale).
+    if not try_acquire_row(row_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="extract_in_progress")
+    # Lock is ours; wrap acquire→spawn so a failure between can't leak it.
+    try:
+        task = create_extract_task(intent_id=intent_id, row_id=row_id, total=len(citations))
+        bg = asyncio.create_task(
+            run_extract_sources(
+                intent_id=intent_id,
+                row_id=row_id,
+                override=override,
+                citations=citations,
+                spec=spec,
+                validator=validator,
+                schema_version=spec.schema_version,
+                intent_text=intent.text,
+                app=request.app,
+                task=task,
+            )
+        )
+        _BG_TASKS.add(bg)
+        bg.add_done_callback(_BG_TASKS.discard)
+    except BaseException:
+        release_row(row_id)
+        raise
+
+    return {
+        "task_id": task.task_id,
+        "schema_version": spec.schema_version,
+        "total": len(citations),
+        "status_url": f"/api/intents/{intent_id}/extract-sources/{task.task_id}",
+    }
+
+
+@router.get("/api/intents/{intent_id}/extract-sources/{task_id}")
+async def get_extract_status(intent_id: int, task_id: str) -> dict[str, Any]:
+    task = get_extract_task(task_id)
+    if task is None or task.intent_id != intent_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found")
+    return _extract_task_to_payload(task)
+
+
+@router.get("/api/intents/{intent_id}/extractions/{article_id}")
+async def get_extraction_record(intent_id: int, article_id: str) -> dict[str, Any]:
+    conn = get_conn()
+    intent = await get_intent(conn, intent_id)
+    if intent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intent not found")
+
+    # The cache is keyed on the current spec version, so resolve it the same way
+    # the extractor did; a stale extraction under an old version reads as absent.
+    spec = _load_spec_or_http(intent)
+    record = await get_extraction(conn, article_id, intent_id, spec.schema_version)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_extracted")
+    # Ship the spec's per-field display roles so the dashboard renders generically
+    # (content row / provenance row / flag badges) without hard-coding field names.
+    record["field_meta"] = spec.claim_field_display()
+    return record

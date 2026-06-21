@@ -32,6 +32,10 @@ _PROTECTED_PREFIXES = (
     "/api/prompts/",
     "/api/settings/",
     "/api/external/",
+    # map sub-feature: extract-sources / extractions endpoints live under
+    # /api/intents/* (not /intents/*) so an unauthenticated fetch gets a 401
+    # JSON rather than a 302 redirect to the login page.
+    "/api/intents/",
     "/intents/",
     "/feeds/",
 )

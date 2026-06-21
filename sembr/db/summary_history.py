@@ -173,6 +173,37 @@ async def list_summaries(
     return rows
 
 
+async def get_summary(
+    conn: aiosqlite.Connection,
+    intent_id: int,
+    row_id: int,
+) -> dict | None:
+    """Return one summary_history row (with parsed citations) or None.
+
+    Scoped by ``intent_id`` as well as ``id`` so a row_id from another intent
+    can't be read through the wrong intent's endpoint.
+    """
+    async with conn.execute(
+        "SELECT id, intent_id, run_at, summary, citations "
+        "FROM summary_history WHERE id = ? AND intent_id = ?",
+        (row_id, intent_id),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return None
+    try:
+        citations = json.loads(row[4])
+    except (TypeError, ValueError):
+        citations = []
+    return {
+        "id": row[0],
+        "intent_id": row[1],
+        "run_at": row[2],
+        "summary": row[3],
+        "citations": citations,
+    }
+
+
 async def list_summaries_between(
     conn: aiosqlite.Connection,
     intent_id: int,

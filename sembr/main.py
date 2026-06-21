@@ -64,6 +64,7 @@ from sembr.db.event_buffer import init_event_buffer_tables
 from sembr.db.feeds import get_feed_names, init_feed_tables, list_feeds, seed_initial_feeds
 from sembr.db.intents import get_intent, init_intent_tables, list_intents
 from sembr.db.match_seen import init_match_seen_tables
+from sembr.db.mr_cache import init_mr_cache_tables
 from sembr.db.sqlite import close_sqlite, get_conn, init_sqlite
 from sembr.db.summary_history import (
     format_history_text,
@@ -88,6 +89,7 @@ from sembr.matcher.jobs import register_all_enabled
 from sembr.notifier.email import EmailChannel, EmailChannelConfig
 from sembr.summarizer.llm.factory import build_llm_backend
 from sembr.summarizer.models import SummaryResult
+from sembr.summarizer.mr_extract_tasks import sweep_expired as mr_extract_sweep_expired
 from sembr.summarizer.pipeline import SummaryPipeline
 from sembr.summarizer.templates import PROMPTS_DIR
 from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
@@ -178,6 +180,7 @@ async def lifespan(app: FastAPI):
     await init_match_seen_tables(conn)  # after intents — FK dependency
     await init_event_buffer_tables(conn)  # after intents — FK dependency
     await init_summary_history_table(conn)  # after intents — FK dependency
+    await init_mr_cache_tables(conn)  # after intents — FK CASCADE on intent_id
     # history-display: backfill writes via INSERT OR IGNORE keyed on
     # (intent_id, run_at); migrate any pre-existing duplicates and add the
     # UNIQUE index before the matcher / API can write.
@@ -259,6 +262,14 @@ async def lifespan(app: FastAPI):
         backfill_sweep_expired,
         trigger=_IT(minutes=5),
         id="backfill-tasks-sweep",
+        coalesce=True,
+        replace_existing=True,
+    )
+    # Sweep expired source-extraction tasks (24h TTL, same 5-min cadence)
+    scheduler.add_job(
+        mr_extract_sweep_expired,
+        trigger=_IT(minutes=5),
+        id="mr-extract-tasks-sweep",
         coalesce=True,
         replace_existing=True,
     )

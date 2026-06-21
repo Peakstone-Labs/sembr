@@ -47,6 +47,7 @@ def _cron_intent(intent_id: int = 1):
         language="en",
         system_template="default",
         instruction_template="default",
+        extraction_template="",
         created_at=datetime.now(UTC).isoformat(),
         updated_at=datetime.now(UTC).isoformat(),
     )
@@ -69,6 +70,7 @@ def _event_intent(intent_id: int = 1):
         language="en",
         system_template="default",
         instruction_template="default",
+        extraction_template="",
         created_at=datetime.now(UTC).isoformat(),
         updated_at=datetime.now(UTC).isoformat(),
     )

@@ -88,10 +88,23 @@ function intentsTab() {
     historyView: {
       open: false,
       row: null,            // selected summary_history row
+      intentId: null,       // owning intent id (for extract-sources endpoints)
       timezone: 'UTC',      // intent.timezone snapshot for run_at formatting
       summaryHtml: '',      // rendered markdown (DOMPurify-sanitized)
-      citations: [],        // citation rows with optional .body / .bodyLoading
+      citations: [],        // citation rows with optional .body / .extraction state
+      fieldMeta: {},        // spec field display map {name:{role,label,type}} from GET /extractions
+      // map sub-feature: per-digest source-extraction task state
+      extract: {
+        running: false, taskId: null, status: null, error: null,
+        override: false,
+        progress: { done: 0, skipped: 0, errors: 0, total: 0 },
+        errors: [],         // [{article_id, reason}]
+      },
     },
+    // Generation counter: bumped on every open/close so a late fetch/poll from a
+    // previous modal session can detect it is stale and drop its result
+    // (Alpine-modal async guard pattern).
+    _hvGen: 0,
 
     delHistory: {
       open: false,
@@ -827,37 +840,308 @@ function intentsTab() {
       const citations = (row.citations || []).map(c => ({
         ...c,
         body: null,
-        bodyOpen: false,
         bodyLoading: false,
         bodyError: null,
+        // in-place expand row + structured-extraction state (map sub-feature)
+        expandOpen: false,
+        extraction: null,         // cached extraction JSON once loaded
+        extractionLoading: false,
+        extractionError: null,    // e.g. not-extracted (404) / network error
       }));
+      this._hvGen++;  // invalidate any in-flight async from a prior session
       this.historyView = {
         open: true,
         row,
+        intentId: intent?.id ?? null,
         timezone: intent?.timezone || 'UTC',
         summaryHtml: html,
         citations,
+        fieldMeta: {},
+        extract: {
+          running: false, taskId: null, status: null, error: null,
+          override: false,
+          progress: { done: 0, skipped: 0, errors: 0, total: 0 },
+          errors: [],
+        },
       };
     },
 
     closeHistoryView() {
+      this._hvGen++;  // any pending poll/fetch sees a changed gen and bails
       this.historyView = {
         open: false,
         row: null,
+        intentId: null,
         timezone: 'UTC',
         summaryHtml: '',
         citations: [],
+        fieldMeta: {},
+        extract: {
+          running: false, taskId: null, status: null, error: null,
+          override: false,
+          progress: { done: 0, skipped: 0, errors: 0, total: 0 },
+          errors: [],
+        },
       };
     },
 
-    async loadCitationBody(citation) {
-      if (citation.body !== null || citation.bodyLoading) {
-        citation.bodyOpen = !citation.bodyOpen;
-        return;
+    // ── map sub-feature: in-place source expand (article + extracted facts) ──
+    toggleCitationExpand(c) {
+      c.expandOpen = !c.expandOpen;
+      if (!c.expandOpen) return;
+      // Lazy-load both panes on first open (each guards its own re-entry).
+      if (c.body === null && !c.bodyLoading) this.loadCitationBody(c);
+      if (c.extraction === null && !c.extractionLoading && !c.extractionError) {
+        this.loadCitationExtraction(c);
       }
+    },
+
+    async loadCitationExtraction(c) {
+      const gen = this._hvGen;
+      const intentId = this.historyView.intentId;
+      if (intentId == null) return;
+      c.extractionLoading = true;
+      c.extractionError = null;
+      try {
+        const res = await this._request(
+          'GET',
+          `/api/intents/${intentId}/extractions/${encodeURIComponent(c.article_id || '')}`
+        );
+        if (gen !== this._hvGen) return;  // modal closed/reopened — drop stale result
+        if (res.status === 404) {
+          c.extractionError = 'Not extracted — use Extract facts above';
+          c.extractionLoading = false;
+          return;
+        }
+        if (!res.ok) {
+          c.extractionError = `HTTP ${res.status}`;
+          c.extractionLoading = false;
+          return;
+        }
+        const data = await res.json();
+        if (gen !== this._hvGen) return;
+        // Spec field roles/labels — same for every source of this digest; store
+        // once so the generic renderer can bucket fields without hard-coded names.
+        this.historyView.fieldMeta = data.field_meta || {};
+        c.extraction = data.extraction || {};
+        c.extractionLoading = false;
+      } catch (e) {
+        if (gen !== this._hvGen) return;
+        c.extractionError = 'Network error: ' + e.message;
+        c.extractionLoading = false;
+      }
+    },
+
+    async startExtractSources() {
+      const ex = this.historyView.extract;
+      if (ex.running) return;  // in-flight guard
+      const intentId = this.historyView.intentId;
+      const rowId = this.historyView.row?.id;
+      if (intentId == null || rowId == null) return;
+      const gen = this._hvGen;
+      ex.running = true;
+      ex.status = 'running';
+      ex.error = null;
+      ex.errors = [];
+      ex.progress = { done: 0, skipped: 0, errors: 0, total: this.historyView.citations.length };
+      try {
+        const res = await this._request(
+          'POST',
+          `/api/intents/${intentId}/history/${rowId}/extract-sources?override=${ex.override ? 'true' : 'false'}`
+        );
+        if (gen !== this._hvGen) return;
+        if (!res.ok) {
+          ex.running = false;
+          ex.status = 'error';
+          // 409 in-progress / 422 spec_not_found / 5xx all surface here.
+          ex.error = res.status === 409 ? 'An extraction is already running' : `HTTP ${res.status}`;
+          return;
+        }
+        const data = await res.json();
+        if (gen !== this._hvGen) return;
+        ex.taskId = data.task_id;
+        ex.progress.total = data.total ?? ex.progress.total;
+        this._pollExtractSources(data.task_id, gen);
+      } catch (e) {
+        if (gen !== this._hvGen) return;
+        ex.running = false;
+        ex.status = 'error';
+        ex.error = 'Network error: ' + e.message;
+      }
+    },
+
+    async _pollExtractSources(taskId, gen) {
+      const ex = this.historyView.extract;
+      try {
+        const res = await this._request(
+          'GET',
+          `/api/intents/${this.historyView.intentId}/extract-sources/${taskId}`
+        );
+        if (gen !== this._hvGen) return;  // stale session
+        if (!res.ok) {
+          ex.running = false;
+          ex.status = 'error';
+          ex.error = `HTTP ${res.status}`;
+          return;
+        }
+        const data = await res.json();
+        if (gen !== this._hvGen) return;
+        ex.status = data.status;
+        ex.progress = data.progress || ex.progress;
+        ex.errors = data.errors || [];
+        if (data.status === 'running') {
+          // Re-arm rather than setInterval so polls never overlap.
+          setTimeout(() => this._pollExtractSources(taskId, gen), 1200);
+          return;
+        }
+        // Terminal (done / error): stop, then refresh extraction panes so any
+        // newly-cached source shows its JSON without reopening the modal.
+        ex.running = false;
+        if (data.status === 'error' && data.error_reason) ex.error = data.error_reason;
+        for (const c of this.historyView.citations) {
+          c.extraction = null;
+          c.extractionError = null;
+          c.extractionLoading = false;
+          if (c.expandOpen) this.loadCitationExtraction(c);
+        }
+      } catch (e) {
+        if (gen !== this._hvGen) return;
+        ex.running = false;
+        ex.status = 'error';
+        ex.error = 'Network error: ' + e.message;
+      }
+    },
+
+    // Group a citation's extracted claims by section for the pretty card view.
+    // Section keys are humanized (no hard-coded fed_watch labels) so the render
+    // stays spec-agnostic.
+    extractionSections(c) {
+      const claims = (c.extraction && c.extraction.claims) || [];
+      const order = [];
+      const byKey = {};
+      for (const claim of claims) {
+        const key = claim.section || 'other';
+        if (!byKey[key]) {
+          byKey[key] = { key, label: key.replace(/_/g, ' '), claims: [] };
+          order.push(key);
+        }
+        byKey[key].claims.push(claim);
+      }
+      return order.map(k => byKey[k]);
+    },
+
+    // ── spec-driven claim rendering ──
+    // Field roles + labels come from the spec (historyView.fieldMeta, served by
+    // GET /extractions), so NO field name is hard-coded here. Swapping the
+    // intent's extraction template re-buckets every field automatically.
+    // The only fixed names are the universal claim shell the compiler guarantees.
+    _SHELL_FIELDS: ['section', 'text', 'quote', 'article_idx'],
+
+    _fieldMeta() {
+      return this.historyView.fieldMeta || {};
+    },
+    _roleOf(k) {
+      const m = this._fieldMeta()[k];
+      return (m && m.role) || 'content';
+    },
+    // A field value worth showing? Treats the "na" not-applicable sentinel as
+    // empty too (matches the object sub-value filter in _formatField) so
+    // "Stance: na" / "Direction: na" noise doesn't render.
+    _blank(v) {
+      return v === null || v === undefined || v === '' || v === false || v === 'na';
+    },
+    // A tag field that just repeats the quote (e.g. an "original sentence"
+    // field on an English source, where the verbatim quote IS that sentence)
+    // is noise — the quote line already shows it. Generic: not tied to any
+    // field name. Length guard keeps a short value (金十, CPI) that merely
+    // appears inside the quote from being suppressed.
+    _dupOfQuote(v, quote) {
+      if (typeof v !== 'string' || !quote) return false;
+      const a = v.trim();
+      const b = String(quote).trim();
+      if (!a || !b) return false;
+      if (a === b) return true;
+      return a.length >= 12 && b.length >= 12 && (a.includes(b) || b.includes(a));
+    },
+    _labelOf(k) {
+      const m = this._fieldMeta()[k];
+      if (m && m.label) return m.label;
+      const s = (k.startsWith('is_') ? k.slice(3) : k).replace(/_/g, ' ').trim();
+      return s ? s.charAt(0).toUpperCase() + s.slice(1) : k;
+    },
+    // Format a value by its SHAPE, not its name: array → per item
+    // (string | name=value | joined), object → "Label (sub: val, …)",
+    // scalar → "Label: value". Returns an array of strings.
+    _formatField(k, v) {
+      if (Array.isArray(v)) {
+        const out = [];
+        for (const m of v) {
+          if (typeof m === 'string') {
+            if (m.trim()) out.push(m.trim());
+          } else if (m && typeof m === 'object') {
+            if (m.name) out.push(`${m.name}=${m.value ?? ''}${m.unit || ''}`);
+            else {
+              const vals = Object.values(m).filter(x => x != null && x !== '');
+              if (vals.length) out.push(vals.join(' '));
+            }
+          }
+        }
+        return out;
+      }
+      if (v && typeof v === 'object') {
+        const sub = Object.entries(v).filter(([, x]) => x && x !== 'na').map(([kk, x]) => `${kk}: ${x}`);
+        return sub.length ? [`${this._labelOf(k)} (${sub.join(', ')})`] : [];
+      }
+      return [`${this._labelOf(k)}: ${v}`];
+    },
+
+    // What the fact is about (role=content / default). Spec section-specific
+    // fields land here automatically.
+    claimContentTags(claim) {
+      const parts = [];
+      const quote = claim && claim.quote;
+      for (const [k, v] of Object.entries(claim || {})) {
+        if (this._SHELL_FIELDS.includes(k) || this._roleOf(k) !== 'content') continue;
+        if (this._blank(v) || this._dupOfQuote(v, quote)) continue;
+        parts.push(...this._formatField(k, v));
+      }
+      return parts.join(' · ');
+    },
+
+    // Provenance / sourcing metadata (role=meta) — rendered subordinate.
+    claimMetaTags(claim) {
+      const parts = [];
+      const quote = claim && claim.quote;
+      for (const [k, v] of Object.entries(claim || {})) {
+        if (this._SHELL_FIELDS.includes(k) || this._roleOf(k) !== 'meta') continue;
+        if (this._blank(v) || this._dupOfQuote(v, quote)) continue;
+        parts.push(...this._formatField(k, v));
+      }
+      return parts.join(' · ');
+    },
+
+    // Boolean fields the spec marks role=flag → badge labels (e.g. "Projection").
+    claimFlags(claim) {
+      const out = [];
+      for (const [k, v] of Object.entries(claim || {})) {
+        if (this._roleOf(k) === 'flag' && v === true) out.push(this._labelOf(k));
+      }
+      return out;
+    },
+
+    extractionHeader(c) {
+      const e = c.extraction || {};
+      const org = e.source_org || '(Unknown publisher)';
+      return e.thesis ? `${org} · ${e.thesis}` : org;
+    },
+
+    async loadCitationBody(citation) {
+      // Load-only now (the row's open/closed state is `expandOpen`, toggled by
+      // toggleCitationExpand). Idempotent: re-entry while loaded/loading no-ops.
+      if (citation.body !== null || citation.bodyLoading) return;
+      const gen = this._hvGen;
       citation.bodyLoading = true;
       citation.bodyError = null;
-      citation.bodyOpen = true;
       // article_id from summary_history.citations is a UUID-formatted string
       // (8-4-4-4-12 hex); the dashboard articles endpoint expects the raw
       // MD5 (32-char hex). Strip the dashes.
@@ -867,15 +1151,18 @@ function intentsTab() {
           'GET',
           `/api/dashboard/articles/${md5}?bucket=qdrant`
         );
+        if (gen !== this._hvGen) return;  // modal closed/reopened — drop stale result
         if (!res.ok) {
-          citation.bodyError = `HTTP ${res.status}`;
+          citation.bodyError = res.status === 404 ? 'Source expired' : `HTTP ${res.status}`;
           citation.bodyLoading = false;
           return;
         }
         const data = await res.json();
+        if (gen !== this._hvGen) return;
         citation.body = data.body || '(empty body)';
         citation.bodyLoading = false;
       } catch (e) {
+        if (gen !== this._hvGen) return;
         citation.bodyError = 'Network error: ' + e.message;
         citation.bodyLoading = false;
       }

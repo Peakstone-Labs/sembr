@@ -17,7 +17,8 @@ window.SENSITIVE_MASK = '••••••';
 // being pinned to the bottom.
 const SECTION_DEFS = [
   { id: 'embedder',    title: 'Embedder',           prefixes: ['EMBEDDER_'] },
-  { id: 'llm',         title: 'LLM Summarizer',     prefixes: ['LLM_'] },
+  { id: 'llm',         title: 'LLM Settings',       prefixes: ['LLM_'],
+    exact: ['REDUCE_MODEL', 'META_EXTRACTION_MODEL', 'REDUCE_CONCURRENCY'] },
   { id: 'newsapi',     title: 'NewsAPI',            prefixes: ['NEWSAPI_'] },
   { id: 'rsshub',      title: 'RSSHub Passthrough', special: 'rsshub' },
   { id: 'smtp',        title: 'Email (SMTP)',       prefixes: ['SMTP_'] },

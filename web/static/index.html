@@ -1969,15 +1969,31 @@
       <div style="padding:8px 0;">
         <div class="history-summary" style="line-height:1.6;" x-html="historyView.summaryHtml"></div>
         <div x-show="historyView.citations.length > 0" style="margin-top:18px;">
-          <div class="muted" style="font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:6px;">
-            Citations
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <div class="muted" style="font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase;">
+              Sources
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <label class="muted" style="font-size:0.75rem;">
+                <input type="checkbox" x-model="historyView.extract.override"> Overwrite existing
+              </label>
+              <button @click="startExtractSources()" :disabled="historyView.extract.running"
+                      x-text="historyView.extract.running ? 'Extracting…' : 'Extract facts'"></button>
+            </div>
+          </div>
+          <div x-show="historyView.extract.status" class="muted" style="font-size:0.75rem; margin-bottom:6px;">
+            <span x-text="`Done ${historyView.extract.progress.done} · Skipped ${historyView.extract.progress.skipped} · Failed ${historyView.extract.progress.errors} / ${historyView.extract.progress.total}`"></span>
+            <span x-show="historyView.extract.error" style="color:#d33;" x-text="' — ' + historyView.extract.error"></span>
           </div>
           <table style="width:100%;">
             <thead>
-              <tr><th style="width:32px;">#</th><th>Title</th><th style="width:80px;">Score</th><th style="width:80px;">Body</th></tr>
+              <tr><th style="width:32px;">#</th><th>Title</th><th style="width:70px;">Score</th><th style="width:64px;"></th></tr>
             </thead>
-            <tbody>
-              <template x-for="(c, idx) in historyView.citations" :key="c.article_id || idx">
+            <!-- One <tbody> per citation: article row + its expand row are siblings
+                 inside the same tbody, so the expand opens directly below the row
+                 (not stacked at the list bottom). -->
+            <template x-for="(c, idx) in historyView.citations" :key="c.article_id || idx">
+              <tbody>
                 <tr>
                   <td class="mono" x-text="idx + 1"></td>
                   <td>
@@ -1986,21 +2002,51 @@
                        x-text="c.title || '(no title)'"></a>
                   </td>
                   <td class="mono" x-text="c.score ? c.score.toFixed(3) : '—'"></td>
-                  <td><button @click="loadCitationBody(c)" x-text="c.bodyOpen ? 'Hide' : 'Show'"></button></td>
+                  <td><button @click="toggleCitationExpand(c)" x-text="c.expandOpen ? 'Hide' : 'View'"></button></td>
                 </tr>
-              </template>
-            </tbody>
+                <tr x-show="c.expandOpen">
+                  <td colspan="4" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px;">
+                    <div style="margin:6px 0;">
+                      <div class="muted" style="font-size:0.7rem; text-transform:uppercase;">Article</div>
+                      <div x-show="c.bodyLoading" class="muted"><span class="spinner"></span></div>
+                      <div x-show="c.bodyError" style="color:#d33; font-size:0.8rem;" x-text="c.bodyError"></div>
+                      <pre x-show="c.body && !c.bodyError"
+                           style="white-space:pre-wrap; font-size:0.8rem; max-height:240px; overflow-y:auto;"
+                           x-text="c.body"></pre>
+                    </div>
+                    <div style="margin:6px 0;">
+                      <div class="muted" style="font-size:0.7rem; text-transform:uppercase;">Extracted facts</div>
+                      <div x-show="c.extractionLoading" class="muted"><span class="spinner"></span></div>
+                      <div x-show="c.extractionError" class="muted" style="font-size:0.8rem;" x-text="c.extractionError"></div>
+                      <div x-show="c.extraction && !c.extractionError">
+                        <div style="font-weight:600; font-size:0.82rem; margin-bottom:4px;" x-text="extractionHeader(c)"></div>
+                        <template x-for="sec in extractionSections(c)" :key="sec.key">
+                          <div style="margin-bottom:6px;">
+                            <div class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em;" x-text="sec.label"></div>
+                            <template x-for="(claim, ci) in sec.claims" :key="ci">
+                              <div style="padding:2px 0 2px 8px; border-left:2px solid var(--border); margin:3px 0;">
+                                <div style="font-size:0.82rem;">
+                                  <template x-for="flag in claimFlags(claim)" :key="flag">
+                                    <span style="display:inline-block; font-size:0.6rem; font-weight:700; padding:0 5px; margin-right:5px; border-radius:3px; background:#fde68a; color:#92400e; text-transform:uppercase; letter-spacing:0.05em; vertical-align:middle;"
+                                          x-text="flag"></span>
+                                  </template>
+                                  <span x-text="claim.text"></span>
+                                </div>
+                                <div class="muted" style="font-size:0.72rem;" x-show="claimContentTags(claim)" x-text="claimContentTags(claim)"></div>
+                                <div class="muted" style="font-size:0.68rem; opacity:0.7;" x-show="claimMetaTags(claim)" x-text="claimMetaTags(claim)"></div>
+                                <div class="muted" style="font-size:0.72rem; font-style:italic;" x-show="claim.quote" x-text="'「' + claim.quote + '」'"></div>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                        <div class="muted" x-show="!(c.extraction.claims && c.extraction.claims.length)" style="font-size:0.78rem;">(No extractable facts in this source)</div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </template>
           </table>
-          <template x-for="(c, idx) in historyView.citations" :key="'body-' + idx">
-            <div x-show="c.bodyOpen" style="margin-top:8px; padding:10px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px;">
-              <div class="muted" style="font-size:0.7rem;" x-text="(c.title || '') + ' — body'"></div>
-              <div x-show="c.bodyLoading" class="muted"><span class="spinner"></span></div>
-              <div x-show="c.bodyError" style="color:#d33; font-size:0.8rem;" x-text="c.bodyError"></div>
-              <pre x-show="c.body && !c.bodyError"
-                   style="white-space:pre-wrap; font-size:0.8rem; max-height:300px; overflow-y:auto;"
-                   x-text="c.body"></pre>
-            </div>
-          </template>
         </div>
       </div>
       <div class="modal-footer">
@@ -2768,10 +2814,10 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=16"></script>
+<script src="/dashboard/intents.js?v=22"></script>
 <script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
-<script src="/dashboard/settings.js?v=12"></script>
+<script src="/dashboard/settings.js?v=13"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>
 <script src="/dashboard/app.js?v=10"></script>
 </body>
