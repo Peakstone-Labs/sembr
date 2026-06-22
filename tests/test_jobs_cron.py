@@ -39,7 +39,7 @@ def _make_intent(**kwargs) -> Intent:
         schedule=CronSchedule(preset="daily"),
         system_template="default",
         instruction_template="default",
-        extraction_template="",
+        extraction_enabled=False,
         feed_filter=None,
         timezone="UTC",
         language="zh",

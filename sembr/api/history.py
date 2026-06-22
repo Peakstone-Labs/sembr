@@ -421,8 +421,10 @@ async def get_export(
 
 
 def _resolve_spec_name(intent) -> str:
-    # Empty extraction_template falls back to the system_template's spec name.
-    return intent.extraction_template or intent.system_template
+    # The spec is always this intent's own per-intent spec (prompts/extraction/
+    # intent-{id}). Whether structured extraction runs is gated by the
+    # intent.extraction_enabled bool (spec-autogen), not by the spec name.
+    return f"intent-{intent.id}"
 
 
 def _load_spec_or_http(intent):

@@ -99,10 +99,9 @@ async def get_extraction_spec(intent_id: int) -> dict[str, Any]:
         md, json_text = own
         source, exists = "own", True
     else:
-        # Fall back to whatever this intent currently resolves to (legacy
-        # extraction_template or its system_template) as a read-only starting
-        # point — saving still writes own_name, never the shared template (D3).
-        fallback_name = intent.extraction_template or intent.system_template
+        # Fall back to the system_template's spec as a read-only starting point —
+        # saving still writes own_name, never the shared template (design D3).
+        fallback_name = intent.system_template
         fb = read_spec_raw(fallback_name, PROMPTS_DIR) if fallback_name else None
         if fb is not None:
             md, json_text = fb
@@ -113,7 +112,7 @@ async def get_extraction_spec(intent_id: int) -> dict[str, Any]:
         "md": md,
         "json": json_text,
         "exists": exists,
-        "enabled": exists and intent.extraction_template == own_name,
+        "enabled": intent.extraction_enabled,
         "source": source,
         "digest_available": digest_available,
     }
@@ -209,17 +208,17 @@ async def post_save_spec(intent_id: int, body: SaveSpecRequest) -> dict[str, Any
 # --------------------------------------------------------------------------- #
 @router.post("/api/intents/{intent_id}/extraction-spec/enable")
 async def post_enable_spec(intent_id: int, body: EnableSpecRequest | None = None) -> dict[str, Any]:
-    """Toggle structured extraction for this intent. enabled=True points the
-    intent at its own spec (intent-{id}); enabled=False clears extraction_template
-    (falls back to the system_template — i.e. structured extraction off). Body is
-    optional; absent → enabled=True (backward compatible)."""
+    """Toggle structured extraction for this intent (the extraction_enabled bool).
+    enabled=True requires the intent's spec (intent-{id}) to exist + load; the spec
+    file and its name are never touched — only the bool. enabled=False just turns
+    it off. Body optional; absent → enabled=True (backward compatible)."""
     await _require_intent(intent_id)
     name = derive_spec_name(intent_id)
     enabled = body.enabled if body is not None else True
 
     if not enabled:
-        await update_intent(get_conn(), intent_id, IntentUpdate(extraction_template=""))
-        return {"ok": True, "enabled": False, "extraction_template": ""}
+        await update_intent(get_conn(), intent_id, IntentUpdate(extraction_enabled=False))
+        return {"ok": True, "enabled": False}
 
     try:
         load_spec(name, PROMPTS_DIR)  # re-load guards against missing/broken (design D5)
@@ -234,5 +233,5 @@ async def post_enable_spec(intent_id: int, body: EnableSpecRequest | None = None
             detail={"code": "spec_invalid", "message": f"spec failed to load: {exc}"},
         ) from exc
 
-    await update_intent(get_conn(), intent_id, IntentUpdate(extraction_template=name))
-    return {"ok": True, "enabled": True, "extraction_template": name}
+    await update_intent(get_conn(), intent_id, IntentUpdate(extraction_enabled=True))
+    return {"ok": True, "enabled": True}

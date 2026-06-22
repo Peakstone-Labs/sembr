@@ -214,15 +214,6 @@ def _validate_template_name(v: str) -> str:
     return v
 
 
-def _validate_extraction_template_name(v: str) -> str:
-    # Empty string is the sentinel for "fall back to system_template at extract
-    # time", so it's allowed here even though a real template name must be
-    # 1..100 chars.
-    if v == "":
-        return v
-    return _validate_template_name(v)
-
-
 _LANGUAGE_SAFE_RE = re.compile(r"[A-Za-z][A-Za-z0-9_\- ]*")
 
 
@@ -267,7 +258,9 @@ class IntentCreate(BaseModel):
     schedule: Schedule = Field(default_factory=lambda: CronSchedule(preset="daily"))
     system_template: str = "default"
     instruction_template: str = "default"
-    extraction_template: str = ""  # "" → use the system_template's spec at extract time
+    # Structured extraction (map/reduce) on for this intent. The spec is always
+    # this intent's own prompts/extraction/intent-{id}; this bool only gates use.
+    extraction_enabled: bool = False
     feed_filter: FeedFilter | None = None
     timezone: str = "UTC"
     language: str = "zh"
@@ -279,11 +272,6 @@ class IntentCreate(BaseModel):
             if not (1 <= len(t) <= 50):
                 raise ValueError("tag length must be 1..50")
         return v
-
-    @field_validator("extraction_template")
-    @classmethod
-    def _extraction_template_syntax(cls, v: str) -> str:
-        return _validate_extraction_template_name(v)
 
     @field_validator("timezone")
     @classmethod
@@ -318,7 +306,7 @@ class IntentUpdate(BaseModel):
     schedule: Schedule | None = None
     system_template: str | None = None
     instruction_template: str | None = None
-    extraction_template: str | None = None
+    extraction_enabled: bool | None = None
     feed_filter: FeedFilter | None = None
     timezone: str | None = None
     language: str | None = None
@@ -332,13 +320,6 @@ class IntentUpdate(BaseModel):
             if not (1 <= len(t) <= 50):
                 raise ValueError("tag length must be 1..50")
         return v
-
-    @field_validator("extraction_template")
-    @classmethod
-    def _extraction_template_syntax(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        return _validate_extraction_template_name(v)
 
     @field_validator("timezone")
     @classmethod
@@ -384,7 +365,7 @@ class Intent(BaseModel):
     schedule: Schedule
     system_template: str
     instruction_template: str
-    extraction_template: str
+    extraction_enabled: bool
     feed_filter: FeedFilter | None
     timezone: str
     language: str

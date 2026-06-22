@@ -202,7 +202,7 @@ def _write_templates(prompts_dir: Path) -> None:
 
 
 async def _create_test_intent(
-    conn, *, system_template: str = "default", extraction_template: str = ""
+    conn, *, system_template: str = "default", extraction_enabled: bool = False
 ) -> int:
     """Create a test intent and return its id."""
     body = IntentCreate(
@@ -210,7 +210,7 @@ async def _create_test_intent(
         text="Federal Reserve policy",
         channels=[{"type": "email", "to": ["test@example.com"]}],
         system_template=system_template,
-        extraction_template=extraction_template,
+        extraction_enabled=extraction_enabled,
     )
     intent = await create_intent(conn, body)
     return intent.id
@@ -639,12 +639,12 @@ def test_save_spec_empty_md_returns_422(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# T10 — save ≠ enable: save doesn't change extraction_template; enable does
+# T10 — save ≠ enable: save doesn't change extraction_enabled; the toggle does
 # --------------------------------------------------------------------------- #
 
 
-def test_save_does_not_change_extraction_template(tmp_path: Path) -> None:
-    """T10a: after save, intent.extraction_template is unchanged."""
+def test_save_does_not_change_extraction_enabled(tmp_path: Path) -> None:
+    """T10a: after save, intent.extraction_enabled is unchanged (still off)."""
     _write_base(tmp_path)
     _write_templates(tmp_path)
 
@@ -663,13 +663,12 @@ def test_save_does_not_change_extraction_template(tmp_path: Path) -> None:
 
         intent = asyncio.get_event_loop().run_until_complete(get_intent(conn, intent_id))
         assert intent is not None
-        assert (
-            intent.extraction_template == ""
-        ), f"save must not change extraction_template; got {intent.extraction_template!r}"
+        assert intent.extraction_enabled is False, "save must not flip the toggle"
 
 
-def test_enable_changes_extraction_template(tmp_path: Path) -> None:
-    """T10b: after enable, intent.extraction_template = 'intent-{id}'."""
+def test_enable_sets_extraction_enabled(tmp_path: Path) -> None:
+    """T10b: after the toggle is enabled, intent.extraction_enabled is True (the
+    spec name/file are never touched)."""
     _write_base(tmp_path)
     _write_templates(tmp_path)
 
@@ -685,19 +684,17 @@ def test_enable_changes_extraction_template(tmp_path: Path) -> None:
         )
         resp = http.post(f"/api/intents/{intent_id}/extraction-spec/enable")
         assert resp.status_code == 200
+        assert resp.json()["enabled"] is True
 
         from sembr.db.intents import get_intent
 
         intent = asyncio.get_event_loop().run_until_complete(get_intent(conn, intent_id))
-        assert intent is not None
-        assert (
-            intent.extraction_template == f"intent-{intent_id}"
-        ), f"enable must set extraction_template to 'intent-{intent_id}'; got {intent.extraction_template!r}"
+        assert intent is not None and intent.extraction_enabled is True
 
 
-def test_toggle_disable_clears_extraction_template(tmp_path: Path) -> None:
-    """The enable endpoint with {enabled: false} clears extraction_template (the
-    toggle's off position) — structured extraction off, falls back to system_template."""
+def test_toggle_disable_clears_extraction_enabled(tmp_path: Path) -> None:
+    """The enable endpoint with {enabled: false} turns the bool off — the spec
+    file and name are untouched, only the toggle flips."""
     _write_base(tmp_path)
     _write_templates(tmp_path)
 
@@ -720,7 +717,9 @@ def test_toggle_disable_clears_extraction_template(tmp_path: Path) -> None:
         assert resp.status_code == 200
         assert resp.json()["enabled"] is False
         intent = asyncio.get_event_loop().run_until_complete(get_intent(conn, intent_id))
-        assert intent is not None and intent.extraction_template == ""
+        assert intent is not None and intent.extraction_enabled is False
+        # the spec file is NOT deleted by disabling
+        assert (tmp_path / "extraction" / f"intent-{intent_id}.md").exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -761,8 +760,8 @@ def test_enable_then_load_spec_succeeds(tmp_path: Path) -> None:
         intent = asyncio.get_event_loop().run_until_complete(get_intent(conn, intent_id))
         assert intent is not None
 
-        # Simulate what history.py:_resolve_spec_name does
-        spec_name = intent.extraction_template or intent.system_template
+        # Simulate what history.py:_resolve_spec_name does (always intent-{id})
+        spec_name = f"intent-{intent.id}"
         assert spec_name == f"intent-{intent_id}"
 
         # load_spec must NOT raise SpecNotFoundError
@@ -861,13 +860,12 @@ def test_save_does_not_modify_shared_fed_watch_spec(tmp_path: Path) -> None:
         import asyncio
 
         conn = conn_holder["conn"]
-        # Create intent with extraction_template pointing to fed_watch
+        # fed_watch system template + an existing fed_watch spec on disk
         body = IntentCreate(
             name="fed-intent",
             text="Federal Reserve",
             channels=[{"type": "email", "to": ["test@example.com"]}],
             system_template="fed_watch",
-            extraction_template="fed_watch",
         )
         intent = asyncio.get_event_loop().run_until_complete(create_intent(conn, body))
         intent_id = intent.id
@@ -919,7 +917,6 @@ def test_save_intent_spec_content_differs_from_fed_watch(tmp_path: Path) -> None
             text="Federal Reserve",
             channels=[{"type": "email", "to": ["test@example.com"]}],
             system_template="fed_watch",
-            extraction_template="fed_watch",
         )
         intent = asyncio.get_event_loop().run_until_complete(create_intent(conn, body))
         intent_id = intent.id
