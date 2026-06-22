@@ -174,9 +174,23 @@ def _dup_section_key(d):
 
 
 def test_validate_clean_spec_passes() -> None:
-    issues = validate_spec_payload("非空 prompt", _valid_json())
+    # prompt mentions the section field (speaker) so rule 15 stays quiet too
+    issues = validate_spec_payload("prompt that mentions speaker", _valid_json())
     assert not has_errors(issues)
     assert not issues  # clean spec → no errors AND no warnings
+
+
+def test_validate_rule15_prompt_schema_consistency() -> None:
+    # section field absent from the prompt → warning (not an error)
+    issues = validate_spec_payload("prompt without that word", _valid_json())
+    assert not has_errors(issues)
+    assert any(
+        i.severity == "warning" and "speaker" in i.msg and "extraction_prompt" in i.msg
+        for i in issues
+    )
+    # once the prompt mentions it → no such warning
+    ok = validate_spec_payload("we extract the speaker's stance", _valid_json())
+    assert not any("isn't mentioned in extraction_prompt" in i.msg for i in ok)
 
 
 @pytest.mark.parametrize(

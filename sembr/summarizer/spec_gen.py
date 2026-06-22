@@ -439,6 +439,24 @@ def validate_spec_payload(md: str, json_text: str) -> list[ValidationIssue]:
                     severity="warning",
                 )
             )
+    # rule 15 (warning): prompt↔schema consistency — a section's own fields should
+    # be described in the extraction_prompt. Scoped to section fields (floor lives
+    # in _base.md, article shell is conventional); skip ≤2-char names to avoid
+    # false positives on common short words. Substring match, warning only.
+    for i, s in enumerate(sections if isinstance(sections, list) else []):
+        if not isinstance(s, dict):
+            continue
+        for j, f in enumerate(s.get("fields", []) if isinstance(s.get("fields"), list) else []):
+            name = f.get("name") if isinstance(f, dict) else None
+            if isinstance(name, str) and len(name) > 2 and name not in _RESERVED and name not in md:
+                issues.append(
+                    ValidationIssue(
+                        loc=f"sections[{i}].fields[{j}].name",
+                        msg=f"field '{name}' isn't mentioned in extraction_prompt "
+                        "(prompt/schema may be inconsistent)",
+                        severity="warning",
+                    )
+                )
     return issues
 
 
