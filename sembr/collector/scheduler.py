@@ -125,6 +125,17 @@ async def collect_feed(
             with contextlib.suppress(ValueError):
                 since = datetime.fromisoformat(row[0].replace("Z", "+00:00"))
 
+    # Sources that stamp every item with a coarse or back-dated timestamp (e.g.
+    # research-report feeds that mark each entry with the publish day's 00:00)
+    # are silently zeroed by the RSS published_at<=since pre-filter: the stamp is
+    # always behind the wall-clock cursor, so every poll skips everything. Opt
+    # such feeds out via config and let the persistent feed_items MD5 ledger
+    # (insert_article_pending) handle dedup instead — the only added cost is
+    # re-checking the latest feed page each tick, which is cheap because the MD5
+    # lookup precedes embedding.
+    if config.get("ignore_published_watermark", False):
+        since = None
+
     timeout = float(config.get("timeout", 30.0))
     source = source_cls(feed_url, timeout=timeout)
 

@@ -191,6 +191,8 @@ Loaded by `db.feeds.seed_initial_feeds` on first startup. Already-seeded URLs ar
 
 Per-feed `timeout` lives in the feed's `config` JSON column; defaults to `30.0` if absent.
 
+Per-feed `ignore_published_watermark` (boolean, default `false`) lives in the same `config` column. When set, `collect_feed` passes `since=None` regardless of `last_collected_at`, so the RSS `published_at <= since` pre-filter is skipped and dedup falls back to the `feed_items` MD5 ledger. Enable it for sources that stamp every item with a coarse or back-dated timestamp (e.g. research-report feeds that mark each entry with the publish day's `00:00`), which the watermark would otherwise skip on every poll.
+
 ## Upstream dependencies
 
 - `db.feeds` — `fingerprint_exists`, `insert_fingerprint`, `update_last_collected`, `seed_initial_feeds`
