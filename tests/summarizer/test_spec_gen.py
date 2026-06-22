@@ -255,6 +255,22 @@ def test_inject_floor_idempotent_when_present() -> None:
     assert len(_inject_floor(seed)) == len(seed)  # nothing appended
 
 
+def test_inject_floor_canonicalizes_degraded_floor() -> None:
+    # The meta-LLM sometimes emits floor fields with a degraded type (bool→string)
+    # and dropped enum/description; the floor contract with _base.md must win.
+    out = _inject_floor(
+        [
+            {"name": "is_projection", "type": "string", "role": "flag", "label": "我的预测"},
+            {"name": "source_type", "type": "string", "enum": [], "role": "meta", "label": "类型"},
+        ]
+    )
+    by_name = {f["name"]: f for f in out}
+    assert by_name["is_projection"]["type"] == "bool"  # canonical type restored
+    assert by_name["is_projection"]["label"] == "我的预测"  # meta's label preserved
+    assert by_name["source_type"]["type"] == "enum" and by_name["source_type"]["enum"]
+    assert by_name["source_type"]["description"]  # canonical description restored
+
+
 def test_strip_reserved_drops_shell_names() -> None:
     out = _strip_reserved([{"name": "quote"}, {"name": "speaker"}, {"name": "section"}])
     assert [f["name"] for f in out] == ["speaker"]

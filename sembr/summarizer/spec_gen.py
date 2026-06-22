@@ -124,16 +124,17 @@ META_SYSTEM = """你是「抽取规格设计师」。给你一份新闻简报的
 设计目标（硬标准）：只看抽取结果（不看原文），就能写出符合该模板的简报。多了浪费，少了下游得回去翻原文（幻觉复活）。
 
 【硬要求，必须满足】：
-1. 每个字段（article_fields / common_claim_fields / 各 section.fields）都必须填 `role` 和 `label`：
+1. 每个字段（article_fields / common_claim_fields / 各 section.fields）都必须填 `role` 和 `label`，并尽量给一句 `description`（说明该字段抽什么）：
    - `role`：事实主体 → `content`；溯源/性质（来源类型、归属、时间等）→ `meta`；布尔徽章（是否预测、是否单一来源等）→ `flag`。
    - `label`：简短中文显示名。
+   - `description`：一句话说明取值口径，供下游/编辑者看（留空也能跑，但尽量填）。
 2. 你产出的 `extraction_prompt` 必须【原样继承】下方给出的通用基底规则（反幻觉铁律 + 归属 + 横切字段 + 输入说明），再在其上叠加该 intent 的特化（章节骨架 + 相关性闸门 + 每节字段说明）。不得丢弃基底铁律。
 3. 每个 section 的 `key` 是机器名（snake_case，字母开头，仅字母数字下划线），`label` 是节标题；claim 的 section 值将 ∈ 这些 key。
 4. 【逐节覆盖，绝不漏维度】逐一扫描分析模板的输出结构，模板里**每一个输出章节 / 信息维度**都要有对应的 section（或字段）承接，**不得遗漏**。两类最常被漏、务必覆盖：
    - **分析 / 推断节**（模板标注「推断」「不加 [N]」「判断表」的节，如「资产影响 / 市场判断」「反共识 / 尾部风险」）：该节由下游综合，但你**仍必须为它建 section + 字段**去抽它所依赖的【底层事实】——价格 / 点位数字、市场与资产反应、成交 / 费率 / 库存 / 产量数据、关键信号。否则下游无事实可锚定，该节会空或幻觉。这类「市场 / 价格 / 资产」节是市场类简报的核心，最不能漏。
    - **多子项的表态 / 各方节**（如「关键各方表态」含谈判 / 各施压方 / 各当事方）：用【一个 section + `actor` 字段】区分不同方，**不要按方拆成多个 section**（如 us_stance / iran_stance / israel_stance —— 这类拆分里弱势方常只有零星 1 条，全是冗余空节；section 的粒度对齐模板的章节标题，不对齐文章里的实体）。同样也别把内部结构压成一句话，靠字段承接。
 
-【固定外壳，不要重复产出】：claim 的 `section`/`text`/`quote` 与 article 的 `no_relevant_content` 由下游写死——【不要】把它们列为字段。`source_org`、`thesis` 由系统自动补进 article_fields（你产出与否都可以，但**不要漏掉 thesis 这个维度的设计意图**）。通用横切字段（source_type/is_projection/time_ref/single_source/attribution）系统会自动补齐进 common_claim_fields，你产出与否都可以。概览 / 叙事节（如「态势综述」）由 article 级 thesis 承接，不必单设 section。
+【固定外壳，不要重复产出】：claim 的 `section`/`text`/`quote` 与 article 的 `no_relevant_content` 由下游写死——【不要】把它们列为字段。`source_org`、`thesis` 由系统自动补进 article_fields（你产出与否都可以，但**不要漏掉 thesis 这个维度的设计意图**）。通用横切字段（source_type/is_projection/time_ref/single_source/attribution）系统会自动补齐进 common_claim_fields，你产出与否都可以；若你产出，其类型/枚举以基底为准（系统会强制规范化）——别把 is_projection/single_source 之类改成 string。概览 / 叙事节（如「态势综述」）由 article 级 thesis 承接，不必单设 section。
 
 你的自由度在 sections 枚举、各 section 专属字段、以及 article_fields 里 source_org/thesis 之外的补充。
 
@@ -210,16 +211,41 @@ def truncate_digest(text: str, limit: int = _MAX_DIGEST_CHARS) -> str:
     return text[:limit] + "\n\n(…digest truncated; calibration context only)"
 
 
-def _inject_floor(common_claim_fields: list[dict]) -> list[dict]:
-    """Guarantee every floor field is present (design §4.0). Existing same-named
-    fields are kept as-is (trust the meta-LLM's role/label); missing ones get the
-    canonical def so the base prompt never references an absent field."""
-    present = {f.get("name") for f in common_claim_fields if isinstance(f, dict)}
-    out = list(common_claim_fields)
-    for fld in _FLOOR_FIELDS:
-        if fld["name"] not in present:
+def _canonicalize_floor(fields: list[dict], floor: list[dict]) -> list[dict]:
+    """Force every floor field to its canonical type/enum/description/role,
+    overriding whatever the meta-LLM emitted, then append any it omitted.
+
+    The floor is a fixed contract paired 1:1 with ``_base.md``; the meta-LLM
+    non-deterministically *degrades* it when it chooses to emit the floor fields
+    itself — ``is_projection`` bool→string, ``source_type``'s enum dropped,
+    descriptions emptied — which silently breaks the base↔schema contract (e.g.
+    a string-typed ``is_projection`` makes ``compile_validator`` extract
+    "true"/"false" text instead of a bool). So we don't trust the meta-LLM's
+    version: only its display ``label`` is kept (when non-empty); everything else
+    is the canonical def. Non-floor fields pass through in place; missing floor
+    fields are appended in canonical order."""
+    canon = {f["name"]: f for f in floor}
+    out: list[dict] = []
+    seen: set[str] = set()
+    for f in fields:
+        if isinstance(f, dict) and f.get("name") in canon:
+            c = dict(canon[f["name"]])
+            if isinstance(f.get("label"), str) and f["label"].strip():
+                c["label"] = f["label"]
+            out.append(c)
+            seen.add(f["name"])
+        else:
+            out.append(f)
+    for name, fld in canon.items():
+        if name not in seen:
             out.append(dict(fld))
     return out
+
+
+def _inject_floor(common_claim_fields: list[dict]) -> list[dict]:
+    """Guarantee every common-claim floor field is present *and canonical*
+    (so ``_base.md`` never references an absent or degraded field)."""
+    return _canonicalize_floor(common_claim_fields, _FLOOR_FIELDS)
 
 
 # Article-level floor — source_org + thesis must always be present (reduce uses
@@ -245,12 +271,9 @@ _ARTICLE_FLOOR = [
 
 
 def _inject_article_floor(article_fields: list[dict]) -> list[dict]:
-    present = {f.get("name") for f in article_fields if isinstance(f, dict)}
-    out = list(article_fields)
-    for fld in _ARTICLE_FLOOR:
-        if fld["name"] not in present:
-            out.append(dict(fld))
-    return out
+    """Guarantee source_org + thesis are present *and canonical* (reduce relies
+    on thesis for the TL;DR; the meta-LLM sometimes drops or retypes it)."""
+    return _canonicalize_floor(article_fields, _ARTICLE_FLOOR)
 
 
 def _strip_reserved(fields: list[dict]) -> list[dict]:
