@@ -2192,3 +2192,23 @@ button { gap: 7px; }
   opacity: 0.8;
 }
 .code-editor-fmt:hover { opacity: 1; }
+/* dark variant — templates editor (grows to fill, brighter highlight on dark bg) */
+.code-editor--dark {
+  height: auto;
+  background: var(--bg-ink);
+  border-color: var(--bg-ink);
+  border-radius: 8px;
+}
+.code-editor--dark .code-editor-hl,
+.code-editor--dark .code-editor-input {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  padding: 14px;
+}
+.code-editor--dark .code-editor-hl { color: #ededed; }
+.code-editor--dark .code-editor-input { caret-color: #ededed; }
+.code-editor--dark .md-h      { color: #6cb6ff; }
+.code-editor--dark .md-bullet { color: #e3b341; }
+.code-editor--dark .md-bold   { color: #ffffff; }
+.code-editor--dark .md-code   { color: #7ee787; }
+.code-editor--dark .md-quote  { color: #9aa0a6; }

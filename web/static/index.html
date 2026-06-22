@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=16">
+<link rel="stylesheet" href="/dashboard/style.css?v=17">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -2314,8 +2314,8 @@
       <!-- row 3: save (draft) + structured-extraction toggle -->
       <div class="modal-footer" style="margin-top:14px; align-items:center;">
         <span class="field-hint" style="margin-right:auto;">
-          Save writes a draft. The toggle activates this intent's spec — used by Extract&nbsp;facts now;
-          cron runs map→reduce with it once the reduce step ships.
+          Save writes a draft. The toggle turns structured extraction on for this intent —
+          cron runs map→reduce with it on recall, and Extract&nbsp;facts uses the same spec.
         </span>
         <button @click="saveSpec()" :disabled="advanced.saving">
           <span x-show="!advanced.saving">Save</span><span x-show="advanced.saving">Saving…</span>
@@ -2444,10 +2444,15 @@
           </div>
         </header>
 
-        <textarea x-model="editor.content"
-                  :readonly="isEditorBuiltin"
-                  spellcheck="false"
-                  style="flex:1 1 auto; min-height:300px; font-family:'Geist Mono','JetBrains Mono',monospace; font-size:0.85rem; line-height:1.55; padding:14px; background:var(--bg-ink); color:#ededed; border:1px solid var(--bg-ink); border-radius:8px; resize:vertical; outline:none;"></textarea>
+        <!-- editable + markdown-highlighted overlay (dark theme); shared codehl.js -->
+        <div class="code-editor code-editor--dark" style="flex:1 1 auto; min-height:300px;">
+          <pre class="code-editor-hl" aria-hidden="true" x-ref="tplHl"
+               x-html="highlightMarkdown(editor.content) + '\n'"></pre>
+          <textarea class="code-editor-input" x-model="editor.content"
+                    :readonly="isEditorBuiltin"
+                    spellcheck="false"
+                    @scroll="$refs.tplHl.scrollTop = $event.target.scrollTop"></textarea>
+        </div>
 
         <div x-show="editor.error" style="color:var(--bad); font-size:0.78rem; margin-top:6px;" x-text="editor.error"></div>
 
@@ -2903,8 +2908,9 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=26"></script>
-<script src="/dashboard/templates.js?v=4"></script>
+<script src="/dashboard/codehl.js?v=1"></script>
+<script src="/dashboard/intents.js?v=27"></script>
+<script src="/dashboard/templates.js?v=5"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=13"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>

@@ -1160,46 +1160,10 @@ function intentsTab() {
       catch (e) { this.advanced.jsonError = String((e && e.message) || e); }
     },
 
-    _escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, c =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    },
-
-    // Read-only JSON syntax highlight for the preview. Escapes the whole text
-    // FIRST (so any stray markup in malformed input is neutralized — XSS guard),
-    // then tokenizes on the escaped delimiters. Display only; backend validates.
-    highlightJson(text) {
-      const esc = this._escapeHtml(text);
-      return esc.replace(
-        /(&quot;(?:\\.|(?!&quot;)[\s\S])*?&quot;)(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
-        (full, str, colon, kw, num) => {
-          if (str !== undefined) {
-            const cls = colon ? 'json-key' : 'json-str';
-            return `<span class="${cls}">${str}</span>` + (colon || '');
-          }
-          if (kw !== undefined) return `<span class="json-${kw === 'null' ? 'null' : 'bool'}">${kw}</span>`;
-          return `<span class="json-num">${num}</span>`;
-        }
-      );
-    },
-
-    // Lightweight markdown highlight for the .md overlay editor. Escapes first
-    // (XSS), then line- + inline-level spans (headings / lists / quotes / inline
-    // code / bold). Display only.
-    highlightMarkdown(text) {
-      return this._escapeHtml(text).split('\n').map(line => {
-        const h = line.match(/^(#{1,6}\s.*)$/);
-        if (h) return `<span class="md-h">${h[1]}</span>`;
-        if (/^&gt;\s?/.test(line)) return `<span class="md-quote">${line}</span>`;
-        const lm = line.match(/^(\s*)([-*+]|\d+\.)(\s.*)$/);
-        let prefix = '', body = line;
-        if (lm) { prefix = `${lm[1]}<span class="md-bullet">${lm[2]}</span>`; body = lm[3]; }
-        body = body
-          .replace(/(`[^`]+`)/g, '<span class="md-code">$1</span>')
-          .replace(/(\*\*[^*]+\*\*)/g, '<span class="md-bold">$1</span>');
-        return prefix + body;
-      }).join('\n');
-    },
+    // Overlay highlighters — shared impl in codehl.js (also used by the templates
+    // editor). escape-first / display-only; the backend validator is authoritative.
+    highlightJson(text) { return window.ceHighlightJson(text); },
+    highlightMarkdown(text) { return window.ceHighlightMarkdown(text); },
 
     // Group a citation's extracted claims by section for the pretty card view.
     // Section keys are humanized (no hard-coded fed_watch labels) so the render

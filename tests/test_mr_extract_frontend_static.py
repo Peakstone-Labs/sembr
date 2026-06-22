@@ -232,8 +232,8 @@ def test_settings_js_cache_buster_bumped(index_html: str) -> None:
         "toggleSpecEnabled",
         "prettifyJson",
         "highlightJson",
+        "highlightMarkdown",
         "_validateJsonLocal",
-        "_escapeHtml",
     ],
 )
 def test_advanced_methods_present(intents_js: str, method: str) -> None:
@@ -247,14 +247,18 @@ def test_advanced_button_and_modal_wired(index_html: str) -> None:
     assert "saveSpec()" in index_html and "toggleSpecEnabled" in index_html
 
 
-def test_highlight_escapes_before_tokenizing(intents_js: str) -> None:
-    # XSS guard: highlightJson must escape the whole text first, then tokenize on
-    # the escaped quote delimiter (&quot;). Asserts the escape-first contract.
-    m = re.search(r"highlightJson\([^)]*\)\s*\{(.*?)\n    \},", intents_js, re.S)
-    assert m, "highlightJson body not found"
-    body = m.group(1)
-    assert "_escapeHtml(text)" in body, "highlightJson must escape the raw text first"
-    assert "&quot;" in body, "tokenizer must match on the escaped quote delimiter"
+@pytest.fixture(scope="module")
+def codehl_js() -> str:
+    return (_REPO_ROOT / "web" / "static" / "codehl.js").read_text(encoding="utf-8")
+
+
+def test_codehl_highlighters_escape_first(codehl_js: str) -> None:
+    # XSS guard: the shared highlighters (used by both the Advanced panel and the
+    # templates editor) escape the whole text FIRST, then tokenize on the escaped
+    # delimiter (&quot;). intents.js/templates.js only delegate to these.
+    assert "window.ceHighlightJson" in codehl_js and "window.ceHighlightMarkdown" in codehl_js
+    assert "esc(text)" in codehl_js, "highlighters must escape the raw text first"
+    assert "&quot;" in codehl_js, "json tokenizer must match on the escaped quote delimiter"
 
 
 def test_intents_js_cache_buster_bumped_for_spec_autogen(index_html: str) -> None:
@@ -277,15 +281,15 @@ def test_frontend_json_validation_is_drift_guard_only(intents_js: str) -> None:
         ), f"{backend_only!r} duplicates a backend rule in intents.js — drift risk"
 
 
-def test_highlight_markdown_present_and_escapes_first(intents_js: str) -> None:
-    assert re.search(r"\bhighlightMarkdown\s*\(", intents_js), "missing highlightMarkdown"
-    m = re.search(r"highlightMarkdown\([^)]*\)\s*\{(.*?)\n    \},", intents_js, re.S)
-    assert m, "highlightMarkdown body not found"
-    assert "_escapeHtml(text)" in m.group(1), "highlightMarkdown must escape the raw text first"
-
-
 def test_md_editor_is_overlay_and_labels_aligned(index_html: str) -> None:
     # md box uses the same overlay as json (highlightMarkdown), and both labels
     # share the equal-height class so the two editors align.
     assert 'highlightMarkdown(advanced.mdText)' in index_html
     assert index_html.count("code-editor-label") >= 2
+
+
+def test_templates_editor_uses_shared_markdown_overlay(index_html: str) -> None:
+    # The templates editor (dark theme) reuses the same overlay + shared highlighter.
+    assert 'highlightMarkdown(editor.content)' in index_html
+    assert "code-editor--dark" in index_html
+    assert "codehl.js" in index_html  # shared module loaded
