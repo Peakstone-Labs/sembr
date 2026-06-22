@@ -204,6 +204,22 @@ async def post_save_spec(intent_id: int, body: SaveSpecRequest) -> dict[str, Any
 
 
 # --------------------------------------------------------------------------- #
+# POST check — validate only, no write (the Check button)
+# --------------------------------------------------------------------------- #
+@router.post("/api/intents/{intent_id}/extraction-spec/check")
+async def post_check_spec(intent_id: int, body: SaveSpecRequest) -> dict[str, Any]:
+    """Run the save-time validation without writing — lets the user sanity-check a
+    hand-edited spec (missing fields / floor / consistency) before saving."""
+    await _require_intent(intent_id)
+    issues = validate_spec_payload(body.md, body.json_text)
+    return {
+        "ok": not has_errors(issues),
+        "errors": [i.model_dump() for i in issues if i.severity == "error"],
+        "warnings": [i.model_dump() for i in issues if i.severity == "warning"],
+    }
+
+
+# --------------------------------------------------------------------------- #
 # POST enable — point the intent at its own spec (requires it to exist + load)
 # --------------------------------------------------------------------------- #
 @router.post("/api/intents/{intent_id}/extraction-spec/enable")

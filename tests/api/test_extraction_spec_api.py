@@ -615,6 +615,35 @@ def test_save_spec_invalid_returns_422_with_errors(tmp_path: Path) -> None:
     assert not (extraction_dir / f"intent-{intent_id}.json").is_file()
 
 
+def test_check_validates_without_writing(tmp_path: Path) -> None:
+    """The Check button: returns errors/warnings (200, never 422) and writes nothing."""
+    _write_base(tmp_path)
+    _write_templates(tmp_path)
+    with _client(tmp_path) as (http, conn_holder):
+        import asyncio
+
+        conn = conn_holder["conn"]
+        intent_id = asyncio.get_event_loop().run_until_complete(_create_test_intent(conn))
+        # a spec with a hard error (bad role) AND missing-floor warnings
+        bad = json.dumps(
+            {
+                "sections": [],
+                "article_fields": [{"name": "x", "type": "string", "role": "zzz", "label": "X"}],
+                "common_claim_fields": [],
+            }
+        )
+        resp = http.post(
+            f"/api/intents/{intent_id}/extraction-spec/check", json={"md": "p", "json": bad}
+        )
+        assert resp.status_code == 200  # check never 422s
+        data = resp.json()
+        assert data["ok"] is False
+        assert any("role" in e["loc"] for e in data["errors"])
+        assert len(data["warnings"]) > 0  # floor + source_org/thesis missing
+        # nothing written
+        assert not (tmp_path / "extraction" / f"intent-{intent_id}.md").is_file()
+
+
 def test_save_spec_empty_md_returns_422(tmp_path: Path) -> None:
     """T9c: empty extraction_prompt → 422 (rule 1)."""
     _write_base(tmp_path)

@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=17">
+<link rel="stylesheet" href="/dashboard/style.css?v=18">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -2311,12 +2311,12 @@
       </div>
       <div x-show="advanced.enableError" class="field-err-msg" x-text="advanced.enableError" style="margin-top:8px;"></div>
 
-      <!-- row 3: save (draft) + structured-extraction toggle -->
+      <!-- row 3: check / save (draft) + structured-extraction toggle -->
       <div class="modal-footer" style="margin-top:14px; align-items:center;">
-        <span class="field-hint" style="margin-right:auto;">
-          Save writes a draft. The toggle turns structured extraction on for this intent —
-          cron runs map→reduce with it on recall, and Extract&nbsp;facts uses the same spec.
-        </span>
+        <span class="field-hint" style="margin-right:auto;">Save stores a draft; the toggle activates it for this intent.</span>
+        <button @click="checkSpec()" :disabled="advanced.checking" title="Validate without saving">
+          <span x-show="!advanced.checking">Check</span><span x-show="advanced.checking">Checking…</span>
+        </button>
         <button @click="saveSpec()" :disabled="advanced.saving">
           <span x-show="!advanced.saving">Save</span><span x-show="advanced.saving">Saving…</span>
         </button>
@@ -2909,7 +2909,7 @@
 
 <script src="/dashboard/feeds.js?v=6"></script>
 <script src="/dashboard/codehl.js?v=1"></script>
-<script src="/dashboard/intents.js?v=27"></script>
+<script src="/dashboard/intents.js?v=28"></script>
 <script src="/dashboard/templates.js?v=5"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=13"></script>

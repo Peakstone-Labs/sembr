@@ -121,6 +121,7 @@ function intentsTab() {
       enabled: false,
       generating: false,
       saving: false,
+      checking: false,      // validate-only (Check) in-flight
       toggleBusy: false,    // enable/disable toggle in-flight
       generateError: '',
       saveErrors: [],       // [{loc,msg}]
@@ -1090,6 +1091,33 @@ function intentsTab() {
         if (gen === this._advGen) this.advanced.generateError = 'Network error: ' + e.message;
       } finally {
         if (gen === this._advGen) this.advanced.generating = false;
+      }
+    },
+
+    // Validate without saving (Check button) — surfaces errors + warnings so the
+    // user can sanity-check a hand-edited spec before committing it.
+    async checkSpec() {
+      if (this.advanced.checking) return;
+      this._validateJsonLocal();
+      if (this.advanced.jsonError) { this.advanced.saveErrors = [{ loc: 'json', msg: this.advanced.jsonError }]; return; }
+      const id = this.advanced.intentId, gen = this._advGen;
+      this.advanced.checking = true;
+      this.advanced.saveErrors = [];
+      try {
+        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/check`,
+          { md: this.advanced.mdText, json: this.advanced.jsonText });
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (!res.ok) { this.advanced.saveErrors = [{ loc: '', msg: this._extractError(data, `HTTP ${res.status}`) }]; return; }
+        this.advanced.saveErrors = data.errors || [];
+        this.advanced.saveWarnings = data.warnings || [];
+        if (!this.advanced.saveErrors.length && !this.advanced.saveWarnings.length) {
+          this.showToast('No issues found', 'success');
+        }
+      } catch (e) {
+        if (gen === this._advGen) this.advanced.saveErrors = [{ loc: '', msg: 'Network error: ' + e.message }];
+      } finally {
+        if (gen === this._advGen) this.advanced.checking = false;
       }
     },
 

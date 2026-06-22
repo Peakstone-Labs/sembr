@@ -229,6 +229,7 @@ def test_settings_js_cache_buster_bumped(index_html: str) -> None:
         "closeAdvanced",
         "generateSpec",
         "saveSpec",
+        "checkSpec",
         "toggleSpecEnabled",
         "prettifyJson",
         "highlightJson",
