@@ -39,8 +39,10 @@ from sembr.summarizer.mr_extract_tasks import (
 )
 from sembr.summarizer.spec import compile_validator, load_spec
 
-_REPO_PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
-_SPEC = load_spec("fed_watch", prompts_dir=_REPO_PROMPTS)
+# fed_watch is no longer a shipped extraction spec (per-intent specs are
+# generated at runtime); it lives on as a self-contained test fixture only.
+_FIXTURE_PROMPTS = Path(__file__).resolve().parent / "fixtures"
+_SPEC = load_spec("fed_watch", prompts_dir=_FIXTURE_PROMPTS)
 _AID = "11111111-1111-1111-1111-111111111111"
 _LEGAL = {
     "source_org": "德意志银行",

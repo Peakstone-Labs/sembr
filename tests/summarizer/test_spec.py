@@ -23,7 +23,8 @@ from sembr.summarizer.spec import (
     load_spec,
 )
 
-_REPO_PROMPTS = Path(__file__).resolve().parents[2] / "prompts"
+# fed_watch is a test fixture (no longer a shipped extraction spec), under tests/fixtures.
+_REPO_PROMPTS = Path(__file__).resolve().parents[1] / "fixtures"
 
 
 def _legal_extraction() -> dict:
