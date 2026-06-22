@@ -1105,13 +1105,13 @@ function intentsTab() {
         const data = await res.json().catch(() => ({}));
         if (gen !== this._advGen) return;
         if (res.status === 422) {
-          this.advanced.saveErrors = (data.detail && data.detail.errors) || [{ loc: '', msg: '校验失败' }];
+          this.advanced.saveErrors = (data.detail && data.detail.errors) || [{ loc: '', msg: 'Validation failed' }];
           return;
         }
         if (!res.ok) { this.advanced.saveErrors = [{ loc: '', msg: this._extractError(data, `HTTP ${res.status}`) }]; return; }
         this.advanced.source = 'own';
         this.advanced.saveWarnings = data.warnings || [];
-        this.showToast('Spec 已保存（草稿）', 'success');
+        this.showToast('Spec saved (draft)', 'success');
       } catch (e) {
         if (gen === this._advGen) this.advanced.saveErrors = [{ loc: '', msg: 'Network error: ' + e.message }];
       } finally {
@@ -1128,7 +1128,7 @@ function intentsTab() {
         if (gen !== this._advGen) return;
         if (!res.ok) { this.advanced.enableError = this._extractError(data, `HTTP ${res.status}`); return; }
         this.advanced.enabled = true;
-        this.showToast('已启用，可回 History 点 Extract facts', 'success');
+        this.showToast('Enabled — go to History → Extract facts', 'success');
       } catch (e) {
         if (gen === this._advGen) this.advanced.enableError = 'Network error: ' + e.message;
       }
@@ -1145,7 +1145,7 @@ function intentsTab() {
     // mirroring it here would drift. Full validation surfaces as the save 422.
     _validateJsonLocal() {
       const t = (this.advanced.jsonText || '').trim();
-      if (!t) { this.advanced.jsonError = 'JSON 不能为空'; return; }
+      if (!t) { this.advanced.jsonError = 'JSON must not be empty'; return; }
       try { JSON.parse(t); this.advanced.jsonError = ''; }
       catch (e) { this.advanced.jsonError = String((e && e.message) || e); }
     },

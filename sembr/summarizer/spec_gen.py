@@ -182,7 +182,8 @@ def load_base(prompts_dir: Path = PROMPTS_DIR) -> str:
     path = _spec_path(prompts_dir, "_base", "md")
     if not path.is_file():
         raise SpecBaseMissingError(
-            f"通用基底 prompts/extraction/_base.md 缺失（{path}）；请管理员部署。"
+            f"Shared base prompt prompts/extraction/_base.md is missing ({path}); "
+            "an administrator must deploy it."
         )
     return path.read_text(encoding="utf-8")
 
@@ -203,7 +204,7 @@ def truncate_digest(text: str, limit: int = _MAX_DIGEST_CHARS) -> str:
     """Keep the head (lead + section skeleton), drop the tail, mark truncation."""
     if len(text) <= limit:
         return text
-    return text[:limit] + "\n\n（…digest 已截断，仅作 schema 校准用）"
+    return text[:limit] + "\n\n(…digest truncated; calibration context only)"
 
 
 def _inject_floor(common_claim_fields: list[dict]) -> list[dict]:
@@ -282,33 +283,43 @@ def _check_fields(items: object, scope_loc: str, issues: list[ValidationIssue]) 
     for i, f in enumerate(items if isinstance(items, list) else []):
         loc = f"{scope_loc}[{i}]"
         if not isinstance(f, dict):
-            issues.append(ValidationIssue(loc=loc, msg="字段必须是对象"))
+            issues.append(ValidationIssue(loc=loc, msg="field must be an object"))
             continue
         name = f.get("name")
         if not isinstance(name, str) or not name.strip():
-            issues.append(ValidationIssue(loc=f"{loc}.name", msg="字段缺 name"))
+            issues.append(ValidationIssue(loc=f"{loc}.name", msg="field is missing name"))
             name = None
         else:
             if name in seen:
-                issues.append(ValidationIssue(loc=f"{loc}.name", msg=f"字段名重复: {name}"))
+                issues.append(
+                    ValidationIssue(loc=f"{loc}.name", msg=f"duplicate field name: {name}")
+                )
             seen.add(name)
             if name in _RESERVED:
                 issues.append(
-                    ValidationIssue(loc=f"{loc}.name", msg=f"字段名 {name} 是保留 shell 名，不可用")
+                    ValidationIssue(
+                        loc=f"{loc}.name", msg=f"field name {name} is a reserved shell name"
+                    )
                 )
         label = f.get("label")
         if not isinstance(label, str) or not label.strip():
-            issues.append(ValidationIssue(loc=f"{loc}.label", msg=f"字段 {name or '?'} 缺 label"))
+            issues.append(
+                ValidationIssue(loc=f"{loc}.label", msg=f"field {name or '?'} is missing label")
+            )
         role = f.get("role", "content")
         if role not in _VALID_ROLES:
             issues.append(
-                ValidationIssue(loc=f"{loc}.role", msg=f"role 非法: {role}（须 content/meta/flag）")
+                ValidationIssue(
+                    loc=f"{loc}.role", msg=f"invalid role: {role} (must be content/meta/flag)"
+                )
             )
         ftype = f.get("type", "string")
         if ftype not in _VALID_TYPES:
-            issues.append(ValidationIssue(loc=f"{loc}.type", msg=f"type 非法: {ftype}"))
+            issues.append(ValidationIssue(loc=f"{loc}.type", msg=f"invalid type: {ftype}"))
         if ftype == "enum" and not (isinstance(f.get("enum"), list) and f.get("enum")):
-            issues.append(ValidationIssue(loc=f"{loc}.enum", msg="enum 类型须给取值列表"))
+            issues.append(
+                ValidationIssue(loc=f"{loc}.enum", msg="enum type requires a non-empty values list")
+            )
 
 
 def validate_spec_payload(md: str, json_text: str) -> list[ValidationIssue]:
@@ -316,20 +327,22 @@ def validate_spec_payload(md: str, json_text: str) -> list[ValidationIssue]:
     write; warnings (severity='warning') don't. Rules indexed to design §5."""
     issues: list[ValidationIssue] = []
     if not md.strip():  # rule 1
-        issues.append(ValidationIssue(loc="extraction_prompt", msg="extraction_prompt 不能为空"))
+        issues.append(
+            ValidationIssue(loc="extraction_prompt", msg="extraction_prompt must not be empty")
+        )
     try:  # rule 2
         data = json.loads(json_text)
     except json.JSONDecodeError as exc:
         issues.append(
-            ValidationIssue(loc="json", msg=f"JSON 语法错误: 第 {exc.lineno} 行 {exc.msg}")
+            ValidationIssue(loc="json", msg=f"JSON syntax error: line {exc.lineno} {exc.msg}")
         )
         return issues  # structure checks impossible on broken JSON
     if not isinstance(data, dict):  # rule 3
-        issues.append(ValidationIssue(loc="json", msg="顶层必须是 JSON 对象"))
+        issues.append(ValidationIssue(loc="json", msg="top level must be a JSON object"))
         return issues
     for key in ("sections", "article_fields", "common_claim_fields"):
         if key in data and not isinstance(data[key], list):
-            issues.append(ValidationIssue(loc=f"json.{key}", msg=f"{key} 必须是数组"))
+            issues.append(ValidationIssue(loc=f"json.{key}", msg=f"{key} must be an array"))
 
     _check_fields(data.get("article_fields", []), "article_fields", issues)
     _check_fields(data.get("common_claim_fields", []), "common_claim_fields", issues)
@@ -339,19 +352,22 @@ def validate_spec_payload(md: str, json_text: str) -> list[ValidationIssue]:
     for i, s in enumerate(sections if isinstance(sections, list) else []):
         loc = f"sections[{i}]"
         if not isinstance(s, dict):
-            issues.append(ValidationIssue(loc=loc, msg="section 必须是对象"))
+            issues.append(ValidationIssue(loc=loc, msg="section must be an object"))
             continue
         key = s.get("key")
         if not isinstance(key, str) or not _SECTION_KEY_RE.match(key):
             issues.append(
                 ValidationIssue(
                     loc=f"{loc}.key",
-                    msg="section key 缺失或含非法字符（须字母开头，仅字母数字下划线）",
+                    msg="section key is missing or has invalid chars "
+                    "(letter-led, alphanumeric/underscore only)",
                 )
             )
         else:
             if key in seen_keys:
-                issues.append(ValidationIssue(loc=f"{loc}.key", msg=f"section key 重复: {key}"))
+                issues.append(
+                    ValidationIssue(loc=f"{loc}.key", msg=f"duplicate section key: {key}")
+                )
             seen_keys.add(key)
         _check_fields(s.get("fields", []), f"{loc}.fields", issues)
 
@@ -362,7 +378,7 @@ def validate_spec_payload(md: str, json_text: str) -> list[ValidationIssue]:
             issues.append(
                 ValidationIssue(
                     loc="article_fields",
-                    msg=f"建议 article_fields 含 {req}（reduce 组装简报需要）",
+                    msg=f"article_fields should include {req} (needed by reduce)",
                     severity="warning",
                 )
             )
@@ -375,7 +391,7 @@ def validate_spec_payload(md: str, json_text: str) -> list[ValidationIssue]:
             issues.append(
                 ValidationIssue(
                     loc="common_claim_fields",
-                    msg=f"{fname} 被 _base.md 引用，删除会致 base↔schema 失配",
+                    msg=f"{fname} is referenced by _base.md; removing it desyncs base/schema",
                     severity="warning",
                 )
             )

@@ -2255,17 +2255,17 @@
       <!-- row 1: generate + digest toggle + status -->
       <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:6px 0 12px;">
         <button class="primary" @click="generateSpec()" :disabled="advanced.generating">
-          <span x-show="!advanced.generating">从模板生成</span>
-          <span x-show="advanced.generating">生成中（~30s）…</span>
+          <span x-show="!advanced.generating">Generate from template</span>
+          <span x-show="advanced.generating">Generating… (may take a few min)</span>
         </button>
         <label class="radio-item" :style="advanced.digestAvailable ? '' : 'opacity:.5;'">
           <input type="checkbox" x-model="advanced.useDigest" :disabled="!advanced.digestAvailable">
-          用近期 digest 校准
+          Calibrate with recent digest
         </label>
-        <span x-show="!advanced.digestAvailable" class="field-hint">此 intent 暂无历史 digest</span>
+        <span x-show="!advanced.digestAvailable" class="field-hint">No history digest for this intent yet</span>
         <span x-show="advanced.enabled" style="background:var(--good); color:#fff; padding:2px 8px; border-radius:10px; font-size:0.72rem;">Enabled for this intent</span>
         <span x-show="advanced.source==='fallback'" class="field-hint" style="color:var(--bad);">
-          基于模板的只读起点 — 保存将创建本 intent 专属 spec，不会改动共享模板
+          Read-only starting point from a template — saving creates a spec for this intent; it won't modify the shared template
         </span>
       </div>
       <div x-show="advanced.generateError" class="field-err-msg" x-text="advanced.generateError" style="margin-bottom:10px;"></div>
@@ -2273,15 +2273,15 @@
       <!-- row 2: two raw editors -->
       <div style="display:flex; gap:16px; flex-wrap:wrap;">
         <div class="form-field" style="flex:1; min-width:320px;">
-          <label class="field-label">extraction_prompt（.md）</label>
+          <label class="field-label">extraction_prompt (.md)</label>
           <textarea x-model="advanced.mdText" rows="14"
                     style="width:100%; font-family:var(--font-mono); font-size:0.78rem;"
-                    placeholder="点「从模板生成」自动生成，或在此手动编写"></textarea>
+                    placeholder="Click &quot;Generate from template&quot;, or write it manually here"></textarea>
         </div>
         <div class="form-field" style="flex:1; min-width:320px;">
           <label class="field-label">
-            schema（.json）
-            <button @click="prettifyJson()" style="margin-left:8px; font-size:0.72rem; padding:1px 8px;">美化</button>
+            schema (.json)
+            <button @click="prettifyJson()" style="margin-left:8px; font-size:0.72rem; padding:1px 8px;">Format</button>
           </label>
           <textarea x-model="advanced.jsonText" @input="_validateJsonLocal()" rows="9"
                     style="width:100%; font-family:var(--font-mono); font-size:0.78rem;"
@@ -2307,11 +2307,11 @@
 
       <!-- row 3: save (draft) + enable (activate) — deliberately separate -->
       <div class="modal-footer" style="margin-top:14px;">
-        <span class="field-hint" style="margin-right:auto;">保存=写草稿（不影响运行）· 启用=让该 intent 用此 spec</span>
+        <span class="field-hint" style="margin-right:auto;">Save = write a draft (no runtime effect) · Enable = make this intent use the spec</span>
         <button @click="saveSpec()" :disabled="advanced.saving">
-          <span x-show="!advanced.saving">保存</span><span x-show="advanced.saving">保存中…</span>
+          <span x-show="!advanced.saving">Save</span><span x-show="advanced.saving">Saving…</span>
         </button>
-        <button class="primary" @click="enableSpec()">启用</button>
+        <button class="primary" @click="enableSpec()">Enable</button>
       </div>
     </div>
   </div>
@@ -2887,7 +2887,7 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=23"></script>
+<script src="/dashboard/intents.js?v=24"></script>
 <script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=13"></script>

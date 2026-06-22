@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["intents"])
 
-_GENERATE_TIMEOUT_S = 60.0
+_GENERATE_TIMEOUT_S = 300.0
 
 
 class GenerateSpecRequest(BaseModel):
@@ -53,8 +53,9 @@ class GenerateSpecRequest(BaseModel):
 
 class SaveSpecRequest(BaseModel):
     md: str
-    # accept the wire key "json"; expose as json_text in code (avoid BaseModel.json clash)
-    json_text: str = Field(alias="json")
+    # accept the wire key "json"; expose as json_text in code (avoid BaseModel.json clash).
+    # Annotated form so the alias actually binds (plain `= Field(alias=)` warns).
+    json_text: Annotated[str, Field(alias="json")]
     model_config = {"populate_by_name": True}
 
 
@@ -156,12 +157,12 @@ async def post_generate_spec(
     except TimeoutError as exc:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="生成超时（>60s），可重试",
+            detail="Generation timed out (>300s); please retry.",
         ) from exc
     except LLMError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"模型生成失败，可重试：{exc}",
+            detail=f"Model generation failed; please retry: {exc}",
         ) from exc
 
     json_text = json.dumps(json_obj, ensure_ascii=False, indent=2)
@@ -190,7 +191,7 @@ async def post_save_spec(intent_id: int, body: SaveSpecRequest) -> dict[str, Any
         save_spec_atomic(name, body.md, body.json_text, PROMPTS_DIR)
     except OSError as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"写盘失败：{exc}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"write failed: {exc}"
         ) from exc
     return {
         "ok": True,
@@ -211,12 +212,12 @@ async def post_enable_spec(intent_id: int) -> dict[str, Any]:
     except SpecNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "spec_not_found", "message": "请先保存 spec 再启用"},
+            detail={"code": "spec_not_found", "message": "Save the spec before enabling."},
         ) from exc
     except (SpecError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "spec_invalid", "message": f"spec 无法加载：{exc}"},
+            detail={"code": "spec_invalid", "message": f"spec failed to load: {exc}"},
         ) from exc
 
     await update_intent(get_conn(), intent_id, IntentUpdate(extraction_template=name))
