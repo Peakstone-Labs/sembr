@@ -51,6 +51,10 @@ class GenerateSpecRequest(BaseModel):
     use_digest: bool = False
 
 
+class EnableSpecRequest(BaseModel):
+    enabled: bool = True
+
+
 class SaveSpecRequest(BaseModel):
     md: str
     # accept the wire key "json"; expose as json_text in code (avoid BaseModel.json clash).
@@ -204,9 +208,19 @@ async def post_save_spec(intent_id: int, body: SaveSpecRequest) -> dict[str, Any
 # POST enable — point the intent at its own spec (requires it to exist + load)
 # --------------------------------------------------------------------------- #
 @router.post("/api/intents/{intent_id}/extraction-spec/enable")
-async def post_enable_spec(intent_id: int) -> dict[str, Any]:
+async def post_enable_spec(intent_id: int, body: EnableSpecRequest | None = None) -> dict[str, Any]:
+    """Toggle structured extraction for this intent. enabled=True points the
+    intent at its own spec (intent-{id}); enabled=False clears extraction_template
+    (falls back to the system_template — i.e. structured extraction off). Body is
+    optional; absent → enabled=True (backward compatible)."""
     await _require_intent(intent_id)
     name = derive_spec_name(intent_id)
+    enabled = body.enabled if body is not None else True
+
+    if not enabled:
+        await update_intent(get_conn(), intent_id, IntentUpdate(extraction_template=""))
+        return {"ok": True, "enabled": False, "extraction_template": ""}
+
     try:
         load_spec(name, PROMPTS_DIR)  # re-load guards against missing/broken (design D5)
     except SpecNotFoundError as exc:

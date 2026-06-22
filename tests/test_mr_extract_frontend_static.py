@@ -229,7 +229,7 @@ def test_settings_js_cache_buster_bumped(index_html: str) -> None:
         "closeAdvanced",
         "generateSpec",
         "saveSpec",
-        "enableSpec",
+        "toggleSpecEnabled",
         "prettifyJson",
         "highlightJson",
         "_validateJsonLocal",
@@ -244,7 +244,7 @@ def test_advanced_button_and_modal_wired(index_html: str) -> None:
     assert "openAdvanced(intent)" in index_html  # entry point on the cron row
     assert 'x-show="advanced.open"' in index_html  # modal present
     # separate save / enable actions (not one combined button)
-    assert "saveSpec()" in index_html and "enableSpec()" in index_html
+    assert "saveSpec()" in index_html and "toggleSpecEnabled" in index_html
 
 
 def test_highlight_escapes_before_tokenizing(intents_js: str) -> None:

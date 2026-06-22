@@ -695,6 +695,34 @@ def test_enable_changes_extraction_template(tmp_path: Path) -> None:
         ), f"enable must set extraction_template to 'intent-{intent_id}'; got {intent.extraction_template!r}"
 
 
+def test_toggle_disable_clears_extraction_template(tmp_path: Path) -> None:
+    """The enable endpoint with {enabled: false} clears extraction_template (the
+    toggle's off position) — structured extraction off, falls back to system_template."""
+    _write_base(tmp_path)
+    _write_templates(tmp_path)
+
+    with _client(tmp_path) as (http, conn_holder):
+        import asyncio
+
+        from sembr.db.intents import get_intent
+
+        conn = conn_holder["conn"]
+        intent_id = asyncio.get_event_loop().run_until_complete(_create_test_intent(conn))
+        http.post(
+            f"/api/intents/{intent_id}/extraction-spec/save",
+            json={"md": "prompt text", "json": _valid_spec_json()},
+        )
+        # enable, then disable
+        http.post(f"/api/intents/{intent_id}/extraction-spec/enable", json={"enabled": True})
+        resp = http.post(
+            f"/api/intents/{intent_id}/extraction-spec/enable", json={"enabled": False}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["enabled"] is False
+        intent = asyncio.get_event_loop().run_until_complete(get_intent(conn, intent_id))
+        assert intent is not None and intent.extraction_template == ""
+
+
 # --------------------------------------------------------------------------- #
 # T11 — after enable, _resolve_spec_name hits intent-{id}, load_spec passes
 # --------------------------------------------------------------------------- #

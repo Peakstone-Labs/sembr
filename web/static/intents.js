@@ -121,6 +121,7 @@ function intentsTab() {
       enabled: false,
       generating: false,
       saving: false,
+      toggleBusy: false,    // enable/disable toggle in-flight
       generateError: '',
       saveErrors: [],       // [{loc,msg}]
       saveWarnings: [],     // [{loc,msg}]
@@ -1119,18 +1120,27 @@ function intentsTab() {
       }
     },
 
-    async enableSpec() {
+    // Toggle structured extraction for this intent. On failure, revert the switch
+    // to its prior state (it was optimistically flipped by the native checkbox).
+    async toggleSpecEnabled(checked) {
       const id = this.advanced.intentId, gen = this._advGen;
       this.advanced.enableError = '';
+      this.advanced.toggleBusy = true;
       try {
-        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/enable`, {});
+        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/enable`, { enabled: checked });
         const data = await res.json().catch(() => ({}));
         if (gen !== this._advGen) return;
-        if (!res.ok) { this.advanced.enableError = this._extractError(data, `HTTP ${res.status}`); return; }
-        this.advanced.enabled = true;
-        this.showToast('Enabled — go to History → Extract facts', 'success');
+        if (!res.ok) {
+          this.advanced.enableError = this._extractError(data, `HTTP ${res.status}`);
+          this.advanced.enabled = !checked;   // revert the switch
+          return;
+        }
+        this.advanced.enabled = !!data.enabled;
+        this.showToast(this.advanced.enabled ? 'Structured extraction enabled' : 'Structured extraction disabled', 'success');
       } catch (e) {
-        if (gen === this._advGen) this.advanced.enableError = 'Network error: ' + e.message;
+        if (gen === this._advGen) { this.advanced.enableError = 'Network error: ' + e.message; this.advanced.enabled = !checked; }
+      } finally {
+        if (gen === this._advGen) this.advanced.toggleBusy = false;
       }
     },
 

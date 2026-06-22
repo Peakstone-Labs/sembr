@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=15">
+<link rel="stylesheet" href="/dashboard/style.css?v=16">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -2255,7 +2255,7 @@
       <!-- row 1: generate + digest toggle + status -->
       <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:6px 0 12px;">
         <button class="primary" @click="generateSpec()" :disabled="advanced.generating">
-          <span x-show="!advanced.generating">Generate from template</span>
+          <span x-show="!advanced.generating">Auto Generate</span>
           <span x-show="advanced.generating">Generating… (may take a few min)</span>
         </button>
         <label class="radio-item" :style="advanced.digestAvailable ? '' : 'opacity:.5;'">
@@ -2263,7 +2263,6 @@
           Calibrate with recent digest
         </label>
         <span x-show="!advanced.digestAvailable" class="field-hint">No history digest for this intent yet</span>
-        <span x-show="advanced.enabled" style="background:var(--good); color:#fff; padding:2px 8px; border-radius:10px; font-size:0.72rem;">Enabled for this intent</span>
         <span x-show="advanced.source==='fallback'" class="field-hint" style="color:var(--bad);">
           Read-only starting point from a template — saving creates a spec for this intent; it won't modify the shared template
         </span>
@@ -2284,11 +2283,8 @@
           </div>
         </div>
         <div class="form-field" style="flex:1; min-width:320px;">
-          <label class="field-label code-editor-label">
-            schema (.json)
-            <button @click="prettifyJson()" style="font-size:0.72rem; padding:1px 8px;">Format</button>
-          </label>
-          <!-- single box: editable + syntax-highlighted (transparent textarea over a highlight layer) -->
+          <label class="field-label code-editor-label">schema (.json)</label>
+          <!-- single box: editable + syntax-highlighted; Format floats bottom-right so the labels stay plain (aligned) -->
           <div class="code-editor">
             <pre class="code-editor-hl" aria-hidden="true" x-ref="jsonHl"
                  x-html="highlightJson(advanced.jsonText) + '\n'"></pre>
@@ -2296,6 +2292,7 @@
                       @input="_validateJsonLocal()"
                       @scroll="$refs.jsonHl.scrollTop = $event.target.scrollTop"
                       spellcheck="false"></textarea>
+            <button class="code-editor-fmt" @click="prettifyJson()" title="Re-indent the JSON">Format</button>
           </div>
           <div x-show="advanced.jsonError" class="field-err-msg" x-text="advanced.jsonError" style="margin-top:6px;"></div>
         </div>
@@ -2314,13 +2311,23 @@
       </div>
       <div x-show="advanced.enableError" class="field-err-msg" x-text="advanced.enableError" style="margin-top:8px;"></div>
 
-      <!-- row 3: save (draft) + enable (activate) — deliberately separate -->
-      <div class="modal-footer" style="margin-top:14px;">
-        <span class="field-hint" style="margin-right:auto;">Save = write a draft (no runtime effect) · Enable = make this intent use the spec</span>
+      <!-- row 3: save (draft) + structured-extraction toggle -->
+      <div class="modal-footer" style="margin-top:14px; align-items:center;">
+        <span class="field-hint" style="margin-right:auto;">
+          Save writes a draft. The toggle activates this intent's spec — used by Extract&nbsp;facts now;
+          cron runs map→reduce with it once the reduce step ships.
+        </span>
         <button @click="saveSpec()" :disabled="advanced.saving">
           <span x-show="!advanced.saving">Save</span><span x-show="advanced.saving">Saving…</span>
         </button>
-        <button class="primary" @click="enableSpec()">Enable</button>
+        <label class="toggle-wrap" :style="advanced.toggleBusy ? 'opacity:.6; pointer-events:none;' : ''"
+               title="Enable structured extraction (map) for this intent">
+          <span class="toggle">
+            <input type="checkbox" :checked="advanced.enabled" @change="toggleSpecEnabled($event.target.checked)">
+            <span class="toggle-slider"></span>
+          </span>
+          <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;">Structured extraction</span>
+        </label>
       </div>
     </div>
   </div>
@@ -2896,7 +2903,7 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=25"></script>
+<script src="/dashboard/intents.js?v=26"></script>
 <script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=13"></script>
