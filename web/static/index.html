@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=18">
+<link rel="stylesheet" href="/dashboard/style.css?v=19">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -2443,8 +2443,8 @@
           </div>
         </header>
 
-        <!-- editable + markdown-highlighted overlay (dark theme); shared codehl.js -->
-        <div class="code-editor code-editor--dark" style="flex:1 1 auto; min-height:300px;">
+        <!-- editable + markdown-highlighted overlay (same light surface as Advanced); shared codehl.js -->
+        <div class="code-editor code-editor--grow" style="flex:1 1 auto; min-height:300px;">
           <pre class="code-editor-hl" aria-hidden="true" x-ref="tplHl"
                x-html="highlightMarkdown(editor.content) + '\n'"></pre>
           <textarea class="code-editor-input" x-model="editor.content"

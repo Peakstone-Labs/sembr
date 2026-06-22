@@ -292,5 +292,5 @@ def test_md_editor_is_overlay_and_labels_aligned(index_html: str) -> None:
 def test_templates_editor_uses_shared_markdown_overlay(index_html: str) -> None:
     # The templates editor (dark theme) reuses the same overlay + shared highlighter.
     assert 'highlightMarkdown(editor.content)' in index_html
-    assert "code-editor--dark" in index_html
+    assert "code-editor--grow" in index_html
     assert "codehl.js" in index_html  # shared module loaded
