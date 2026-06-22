@@ -7,7 +7,7 @@ prefix and an unauthenticated call gets a 401 JSON, not a 302 redirect — same
 pattern the map sub-feature uses in ``api/history.py`` (design D6). No auth
 changes needed.
 
-Generate is synchronous with a 60s cap (design D1); save and enable are
+Generate is synchronous with a 600s cap (design D1); save and enable are
 deliberately separate (save writes a draft, enable points the intent at it).
 """
 
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["intents"])
 
-_GENERATE_TIMEOUT_S = 300.0
+_GENERATE_TIMEOUT_S = 600.0
 
 
 class GenerateSpecRequest(BaseModel):
@@ -119,7 +119,7 @@ async def get_extraction_spec(intent_id: int) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# POST generate — meta-LLM draft (synchronous, 60s cap). Does NOT write to disk.
+# POST generate — meta-LLM draft (synchronous, 600s cap). Does NOT write to disk.
 # --------------------------------------------------------------------------- #
 @router.post("/api/intents/{intent_id}/extraction-spec/generate")
 async def post_generate_spec(
@@ -160,7 +160,7 @@ async def post_generate_spec(
     except TimeoutError as exc:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="Generation timed out (>300s); please retry.",
+            detail="Generation timed out (>10 min); please retry.",
         ) from exc
     except LLMError as exc:
         raise HTTPException(
