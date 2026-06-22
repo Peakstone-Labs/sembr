@@ -129,8 +129,11 @@ META_SYSTEM = """你是「抽取规格设计师」。给你一份新闻简报的
    - `label`：简短中文显示名。
 2. 你产出的 `extraction_prompt` 必须【原样继承】下方给出的通用基底规则（反幻觉铁律 + 归属 + 横切字段 + 输入说明），再在其上叠加该 intent 的特化（章节骨架 + 相关性闸门 + 每节字段说明）。不得丢弃基底铁律。
 3. 每个 section 的 `key` 是机器名（snake_case，字母开头，仅字母数字下划线），`label` 是节标题；claim 的 section 值将 ∈ 这些 key。
+4. 【逐节覆盖，绝不漏维度】逐一扫描分析模板的输出结构，模板里**每一个输出章节 / 信息维度**都要有对应的 section（或字段）承接，**不得遗漏**。两类最常被漏、务必覆盖：
+   - **分析 / 推断节**（模板标注「推断」「不加 [N]」「判断表」的节，如「资产影响 / 市场判断」「反共识 / 尾部风险」）：该节由下游综合，但你**仍必须为它建 section + 字段**去抽它所依赖的【底层事实】——价格 / 点位数字、市场与资产反应、成交 / 费率 / 库存 / 产量数据、关键信号。否则下游无事实可锚定，该节会空或幻觉。这类「市场 / 价格 / 资产」节是市场类简报的核心，最不能漏。
+   - **多子项的表态 / 各方节**（如「关键各方表态」含谈判 / 各施压方 / 各当事方）：用字段（如 actor / 子项）承接其内部结构，别合并成一句。
 
-【固定外壳，不要重复产出】：claim 的 `section`/`text`/`quote` 与 article 的 `no_relevant_content` 由下游写死——【不要】把它们列为字段。`source_org`、`thesis` 请放进 article_fields（带 role/label）。通用横切字段（source_type/is_projection/time_ref/single_source/attribution）系统会自动补齐进 common_claim_fields，你产出与否都可以。
+【固定外壳，不要重复产出】：claim 的 `section`/`text`/`quote` 与 article 的 `no_relevant_content` 由下游写死——【不要】把它们列为字段。`source_org`、`thesis` 由系统自动补进 article_fields（你产出与否都可以，但**不要漏掉 thesis 这个维度的设计意图**）。通用横切字段（source_type/is_projection/time_ref/single_source/attribution）系统会自动补齐进 common_claim_fields，你产出与否都可以。概览 / 叙事节（如「态势综述」）由 article 级 thesis 承接，不必单设 section。
 
 你的自由度在 sections 枚举、各 section 专属字段、以及 article_fields 里 source_org/thesis 之外的补充。
 
@@ -219,6 +222,37 @@ def _inject_floor(common_claim_fields: list[dict]) -> list[dict]:
     return out
 
 
+# Article-level floor — source_org + thesis must always be present (reduce uses
+# thesis for the TL;DR; the meta-LLM sometimes drops it). Mirrors _inject_floor.
+_ARTICLE_FLOOR = [
+    {
+        "name": "source_org",
+        "type": "string",
+        "enum": [],
+        "description": "本篇的真实发布机构",
+        "role": "meta",
+        "label": "来源机构",
+    },
+    {
+        "name": "thesis",
+        "type": "string",
+        "enum": [],
+        "description": "本篇核心论点（一句话，供下游构建 TL;DR）",
+        "role": "content",
+        "label": "核心论点",
+    },
+]
+
+
+def _inject_article_floor(article_fields: list[dict]) -> list[dict]:
+    present = {f.get("name") for f in article_fields if isinstance(f, dict)}
+    out = list(article_fields)
+    for fld in _ARTICLE_FLOOR:
+        if fld["name"] not in present:
+            out.append(dict(fld))
+    return out
+
+
 def _strip_reserved(fields: list[dict]) -> list[dict]:
     """Drop fields whose name collides with the fixed shell (would be ignored by
     compile_validator and rejected by validate_spec_payload rule 10)."""
@@ -297,8 +331,8 @@ async def generate_spec(
             }
             for s in out.sections
         ],
-        "article_fields": _normalize_fields(
-            _strip_reserved([f.model_dump() for f in out.article_fields])
+        "article_fields": _inject_article_floor(
+            _normalize_fields(_strip_reserved([f.model_dump() for f in out.article_fields]))
         ),
         "common_claim_fields": _inject_floor(
             _normalize_fields(_strip_reserved([f.model_dump() for f in out.common_claim_fields]))

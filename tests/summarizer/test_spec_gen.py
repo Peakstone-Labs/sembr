@@ -15,6 +15,7 @@ from sembr.config import Settings
 from sembr.summarizer.spec import _semantic_projection, load_spec
 from sembr.summarizer.spec_gen import (
     _FLOOR_NAMES,
+    _inject_article_floor,
     _inject_floor,
     _normalize_fields,
     _normalize_type,
@@ -257,6 +258,18 @@ def test_inject_floor_idempotent_when_present() -> None:
 def test_strip_reserved_drops_shell_names() -> None:
     out = _strip_reserved([{"name": "quote"}, {"name": "speaker"}, {"name": "section"}])
     assert [f["name"] for f in out] == ["speaker"]
+
+
+def test_inject_article_floor_guarantees_source_org_and_thesis() -> None:
+    # meta dropping thesis (the geo_hormuz failure) → floor puts it back
+    out = _inject_article_floor(
+        [{"name": "source_org", "type": "string", "role": "meta", "label": "x"}]
+    )
+    names = [f["name"] for f in out]
+    assert "source_org" in names and "thesis" in names
+    # idempotent when both present
+    seed = [{"name": "source_org"}, {"name": "thesis"}]
+    assert len(_inject_article_floor(seed)) == 2
 
 
 def test_derive_spec_name() -> None:
