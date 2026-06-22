@@ -1173,6 +1173,24 @@ function intentsTab() {
       );
     },
 
+    // Lightweight markdown highlight for the .md overlay editor. Escapes first
+    // (XSS), then line- + inline-level spans (headings / lists / quotes / inline
+    // code / bold). Display only.
+    highlightMarkdown(text) {
+      return this._escapeHtml(text).split('\n').map(line => {
+        const h = line.match(/^(#{1,6}\s.*)$/);
+        if (h) return `<span class="md-h">${h[1]}</span>`;
+        if (/^&gt;\s?/.test(line)) return `<span class="md-quote">${line}</span>`;
+        const lm = line.match(/^(\s*)([-*+]|\d+\.)(\s.*)$/);
+        let prefix = '', body = line;
+        if (lm) { prefix = `${lm[1]}<span class="md-bullet">${lm[2]}</span>`; body = lm[3]; }
+        body = body
+          .replace(/(`[^`]+`)/g, '<span class="md-code">$1</span>')
+          .replace(/(\*\*[^*]+\*\*)/g, '<span class="md-bold">$1</span>');
+        return prefix + body;
+      }).join('\n');
+    },
+
     // Group a citation's extracted claims by section for the pretty card view.
     // Section keys are humanized (no hard-coded fed_watch labels) so the render
     // stays spec-agnostic.

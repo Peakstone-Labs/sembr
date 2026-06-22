@@ -2175,3 +2175,10 @@ button { gap: 7px; }
 .code-editor-hl .json-num  { color: var(--warn-deep); }
 .code-editor-hl .json-bool { color: #8250df; }
 .code-editor-hl .json-null { color: var(--text-dim); }
+.code-editor-hl .md-h      { color: #0b5cab; font-weight: 600; }
+.code-editor-hl .md-bullet { color: var(--warn-deep); font-weight: 600; }
+.code-editor-hl .md-bold   { font-weight: 700; }
+.code-editor-hl .md-code   { color: var(--good); }
+.code-editor-hl .md-quote  { color: var(--text-dim); }
+/* equal-height labels so the two editors (one has a Format button) align */
+.code-editor-label { display: flex; align-items: center; gap: 8px; min-height: 24px; }

@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=14">
+<link rel="stylesheet" href="/dashboard/style.css?v=15">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -2273,15 +2273,20 @@
       <!-- row 2: two editors, equal height -->
       <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
         <div class="form-field" style="flex:1; min-width:320px;">
-          <label class="field-label">extraction_prompt (.md)</label>
-          <textarea x-model="advanced.mdText"
-                    style="width:100%; height:360px; resize:none; font-family:var(--font-mono); font-size:0.76rem; line-height:1.5;"
-                    placeholder="Click &quot;Generate from template&quot;, or write it manually here"></textarea>
+          <label class="field-label code-editor-label">extraction_prompt (.md)</label>
+          <!-- single box: editable + markdown-highlighted (same overlay as json) -->
+          <div class="code-editor">
+            <pre class="code-editor-hl" aria-hidden="true" x-ref="mdHl"
+                 x-html="highlightMarkdown(advanced.mdText) + '\n'"></pre>
+            <textarea class="code-editor-input" x-model="advanced.mdText"
+                      @scroll="$refs.mdHl.scrollTop = $event.target.scrollTop"
+                      spellcheck="false"></textarea>
+          </div>
         </div>
         <div class="form-field" style="flex:1; min-width:320px;">
-          <label class="field-label">
+          <label class="field-label code-editor-label">
             schema (.json)
-            <button @click="prettifyJson()" style="margin-left:8px; font-size:0.72rem; padding:1px 8px;">Format</button>
+            <button @click="prettifyJson()" style="font-size:0.72rem; padding:1px 8px;">Format</button>
           </label>
           <!-- single box: editable + syntax-highlighted (transparent textarea over a highlight layer) -->
           <div class="code-editor">
@@ -2891,7 +2896,7 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=24"></script>
+<script src="/dashboard/intents.js?v=25"></script>
 <script src="/dashboard/templates.js?v=4"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=13"></script>

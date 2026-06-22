@@ -275,3 +275,17 @@ def test_frontend_json_validation_is_drift_guard_only(intents_js: str) -> None:
         assert (
             backend_only not in intents_js
         ), f"{backend_only!r} duplicates a backend rule in intents.js — drift risk"
+
+
+def test_highlight_markdown_present_and_escapes_first(intents_js: str) -> None:
+    assert re.search(r"\bhighlightMarkdown\s*\(", intents_js), "missing highlightMarkdown"
+    m = re.search(r"highlightMarkdown\([^)]*\)\s*\{(.*?)\n    \},", intents_js, re.S)
+    assert m, "highlightMarkdown body not found"
+    assert "_escapeHtml(text)" in m.group(1), "highlightMarkdown must escape the raw text first"
+
+
+def test_md_editor_is_overlay_and_labels_aligned(index_html: str) -> None:
+    # md box uses the same overlay as json (highlightMarkdown), and both labels
+    # share the equal-height class so the two editors align.
+    assert 'highlightMarkdown(advanced.mdText)' in index_html
+    assert index_html.count("code-editor-label") >= 2
