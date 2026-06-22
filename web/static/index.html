@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=13">
+<link rel="stylesheet" href="/dashboard/style.css?v=14">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -2270,12 +2270,12 @@
       </div>
       <div x-show="advanced.generateError" class="field-err-msg" x-text="advanced.generateError" style="margin-bottom:10px;"></div>
 
-      <!-- row 2: two raw editors -->
-      <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <!-- row 2: two editors, equal height -->
+      <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
         <div class="form-field" style="flex:1; min-width:320px;">
           <label class="field-label">extraction_prompt (.md)</label>
-          <textarea x-model="advanced.mdText" rows="14"
-                    style="width:100%; font-family:var(--font-mono); font-size:0.78rem;"
+          <textarea x-model="advanced.mdText"
+                    style="width:100%; height:360px; resize:none; font-family:var(--font-mono); font-size:0.76rem; line-height:1.5;"
                     placeholder="Click &quot;Generate from template&quot;, or write it manually here"></textarea>
         </div>
         <div class="form-field" style="flex:1; min-width:320px;">
@@ -2283,12 +2283,16 @@
             schema (.json)
             <button @click="prettifyJson()" style="margin-left:8px; font-size:0.72rem; padding:1px 8px;">Format</button>
           </label>
-          <textarea x-model="advanced.jsonText" @input="_validateJsonLocal()" rows="9"
-                    style="width:100%; font-family:var(--font-mono); font-size:0.78rem;"
-                    placeholder='{ "sections": [], "article_fields": [], "common_claim_fields": [] }'></textarea>
-          <div x-show="advanced.jsonError" class="field-err-msg" x-text="advanced.jsonError"></div>
-          <pre class="spec-json-preview" x-show="advanced.jsonText.trim() && !advanced.jsonError"
-               x-html="highlightJson(advanced.jsonText)"></pre>
+          <!-- single box: editable + syntax-highlighted (transparent textarea over a highlight layer) -->
+          <div class="code-editor">
+            <pre class="code-editor-hl" aria-hidden="true" x-ref="jsonHl"
+                 x-html="highlightJson(advanced.jsonText) + '\n'"></pre>
+            <textarea class="code-editor-input" x-model="advanced.jsonText"
+                      @input="_validateJsonLocal()"
+                      @scroll="$refs.jsonHl.scrollTop = $event.target.scrollTop"
+                      spellcheck="false"></textarea>
+          </div>
+          <div x-show="advanced.jsonError" class="field-err-msg" x-text="advanced.jsonError" style="margin-top:6px;"></div>
         </div>
       </div>
 

@@ -16,6 +16,8 @@ from sembr.summarizer.spec import _semantic_projection, load_spec
 from sembr.summarizer.spec_gen import (
     _FLOOR_NAMES,
     _inject_floor,
+    _normalize_fields,
+    _normalize_type,
     _strip_reserved,
     derive_spec_name,
     has_errors,
@@ -245,6 +247,38 @@ def test_strip_reserved_drops_shell_names() -> None:
 
 def test_derive_spec_name() -> None:
     assert derive_spec_name(30) == "intent-30"
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("boolean", "bool"),
+        ("integer", "number"),
+        ("float", "number"),
+        ("list", "array"),
+        ("dict", "object"),
+        ("str", "string"),
+        ("BOOLEAN", "bool"),  # case-insensitive
+        ("string", "string"),
+        ("strign", "strign"),  # real typo passes through (validation still flags it)
+    ],
+)
+def test_normalize_type(raw, expected) -> None:
+    assert _normalize_type(raw) == expected
+
+
+def test_normalize_fields_rewrites_json_schema_types() -> None:
+    fields = [{"name": "f", "type": "boolean", "role": "flag", "label": "F"}]
+    _normalize_fields(fields)
+    assert fields[0]["type"] == "bool"
+
+
+def test_validate_accepts_json_schema_type_aliases() -> None:
+    # meta-LLM-style `boolean` must NOT be flagged invalid (the bug the user hit).
+    data = json.loads(_valid_json())
+    data["article_fields"].append({"name": "is_x", "type": "boolean", "role": "flag", "label": "X"})
+    issues = validate_spec_payload("p", json.dumps(data, ensure_ascii=False))
+    assert not any("invalid type" in i.msg for i in issues if i.severity == "error")
 
 
 # --------------------------------------------------------------------------- #

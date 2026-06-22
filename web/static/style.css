@@ -2133,23 +2133,45 @@ button { gap: 7px; }
 }
 
 
-/* ── Extraction-spec (spec-autogen) JSON preview highlight ── */
-.spec-json-preview {
-  font-family: var(--font-mono);
-  font-size: 0.76rem;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
-  overflow: auto;
-  margin: 6px 0 0;
-  padding: 8px 10px;
-  background: var(--bg-secondary);
+/* ── Extraction-spec (spec-autogen) JSON editor ──
+   One box that is both editable and syntax-highlighted: a transparent <textarea>
+   (real caret + input) layered exactly over a read-only highlight <pre>. Both
+   layers share identical font/padding/wrap so glyphs and caret line up. */
+.code-editor {
+  position: relative;
+  height: 360px;
   border: 1px solid var(--border);
   border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-secondary);
 }
-.spec-json-preview .json-key  { color: #0b5cab; }
-.spec-json-preview .json-str  { color: var(--good); }
-.spec-json-preview .json-num  { color: var(--warn-deep); }
-.spec-json-preview .json-bool { color: #8250df; }
-.spec-json-preview .json-null { color: var(--text-dim); }
+.code-editor-hl,
+.code-editor-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  border: 0;
+  tab-size: 2;
+}
+.code-editor-hl { z-index: 0; pointer-events: none; color: var(--text-primary); }
+.code-editor-input {
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text-primary);
+  resize: none;
+}
+.code-editor-input:focus { outline: none; }
+.code-editor-hl .json-key  { color: #0b5cab; }
+.code-editor-hl .json-str  { color: var(--good); }
+.code-editor-hl .json-num  { color: var(--warn-deep); }
+.code-editor-hl .json-bool { color: #8250df; }
+.code-editor-hl .json-null { color: var(--text-dim); }

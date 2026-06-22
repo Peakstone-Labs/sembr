@@ -225,6 +225,45 @@ def _strip_reserved(fields: list[dict]) -> list[dict]:
     return [f for f in fields if not (isinstance(f, dict) and f.get("name") in _RESERVED)]
 
 
+# meta-LLMs lean on JSON-Schema type names (boolean/integer/...); map them to
+# sembr's set so a `boolean` field isn't flagged "invalid type". `_pytype`
+# already tolerates these (it's startswith-based), so this only aligns the
+# validator + keeps the persisted spec canonical.
+_TYPE_ALIASES = {
+    "str": "string",
+    "string": "string",
+    "text": "string",
+    "enum": "enum",
+    "bool": "bool",
+    "boolean": "bool",
+    "number": "number",
+    "num": "number",
+    "int": "number",
+    "integer": "number",
+    "float": "number",
+    "double": "number",
+    "array": "array",
+    "list": "array",
+    "object": "object",
+    "dict": "object",
+    "map": "object",
+}
+
+
+def _normalize_type(t: object) -> str:
+    """Canonical sembr type for a (possibly JSON-Schema-style) type name.
+    Unknown values pass through unchanged so validation still flags real typos."""
+    raw = t if isinstance(t, str) and t.strip() else "string"
+    return _TYPE_ALIASES.get(raw.strip().lower(), raw)
+
+
+def _normalize_fields(fields: list[dict]) -> list[dict]:
+    for f in fields:
+        if isinstance(f, dict) and "type" in f:
+            f["type"] = _normalize_type(f.get("type"))
+    return fields
+
+
 async def generate_spec(
     *,
     system_tpl: str,
@@ -252,12 +291,17 @@ async def generate_spec(
     out = await backend.structured(user, MetaSpecOut, system=META_SYSTEM, model=model)
     json_obj = {
         "sections": [
-            {**s.model_dump(), "fields": _strip_reserved([f.model_dump() for f in s.fields])}
+            {
+                **s.model_dump(),
+                "fields": _normalize_fields(_strip_reserved([f.model_dump() for f in s.fields])),
+            }
             for s in out.sections
         ],
-        "article_fields": _strip_reserved([f.model_dump() for f in out.article_fields]),
+        "article_fields": _normalize_fields(
+            _strip_reserved([f.model_dump() for f in out.article_fields])
+        ),
         "common_claim_fields": _inject_floor(
-            _strip_reserved([f.model_dump() for f in out.common_claim_fields])
+            _normalize_fields(_strip_reserved([f.model_dump() for f in out.common_claim_fields]))
         ),
     }
     return out.extraction_prompt, json_obj
@@ -313,9 +357,9 @@ def _check_fields(items: object, scope_loc: str, issues: list[ValidationIssue]) 
                     loc=f"{loc}.role", msg=f"invalid role: {role} (must be content/meta/flag)"
                 )
             )
-        ftype = f.get("type", "string")
+        ftype = _normalize_type(f.get("type", "string"))
         if ftype not in _VALID_TYPES:
-            issues.append(ValidationIssue(loc=f"{loc}.type", msg=f"invalid type: {ftype}"))
+            issues.append(ValidationIssue(loc=f"{loc}.type", msg=f"invalid type: {f.get('type')}"))
         if ftype == "enum" and not (isinstance(f.get("enum"), list) and f.get("enum")):
             issues.append(
                 ValidationIssue(loc=f"{loc}.enum", msg="enum type requires a non-empty values list")
