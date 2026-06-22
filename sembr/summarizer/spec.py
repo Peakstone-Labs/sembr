@@ -12,8 +12,13 @@ under ``prompts/extraction/``:
   (cross-cutting fields every claim may carry).
 
 ``load_spec`` merges the two into a :class:`GeneratedSpec` and stamps a
-``schema_version`` = ``sha256(md_bytes + json_bytes)[:16]`` so any edit to either
-file invalidates the cache keyed on it. ``compile_validator`` turns
+``schema_version`` = ``sha256(md_bytes + semantic_projection(json) +
+_EXTRACT_PROMPT_VERSION)[:16]``. The json is hashed through a *semantic
+projection* (``_semantic_projection``) that drops display-only field keys
+(``role`` / ``label`` / ``enum``) so editing them does NOT bump the version or
+needlessly re-extract the cache; only semantic edits (field name/type/
+description, section keys) and the prompt (``md``) invalidate it (spec-autogen
+design D4). ``compile_validator`` turns
 the spec into a dynamic Pydantic model (no per-intent code — mirrors the probe's
 ``compile_run.compile_models``); ``extract_one`` runs one article through the
 backend's structured() with the spec prompt + the model's JSON schema embedded.
@@ -164,6 +169,41 @@ def _spec_path(prompts_dir: Path, name: str, ext: str) -> Path:
     return candidate
 
 
+def _proj_fields(items: object) -> list[dict]:
+    """Project a field list onto its *semantic* keys (name/type/description)."""
+    out: list[dict] = []
+    for f in items if isinstance(items, list) else []:
+        if isinstance(f, dict):
+            out.append({k: f[k] for k in ("name", "type", "description") if k in f})
+    return out
+
+
+def _semantic_projection(data: dict) -> bytes:
+    """Canonical bytes of the spec's *semantic* subset, for ``schema_version``.
+
+    Display-only field keys (``role`` / ``label`` / ``enum``) are dropped so
+    editing them does not change the hash — they don't affect extraction
+    (``compile_validator`` takes only name+type; ``role``/``label`` are render
+    metadata; ``enum`` never reaches ``create_model`` or the extract prompt
+    today, and a future ``Literal`` change would bump ``_EXTRACT_PROMPT_VERSION``
+    anyway). Lists keep file order — section/field order is itself semantic
+    (reduce assembly order). ``sort_keys`` only canonicalises within an object,
+    so key order / whitespace in the source file never perturbs the hash.
+    """
+    sections: list[dict] = []
+    for s in data.get("sections", []) if isinstance(data.get("sections"), list) else []:
+        if isinstance(s, dict):
+            sections.append({"key": s.get("key"), "fields": _proj_fields(s.get("fields"))})
+    proj = {
+        "sections": sections,
+        "article_fields": _proj_fields(data.get("article_fields")),
+        "common_claim_fields": _proj_fields(data.get("common_claim_fields")),
+    }
+    return json.dumps(proj, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode(
+        "utf-8"
+    )
+
+
 def load_spec(name: str, prompts_dir: Path = PROMPTS_DIR) -> GeneratedSpec:
     """Load the ``{name}.md`` + ``{name}.json`` pair into a :class:`GeneratedSpec`.
 
@@ -188,10 +228,12 @@ def load_spec(name: str, prompts_dir: Path = PROMPTS_DIR) -> GeneratedSpec:
     if not isinstance(data, dict):
         raise SpecError(f"spec '{name}' .json must be a JSON object at top level")
 
-    # Fold the prompt-scaffold version in so a code-side prompt change (which the
-    # spec files don't capture) still invalidates the cache. See _EXTRACT_PROMPT_VERSION.
+    # Hash the *semantic* projection of the json (not raw bytes) so display-only
+    # edits (role/label/enum) don't bump the version, and fold the prompt-scaffold
+    # version in so a code-side prompt change still invalidates the cache.
+    # See _semantic_projection and _EXTRACT_PROMPT_VERSION (spec-autogen design D4).
     schema_version = hashlib.sha256(
-        md_bytes + json_bytes + _EXTRACT_PROMPT_VERSION.encode("utf-8")
+        md_bytes + _semantic_projection(data) + _EXTRACT_PROMPT_VERSION.encode("utf-8")
     ).hexdigest()[:16]
     try:
         return GeneratedSpec(

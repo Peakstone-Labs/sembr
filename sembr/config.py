@@ -344,6 +344,13 @@ class Settings(BaseSettings):
         return self.reduce_model or self.llm_model
 
     @property
+    def effective_meta_extraction_model(self) -> str:
+        # Empty meta_extraction_model falls back to the summarization model so a
+        # default install can auto-generate extraction specs with no extra config.
+        # Mirrors effective_reduce_model (spec-autogen design D2).
+        return self.meta_extraction_model or self.llm_model
+
+    @property
     def proxy_hosts_set(self) -> frozenset[str]:
         # Tolerate whitespace, trailing slashes, schemes typed by the user.
         out: set[str] = set()

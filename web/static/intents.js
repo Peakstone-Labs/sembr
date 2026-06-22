@@ -106,6 +106,28 @@ function intentsTab() {
     // (Alpine-modal async guard pattern).
     _hvGen: 0,
 
+    // Advanced · extraction-spec panel (spec-autogen). Raw .md + .json editors;
+    // generate is synchronous; save (draft) and enable (activate) are separate.
+    advanced: {
+      open: false,
+      intentId: null,
+      intentName: '',
+      mdText: '',
+      jsonText: '',
+      jsonError: '',        // client-side parse error only (drift-guard)
+      useDigest: false,
+      digestAvailable: false,
+      source: 'none',       // own | fallback | none
+      enabled: false,
+      generating: false,
+      saving: false,
+      generateError: '',
+      saveErrors: [],       // [{loc,msg}]
+      saveWarnings: [],     // [{loc,msg}]
+      enableError: '',
+    },
+    _advGen: 0,             // async guard counter for the Advanced panel
+
     delHistory: {
       open: false,
       row: null,
@@ -1010,6 +1032,145 @@ function intentsTab() {
         ex.status = 'error';
         ex.error = 'Network error: ' + e.message;
       }
+    },
+
+    // ── Advanced · extraction-spec panel (spec-autogen) ──────────────
+    // Generate (sync) → raw .md/.json edit → save (draft) → enable (activate).
+    // Async results are gated on _advGen so a late reply from a closed/reopened
+    // panel can't clobber current state (Alpine-modal async guard).
+    openAdvanced(intent) {
+      const gen = ++this._advGen;
+      Object.assign(this.advanced, {
+        open: true, intentId: intent.id, intentName: intent.name || '',
+        mdText: '', jsonText: '', jsonError: '', useDigest: false,
+        digestAvailable: false, source: 'none', enabled: false,
+        generating: false, saving: false, generateError: '',
+        saveErrors: [], saveWarnings: [], enableError: '',
+      });
+      this._loadAdvanced(intent.id, gen);
+    },
+    closeAdvanced() { this._advGen++; this.advanced.open = false; },
+
+    async _loadAdvanced(id, gen) {
+      try {
+        const res = await this._request('GET', `/api/intents/${id}/extraction-spec`);
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (!res.ok) { this.advanced.generateError = this._extractError(data, `HTTP ${res.status}`); return; }
+        this.advanced.mdText = data.md || '';
+        this.advanced.jsonText = data.json || '';
+        this.advanced.source = data.source || 'none';
+        this.advanced.enabled = !!data.enabled;
+        this.advanced.digestAvailable = !!data.digest_available;
+        this._validateJsonLocal();
+      } catch (e) {
+        if (gen === this._advGen) this.advanced.generateError = 'Network error: ' + e.message;
+      }
+    },
+
+    async generateSpec() {
+      if (this.advanced.generating) return;          // in-flight guard
+      const id = this.advanced.intentId, gen = this._advGen;
+      this.advanced.generating = true;
+      this.advanced.generateError = '';
+      this.advanced.saveErrors = [];
+      try {
+        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/generate`,
+          { use_digest: this.advanced.useDigest });
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (!res.ok) { this.advanced.generateError = this._extractError(data, `HTTP ${res.status}`); return; }
+        // Non-destructive on failure: only overwrite editors on success.
+        this.advanced.mdText = data.md || '';
+        this.advanced.jsonText = data.json || '';
+        this.advanced.saveWarnings = data.warnings || [];
+        this._validateJsonLocal();
+      } catch (e) {
+        if (gen === this._advGen) this.advanced.generateError = 'Network error: ' + e.message;
+      } finally {
+        if (gen === this._advGen) this.advanced.generating = false;
+      }
+    },
+
+    async saveSpec() {
+      if (this.advanced.saving) return;
+      this._validateJsonLocal();
+      if (this.advanced.jsonError) { this.advanced.saveErrors = [{ loc: 'json', msg: this.advanced.jsonError }]; return; }
+      const id = this.advanced.intentId, gen = this._advGen;
+      this.advanced.saving = true;
+      this.advanced.saveErrors = [];
+      try {
+        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/save`,
+          { md: this.advanced.mdText, json: this.advanced.jsonText });
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (res.status === 422) {
+          this.advanced.saveErrors = (data.detail && data.detail.errors) || [{ loc: '', msg: '校验失败' }];
+          return;
+        }
+        if (!res.ok) { this.advanced.saveErrors = [{ loc: '', msg: this._extractError(data, `HTTP ${res.status}`) }]; return; }
+        this.advanced.source = 'own';
+        this.advanced.saveWarnings = data.warnings || [];
+        this.showToast('Spec 已保存（草稿）', 'success');
+      } catch (e) {
+        if (gen === this._advGen) this.advanced.saveErrors = [{ loc: '', msg: 'Network error: ' + e.message }];
+      } finally {
+        if (gen === this._advGen) this.advanced.saving = false;
+      }
+    },
+
+    async enableSpec() {
+      const id = this.advanced.intentId, gen = this._advGen;
+      this.advanced.enableError = '';
+      try {
+        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/enable`, {});
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (!res.ok) { this.advanced.enableError = this._extractError(data, `HTTP ${res.status}`); return; }
+        this.advanced.enabled = true;
+        this.showToast('已启用，可回 History 点 Extract facts', 'success');
+      } catch (e) {
+        if (gen === this._advGen) this.advanced.enableError = 'Network error: ' + e.message;
+      }
+    },
+
+    prettifyJson() {
+      try {
+        this.advanced.jsonText = JSON.stringify(JSON.parse(this.advanced.jsonText), null, 2);
+        this.advanced.jsonError = '';
+      } catch (e) { this.advanced.jsonError = String((e && e.message) || e); }
+    },
+
+    // Drift-guard: ONLY parse + non-empty. The 12-rule set is the backend's job;
+    // mirroring it here would drift. Full validation surfaces as the save 422.
+    _validateJsonLocal() {
+      const t = (this.advanced.jsonText || '').trim();
+      if (!t) { this.advanced.jsonError = 'JSON 不能为空'; return; }
+      try { JSON.parse(t); this.advanced.jsonError = ''; }
+      catch (e) { this.advanced.jsonError = String((e && e.message) || e); }
+    },
+
+    _escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    },
+
+    // Read-only JSON syntax highlight for the preview. Escapes the whole text
+    // FIRST (so any stray markup in malformed input is neutralized — XSS guard),
+    // then tokenizes on the escaped delimiters. Display only; backend validates.
+    highlightJson(text) {
+      const esc = this._escapeHtml(text);
+      return esc.replace(
+        /(&quot;(?:\\.|(?!&quot;)[\s\S])*?&quot;)(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+        (full, str, colon, kw, num) => {
+          if (str !== undefined) {
+            const cls = colon ? 'json-key' : 'json-str';
+            return `<span class="${cls}">${str}</span>` + (colon || '');
+          }
+          if (kw !== undefined) return `<span class="json-${kw === 'null' ? 'null' : 'bool'}">${kw}</span>`;
+          return `<span class="json-num">${num}</span>`;
+        }
+      );
     },
 
     // Group a citation's extracted claims by section for the pretty card view.

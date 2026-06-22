@@ -35,6 +35,7 @@ import aiosqlite
 
 from sembr.api import settings_restart
 from sembr.api.external_fire import router as external_fire_router
+from sembr.api.extraction_spec import router as extraction_spec_router
 from sembr.api.feeds import router as feeds_router
 from sembr.api.feeds_fire import router as feeds_fire_router
 from sembr.api.fire import router as fire_router
@@ -403,6 +404,7 @@ app.include_router(translate_router)
 app.include_router(fire_router)
 app.include_router(external_fire_router)
 app.include_router(history_router)
+app.include_router(extraction_spec_router)
 app.include_router(prompts_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)

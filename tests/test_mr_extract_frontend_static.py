@@ -60,9 +60,9 @@ def test_render_is_spec_driven_not_fed_watch_coupled(intents_js: str) -> None:
         "regime_signal",
         "original_en",
     ):
-        assert hardcoded not in intents_js, (
-            f"{hardcoded!r} is hard-coded in intents.js — must be driven by spec field_meta"
-        )
+        assert (
+            hardcoded not in intents_js
+        ), f"{hardcoded!r} is hard-coded in intents.js — must be driven by spec field_meta"
     # roles/labels are consulted from the spec map served by the endpoint
     assert "field_meta" in intents_js
     assert "fieldMeta" in intents_js
@@ -217,3 +217,61 @@ def test_settings_js_cache_buster_bumped(index_html: str) -> None:
     m = re.search(r"settings\.js\?v=(\d+)", index_html)
     assert m is not None
     assert int(m.group(1)) >= 13, f"expected settings.js?v>=13; got v={m.group(1)}"
+
+
+# --------------------------------------------------------------------------- #
+# spec-autogen (Advanced extraction-spec panel) — T14/T15/T16
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "method",
+    [
+        "openAdvanced",
+        "closeAdvanced",
+        "generateSpec",
+        "saveSpec",
+        "enableSpec",
+        "prettifyJson",
+        "highlightJson",
+        "_validateJsonLocal",
+        "_escapeHtml",
+    ],
+)
+def test_advanced_methods_present(intents_js: str, method: str) -> None:
+    assert re.search(rf"\b{re.escape(method)}\s*\(", intents_js), f"missing {method!r}"
+
+
+def test_advanced_button_and_modal_wired(index_html: str) -> None:
+    assert "openAdvanced(intent)" in index_html  # entry point on the cron row
+    assert 'x-show="advanced.open"' in index_html  # modal present
+    # separate save / enable actions (not one combined button)
+    assert "saveSpec()" in index_html and "enableSpec()" in index_html
+
+
+def test_highlight_escapes_before_tokenizing(intents_js: str) -> None:
+    # XSS guard: highlightJson must escape the whole text first, then tokenize on
+    # the escaped quote delimiter (&quot;). Asserts the escape-first contract.
+    m = re.search(r"highlightJson\([^)]*\)\s*\{(.*?)\n    \},", intents_js, re.S)
+    assert m, "highlightJson body not found"
+    body = m.group(1)
+    assert "_escapeHtml(text)" in body, "highlightJson must escape the raw text first"
+    assert "&quot;" in body, "tokenizer must match on the escaped quote delimiter"
+
+
+def test_intents_js_cache_buster_bumped_for_spec_autogen(index_html: str) -> None:
+    m = re.search(r"intents\.js\?v=(\d+)", index_html)
+    assert m is not None and int(m.group(1)) >= 23, f"expected intents.js?v>=23; got v={m.group(1)}"
+
+
+def test_style_css_cache_buster_bumped(index_html: str) -> None:
+    m = re.search(r"style\.css\?v=(\d+)", index_html)
+    assert m is not None and int(m.group(1)) >= 13, f"expected style.css?v>=13; got v={m.group(1)}"
+
+
+def test_frontend_json_validation_is_drift_guard_only(intents_js: str) -> None:
+    # The frontend must NOT mirror the backend's 12-rule set (drift-guard): the
+    # authoritative validator lives server-side. Backend-only rule messages must
+    # not appear in intents.js.
+    for backend_only in ("保留 shell 名", "role 非法", "section key 缺失", "enum 类型须给取值"):
+        assert (
+            backend_only not in intents_js
+        ), f"{backend_only!r} duplicates a backend rule in intents.js — drift risk"

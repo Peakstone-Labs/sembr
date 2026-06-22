@@ -2132,3 +2132,24 @@ button { gap: 7px; }
   stroke-width: 2;
 }
 
+
+/* ── Extraction-spec (spec-autogen) JSON preview highlight ── */
+.spec-json-preview {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.spec-json-preview .json-key  { color: #0b5cab; }
+.spec-json-preview .json-str  { color: var(--good); }
+.spec-json-preview .json-num  { color: var(--warn-deep); }
+.spec-json-preview .json-bool { color: #8250df; }
+.spec-json-preview .json-null { color: var(--text-dim); }
