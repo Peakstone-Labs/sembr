@@ -126,7 +126,7 @@ META_SYSTEM = """你是「抽取规格设计师」。给你一份新闻简报的
 【硬要求，必须满足】：
 1. 每个字段（article_fields / common_claim_fields / 各 section.fields）都必须填 `role` 和 `label`，并尽量给一句 `description`（说明该字段抽什么）：
    - `role`：事实主体 → `content`；溯源/性质（来源类型、归属、时间等）→ `meta`；布尔徽章（是否预测、是否单一来源等）→ `flag`。
-   - `label`：简短中文显示名。
+   - `label`：简短显示名（用目标语言，见文末「目标语言」指令）。
    - `description`：一句话说明取值口径，供下游/编辑者看（留空也能跑，但尽量填）。
 2. 你产出的 `extraction_prompt` 必须【原样继承】下方给出的通用基底规则（反幻觉铁律 + 归属 + 横切字段 + 输入说明），再在其上叠加该 intent 的特化（章节骨架 + 相关性闸门 + 每节字段说明）。不得丢弃基底铁律。
 3. 每个 section 的 `key` 是机器名（snake_case，字母开头，仅字母数字下划线），`label` 是节标题；claim 的 section 值将 ∈ 这些 key。
@@ -176,20 +176,73 @@ def derive_spec_name(intent_id: int) -> str:
     return f"intent-{intent_id}"
 
 
-def load_base(prompts_dir: Path = PROMPTS_DIR) -> str:
-    """Read the shared ``_base.md`` floor prompt.
+def load_base(prompts_dir: Path = PROMPTS_DIR, language: str = "zh") -> tuple[str, bool]:
+    """Read the floor prompt for *language*; return ``(text, is_native)``.
 
-    Raises ``SpecBaseMissingError`` (→ 500) when absent: it's an operator-deployed
-    file, and silently generating without the anti-hallucination floor would
-    violate the spec's contract.
+    Prefers a hand-authored ``_base_{language}.md`` (returned verbatim, so the
+    anti-hallucination floor is guaranteed intact — ``is_native=True``). Falls
+    back to the default Chinese ``_base.md`` when no per-language file exists;
+    then ``is_native=False`` and the caller asks the meta-LLM to translate the
+    floor into *language* (acceptable until a ``_base_{language}.md`` is added).
+    ``zh`` always maps to ``_base.md`` and is native.
+
+    Raises ``SpecBaseMissingError`` (→ 500) when even the default is absent.
     """
+    lang = (language or "zh").lower()
+    if lang != "zh":
+        try:
+            cand = _spec_path(prompts_dir, f"_base_{lang}", "md")
+        except ValueError:
+            cand = None  # malformed language code → fall back to the default
+        if cand is not None and cand.is_file():
+            return cand.read_text(encoding="utf-8"), True
     path = _spec_path(prompts_dir, "_base", "md")
     if not path.is_file():
         raise SpecBaseMissingError(
             f"Shared base prompt prompts/extraction/_base.md is missing ({path}); "
             "an administrator must deploy it."
         )
-    return path.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8"), (lang == "zh")
+
+
+# Display names for the target-language directive; unknown codes pass through.
+_LANG_NAMES = {
+    "zh": "中文",
+    "en": "English",
+    "ja": "日本語",
+    "ko": "한국어",
+    "fr": "Français",
+    "de": "Deutsch",
+    "es": "Español",
+    "pt": "Português",
+    "ru": "Русский",
+}
+
+
+def _lang_directive(language: str, base_is_native: bool) -> str:
+    """Target-language directive appended to the meta prompt.
+
+    ``zh`` + native base reproduces today's behavior (Chinese spec, floor inherited
+    verbatim). A non-native base asks the meta-LLM to translate the floor into the
+    target language, preserving every rule (used until a ``_base_{lang}.md`` exists).
+    The directive itself is written in Chinese (the meta model is bilingual); only
+    the *generated* spec follows the target language.
+    """
+    lang = (language or "zh").lower()
+    name = _LANG_NAMES.get(lang, language or "中文")
+    base_clause = (
+        f"基底规则（上文）已是{name}，按原文逐字继承，不要改写或省略。"
+        if base_is_native
+        else f"上文基底规则不是{name}：请将其忠实译为{name}后并入——每条反幻觉铁律、"
+        "归属与字段规则都必须保留，不得删减或弱化。"
+    )
+    return (
+        f"\n\n---\n# 目标语言：{name}\n"
+        f"- 生成的 extraction_prompt 整体，以及所有 section 与字段的 label / description，都用{name}。\n"
+        f"- {base_clause}\n"
+        f"- 在 extraction_prompt 里指示抽取器：text / thesis / 各字段值用{name}输出；"
+        f"`quote` 保持文章源语言、逐字照抄、绝不翻译。"
+    )
 
 
 def read_spec_raw(name: str, prompts_dir: Path = PROMPTS_DIR) -> tuple[str, str] | None:
@@ -329,13 +382,17 @@ async def generate_spec(
     digest: str | None,
     backend: BaseLLMBackend,
     model: str,
+    language: str = "zh",
+    base_is_native: bool = True,
 ) -> tuple[str, dict]:
     """Meta-LLM → draft spec. Returns ``(extraction_prompt_md, json_obj)``.
 
     json_obj = ``{sections, article_fields, common_claim_fields}`` with the floor
     guaranteed and reserved-shell names stripped. The endpoint serializes it.
-    Raises ``LLMError`` if the model can't produce a schema-valid spec after the
-    structured() repair loop.
+    ``language`` (the intent's cron language) drives the generated spec's output
+    language; ``base_is_native`` (from ``load_base``) decides whether the floor is
+    inherited verbatim or translated. Raises ``LLMError`` if the model can't
+    produce a schema-valid spec after the structured() repair loop.
     """
     schema = json.dumps(MetaSpecOut.model_json_schema(), ensure_ascii=False)
     user = META_USER.format(
@@ -344,7 +401,7 @@ async def generate_spec(
         instruction=instruction_tpl,
         digest=digest or _NO_DIGEST,
         schema=schema,
-    )
+    ) + _lang_directive(language, base_is_native)
     out = await backend.structured(user, MetaSpecOut, system=META_SYSTEM, model=model)
     json_obj = {
         "sections": [

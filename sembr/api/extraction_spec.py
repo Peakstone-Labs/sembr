@@ -135,7 +135,7 @@ async def post_generate_spec(
             detail={"code": "template_missing", "message": str(exc)},
         ) from exc
     try:
-        base = load_base(PROMPTS_DIR)
+        base, base_is_native = load_base(PROMPTS_DIR, intent.language)
     except SpecBaseMissingError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
@@ -154,6 +154,8 @@ async def post_generate_spec(
                 digest=digest,
                 backend=backend,
                 model=model,
+                language=intent.language,
+                base_is_native=base_is_native,
             ),
             timeout=_GENERATE_TIMEOUT_S,
         )

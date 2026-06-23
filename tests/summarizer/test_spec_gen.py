@@ -17,11 +17,13 @@ from sembr.summarizer.spec_gen import (
     _FLOOR_NAMES,
     _inject_article_floor,
     _inject_floor,
+    _lang_directive,
     _normalize_fields,
     _normalize_type,
     _strip_reserved,
     derive_spec_name,
     has_errors,
+    load_base,
     save_spec_atomic,
     validate_spec_payload,
 )
@@ -269,6 +271,42 @@ def test_inject_floor_canonicalizes_degraded_floor() -> None:
     assert by_name["is_projection"]["label"] == "我的预测"  # meta's label preserved
     assert by_name["source_type"]["type"] == "enum" and by_name["source_type"]["enum"]
     assert by_name["source_type"]["description"]  # canonical description restored
+
+
+def _seed_base(prompts_dir, name: str, text: str) -> None:
+    d = prompts_dir / "extraction"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{name}.md").write_text(text, encoding="utf-8")
+
+
+def test_load_base_zh_is_native_default(tmp_path) -> None:
+    _seed_base(tmp_path, "_base", "中文基底")
+    text, native = load_base(tmp_path, "zh")
+    assert text == "中文基底" and native is True
+
+
+def test_load_base_non_native_falls_back_to_default(tmp_path) -> None:
+    # No _base_en.md → fall back to _base.md, flagged non-native (meta translates).
+    _seed_base(tmp_path, "_base", "中文基底")
+    text, native = load_base(tmp_path, "en")
+    assert text == "中文基底" and native is False
+
+
+def test_load_base_prefers_language_file_verbatim(tmp_path) -> None:
+    _seed_base(tmp_path, "_base", "中文基底")
+    _seed_base(tmp_path, "_base_en", "English floor")
+    text, native = load_base(tmp_path, "en")
+    assert text == "English floor" and native is True
+
+
+def test_lang_directive_zh_keeps_verbatim_chinese() -> None:
+    d = _lang_directive("zh", base_is_native=True)
+    assert "目标语言：中文" in d and "逐字继承" in d and "绝不翻译" in d
+
+
+def test_lang_directive_non_native_asks_for_translation() -> None:
+    d = _lang_directive("en", base_is_native=False)
+    assert "English" in d and "译为" in d  # translate the floor into the target language
 
 
 def test_strip_reserved_drops_shell_names() -> None:
