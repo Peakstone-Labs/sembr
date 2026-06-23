@@ -17,6 +17,8 @@ from sembr.summarizer.llm.base import BaseLLMBackend
 from sembr.summarizer.spec import (
     SpecError,
     SpecNotFoundError,
+    _apply_twitter_source_org,
+    _twitter_handle,
     build_extract_prompt,
     compile_validator,
     extract_one,
@@ -279,6 +281,61 @@ class _FakeBackend(BaseLLMBackend):
 
     async def health(self):  # pragma: no cover
         return True
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://x.com/C_Barraud/status/2068622390", "C_Barraud"),
+        ("https://twitter.com/financialjuice/status/1", "financialjuice"),
+        ("https://mobile.twitter.com/elerianm", "elerianm"),  # bare profile
+        ("https://x.com/i/lists/123", None),  # site feature, not a handle
+        ("https://x.com/search?q=fed", None),
+        ("https://x.com/", None),
+        ("https://www.wsj.com/articles/fed-decision", None),  # non-Twitter host
+        ("https://gelonghui.com/live/2512740", None),
+        (None, None),
+        ("not a url", None),
+    ],
+)
+def test_twitter_handle_parsing(url, expected):
+    assert _twitter_handle(url) == expected
+
+
+def _ns(source_org):
+    import types  # noqa: PLC0415
+
+    return types.SimpleNamespace(source_org=source_org)
+
+
+def _write_twitter_map(prompts_dir: Path, mapping: dict) -> None:
+    d = prompts_dir / "extraction"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "_twitter_handles.json").write_text(json.dumps(mapping), encoding="utf-8")
+
+
+def test_twitter_override_curated_wins_over_llm(tmp_path):
+    # Curated handle: authoritative, even if the LLM picked a brand from the body.
+    _write_twitter_map(tmp_path, {"@C_Barraud": "Christophe Barraud"})
+    r = _ns("Bloomberg")  # LLM mis-attributed to a data-compiler brand
+    _apply_twitter_source_org(r, "https://x.com/C_Barraud/status/1", prompts_dir=tmp_path)
+    assert r.source_org == "Christophe Barraud"
+
+
+def test_twitter_override_uncurated_fills_only_when_blank(tmp_path):
+    _write_twitter_map(tmp_path, {})  # empty map
+    blank = _ns(None)
+    _apply_twitter_source_org(blank, "https://x.com/someNewHandle/status/1", prompts_dir=tmp_path)
+    assert blank.source_org == "@someNewHandle"  # fallback fill
+    kept = _ns("Real Name From Body")
+    _apply_twitter_source_org(kept, "https://x.com/someNewHandle/status/1", prompts_dir=tmp_path)
+    assert kept.source_org == "Real Name From Body"  # don't clobber a real name
+
+
+def test_twitter_override_noop_for_non_twitter(tmp_path):
+    r = _ns(None)
+    _apply_twitter_source_org(r, "https://gelonghui.com/live/1", prompts_dir=tmp_path)
+    assert r.source_org is None  # untouched
 
 
 async def test_extract_one_returns_validated_and_passes_system_model():

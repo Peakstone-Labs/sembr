@@ -33,7 +33,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import html2text as _h2t
 from pydantic import BaseModel, Field, create_model
@@ -58,16 +60,18 @@ _MAX_EXTRACT_BODY_CHARS = 40_000
 # Titles are short in practice; cap anyway so a giant title can't bypass the body cap.
 _MAX_TITLE_CHARS = 500
 
-# Version of the code-built extraction prompt scaffolding (`build_extract_prompt`).
-# It is NOT part of the spec files, so it is folded into schema_version separately:
-# changing the prompt wording here would otherwise leave the cache serving stale
-# extractions under an unchanged hash. **Bump this whenever build_extract_prompt's
-# assembled wording changes** so existing caches re-extract.
+# Version of the code-built extraction behavior (`build_extract_prompt` scaffolding
+# + `extract_one` post-processing). It is NOT part of the spec files, so it is
+# folded into schema_version separately: changing it here would otherwise leave the
+# cache serving stale extractions under an unchanged hash. **Bump this whenever
+# build_extract_prompt's assembled wording OR extract_one's post-processing changes**
+# so existing caches re-extract.
 #   1 → original (topic + title + body + schema)
 #   2 → + published_at line (anchor relative time_ref to an absolute date)
 #   3 → + source hint (url / feed name) for source_org when the body is unsigned
 #   4 → social post = handle owner; in-body data-compiler/link brands ≠ publisher
-_EXTRACT_PROMPT_VERSION = "4"
+#   5 → deterministic x.com/twitter.com handle → source_org override (extract_one)
+_EXTRACT_PROMPT_VERSION = "5"
 
 # URLs are short; cap defensively so a pathological one can't bloat the prompt.
 _MAX_URL_CHARS = 300
@@ -370,6 +374,121 @@ def build_extract_prompt(
     )
 
 
+# --------------------------------------------------------------------------- #
+# Twitter/X publisher resolution
+# --------------------------------------------------------------------------- #
+# A tweet's publisher is the account in the URL path (x.com/<handle>/status/…),
+# which the LLM resolves only noisily — it sometimes attributes to a brand named
+# in the body (e.g. "data compiled by Bloomberg"). We parse the handle
+# deterministically and, via an optional curated map, set source_org in code.
+# Scoped to x.com/twitter.com only: every other source carries its publisher in
+# source_name/body, where a URL path segment is not a handle.
+_TWITTER_HOSTS = frozenset(
+    {"x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"}
+)
+# First path segments that are site features, not user handles.
+_TWITTER_NON_HANDLE = frozenset(
+    {
+        "i",
+        "intent",
+        "home",
+        "search",
+        "hashtag",
+        "explore",
+        "messages",
+        "notifications",
+        "settings",
+        "compose",
+        "share",
+        "login",
+        "signup",
+    }
+)
+_HANDLE_RE = re.compile(r"^[A-Za-z0-9_]{1,15}$")  # Twitter handle charset/length
+_TWITTER_MAP_NAME = "_twitter_handles"  # optional prompts/extraction/_twitter_handles.json
+_twitter_map_cache: tuple[str, float, dict[str, str]] | None = None
+
+
+def _twitter_handle(url: str | None) -> str | None:
+    """Return the publisher handle from an x.com/twitter.com URL, else None.
+
+    None for non-Twitter hosts and for non-handle paths (``/i/…``, ``/search``…).
+    Handles both status URLs and bare profile URLs.
+    """
+    if not url:
+        return None
+    try:
+        u = urlparse(url.strip())
+    except (ValueError, TypeError):
+        return None
+    host = (u.netloc or "").lower().split("@")[-1].split(":")[0]
+    if host not in _TWITTER_HOSTS:
+        return None
+    seg = u.path.lstrip("/").split("/", 1)[0]
+    if not seg or seg.lower() in _TWITTER_NON_HANDLE or not _HANDLE_RE.match(seg):
+        return None
+    return seg
+
+
+def _load_twitter_map(prompts_dir: Path = PROMPTS_DIR) -> dict[str, str]:
+    """Load the optional curated ``_twitter_handles.json`` (handle → display name).
+
+    Keys are normalized (leading ``@`` stripped, lower-cased). Missing/malformed
+    file → empty map (the feature degrades to a bare ``@handle``). Cached by
+    (path, mtime) so runtime edits take effect without a per-article re-read.
+    """
+    global _twitter_map_cache
+    try:
+        path = _spec_path(prompts_dir, _TWITTER_MAP_NAME, "json")
+    except ValueError:
+        return {}
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        _twitter_map_cache = None
+        return {}
+    key = str(path)
+    if (
+        _twitter_map_cache is not None
+        and _twitter_map_cache[0] == key
+        and _twitter_map_cache[1] == mtime
+    ):
+        return _twitter_map_cache[2]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out = {
+        str(k).lstrip("@").lower(): str(v).strip()
+        for k, v in data.items()
+        if isinstance(v, str) and str(v).strip()
+    }
+    _twitter_map_cache = (key, mtime, out)
+    return out
+
+
+def _apply_twitter_source_org(
+    result: BaseModel, url: str | None, prompts_dir: Path = PROMPTS_DIR
+) -> None:
+    """Deterministically fix ``source_org`` for a tweet (mutates *result*).
+
+    Curated handle → its display name (authoritative; overrides the LLM, which may
+    have picked a brand named in the body). Uncurated but parseable handle →
+    ``@handle`` *only when the LLM left source_org blank* (don't clobber a real
+    name it found in the body). Non-Twitter / unparseable → untouched.
+    """
+    handle = _twitter_handle(url)
+    if not handle:
+        return
+    mapped = _load_twitter_map(prompts_dir).get(handle.lower())
+    if mapped:
+        result.source_org = mapped
+    elif not (getattr(result, "source_org", None) or "").strip():
+        result.source_org = f"@{handle}"
+
+
 async def extract_one(
     llm: BaseLLMBackend,
     spec: GeneratedSpec,
@@ -388,7 +507,8 @@ async def extract_one(
     Validator is passed in (compiled once per batch by the caller) so a digest's
     worth of articles share one model build. The structured() repair loop handles
     transient schema misses; a hard failure propagates for the caller to record
-    in the per-article errors list.
+    in the per-article errors list. A tweet's ``source_org`` is then fixed
+    deterministically from the URL handle (see ``_apply_twitter_source_org``).
     """
     prompt = build_extract_prompt(
         validator,
@@ -399,4 +519,6 @@ async def extract_one(
         url=url,
         source_name=source_name,
     )
-    return await llm.structured(prompt, validator, system=spec.extraction_prompt, model=model)
+    result = await llm.structured(prompt, validator, system=spec.extraction_prompt, model=model)
+    _apply_twitter_source_org(result, url)
+    return result
