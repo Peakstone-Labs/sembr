@@ -19,10 +19,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-import html2text as _h2t
-
 from sembr.summarizer import templates as _templates
 from sembr.summarizer.facts_render import PREAMBLE_V2_NOQUOTE, render_facts
+from sembr.summarizer.htmltext import to_plain_text
 from sembr.summarizer.models import Citation, OnSummaryCallback, PrePushHook, SummaryResult
 from sembr.summarizer.mr_extract import map_for_reduce
 from sembr.summarizer.spec import (
@@ -44,23 +43,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_h2t_converter = _h2t.HTML2Text()
-_h2t_converter.ignore_links = True
-_h2t_converter.ignore_images = True
-_h2t_converter.ignore_emphasis = False
-_h2t_converter.body_width = 0  # no line wrapping
-
 # Reserve 15% of the backend's prompt budget for the LLM's response and any
 # instruction-template overhead the pipeline can't measure ahead of time.
 # Articles get the remaining 85%.
 _BUDGET_SAFETY_RATIO = 0.85
 _ENTRY_SEPARATOR = "\n\n"
-
-
-def _to_plain_text(raw: str) -> str:
-    if "<" in raw and ">" in raw:
-        return _h2t_converter.handle(raw).strip()
-    return raw.strip()
 
 
 async def log_summaries(result: SummaryResult) -> None:
@@ -112,7 +99,7 @@ def _build_articles_text(matches: list[Match], body_budget: int) -> tuple[str, i
     body_budget is 0 or negative, every body is dropped (cap=0) — caller is
     expected to have already logged the over-budget condition.
     """
-    bodies = [_to_plain_text(m.payload.get("body", "")) for m in matches]
+    bodies = [to_plain_text(m.payload.get("body", "")) for m in matches]
     cap = _water_fill_cap([len(b) for b in bodies], body_budget)
     n_truncated = 0
     longest_truncated_to = 0
@@ -384,7 +371,7 @@ class SummaryPipeline:
                 articles_text = facts_text
                 reduce_mode = mode
             else:
-                reduce_mode = "facts_fallback_raw"  # D2 fail-open → raw path below
+                reduce_mode = "facts_fallback_raw"  # fail-open → raw path below
 
         if articles_text is None:
             if body_budget < 0:
@@ -449,10 +436,10 @@ class SummaryPipeline:
         feed_name_map: dict[int, str],
         budget: int,
     ) -> tuple[str | None, str]:
-        """Facts (map-reduce) path for the {articles} slot — design §2/§4.2/§4.4.
+        """Facts (map-reduce) path for the {articles} slot.
 
         Returns ``(facts_text, reduce_mode)``. ``facts_text`` is None to signal
-        D2 fail-open (caller falls back to raw): spec missing/broken, all-empty
+        fail-open (caller falls back to raw): spec missing/broken, all-empty
         facts, or facts overflow the budget even without quotes. When non-None,
         reduce_mode is "facts" (clean) or "facts_partial" (≥1 article failed to
         map but facts non-empty).

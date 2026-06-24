@@ -7,9 +7,12 @@ LLM. Composite PK ``(article_id, intent_id, schema_version)``:
 
 - ``article_id`` is the Qdrant point UUID of the cited article.
 - ``intent_id`` scopes the extraction to the intent whose spec drove it.
-- ``schema_version`` = ``sha256(spec.md + spec.json)[:16]`` — editing the spec
-  files changes the version so a stale extraction is never served against a new
-  spec (the old row simply stops matching once the spec files change).
+- ``schema_version`` is computed by ``spec.load_spec`` as a short hash over the
+  extraction prompt, the spec's *semantic projection* (field names/types/enums —
+  not the display-only ``role``/``label``), and the extractor prompt version.
+  Editing the semantics (or bumping the extractor) changes the version so a stale
+  extraction is never served against a new spec; a pure ``role``/``label`` edit
+  deliberately does not (it cannot change what was extracted).
 
 Override re-extraction uses ``INSERT OR REPLACE``: the row is replaced and
 ``created_at`` re-defaults to now (so the UI can show the refreshed timestamp).
@@ -139,17 +142,3 @@ async def extraction_exists(
         (article_id, intent_id, schema_version),
     ) as cur:
         return await cur.fetchone() is not None
-
-
-async def count_for(
-    conn: aiosqlite.Connection,
-    intent_id: int,
-    schema_version: str,
-) -> int:
-    """Number of cached extractions for an intent at a given spec version."""
-    async with conn.execute(
-        "SELECT COUNT(*) FROM mr_extraction_cache WHERE intent_id=? AND schema_version=?",
-        (intent_id, schema_version),
-    ) as cur:
-        row = await cur.fetchone()
-    return int(row[0]) if row else 0

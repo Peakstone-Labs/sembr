@@ -17,9 +17,9 @@ _EXTRACT_PROMPT_VERSION)[:16]``. The json is hashed through a *semantic
 projection* (``_semantic_projection``) that drops display-only field keys
 (``role`` / ``label`` / ``enum``) so editing them does NOT bump the version or
 needlessly re-extract the cache; only semantic edits (field name/type/
-description, section keys) and the prompt (``md``) invalidate it (spec-autogen
-design D4). ``compile_validator`` turns
-the spec into a dynamic Pydantic model (no per-intent code — mirrors the probe's
+description, section keys) and the prompt (``md``) invalidate it.
+``compile_validator`` turns the spec into a dynamic Pydantic model (no per-intent
+code — mirrors the probe's
 ``compile_run.compile_models``); ``extract_one`` runs one article through the
 backend's structured() with the spec prompt + the model's JSON schema embedded.
 
@@ -37,9 +37,9 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-import html2text as _h2t
 from pydantic import BaseModel, Field, create_model
 
+from sembr.summarizer.htmltext import to_plain_text
 from sembr.summarizer.llm.base import BaseLLMBackend
 from sembr.summarizer.templates import PROMPTS_DIR, _validate_name
 
@@ -75,12 +75,6 @@ _EXTRACT_PROMPT_VERSION = "5"
 
 # URLs are short; cap defensively so a pathological one can't bloat the prompt.
 _MAX_URL_CHARS = 300
-
-_h2t_converter = _h2t.HTML2Text()
-_h2t_converter.ignore_links = True
-_h2t_converter.ignore_images = True
-_h2t_converter.ignore_emphasis = False
-_h2t_converter.body_width = 0  # no line wrapping
 
 
 class SpecError(ValueError):
@@ -235,7 +229,7 @@ def load_spec(name: str, prompts_dir: Path = PROMPTS_DIR) -> GeneratedSpec:
     # Hash the *semantic* projection of the json (not raw bytes) so display-only
     # edits (role/label/enum) don't bump the version, and fold the prompt-scaffold
     # version in so a code-side prompt change still invalidates the cache.
-    # See _semantic_projection and _EXTRACT_PROMPT_VERSION (spec-autogen design D4).
+    # See _semantic_projection and _EXTRACT_PROMPT_VERSION.
     schema_version = hashlib.sha256(
         md_bytes + _semantic_projection(data) + _EXTRACT_PROMPT_VERSION.encode("utf-8")
     ).hexdigest()[:16]
@@ -308,12 +302,6 @@ def compile_validator(spec: GeneratedSpec) -> type[BaseModel]:
 # --------------------------------------------------------------------------- #
 # Per-article extraction (map)
 # --------------------------------------------------------------------------- #
-def _to_plain_text(raw: str) -> str:
-    if "<" in raw and ">" in raw:
-        return _h2t_converter.handle(raw).strip()
-    return raw.strip()
-
-
 def build_extract_prompt(
     validator: type[BaseModel],
     *,
@@ -336,7 +324,7 @@ def build_extract_prompt(
     Wording changes here must bump ``_EXTRACT_PROMPT_VERSION``.
     """
     schema = json.dumps(validator.model_json_schema(), ensure_ascii=False)
-    plain = _to_plain_text(body)[:_MAX_EXTRACT_BODY_CHARS]
+    plain = to_plain_text(body)[:_MAX_EXTRACT_BODY_CHARS]
     # Cap the title too so a pathologically long one can't dodge the body cap.
     safe_title = (title or "")[:_MAX_TITLE_CHARS]
     topic = f"用户追踪的主题：\n> {intent_text}\n\n" if intent_text.strip() else ""

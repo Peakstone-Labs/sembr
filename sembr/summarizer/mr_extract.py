@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from sembr.dashboard.read_model import get_article_detail
 from sembr.db.mr_cache import extraction_exists, get_extraction, put_extraction
 from sembr.db.sqlite import get_conn
-from sembr.summarizer.mr_extract_tasks import ExtractTask, release_row
+from sembr.summarizer.mr_extract_tasks import ExtractTask, forget_row_lock, release_row
 from sembr.summarizer.spec import GeneratedSpec, extract_one
 
 logger = logging.getLogger(__name__)
@@ -168,6 +168,10 @@ async def run_extract_sources(
                 row_id,
                 type(exc).__name__,
             )
+        # Drop the now-released lock entry so _row_locks doesn't grow one entry
+        # per digest ever extracted (mirrors backfill_tasks.forget_intent_lock,
+        # which is called on the matching intent-delete lifecycle). No-op while held.
+        forget_row_lock(row_id)
 
 
 async def map_for_reduce(
@@ -183,14 +187,14 @@ async def map_for_reduce(
     concurrency: int,
     feed_name_map: dict[int, str] | None = None,
 ) -> tuple[list[dict], int]:
-    """Map recalled articles → render-ready records for reduce (design §2/§5).
+    """Map recalled articles → render-ready records for reduce.
 
     Returns ``(records, n_failed)``. One record per match, in input order, each
     stamped ``index`` = 1-based recall position so the rendered ``[N]`` aligns
     with ``summary_history.citations``. Cache hit → reuse; miss → ``extract_one``
-    (D4 map-on-recall) → ``put_extraction``. Per-article failure or empty body →
+    (map-on-recall) → ``put_extraction``. Per-article failure or empty body →
     record marked ``no_relevant_content`` (never raised) and counted in
-    ``n_failed``; one bad article never sinks the run (D2). ``n_failed`` drives
+    ``n_failed``; one bad article never sinks the run. ``n_failed`` drives
     the ``facts`` vs ``facts_partial`` reduce_mode in the caller.
 
     Bodies come from the match payload (recall already carries them) — no Qdrant
@@ -220,7 +224,7 @@ async def map_for_reduce(
         # record, never escape through asyncio.gather and sink the run. The outer
         # _build_facts_articles_text deliberately does NOT guard map_for_reduce,
         # so this per-article isolation is what upholds the "failure doesn't sink
-        # the run" + D2 fail-open guarantee.
+        # the run" fail-open guarantee.
         try:
             # Cheap cache read stays outside the semaphore so a fully-cached recall
             # never occupies provider slots (mirrors _extract_citation's skip check).
