@@ -243,8 +243,10 @@ async def test_reduce_mode_fallback_raw_when_all_fail(env):
 async def test_facts_over_budget_dequote_then_fallback_raw(env):
     """§4.4: facts map OK but overflow budget → dequote → still over → fallback_raw.
 
-    PREAMBLE_V2 alone is >800 chars, so a ~1000-char prompt budget can't fit facts
-    even after dropping quotes, while the tiny raw body still fits."""
+    What decides the terminal state: after dropping quotes, PREAMBLE_V2_NOQUOTE
+    (~826 chars) alone already exceeds facts_budget (~811 at max_prompt_chars=1000),
+    so even quote-stripped facts overflow → fallback_raw, while the tiny raw body
+    still fits the raw path."""
     llm = _facts_llm()
     llm.max_prompt_chars = 1000
     pipeline = _pipeline(env, llm, extraction_enabled=True)
