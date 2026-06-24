@@ -263,18 +263,18 @@ async def test_t5c_partial_failure_uses_ok_facts_not_fallback(env):
 
     assert result is not None
     assert result.summary, "partial failure still produces a non-empty summary"
-    assert (
-        result.reduce_mode == "facts_partial"
-    ), f"partial map failure must be facts_partial, got {result.reduce_mode}"
+    assert result.reduce_mode == "facts_partial", (
+        f"partial map failure must be facts_partial, got {result.reduce_mode}"
+    )
     prompt = _prompt_of(llm)
     # Facts path used (PREAMBLE_V2 present) — NOT the raw path
     from sembr.summarizer.facts_render import PREAMBLE_V2
 
     assert PREAMBLE_V2 in prompt, "facts path must be used for partial failure"
     # Raw body format must NOT appear (not a fallback)
-    assert (
-        "Source: https://example.com/a1" not in prompt
-    ), "raw article body format must not appear in partial-facts path"
+    assert "Source: https://example.com/a1" not in prompt, (
+        "raw article body format must not appear in partial-facts path"
+    )
 
 
 async def test_t5d_partial_failure_failed_article_body_not_in_facts(env):
@@ -297,9 +297,9 @@ async def test_t5d_partial_failure_failed_article_body_not_in_facts(env):
     assert result.reduce_mode == "facts_partial"
     prompt = _prompt_of(llm)
     # The failed article's raw body must NOT appear in the facts prompt
-    assert (
-        failed_body not in prompt
-    ), "Failed article's raw body text must not be mixed into the facts prompt"
+    assert failed_body not in prompt, (
+        "Failed article's raw body text must not be mixed into the facts prompt"
+    )
 
 
 async def test_t5e_all_empty_body_fallopen_produces_digest(env):
@@ -388,9 +388,9 @@ async def test_t6b_failed_article_preserves_index_alignment(env):
     # citations[0]=a1, citations[1]=a2, citations[2]=a3
     cit_aids = [c.article_id for c in result.citations]
     assert cit_aids[1] == "a2", f"citations[1] (index [2]) must be a2, got {cit_aids[1]}"
-    assert (
-        cit_aids[2] == "a3"
-    ), f"citations[2] (index [3]) must be a3, not shifted, got {cit_aids[2]}"
+    assert cit_aids[2] == "a3", (
+        f"citations[2] (index [3]) must be a3, not shifted, got {cit_aids[2]}"
+    )
 
 
 async def test_t6c_citations_order_matches_recall_order(env):
@@ -422,9 +422,9 @@ async def test_t6c_citations_order_matches_recall_order(env):
     pos_newest = prompt.find("[1]")
     pos_middle = prompt.find("[2]")
     pos_oldest = prompt.find("[3]")
-    assert (
-        pos_newest < pos_middle < pos_oldest
-    ), "Article list in facts must list [1] newest before [2] middle before [3] oldest"
+    assert pos_newest < pos_middle < pos_oldest, (
+        "Article list in facts must list [1] newest before [2] middle before [3] oldest"
+    )
 
 
 async def test_t6d_index_to_article_id_correspondence(env):
@@ -482,15 +482,15 @@ async def test_t6d_index_to_article_id_correspondence(env):
     prompt = _prompt_of(llm)
     # [1] must be associated with OrgA1 (which came from a1)
     # find "[1] OrgA1" in the article list section
-    assert (
-        "[1] OrgA1" in prompt
-    ), "Index [1] in article list must correspond to OrgA1 (citations[0]=a1)"
-    assert (
-        "[2] OrgA2" in prompt
-    ), "Index [2] in article list must correspond to OrgA2 (citations[1]=a2)"
-    assert (
-        "[3] OrgA3" in prompt
-    ), "Index [3] in article list must correspond to OrgA3 (citations[2]=a3)"
+    assert "[1] OrgA1" in prompt, (
+        "Index [1] in article list must correspond to OrgA1 (citations[0]=a1)"
+    )
+    assert "[2] OrgA2" in prompt, (
+        "Index [2] in article list must correspond to OrgA2 (citations[1]=a2)"
+    )
+    assert "[3] OrgA3" in prompt, (
+        "Index [3] in article list must correspond to OrgA3 (citations[2]=a3)"
+    )
 
     # No out-of-range references
     refs = _refs_in_prompt(prompt)
@@ -539,7 +539,7 @@ async def test_t6e_no_relevant_article_does_not_add_spurious_ref(env):
         m = re.search(r"\[(\d+)\]", ln)
         if m:
             ref_in_claims.add(int(m.group(1)))
-    assert (
-        1 not in ref_in_claims
-    ), f"Failed article [1] must not appear in claim lines, found refs {ref_in_claims}"
+    assert 1 not in ref_in_claims, (
+        f"Failed article [1] must not appear in claim lines, found refs {ref_in_claims}"
+    )
     assert 2 in ref_in_claims, f"Good article [2] must have claims, found refs {ref_in_claims}"

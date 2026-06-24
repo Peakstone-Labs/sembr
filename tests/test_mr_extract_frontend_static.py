@@ -60,9 +60,9 @@ def test_render_is_spec_driven_not_fed_watch_coupled(intents_js: str) -> None:
         "regime_signal",
         "original_en",
     ):
-        assert (
-            hardcoded not in intents_js
-        ), f"{hardcoded!r} is hard-coded in intents.js — must be driven by spec field_meta"
+        assert hardcoded not in intents_js, (
+            f"{hardcoded!r} is hard-coded in intents.js — must be driven by spec field_meta"
+        )
     # roles/labels are consulted from the spec map served by the endpoint
     assert "field_meta" in intents_js
     assert "fieldMeta" in intents_js
@@ -277,20 +277,20 @@ def test_frontend_json_validation_is_drift_guard_only(intents_js: str) -> None:
     # authoritative validator lives server-side. Backend-only rule messages must
     # not appear in intents.js.
     for backend_only in ("保留 shell 名", "role 非法", "section key 缺失", "enum 类型须给取值"):
-        assert (
-            backend_only not in intents_js
-        ), f"{backend_only!r} duplicates a backend rule in intents.js — drift risk"
+        assert backend_only not in intents_js, (
+            f"{backend_only!r} duplicates a backend rule in intents.js — drift risk"
+        )
 
 
 def test_md_editor_is_overlay_and_labels_aligned(index_html: str) -> None:
     # md box uses the same overlay as json (highlightMarkdown), and both labels
     # share the equal-height class so the two editors align.
-    assert 'highlightMarkdown(advanced.mdText)' in index_html
+    assert "highlightMarkdown(advanced.mdText)" in index_html
     assert index_html.count("code-editor-label") >= 2
 
 
 def test_templates_editor_uses_shared_markdown_overlay(index_html: str) -> None:
     # The templates editor (dark theme) reuses the same overlay + shared highlighter.
-    assert 'highlightMarkdown(editor.content)' in index_html
+    assert "highlightMarkdown(editor.content)" in index_html
     assert "code-editor--grow" in index_html
     assert "codehl.js" in index_html  # shared module loaded

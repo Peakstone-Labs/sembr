@@ -225,9 +225,9 @@ def test_validate_each_error_rule(md, mutate, expect_loc_substr) -> None:
         data = mutate(data) if callable(mutate) else data
         issues = validate_spec_payload(md, json.dumps(data, ensure_ascii=False))
     assert has_errors(issues)
-    assert any(
-        expect_loc_substr in i.loc for i in issues if i.severity == "error"
-    ), f"no error at {expect_loc_substr!r}: {[(i.loc, i.msg) for i in issues]}"
+    assert any(expect_loc_substr in i.loc for i in issues if i.severity == "error"), (
+        f"no error at {expect_loc_substr!r}: {[(i.loc, i.msg) for i in issues]}"
+    )
 
 
 def test_validate_floor_and_source_org_warnings() -> None:

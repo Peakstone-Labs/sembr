@@ -240,18 +240,18 @@ def test_generate_spec_fields_have_role_and_label() -> None:
             model="test-model",
         )
 
-    md, json_obj = asyncio.get_event_loop().run_until_complete(run())
+    _md, json_obj = asyncio.get_event_loop().run_until_complete(run())
 
     valid_roles = {"content", "meta", "flag"}
 
     def check_fields(fields, scope):
         for f in fields:
-            assert (
-                f.get("role") in valid_roles
-            ), f"field {f.get('name')!r} in {scope}: role={f.get('role')!r} not in valid set"
-            assert (
-                f.get("label") and f["label"].strip()
-            ), f"field {f.get('name')!r} in {scope}: label is empty"
+            assert f.get("role") in valid_roles, (
+                f"field {f.get('name')!r} in {scope}: role={f.get('role')!r} not in valid set"
+            )
+            assert f.get("label") and f["label"].strip(), (
+                f"field {f.get('name')!r} in {scope}: label is empty"
+            )
 
     check_fields(json_obj.get("article_fields", []), "article_fields")
     check_fields(json_obj.get("common_claim_fields", []), "common_claim_fields")
@@ -331,9 +331,9 @@ def test_generate_spec_floor_injection_when_meta_omits_floor() -> None:
 
     _, json_obj = asyncio.get_event_loop().run_until_complete(run())
     present_names = {f["name"] for f in json_obj.get("common_claim_fields", [])}
-    assert _FLOOR_NAMES.issubset(
-        present_names
-    ), f"floor fields missing after injection: {_FLOOR_NAMES - present_names}"
+    assert _FLOOR_NAMES.issubset(present_names), (
+        f"floor fields missing after injection: {_FLOOR_NAMES - present_names}"
+    )
     # Each injected floor field must have role and label too
     for f in json_obj.get("common_claim_fields", []):
         if f["name"] in _FLOOR_NAMES:
@@ -462,9 +462,9 @@ def test_generate_with_digest_injects_summary(tmp_path: Path) -> None:
     # Verify the backend was called with a user message containing the digest content
     call_args = backend.structured.call_args
     user_msg = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
-    assert (
-        "Recent digest summary content" in user_msg
-    ), f"digest content should appear in meta-LLM prompt; got: {user_msg[:200]!r}"
+    assert "Recent digest summary content" in user_msg, (
+        f"digest content should appear in meta-LLM prompt; got: {user_msg[:200]!r}"
+    )
 
 
 def test_generate_with_digest_no_digest_returns_digest_available_false(tmp_path: Path) -> None:
@@ -835,9 +835,9 @@ def test_extraction_spec_endpoints_require_auth(
 
     # Must be 401 JSON, not 302 redirect
     assert resp.status_code == 401, f"{method} {path_suffix}: expected 401, got {resp.status_code}"
-    assert resp.headers.get("content-type", "").startswith(
-        "application/json"
-    ), f"{method} {path_suffix}: 401 should be JSON, not redirect"
+    assert resp.headers.get("content-type", "").startswith("application/json"), (
+        f"{method} {path_suffix}: 401 should be JSON, not redirect"
+    )
 
 
 def test_extraction_spec_endpoints_allow_valid_token(tmp_path: Path) -> None:
@@ -915,12 +915,12 @@ def test_save_does_not_modify_shared_fed_watch_spec(tmp_path: Path) -> None:
         assert (extraction_dir / f"intent-{intent_id}.json").is_file()
 
         # fed_watch files MUST be byte-for-byte unchanged
-        assert (
-            extraction_dir / "fed_watch.md"
-        ).read_bytes() == orig_md_bytes, "fed_watch.md was modified by save!"
-        assert (
-            extraction_dir / "fed_watch.json"
-        ).read_bytes() == orig_json_bytes, "fed_watch.json was modified by save!"
+        assert (extraction_dir / "fed_watch.md").read_bytes() == orig_md_bytes, (
+            "fed_watch.md was modified by save!"
+        )
+        assert (extraction_dir / "fed_watch.json").read_bytes() == orig_json_bytes, (
+            "fed_watch.json was modified by save!"
+        )
 
 
 def test_save_intent_spec_content_differs_from_fed_watch(tmp_path: Path) -> None:
