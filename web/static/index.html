@@ -1996,6 +1996,14 @@
             <span x-text="`Done ${historyView.extract.progress.done} · Skipped ${historyView.extract.progress.skipped} · Failed ${historyView.extract.progress.errors} / ${historyView.extract.progress.total}`"></span>
             <span x-show="historyView.extract.error" style="color:#d33;" x-text="' — ' + historyView.extract.error"></span>
           </div>
+          <div x-show="historyView.extract.errors.length > 0" style="font-size:0.75rem; margin-bottom:8px;">
+            <div class="muted" style="margin-bottom:2px;">Failed articles:</div>
+            <template x-for="err in historyView.extract.errors" :key="err.article_id">
+              <div style="padding:2px 0 2px 8px; border-left:2px solid #d33;">
+                <span class="mono" x-text="err.article_id"></span><span class="muted"> — </span><span style="color:#d33;" x-text="err.reason"></span>
+              </div>
+            </template>
+          </div>
           <table style="width:100%;">
             <thead>
               <tr><th style="width:32px;">#</th><th>Title</th><th style="width:70px;">Score</th><th style="width:64px;"></th></tr>
@@ -2918,7 +2926,7 @@
 
 <script src="/dashboard/feeds.js?v=6"></script>
 <script src="/dashboard/codehl.js?v=1"></script>
-<script src="/dashboard/intents.js?v=29"></script>
+<script src="/dashboard/intents.js?v=30"></script>
 <script src="/dashboard/templates.js?v=5"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=13"></script>
