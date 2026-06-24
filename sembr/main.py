@@ -70,6 +70,7 @@ from sembr.db.sqlite import close_sqlite, get_conn, init_sqlite
 from sembr.db.summary_history import (
     format_history_text,
     init_summary_history_table,
+    migrate_summary_history_add_reduce_mode,
     migrate_summary_history_unique_index,
     save_summary,
 )
@@ -116,10 +117,12 @@ async def _dispatch_notification(
         )
 
 
-async def _get_intent_prompt_ctx(intent_id: int) -> tuple[str, str, str, str, int | None]:
+async def _get_intent_prompt_ctx(
+    intent_id: int,
+) -> tuple[str, str, str, str, int | None, bool]:
     intent = await get_intent(get_conn(), intent_id)
     if intent is None:
-        return "default", "default", "", "zh", None
+        return "default", "default", "", "zh", None, False
     history_days = getattr(intent.schedule, "history_days", None)
     return (
         intent.system_template,
@@ -127,6 +130,7 @@ async def _get_intent_prompt_ctx(intent_id: int) -> tuple[str, str, str, str, in
         intent.text,
         intent.language,
         history_days,
+        intent.extraction_enabled,
     )
 
 
@@ -186,6 +190,9 @@ async def lifespan(app: FastAPI):
     # (intent_id, run_at); migrate any pre-existing duplicates and add the
     # UNIQUE index before the matcher / API can write.
     await migrate_summary_history_unique_index(conn)
+    # reduce: generation-path marker column (design §9) — added after the table
+    # exists, idempotent via duplicate-column suppression.
+    await migrate_summary_history_add_reduce_mode(conn)
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client, embedder)
@@ -318,6 +325,12 @@ async def lifespan(app: FastAPI):
             get_conn(), iid, days, now
         ),
         on_persist=lambda r: save_summary(get_conn(), r),
+        # Live (reduce_model, reduce_concurrency) for the facts/map-reduce branch
+        # — read fresh so dashboard tuning takes effect without a restart.
+        get_reduce_ctx=lambda: (
+            settings.effective_reduce_model,
+            settings.reduce_concurrency,
+        ),
     )
     app.state.on_match = pipeline.handle  # cron path: persist=True (default)
     # Event-mode flush uses on_match_event so history is not written for

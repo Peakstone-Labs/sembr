@@ -22,8 +22,21 @@ from typing import TYPE_CHECKING, Protocol
 import html2text as _h2t
 
 from sembr.summarizer import templates as _templates
+from sembr.summarizer.facts_render import PREAMBLE_V2_NOQUOTE, render_facts
 from sembr.summarizer.models import Citation, OnSummaryCallback, PrePushHook, SummaryResult
+from sembr.summarizer.mr_extract import map_for_reduce
+from sembr.summarizer.spec import (
+    SpecError,
+    SpecNotFoundError,
+    compile_validator,
+    load_spec,
+)
 from sembr.summarizer.templates import TemplateNotFoundError, TemplateRenderError
+
+# Fallback when no get_reduce_ctx is wired (e.g. a unit test that exercises the
+# facts branch without settings). Production always injects it. Mirrors
+# mr_extract._DEFAULT_CONCURRENCY.
+_DEFAULT_REDUCE_CONCURRENCY = 16
 
 if TYPE_CHECKING:
     from sembr.matcher.callback import Match
@@ -129,9 +142,13 @@ def _to_citation(m: Match, feed_name_map: dict[int, str] | None = None) -> Citat
 
 
 class IntentPromptCtxFetcher(Protocol):
-    async def __call__(self, intent_id: int) -> tuple[str, str, str, str, int | None]: ...
+    async def __call__(self, intent_id: int) -> tuple[str, str, str, str, int | None, bool]: ...
 
-    # Returns: (system_template_name, instruction_template_name, intent_text, language, history_days)
+    # Returns: (system_template_name, instruction_template_name, intent_text,
+    #           language, history_days, extraction_enabled).
+    # compute_summary unpacks tolerantly: a legacy 5-tuple (no extraction_enabled)
+    # is accepted and treated as extraction_enabled=False, so existing callers /
+    # test mocks returning 5-tuples keep working.
 
 
 class FeedNameFetcher(Protocol):
@@ -163,6 +180,7 @@ class SummaryPipeline:
         prompts_dir: Path = Path("/app/prompts"),
         get_history_text: Callable[[int, int, datetime | None], Awaitable[str]] | None = None,
         on_persist: OnSummaryCallback | None = None,
+        get_reduce_ctx: Callable[[], tuple[str, int]] | None = None,
     ) -> None:
         self._llm = llm
         self._on_summary: OnSummaryCallback = on_summary or log_summaries
@@ -173,6 +191,11 @@ class SummaryPipeline:
         self._prompts_dir = prompts_dir
         self._get_history_text = get_history_text
         self._on_persist = on_persist
+        # Live (model, concurrency) for the facts/map-reduce branch — a callable
+        # so dashboard tuning of reduce_model / reduce_concurrency takes effect
+        # without a restart (design §4.1). None → facts branch uses a default
+        # concurrency and the backend's own model.
+        self._get_reduce_ctx = get_reduce_ctx
 
     async def compute_summary(
         self,
@@ -224,21 +247,20 @@ class SummaryPipeline:
         intent_text: str = ""
         language: str = "zh"
         history_days: int | None = None
+        extraction_enabled: bool = False
         if self._get_intent_prompt_ctx is not None:
             try:
-                (
-                    system_tpl_name,
-                    instruction_tpl_name,
-                    intent_text,
-                    language,
-                    history_days,
-                ) = await self._get_intent_prompt_ctx(intent_id)
+                ctx = await self._get_intent_prompt_ctx(intent_id)
             except Exception:
                 logger.warning(
                     "SummaryPipeline: could not fetch prompt ctx for intent_id=%d, skipping tick",
                     intent_id,
                 )
                 return None
+            (system_tpl_name, instruction_tpl_name, intent_text, language, history_days) = ctx[:5]
+            # Tolerant unpack: a legacy 5-tuple (no extraction_enabled) is treated
+            # as extraction off, so existing callers / test mocks keep working.
+            extraction_enabled = bool(ctx[5]) if len(ctx) > 5 else False
             if not intent_text:
                 logger.warning(
                     "SummaryPipeline: empty intent_text for intent_id=%d, skipping",
@@ -343,29 +365,51 @@ class SummaryPipeline:
             - separator_overhead
         )
 
-        if body_budget < 0:
-            logger.error(
-                "SummaryPipeline: intent_id=%d max_prompt_chars=%d cannot fit "
-                "system+instruction+%d article headers (deficit=%d chars); "
-                "skipping tick. Reduce template size or raise SEMBR_LLM_MAX_PROMPT_CHARS.",
-                intent_id,
-                self._llm.max_prompt_chars,
-                n_articles,
-                -body_budget,
+        # Articles slot: facts (map-reduce) when extraction is on for this intent,
+        # else raw water-filled bodies. The raw branch below is byte-for-byte the
+        # original path; extraction_enabled=False never enters the facts branch,
+        # so the keep-path stays behaviourally unchanged (design §1 hard约束).
+        articles_text: str | None = None
+        reduce_mode = "raw"
+        if extraction_enabled:
+            facts_budget = total_budget - len(system_prompt) - len(instruction_wrapper)
+            facts_text, mode = await self._build_facts_articles_text(
+                ordered,
+                intent_id=intent_id,
+                intent_text=intent_text,
+                feed_name_map=feed_name_map,
+                budget=facts_budget,
             )
-            return None
+            if facts_text is not None:
+                articles_text = facts_text
+                reduce_mode = mode
+            else:
+                reduce_mode = "facts_fallback_raw"  # D2 fail-open → raw path below
 
-        articles_text, n_truncated, longest_cap = _build_articles_text(ordered, body_budget)
-        if n_truncated > 0:
-            logger.warning(
-                "SummaryPipeline: intent_id=%d batch_size=%d truncated %d article "
-                "body/bodies to fit max_prompt_chars=%d (water-fill cap=%d chars)",
-                intent_id,
-                n_articles,
-                n_truncated,
-                self._llm.max_prompt_chars,
-                longest_cap,
-            )
+        if articles_text is None:
+            if body_budget < 0:
+                logger.error(
+                    "SummaryPipeline: intent_id=%d max_prompt_chars=%d cannot fit "
+                    "system+instruction+%d article headers (deficit=%d chars); "
+                    "skipping tick. Reduce template size or raise SEMBR_LLM_MAX_PROMPT_CHARS.",
+                    intent_id,
+                    self._llm.max_prompt_chars,
+                    n_articles,
+                    -body_budget,
+                )
+                return None
+
+            articles_text, n_truncated, longest_cap = _build_articles_text(ordered, body_budget)
+            if n_truncated > 0:
+                logger.warning(
+                    "SummaryPipeline: intent_id=%d batch_size=%d truncated %d article "
+                    "body/bodies to fit max_prompt_chars=%d (water-fill cap=%d chars)",
+                    intent_id,
+                    n_articles,
+                    n_truncated,
+                    self._llm.max_prompt_chars,
+                    longest_cap,
+                )
 
         try:
             prompt = _templates.render_instruction_from_raw(
@@ -393,7 +437,104 @@ class SummaryPipeline:
             citations=citations,
             primary=citations[0] if citations else None,
             other_sources=citations[1:] if len(citations) > 1 else [],
+            reduce_mode=reduce_mode,
         )
+
+    async def _build_facts_articles_text(
+        self,
+        ordered: list,
+        *,
+        intent_id: int,
+        intent_text: str,
+        feed_name_map: dict[int, str],
+        budget: int,
+    ) -> tuple[str | None, str]:
+        """Facts (map-reduce) path for the {articles} slot — design §2/§4.2/§4.4.
+
+        Returns ``(facts_text, reduce_mode)``. ``facts_text`` is None to signal
+        D2 fail-open (caller falls back to raw): spec missing/broken, all-empty
+        facts, or facts overflow the budget even without quotes. When non-None,
+        reduce_mode is "facts" (clean) or "facts_partial" (≥1 article failed to
+        map but facts non-empty).
+        """
+        try:
+            spec = load_spec(f"intent-{intent_id}", self._prompts_dir)
+        except SpecNotFoundError:
+            # extraction_enabled but no spec yet — likely a normal transition
+            # state (toggle on before generating the spec). WARNING, fail-open.
+            logger.warning(
+                "SummaryPipeline: intent_id=%d has extraction_enabled but no spec "
+                "intent-%d — falling back to raw articles",
+                intent_id,
+                intent_id,
+            )
+            return None, "facts_fallback_raw"
+        except SpecError:
+            # Spec present but malformed (corrupt JSON / bad shape) — needs ops
+            # attention. ERROR, fail-open.
+            logger.error(
+                "SummaryPipeline: intent_id=%d extraction spec is malformed — "
+                "falling back to raw articles",
+                intent_id,
+                exc_info=True,
+            )
+            return None, "facts_fallback_raw"
+
+        validator = compile_validator(spec)
+        if self._get_reduce_ctx is not None:
+            model, concurrency = self._get_reduce_ctx()
+        else:
+            model = getattr(self._llm, "model", "") or ""
+            concurrency = _DEFAULT_REDUCE_CONCURRENCY
+
+        records, n_failed = await map_for_reduce(
+            ordered,
+            intent_id=intent_id,
+            intent_text=intent_text,
+            spec=spec,
+            validator=validator,
+            schema_version=spec.schema_version,
+            llm=self._llm,
+            model=model,
+            concurrency=concurrency,
+            feed_name_map=feed_name_map,
+        )
+
+        if not any(r.get("claims") for r in records):
+            # All articles failed / no content → no facts to inject. Fail-open.
+            logger.warning(
+                "SummaryPipeline: intent_id=%d produced no facts "
+                "(n_articles=%d, n_failed=%d) — falling back to raw articles",
+                intent_id,
+                len(ordered),
+                n_failed,
+            )
+            return None, "facts_fallback_raw"
+
+        mode = "facts_partial" if n_failed > 0 else "facts"
+        facts_text = render_facts(records, spec)
+        if len(facts_text) > budget:
+            # Budget guard (§4.4): drop quotes AND swap to the no-quote preamble
+            # so it never claims "原文引语" the facts no longer carry. Rare —
+            # facts are ~76% smaller than raw bodies.
+            facts_text = render_facts(
+                records, spec, include_quote=False, preamble=PREAMBLE_V2_NOQUOTE
+            )
+            logger.warning(
+                "SummaryPipeline: intent_id=%d facts over budget — re-rendered "
+                "without quotes (%d chars, budget=%d)",
+                intent_id,
+                len(facts_text),
+                budget,
+            )
+            if len(facts_text) > budget:
+                logger.warning(
+                    "SummaryPipeline: intent_id=%d facts still over budget after "
+                    "de-quote — falling back to raw articles",
+                    intent_id,
+                )
+                return None, "facts_fallback_raw"
+        return facts_text, mode
 
     async def handle(self, matches: list[Match], *, persist: bool = True) -> None:
         """on_match callback entry point — must never raise.

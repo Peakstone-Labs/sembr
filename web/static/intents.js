@@ -814,6 +814,26 @@ function intentsTab() {
       return s.length > 120 ? s.slice(0, 120) + '…' : s;
     },
 
+    // ── reduce_mode badge (design §9): which path produced this digest, so a
+    // fail-open degradation is visible at a glance instead of in the logs.
+    // null/unknown → no badge.
+    reduceModeBadge(mode) {
+      return { raw: 'raw', facts: 'facts', facts_partial: 'partial',
+               facts_fallback_raw: 'fallback' }[mode] || '';
+    },
+    reduceModeClass(mode) {
+      return { facts: 'rm-ok', facts_partial: 'rm-warn',
+               facts_fallback_raw: 'rm-bad', raw: 'rm-neutral' }[mode] || '';
+    },
+    reduceModeTitle(mode) {
+      return {
+        raw: '原文直喂（未开启结构化抽取）',
+        facts: 'map-reduce：结构化 facts 注入',
+        facts_partial: 'facts 注入，但部分文章抽取失败（降级）',
+        facts_fallback_raw: '降级：开启了抽取但回退到原文直喂',
+      }[mode] || '';
+    },
+
     // Format a summary_history.run_at (UTC ISO string) in the intent's
     // configured timezone as "M/D H:MM" — no year, no timezone label.
     // Used by the History expand-row table, the View modal title, and the

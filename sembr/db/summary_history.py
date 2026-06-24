@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import aiosqlite
@@ -31,7 +32,8 @@ async def init_summary_history_table(conn: aiosqlite.Connection) -> None:
             intent_id   INTEGER  NOT NULL REFERENCES intents(id) ON DELETE CASCADE,
             run_at      TEXT     NOT NULL,
             summary     TEXT     NOT NULL,
-            citations   TEXT     NOT NULL DEFAULT '[]'
+            citations   TEXT     NOT NULL DEFAULT '[]',
+            reduce_mode TEXT
         )
         """
     )
@@ -80,6 +82,24 @@ async def migrate_summary_history_unique_index(conn: aiosqlite.Connection) -> No
         )
 
 
+async def migrate_summary_history_add_reduce_mode(conn: aiosqlite.Connection) -> None:
+    """Add ``summary_history.reduce_mode`` — the generation-path marker (design §9).
+
+    Real new column for existing prod DBs so fail-open degradation is queryable
+    (``WHERE reduce_mode='facts_fallback_raw'``) and surfaced as a dashboard
+    badge. Idempotent via duplicate-column suppression (mirrors
+    ``db/intents.py`` ALTER migrations). Old rows keep NULL → rendered as
+    "unknown". Safe on every startup; must run after
+    ``init_summary_history_table``.
+    """
+    try:
+        await conn.execute("ALTER TABLE summary_history ADD COLUMN reduce_mode TEXT")
+        await conn.commit()
+    except sqlite3.OperationalError as exc:
+        if "duplicate column" not in str(exc).lower():
+            raise
+
+
 async def save_summary(
     conn: aiosqlite.Connection,
     result: SummaryResult,
@@ -102,8 +122,9 @@ async def save_summary(
     row_id: int | None = None
     async with transaction() as txn:
         async with txn.execute(
-            "INSERT INTO summary_history (intent_id, run_at, summary, citations) VALUES (?, ?, ?, ?)",
-            (result.intent_id, run_at, result.summary, citations_json),
+            "INSERT INTO summary_history (intent_id, run_at, summary, citations, reduce_mode) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (result.intent_id, run_at, result.summary, citations_json, result.reduce_mode),
         ) as cur:
             row_id = cur.lastrowid
     assert row_id is not None, "INSERT must yield lastrowid"
@@ -126,8 +147,9 @@ async def save_summary_or_skip(
     inserted = False
     async with transaction() as txn:
         async with txn.execute(
-            "INSERT OR IGNORE INTO summary_history (intent_id, run_at, summary, citations) VALUES (?, ?, ?, ?)",
-            (result.intent_id, run_at, result.summary, citations_json),
+            "INSERT OR IGNORE INTO summary_history (intent_id, run_at, summary, citations, reduce_mode) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (result.intent_id, run_at, result.summary, citations_json, result.reduce_mode),
         ) as cur:
             inserted = cur.rowcount == 1
     return inserted
@@ -148,7 +170,7 @@ async def list_summaries(
     rows: list[dict] = []
     async with conn.execute(
         """
-        SELECT id, intent_id, run_at, summary, citations
+        SELECT id, intent_id, run_at, summary, citations, reduce_mode
         FROM summary_history
         WHERE intent_id = ?
         ORDER BY run_at DESC
@@ -168,6 +190,7 @@ async def list_summaries(
                     "run_at": row[2],
                     "summary": row[3],
                     "citations": citations,
+                    "reduce_mode": row[5],
                 }
             )
     return rows
@@ -184,7 +207,7 @@ async def get_summary(
     can't be read through the wrong intent's endpoint.
     """
     async with conn.execute(
-        "SELECT id, intent_id, run_at, summary, citations "
+        "SELECT id, intent_id, run_at, summary, citations, reduce_mode "
         "FROM summary_history WHERE id = ? AND intent_id = ?",
         (row_id, intent_id),
     ) as cur:
@@ -201,6 +224,7 @@ async def get_summary(
         "run_at": row[2],
         "summary": row[3],
         "citations": citations,
+        "reduce_mode": row[5],
     }
 
 
@@ -220,7 +244,7 @@ async def list_summaries_between(
     rows: list[dict] = []
     async with conn.execute(
         """
-        SELECT id, intent_id, run_at, summary, citations
+        SELECT id, intent_id, run_at, summary, citations, reduce_mode
         FROM summary_history
         WHERE intent_id = ?
           AND run_at >= ?
@@ -241,6 +265,7 @@ async def list_summaries_between(
                     "run_at": row[2],
                     "summary": row[3],
                     "citations": citations,
+                    "reduce_mode": row[5],
                 }
             )
     return rows

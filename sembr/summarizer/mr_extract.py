@@ -21,7 +21,7 @@ import logging
 from datetime import UTC, datetime
 
 from sembr.dashboard.read_model import get_article_detail
-from sembr.db.mr_cache import extraction_exists, put_extraction
+from sembr.db.mr_cache import extraction_exists, get_extraction, put_extraction
 from sembr.db.sqlite import get_conn
 from sembr.summarizer.mr_extract_tasks import ExtractTask, release_row
 from sembr.summarizer.spec import GeneratedSpec, extract_one
@@ -168,3 +168,113 @@ async def run_extract_sources(
                 row_id,
                 type(exc).__name__,
             )
+
+
+async def map_for_reduce(
+    matches: list,
+    *,
+    intent_id: int,
+    intent_text: str,
+    spec: GeneratedSpec,
+    validator: type,
+    schema_version: str,
+    llm,
+    model: str,
+    concurrency: int,
+    feed_name_map: dict[int, str] | None = None,
+) -> tuple[list[dict], int]:
+    """Map recalled articles → render-ready records for reduce (design §2/§5).
+
+    Returns ``(records, n_failed)``. One record per match, in input order, each
+    stamped ``index`` = 1-based recall position so the rendered ``[N]`` aligns
+    with ``summary_history.citations``. Cache hit → reuse; miss → ``extract_one``
+    (D4 map-on-recall) → ``put_extraction``. Per-article failure or empty body →
+    record marked ``no_relevant_content`` (never raised) and counted in
+    ``n_failed``; one bad article never sinks the run (D2). ``n_failed`` drives
+    the ``facts`` vs ``facts_partial`` reduce_mode in the caller.
+
+    Bodies come from the match payload (recall already carries them) — no Qdrant
+    round-trip, unlike the digest-citation extract path (``run_extract_sources``).
+    Distinct from that path: no ``ExtractTask`` / per-row lock (there is no
+    history row yet — the digest is mid-computation).
+    """
+    conn = get_conn()
+    feed_name_map = feed_name_map or {}
+    sem = asyncio.Semaphore(max(1, concurrency))
+    records: list[dict | None] = [None] * len(matches)
+    n_failed = 0
+
+    async def _one(i: int, match) -> None:
+        nonlocal n_failed
+        payload = getattr(match, "payload", None) or {}
+        source_name = feed_name_map.get(payload.get("feed_id", 0))
+        published_at = payload.get("published_at")
+        # index/source_name/published_at are attached at runtime (not part of the
+        # extraction shell); render_facts reads them for the article list + [N].
+        base = {"index": i + 1, "source_name": source_name, "published_at": published_at}
+        article_id = getattr(match, "article_id", None)
+
+        # Cheap cache read stays outside the semaphore so a fully-cached recall
+        # never occupies provider slots (mirrors _extract_citation's skip check).
+        cached = (
+            await get_extraction(conn, article_id, intent_id, schema_version)
+            if article_id
+            else None
+        )
+        if cached is not None:
+            records[i] = {
+                **cached["extraction"],
+                **base,
+                "published_at": cached.get("published_at") or published_at,
+            }
+            return
+
+        title = payload.get("title") or ""
+        body = payload.get("body") or ""
+        if not article_id or not body.strip():
+            # Empty/missing body: can't map → empty record (no LLM call), counts
+            # as a degradation so the caller can flag facts_partial.
+            n_failed += 1
+            records[i] = {**base, "no_relevant_content": True, "claims": []}
+            return
+
+        async with sem:
+            try:
+                result = await extract_one(
+                    llm,
+                    spec,
+                    validator,
+                    title=title,
+                    body=body,
+                    model=model,
+                    intent_text=intent_text,
+                    published_at=published_at,
+                    url=payload.get("url"),
+                    source_name=source_name,
+                )
+                extraction = result.model_dump()
+                await put_extraction(
+                    conn,
+                    article_id=article_id,
+                    intent_id=intent_id,
+                    schema_version=schema_version,
+                    extraction=extraction,
+                    title=title,
+                    source_name=source_name,
+                    published_at=published_at,
+                )
+                records[i] = {**extraction, **base}
+            except Exception as exc:
+                # Per-article failure (LLM 5xx after retries, schema miss after
+                # repair). Record empty + count; never sink the run.
+                n_failed += 1
+                records[i] = {**base, "no_relevant_content": True, "claims": []}
+                logger.warning(
+                    "map_for_reduce: extract failed for article=%s intent=%d: %s",
+                    article_id,
+                    intent_id,
+                    str(exc)[:200],
+                )
+
+    await asyncio.gather(*(_one(i, m) for i, m in enumerate(matches)))
+    return [r for r in records if r is not None], n_failed

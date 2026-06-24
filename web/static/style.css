@@ -581,6 +581,23 @@ input::placeholder { color: var(--text-dim); }
   font-variant-numeric: tabular-nums;
 }
 
+/* reduce_mode badge (design §9): generation-path marker on history rows so a
+   fail-open degradation (fallback / partial) is visible at a glance. */
+.rm-badge {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 600;
+  padding: 0 6px;
+  margin-left: 6px;
+  border-radius: 100px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.rm-ok      { background: #e3f5e3; color: #1a7f1a; }
+.rm-warn    { background: #fff3d6; color: #9a6a00; }
+.rm-bad     { background: #fde2e2; color: #c0392b; }
+.rm-neutral { background: var(--bg-secondary); color: var(--text-secondary); }
+
 .sub-tab-btn.active .count-badge {
   background: rgba(255,255,255,0.18);
   color: #ffffff;

@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=19">
+<link rel="stylesheet" href="/dashboard/style.css?v=20">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -1284,7 +1284,13 @@
                   <tbody>
                     <template x-for="row in expanded.rows" :key="row.id">
                       <tr>
-                        <td class="mono" x-text="fmtHistoryRunAt(row.run_at, intent.timezone)"></td>
+                        <td class="mono">
+                          <span x-text="fmtHistoryRunAt(row.run_at, intent.timezone)"></span>
+                          <span x-show="reduceModeBadge(row.reduce_mode)" class="rm-badge"
+                                :class="reduceModeClass(row.reduce_mode)"
+                                :title="reduceModeTitle(row.reduce_mode)"
+                                x-text="reduceModeBadge(row.reduce_mode)"></span>
+                        </td>
                         <td x-text="historySnippet(row)"></td>
                         <td class="mono" x-text="(row.citations || []).length"></td>
                         <td>
@@ -1964,6 +1970,10 @@
       <div class="modal-header">
         <span class="modal-title">
           History · <span class="mono" x-text="fmtHistoryRunAt(historyView.row?.run_at, historyView.timezone)"></span>
+          <span x-show="reduceModeBadge(historyView.row?.reduce_mode)" class="rm-badge"
+                :class="reduceModeClass(historyView.row?.reduce_mode)"
+                :title="reduceModeTitle(historyView.row?.reduce_mode)"
+                x-text="reduceModeBadge(historyView.row?.reduce_mode)"></span>
         </span>
         <button class="modal-close" @click="closeHistoryView()">✕</button>
       </div>
@@ -2908,7 +2918,7 @@
 
 <script src="/dashboard/feeds.js?v=6"></script>
 <script src="/dashboard/codehl.js?v=1"></script>
-<script src="/dashboard/intents.js?v=28"></script>
+<script src="/dashboard/intents.js?v=29"></script>
 <script src="/dashboard/templates.js?v=5"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=13"></script>
