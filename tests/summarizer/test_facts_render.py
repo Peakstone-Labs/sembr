@@ -158,3 +158,49 @@ def test_false_flag_and_empty_values_still_dropped() -> None:
     assert "none_v=" not in out
     assert "empty_list=" not in out
     assert "kept=yes" in out
+
+
+def test_structured_dict_field_renders_as_key_value_not_repr() -> None:
+    """A structured field (list of dicts, e.g. metrics) renders as compact
+    key:value pairs — never a raw Python dict repr leaking into the facts."""
+    records = [
+        {
+            "index": 1,
+            "source_org": "Fed",
+            "published_at": "2026-06-01",
+            "claims": [
+                {
+                    "section": "facts",
+                    "text": "inflation cooled",
+                    "metrics": [
+                        {"name": "CPI", "value": "2.85%", "unit": "%", "period": "yoy"},
+                        {"name": "core", "value": "3.1%"},
+                    ],
+                },
+            ],
+        }
+    ]
+    out = render_facts(records, _SPEC)
+    assert "name:CPI value:2.85% unit:% period:yoy" in out
+    assert "name:core value:3.1%" in out
+    assert "{'name'" not in out  # not a raw Python dict repr
+
+
+def test_quote_omitted_when_identical_to_text() -> None:
+    """When an (English) source's restatement equals the verbatim quote, the
+    〔原文〕 line is redundant and dropped; a differing quote still renders."""
+    records = [
+        {
+            "index": 1,
+            "source_org": "Fed",
+            "published_at": "2026-06-01",
+            "claims": [
+                {"section": "facts", "text": "Rates held at 5.25%", "quote": "Rates held at 5.25%"},
+                {"section": "facts", "text": "yields rose", "quote": "yields rose 10bp"},
+            ],
+        }
+    ]
+    out = render_facts(records, _SPEC)
+    assert '〔原文: "Rates held at 5.25%"〕' not in out  # identical → suppressed
+    assert '〔原文: "yields rose 10bp"〕' in out  # differing → shown
+    assert "Rates held at 5.25%" in out  # restatement text always renders

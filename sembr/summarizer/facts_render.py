@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Render pre-extracted structured facts into the {articles} slot for reduce.
 
-Production form = VQP (probe-results.md §7): each claim carries its verbatim
+Production form = VQP (verbatim quote per claim): each claim carries its verbatim
 source-language ``quote`` and a general anti-hallucination preamble
 (``PREAMBLE_V2``) is prepended. The injection probe's render_facts dropped quote
 (it sat in ``_RESERVED``); production MUST render it — rendering the quote is
@@ -14,27 +14,24 @@ renderer is spec-agnostic — it only reads the fixed Article shell (source_org 
 thesis / claims[].section/text/quote + arbitrary spec fields) so any intent's
 spec works with zero per-intent code.
 
-``include_quote=False`` + ``PREAMBLE_V2_NOQUOTE`` is the budget-guard fallback
-(design §4.4): when the VQP facts text would overflow the prompt budget, the
+``include_quote=False`` + ``PREAMBLE_V2_NOQUOTE`` is the budget-guard fallback:
+when the VQP facts text would overflow the prompt budget, the
 caller re-renders without quotes AND swaps to the no-quote preamble so the
 preamble never claims "原文引语" that the facts block no longer contains.
 """
 
 from __future__ import annotations
 
-from sembr.summarizer.spec import GeneratedSpec
-
-# Claim keys owned by the fixed shell or attached at runtime — never rendered as
-# an extra "(field=value)" tag. Mirrors spec._RESERVED.
-_RESERVED = frozenset(
-    {"section", "text", "quote", "article_idx", "index", "source_name", "published_at"}
-)
+# _RESERVED: claim keys owned by the fixed shell or attached at runtime — never
+# rendered as an extra "(field=value)" tag. Imported from spec (single source of
+# truth) so the validator and the renderer can never drift on what's reserved.
+from sembr.summarizer.spec import _RESERVED, GeneratedSpec
 
 # General anti-hallucination preamble, prepended INSIDE the facts text (not the
 # template layer) so it never conflicts with a user's custom instruction
-# template. §7 core 6 clauses + 3 round-2 guards (over-attribution / language /
-# delta-label). Verbatim from probe-results.md §7 — edits here change reduce
-# output quality; keep in sync with the probe conclusion.
+# template. Core 6 clauses + 3 round-2 guards (over-attribution / language /
+# delta-label) from the injection-probe conclusion — edits here change reduce
+# output quality; keep in sync with that conclusion.
 PREAMBLE_V2 = """## 注入说明（务必先读）
 
 下方「Today's matched articles」槽位中的内容**不是文章全文**，而是已逐篇预抽取的**结构化事实（facts）**：每篇给出来源机构、论点（thesis），及若干条已分节、已带 `[N]` 来源编号的事实；部分事实附「原文」逐字引语（来源语言），仅供你核对数字与措辞。撰写简报时严格遵守：
@@ -110,6 +107,24 @@ def _is_empty(v) -> bool:
     return isinstance(v, str | list | dict) and len(v) == 0
 
 
+def _fmt_value(v) -> str:
+    """Render a claim-extra value compactly for the ``(field=value)`` tag.
+
+    Scalars pass through as ``str``; a list joins its elements with ``; ``; a dict
+    renders as space-separated ``key:value`` pairs (recursively). This keeps a
+    structured field (e.g. ``metrics=[{name,value,unit,period}]``) from leaking a
+    raw Python ``repr`` like ``{'name': 'CPI', ...}`` into the LLM-facing facts.
+    Empty dict members are dropped, but numeric ``0`` is kept (数字原样照抄).
+    """
+    if isinstance(v, dict):
+        return " ".join(
+            f"{k}:{_fmt_value(val)}" for k, val in v.items() if val is not None and val != ""
+        )
+    if isinstance(v, list):
+        return "; ".join(_fmt_value(x) for x in v)
+    return str(v)
+
+
 def _facts_block(records: list[dict], spec: GeneratedSpec, include_quote: bool) -> str:
     labels = {s.key: (s.label or s.key) for s in spec.sections}
     order = [s.key for s in spec.sections]
@@ -125,12 +140,16 @@ def _facts_block(records: list[dict], spec: GeneratedSpec, include_quote: bool) 
             for k, v in c.items():
                 if k in _RESERVED or _is_empty(v):
                     continue
-                extras.append(f"{k}={v if not isinstance(v, list) else '; '.join(map(str, v))}")
+                extras.append(f"{k}={_fmt_value(v)}")
             tag = f"({', '.join(extras)}) " if extras else ""
-            line = f"  - [{idx}] {tag}{c.get('text', '')}"
+            text = c.get("text", "") or ""
+            line = f"  - [{idx}] {tag}{text}"
             if include_quote:
                 q = (c.get("quote") or "").strip()
-                if q:
+                # Skip the verbatim quote when it merely repeats the restatement:
+                # an English source restated in English makes text == quote, so the
+                # 〔原文〕 line would only waste prompt budget (no cross-check value).
+                if q and q != text.strip():
                     line += f'\n      〔原文: "{q}"〕'
             buckets.setdefault(sec, []).append(line)
 
@@ -155,7 +174,7 @@ def render_facts(
     the budget-guard fallback so the preamble stays consistent with the (now
     quote-less) facts.
 
-    ``records`` follow the map_for_reduce → render_facts contract (design §5):
+    ``records`` follow the map_for_reduce → render_facts contract:
     each has ``index`` (1-based recall position), optional source_org/source_name/
     published_at/thesis/no_relevant_content, and ``claims[]`` of
     {section, text, quote, + spec fields}.
