@@ -148,10 +148,16 @@ async def test_summary_history_format_history_text_empty(mem_conn) -> None:
 @pytest.mark.asyncio
 async def test_summary_history_format_history_text_multi(mem_conn) -> None:
     """Two rows → DESC-ordered '=== DATE ===' blocks."""
+    from datetime import datetime  # noqa: PLC0415
+
     await save_summary(mem_conn, _result(summary="first summary"), run_at="2026-05-24T09:00:00Z")
     await save_summary(mem_conn, _result(summary="second summary"), run_at="2026-05-25T09:00:00Z")
 
-    text = await format_history_text(mem_conn, 1, 30)
+    # Fixed anchor so the rolling history window always spans both fixed rows
+    # (without it the older row drifts out of the window as wall-clock advances).
+    text = await format_history_text(
+        mem_conn, 1, 30, now=datetime(2026, 5, 25, 12, 0, 0, tzinfo=UTC)
+    )
 
     # Most recent first
     assert text.index("2026-05-25") < text.index("2026-05-24")
