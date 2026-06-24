@@ -8,13 +8,12 @@
   ``_base.md`` floor + optional recent digest) into a draft :data:`MetaSpecOut`,
   then guarantees the common-claim *floor* fields are present (design §4.0) so
   the base prompt never references a field absent from the schema.
-- ``validate_spec_payload`` — the authoritative save-time check (12 hard rules +
-  2 soft warnings, design §5); the frontend only does a parse+non-empty
-  drift-guard.
+- ``validate_spec_payload`` — the authoritative save-time check (13 hard rules +
+  3 soft warnings; see §5); the frontend only does a parse+non-empty drift-guard.
 - ``save_spec_atomic`` — double-file (.md + .json) tmp+fsync+os.replace write,
-  mirroring ``templates.save_template_atomic`` (design D5).
+  mirroring ``templates.save_template_atomic``.
 
-Naming: each intent owns one spec named ``intent-{id}`` (design D3).
+Naming: each intent owns one spec named ``intent-{id}``.
 """
 
 from __future__ import annotations
@@ -172,7 +171,7 @@ _MAX_DIGEST_CHARS = 12_000
 
 
 def derive_spec_name(intent_id: int) -> str:
-    """Per-intent spec name (design D3): stable, id-derived, identifier-safe."""
+    """Per-intent spec name: stable, id-derived, identifier-safe (``intent-{id}``)."""
     return f"intent-{intent_id}"
 
 
@@ -529,7 +528,7 @@ def validate_spec_payload(md: str, json_text: str) -> list[ValidationIssue]:
             seen_keys.add(key)
         _check_fields(s.get("fields", []), f"{loc}.fields", issues)
 
-    # rule 13 (warning): reduce relies on source_org + thesis (design §8.5)
+    # rule 13 (warning): reduce relies on source_org + thesis
     art_names = {f.get("name") for f in data.get("article_fields", []) if isinstance(f, dict)}
     for req in ("source_org", "thesis"):
         if req not in art_names:
@@ -580,7 +579,7 @@ def has_errors(issues: list[ValidationIssue]) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Atomic double-file write (design D5)
+# Atomic double-file write (.md + .json together, same pattern as save_template_atomic)
 # --------------------------------------------------------------------------- #
 def save_spec_atomic(
     name: str,
@@ -591,9 +590,9 @@ def save_spec_atomic(
     """Write ``{name}.md`` + ``{name}.json`` under prompts/extraction/ atomically.
 
     Each ``os.replace`` is atomic; the gap *between* the two is the known
-    double-file window (design D5/R4): a crash there can leave a mixed version,
-    surfaced by ``load_spec``'s both-halves requirement and the enable endpoint's
-    re-load — accepted for a single-operator tool. Tmp names start with '.' so
+    double-file window: a crash there can leave a mixed version, surfaced by
+    ``load_spec``'s both-halves requirement and the enable endpoint's re-load —
+    accepted for a single-operator tool. Tmp names start with '.' so
     directory listings/globs skip them. Raises ``OSError`` on filesystem failure,
     ``ValueError`` on a bad name.
     """

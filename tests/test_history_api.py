@@ -331,6 +331,7 @@ def test_post_backfill_releases_lock_on_spawn_failure() -> None:
         patch("sembr.api.history.get_conn", return_value=MagicMock()),
         patch("sembr.api.history.get_intent", new=AsyncMock(return_value=_cron_intent())),
         patch("sembr.api.history.probe_oldest_news_ts", new=AsyncMock(return_value=0)),
+        patch("sembr.api.history.run_backfill", new=MagicMock()),
         patch("sembr.api.history.asyncio.create_task", new=boom),
     ):
         client = TestClient(app, raise_server_exceptions=False)

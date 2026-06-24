@@ -4,10 +4,10 @@
 Paths are written in full as ``/api/intents/{intent_id}/extraction-spec*`` (the
 router has no prefix) so they sit under the ``/api/intents/`` auth-protected
 prefix and an unauthenticated call gets a 401 JSON, not a 302 redirect — same
-pattern the map sub-feature uses in ``api/history.py`` (design D6). No auth
-changes needed.
+pattern the map sub-feature uses in ``api/history.py`` (same auth pattern,
+no extra changes needed).
 
-Generate is synchronous with a 600s cap (design D1); save and enable are
+Generate is synchronous with a 600s cap (matching the map sub-feature); save and enable are
 deliberately separate (save writes a draft, enable points the intent at it).
 """
 
@@ -58,7 +58,9 @@ class EnableSpecRequest(BaseModel):
 class SaveSpecRequest(BaseModel):
     md: str
     # accept the wire key "json"; expose as json_text in code (avoid BaseModel.json clash).
-    # Annotated form so the alias actually binds (plain `= Field(alias=)` warns).
+    # The alias binds correctly via populate_by_name; the Annotated form is used here but
+    # both alias forms work — the runtime UnsupportedFieldAttributeWarning is a harmless
+    # FastAPI/pydantic-v2 per-field TypeAdapter artifact, unrelated to correctness.
     json_text: Annotated[str, Field(alias="json")]
     model_config = {"populate_by_name": True}
 
@@ -100,7 +102,8 @@ async def get_extraction_spec(intent_id: int) -> dict[str, Any]:
         source, exists = "own", True
     else:
         # Fall back to the system_template's spec as a read-only starting point —
-        # saving still writes own_name, never the shared template (design D3).
+        # saving still writes own_name, never the shared template (each intent
+        # owns its own spec file, named intent-{id}).
         fallback_name = intent.system_template
         fb = read_spec_raw(fallback_name, PROMPTS_DIR) if fallback_name else None
         if fb is not None:
@@ -239,7 +242,7 @@ async def post_enable_spec(intent_id: int, body: EnableSpecRequest | None = None
         return {"ok": True, "enabled": False}
 
     try:
-        load_spec(name, PROMPTS_DIR)  # re-load guards against missing/broken (design D5)
+        load_spec(name, PROMPTS_DIR)  # re-load guards against missing/broken spec before enabling
     except SpecNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

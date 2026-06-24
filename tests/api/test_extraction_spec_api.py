@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """QA-owned tests for the extraction-spec lifecycle endpoints (spec-autogen T6–T13).
 
-Test Strategy owner: QA (design.md §9, T6–T13).
+Test Strategy owner: QA (spec-autogen tests T6–T13).
 
 Fixture pattern mirrors tests/api/test_prompts_routes.py:
   - in-memory aiosqlite via install_for_test + init_intent_tables
@@ -240,7 +240,7 @@ def test_generate_spec_fields_have_role_and_label() -> None:
             model="test-model",
         )
 
-    _md, json_obj = asyncio.get_event_loop().run_until_complete(run())
+    _md, json_obj = asyncio.run(run())
 
     valid_roles = {"content", "meta", "flag"}
 
@@ -278,7 +278,7 @@ def test_generate_spec_section_keys_are_valid() -> None:
             model="test-model",
         )
 
-    _, json_obj = asyncio.get_event_loop().run_until_complete(run())
+    _, json_obj = asyncio.run(run())
     key_re = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
     for s in json_obj.get("sections", []):
         key = s.get("key", "")
@@ -304,7 +304,7 @@ def test_generate_spec_extraction_prompt_contains_base_marker() -> None:
             model="test-model",
         )
 
-    md, _ = asyncio.get_event_loop().run_until_complete(run())
+    md, _ = asyncio.run(run())
     # The MetaSpecOut we feed has extraction_prompt that includes _FAKE_BASE content
     # This tests the design contract: the base IS passed to the meta LLM as required context
     assert "宁缺毋造" in md, "extraction_prompt must contain base anti-hallucination marker"
@@ -329,7 +329,7 @@ def test_generate_spec_floor_injection_when_meta_omits_floor() -> None:
             model="test-model",
         )
 
-    _, json_obj = asyncio.get_event_loop().run_until_complete(run())
+    _, json_obj = asyncio.run(run())
     present_names = {f["name"] for f in json_obj.get("common_claim_fields", [])}
     assert _FLOOR_NAMES.issubset(present_names), (
         f"floor fields missing after injection: {_FLOOR_NAMES - present_names}"
@@ -358,9 +358,7 @@ def test_generate_endpoint_template_only_returns_md_and_json(tmp_path: Path) -> 
         # Create an intent
         import asyncio
 
-        intent_id = asyncio.get_event_loop().run_until_complete(
-            _create_test_intent(conn_holder["conn"])
-        )
+        intent_id = asyncio.run(_create_test_intent(conn_holder["conn"]))
 
         resp = http.post(
             f"/api/intents/{intent_id}/extraction-spec/generate",
@@ -385,9 +383,7 @@ def test_generate_endpoint_missing_base_returns_500(tmp_path: Path) -> None:
     with _client(tmp_path) as (http, conn_holder):
         import asyncio
 
-        intent_id = asyncio.get_event_loop().run_until_complete(
-            _create_test_intent(conn_holder["conn"])
-        )
+        intent_id = asyncio.run(_create_test_intent(conn_holder["conn"]))
 
         resp = http.post(
             f"/api/intents/{intent_id}/extraction-spec/generate",
@@ -408,9 +404,7 @@ def test_generate_endpoint_missing_template_returns_422(tmp_path: Path) -> None:
     with _client(tmp_path) as (http, conn_holder):
         import asyncio
 
-        intent_id = asyncio.get_event_loop().run_until_complete(
-            _create_test_intent(conn_holder["conn"])
-        )
+        intent_id = asyncio.run(_create_test_intent(conn_holder["conn"]))
 
         resp = http.post(
             f"/api/intents/{intent_id}/extraction-spec/generate",
@@ -443,15 +437,15 @@ def test_generate_with_digest_injects_summary(tmp_path: Path) -> None:
         import asyncio
 
         conn = conn_holder["conn"]
-        intent_id = asyncio.get_event_loop().run_until_complete(_create_test_intent(conn))
+        intent_id = asyncio.run(_create_test_intent(conn))
         # Insert a fake digest (summary_history row)
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             conn.execute(
                 "INSERT INTO summary_history (intent_id, run_at, summary, citations) VALUES (?, ?, ?, ?)",
                 (intent_id, "2026-06-21T10:00:00Z", "Recent digest summary content.", "[]"),
             )
         )
-        asyncio.get_event_loop().run_until_complete(conn.commit())
+        asyncio.run(conn.commit())
 
         resp = http.post(
             f"/api/intents/{intent_id}/extraction-spec/generate",
@@ -475,9 +469,7 @@ def test_generate_with_digest_no_digest_returns_digest_available_false(tmp_path:
     with _client(tmp_path) as (http, conn_holder):
         import asyncio
 
-        intent_id = asyncio.get_event_loop().run_until_complete(
-            _create_test_intent(conn_holder["conn"])
-        )
+        intent_id = asyncio.run(_create_test_intent(conn_holder["conn"]))
         resp = http.get(f"/api/intents/{intent_id}/extraction-spec")
 
     assert resp.status_code == 200
@@ -494,14 +486,14 @@ def test_generate_with_digest_returns_digest_available_true(tmp_path: Path) -> N
         import asyncio
 
         conn = conn_holder["conn"]
-        intent_id = asyncio.get_event_loop().run_until_complete(_create_test_intent(conn))
-        asyncio.get_event_loop().run_until_complete(
+        intent_id = asyncio.run(_create_test_intent(conn))
+        asyncio.run(
             conn.execute(
                 "INSERT INTO summary_history (intent_id, run_at, summary, citations) VALUES (?, ?, ?, ?)",
                 (intent_id, "2026-06-21T10:00:00Z", "Some digest summary.", "[]"),
             )
         )
-        asyncio.get_event_loop().run_until_complete(conn.commit())
+        asyncio.run(conn.commit())
 
         resp = http.get(f"/api/intents/{intent_id}/extraction-spec")
 
@@ -546,9 +538,7 @@ def test_save_spec_valid_writes_both_files(tmp_path: Path) -> None:
     with _client(tmp_path) as (http, conn_holder):
         import asyncio
 
-        intent_id = asyncio.get_event_loop().run_until_complete(
-            _create_test_intent(conn_holder["conn"])
-        )
+        intent_id = asyncio.run(_create_test_intent(conn_holder["conn"]))
         resp = http.post(
             f"/api/intents/{intent_id}/extraction-spec/save",
             json={"md": "extraction prompt content", "json": _valid_spec_json()},
@@ -575,9 +565,7 @@ def test_save_spec_invalid_returns_422_with_errors(tmp_path: Path) -> None:
     with _client(tmp_path) as (http, conn_holder):
         import asyncio
 
-        intent_id = asyncio.get_event_loop().run_until_complete(
-            _create_test_intent(conn_holder["conn"])
-        )
+        intent_id = asyncio.run(_create_test_intent(conn_holder["conn"]))
         bad_json = json.dumps(
             {
                 "sections": [
@@ -623,7 +611,7 @@ def test_check_validates_without_writing(tmp_path: Path) -> None:
         import asyncio
 
         conn = conn_holder["conn"]
-        intent_id = asyncio.get_event_loop().run_until_complete(_create_test_intent(conn))
+        intent_id = asyncio.run(_create_test_intent(conn))
         # a spec with a hard error (bad role) AND missing-floor warnings
         bad = json.dumps(
             {
@@ -652,9 +640,7 @@ def test_save_spec_empty_md_returns_422(tmp_path: Path) -> None:
     with _client(tmp_path) as (http, conn_holder):
         import asyncio
 
-        intent_id = asyncio.get_event_loop().run_until_complete(
-            _create_test_intent(conn_holder["conn"])
-        )
+        intent_id = asyncio.run(_create_test_intent(conn_holder["conn"]))
         resp = http.post(
             f"/api/intents/{intent_id}/extraction-spec/save",
             json={"md": "   ", "json": _valid_spec_json()},
@@ -681,7 +667,7 @@ def test_save_does_not_change_extraction_enabled(tmp_path: Path) -> None:
         import asyncio
 
         conn = conn_holder["conn"]
-        intent_id = asyncio.get_event_loop().run_until_complete(_create_test_intent(conn))
+        intent_id = asyncio.run(_create_test_intent(conn))
         resp = http.post(
             f"/api/intents/{intent_id}/extraction-spec/save",
             json={"md": "prompt text", "json": _valid_spec_json()},
@@ -690,7 +676,7 @@ def test_save_does_not_change_extraction_enabled(tmp_path: Path) -> None:
 
         from sembr.db.intents import get_intent
 
-        intent = asyncio.get_event_loop().run_until_complete(get_intent(conn, intent_id))
+        intent = asyncio.run(get_intent(conn, intent_id))
         assert intent is not None
         assert intent.extraction_enabled is False, "save must not flip the toggle"
 
@@ -705,7 +691,7 @@ def test_enable_sets_extraction_enabled(tmp_path: Path) -> None:
         import asyncio
 
         conn = conn_holder["conn"]
-        intent_id = asyncio.get_event_loop().run_until_complete(_create_test_intent(conn))
+        intent_id = asyncio.run(_create_test_intent(conn))
         # Must save first before enable
         http.post(
             f"/api/intents/{intent_id}/extraction-spec/save",
@@ -717,7 +703,7 @@ def test_enable_sets_extraction_enabled(tmp_path: Path) -> None:
 
         from sembr.db.intents import get_intent
 
-        intent = asyncio.get_event_loop().run_until_complete(get_intent(conn, intent_id))
+        intent = asyncio.run(get_intent(conn, intent_id))
         assert intent is not None and intent.extraction_enabled is True
 
 
@@ -733,7 +719,7 @@ def test_toggle_disable_clears_extraction_enabled(tmp_path: Path) -> None:
         from sembr.db.intents import get_intent
 
         conn = conn_holder["conn"]
-        intent_id = asyncio.get_event_loop().run_until_complete(_create_test_intent(conn))
+        intent_id = asyncio.run(_create_test_intent(conn))
         http.post(
             f"/api/intents/{intent_id}/extraction-spec/save",
             json={"md": "prompt text", "json": _valid_spec_json()},
@@ -745,7 +731,7 @@ def test_toggle_disable_clears_extraction_enabled(tmp_path: Path) -> None:
         )
         assert resp.status_code == 200
         assert resp.json()["enabled"] is False
-        intent = asyncio.get_event_loop().run_until_complete(get_intent(conn, intent_id))
+        intent = asyncio.run(get_intent(conn, intent_id))
         assert intent is not None and intent.extraction_enabled is False
         # the spec file is NOT deleted by disabling
         assert (tmp_path / "extraction" / f"intent-{intent_id}.md").exists()
@@ -771,7 +757,7 @@ def test_enable_then_load_spec_succeeds(tmp_path: Path) -> None:
         from sembr.summarizer.spec import SpecNotFoundError, load_spec
 
         conn = conn_holder["conn"]
-        intent_id = asyncio.get_event_loop().run_until_complete(_create_test_intent(conn))
+        intent_id = asyncio.run(_create_test_intent(conn))
         # Save
         save_resp = http.post(
             f"/api/intents/{intent_id}/extraction-spec/save",
@@ -786,7 +772,7 @@ def test_enable_then_load_spec_succeeds(tmp_path: Path) -> None:
         # Now _resolve_spec_name should hit "intent-{id}"
         from sembr.db.intents import get_intent
 
-        intent = asyncio.get_event_loop().run_until_complete(get_intent(conn, intent_id))
+        intent = asyncio.run(get_intent(conn, intent_id))
         assert intent is not None
 
         # Simulate what history.py:_resolve_spec_name does (always intent-{id})
@@ -827,9 +813,7 @@ def test_extraction_spec_endpoints_require_auth(
     with _client(tmp_path, with_auth=True, token="real-secret") as (http, conn_holder):
         import asyncio
 
-        intent_id = asyncio.get_event_loop().run_until_complete(
-            _create_test_intent(conn_holder["conn"])
-        )
+        intent_id = asyncio.run(_create_test_intent(conn_holder["conn"]))
         url = f"/api/intents/{intent_id}{path_suffix}"
         resp = http.request(method, url, json=body)
 
@@ -848,9 +832,7 @@ def test_extraction_spec_endpoints_allow_valid_token(tmp_path: Path) -> None:
     with _client(tmp_path, with_auth=True, token="real-secret") as (http, conn_holder):
         import asyncio
 
-        intent_id = asyncio.get_event_loop().run_until_complete(
-            _create_test_intent(conn_holder["conn"])
-        )
+        intent_id = asyncio.run(_create_test_intent(conn_holder["conn"]))
         resp = http.get(
             f"/api/intents/{intent_id}/extraction-spec",
             headers={"X-Dashboard-Token": "real-secret"},
@@ -860,7 +842,7 @@ def test_extraction_spec_endpoints_allow_valid_token(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# T13 — R6: saving for an intent that uses fed_watch does NOT touch fed_watch.{md,json}
+# T13 — saving for an intent that uses fed_watch does NOT touch fed_watch.{md,json}
 # --------------------------------------------------------------------------- #
 
 
@@ -896,7 +878,7 @@ def test_save_does_not_modify_shared_fed_watch_spec(tmp_path: Path) -> None:
             channels=[{"type": "email", "to": ["test@example.com"]}],
             system_template="fed_watch",
         )
-        intent = asyncio.get_event_loop().run_until_complete(create_intent(conn, body))
+        intent = asyncio.run(create_intent(conn, body))
         intent_id = intent.id
 
         # Read original bytes BEFORE save
@@ -947,7 +929,7 @@ def test_save_intent_spec_content_differs_from_fed_watch(tmp_path: Path) -> None
             channels=[{"type": "email", "to": ["test@example.com"]}],
             system_template="fed_watch",
         )
-        intent = asyncio.get_event_loop().run_until_complete(create_intent(conn, body))
+        intent = asyncio.run(create_intent(conn, body))
         intent_id = intent.id
 
         custom_prompt = "custom per-intent prompt — must not appear in fed_watch.md"

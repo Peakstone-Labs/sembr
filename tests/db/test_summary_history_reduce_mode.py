@@ -63,7 +63,7 @@ async def test_save_summary_persists_reduce_mode(mem_conn):
 
 
 async def test_save_or_skip_persists_reduce_mode(mem_conn):
-    """Backfill path (save_summary_or_skip) also carries the marker (D3)."""
+    """Backfill path (save_summary_or_skip) also carries the reduce_mode marker."""
     await init_summary_history_table(mem_conn)
     iid = await _intent(mem_conn)
     result = SummaryResult(intent_id=iid, summary="s", reduce_mode="facts_partial")

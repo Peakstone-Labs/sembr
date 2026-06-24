@@ -117,8 +117,8 @@ class Settings(BaseSettings):
     meta_extraction_model: str = Field(
         default="",
         description=(
-            "Model reserved for auto-generating extraction specs. Not used yet; "
-            "leave empty to reuse the summarization model."
+            "Model used by the spec-autogen feature (extraction-spec generation). "
+            "Leave empty to reuse the summarization model."
         ),
     )
     reduce_concurrency: int = Field(
@@ -347,7 +347,7 @@ class Settings(BaseSettings):
     def effective_meta_extraction_model(self) -> str:
         # Empty meta_extraction_model falls back to the summarization model so a
         # default install can auto-generate extraction specs with no extra config.
-        # Mirrors effective_reduce_model (spec-autogen design D2).
+        # Mirrors the same fallback pattern used by effective_reduce_model.
         return self.meta_extraction_model or self.llm_model
 
     @property

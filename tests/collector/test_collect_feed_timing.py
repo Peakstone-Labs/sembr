@@ -6,7 +6,7 @@ time. (#🟡-2 in dashboard-feeds-tab review.md)
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -71,7 +71,7 @@ async def test_started_at_excludes_queue_wait(monkeypatch) -> None:
     )
     # Let it queue for ~80ms before releasing the holder.
     await asyncio.sleep(0.08)
-    queue_wait_floor = datetime.utcnow()
+    queue_wait_floor = datetime.now(UTC).replace(tzinfo=None)
     hold_release.set()
     await fetch_task
     await holder_task

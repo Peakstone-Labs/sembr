@@ -103,9 +103,7 @@ async def _seed(conn: aiosqlite.Connection, name: str, *, instruction_template: 
 def _seed_via(conn_holder, name, *, instruction_template):
     import asyncio  # noqa: PLC0415
 
-    return asyncio.get_event_loop().run_until_complete(
-        _seed(conn_holder["conn"], name, instruction_template=instruction_template)
-    )
+    return asyncio.run(_seed(conn_holder["conn"], name, instruction_template=instruction_template))
 
 
 # ---------------------------------------------------------------------------

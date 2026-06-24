@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""T2 (design §6): map_for_reduce — cache hit reuses (no LLM), miss extracts +
-persists (D4), per-article failure / empty body degrade to an empty record without
-sinking the run (D2), and index = 1-based recall order so [N] aligns with citations.
+"""T2: map_for_reduce — cache hit reuses (no LLM), miss extracts + persists to cache,
+per-article failure / empty body degrade to an empty record without sinking the run,
+and index = 1-based recall order so [N] aligns with citations.
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ async def test_miss_extracts_and_persists(mem_conn):
     assert llm.structured.await_count == 1  # miss → one extract call
     assert records[0]["index"] == 1
     assert records[0]["claims"][0]["text"] == "fact text"
-    # persisted to cache (D4) so a second recall hits
+    # persisted to cache so a second recall hits
     assert await get_extraction(mem_conn, aid, intent.id, _VER) is not None
 
 

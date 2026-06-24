@@ -171,7 +171,7 @@ async def env(tmp_path):
 
 async def test_t5a_all_no_relevant_content_falls_open(env):
     """T5a: all articles map to no_relevant_content (zero claims) → zero facts
-    → D2 fail-open → raw fallback → result is non-empty and usable.
+    → fail-open → raw fallback → result is non-empty and usable.
 
     This covers the path: map succeeds but no facts were extracted (all articles
     had no_relevant_content=True). The pipeline must NOT return an empty/error
@@ -200,7 +200,7 @@ async def test_t5a_all_no_relevant_content_falls_open(env):
     )
 
     # Must produce a usable digest (not None, not empty summary)
-    assert result is not None, "D2 fail-open must still produce a digest"
+    assert result is not None, "fail-open must still produce a digest"
     assert result.summary, "summary must be non-empty after fail-open"
     assert result.reduce_mode == "facts_fallback_raw"
     # Fallen back to raw body path → raw article body format in prompt
@@ -304,7 +304,7 @@ async def test_t5d_partial_failure_failed_article_body_not_in_facts(env):
 
 async def test_t5e_all_empty_body_fallopen_produces_digest(env):
     """T5e: all articles have empty bodies → map skips LLM → all no_relevant_content
-    → zero facts → D2 fail-open → raw bodies path → but raw bodies are also empty
+    → zero facts → fail-open → raw bodies path → but raw bodies are also empty
     so _build_articles_text still produces something (even if minimal).
 
     Crucial: the pipeline must not crash or return None due to this path.
