@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **LLM structured extraction (map-reduce)** — opt-in per intent. With extraction
+  enabled, the digest pipeline first maps each recalled article into a
+  structured, spec-defined record (source org, thesis, per-section claims with
+  verbatim quotes), then reduces those facts into the digest instead of raw
+  article bodies — sharply cutting hallucination and mis-attribution. It falls
+  back to the raw-body path automatically when extraction is unavailable, and
+  each digest is tagged with its `reduce_mode` (`raw` / `facts` /
+  `facts_partial` / `facts_fallback_raw`), surfaced as a badge in the dashboard
+  history.
+  - **Per-digest source extraction** — a "sources extraction" action on any
+    history digest extracts and caches every cited article's structured record
+    for inline inspection; per-article failures are listed individually.
+  - **Auto-generated, editable extraction specs** — a meta-LLM drafts a
+    per-intent extraction spec from the intent's analysis template; edit it in
+    the dashboard's Advanced panel (raw edit / auto-generate / validate / save).
+- **New configuration** — `REDUCE_MODEL` (model for structured extraction and the
+  reduce step; defaults to `LLM_MODEL`), `META_EXTRACTION_MODEL` (model for spec
+  auto-generation; defaults to `LLM_MODEL`), and `REDUCE_CONCURRENCY` (parallel
+  source extractions, default `16`). See [Configuration](docs/configuration.md).
+
 ### Fixed
 
 - **Feed config edits now reach the running scheduler** — editing a feed's

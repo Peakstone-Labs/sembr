@@ -110,8 +110,8 @@ class Settings(BaseSettings):
     reduce_model: str = Field(
         default="",
         description=(
-            "Model used for structured source extraction (and the future reduce "
-            "step). Leave empty to reuse the summarization model."
+            "Model used for structured source extraction and the reduce step. "
+            "Leave empty to reuse the summarization model."
         ),
     )
     meta_extraction_model: str = Field(
