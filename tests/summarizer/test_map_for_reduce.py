@@ -167,3 +167,49 @@ async def test_empty_body_skips_llm(mem_conn):
     assert n_failed == 1
     assert llm.structured.await_count == 0  # empty body never calls the LLM
     assert records[0].get("no_relevant_content") is True
+
+
+async def test_cache_read_error_does_not_sink_run(mem_conn, monkeypatch):
+    """🟡-1: get_extraction raising (DB hiccup) degrades that article, run survives."""
+    intent = await create_intent(
+        mem_conn, IntentCreate(name="i", text="t", channels=[{"type": "email", "to": ["a@b.com"]}])
+    )
+    llm = MagicMock()
+    llm.structured = _good_structured()
+
+    async def boom(*a, **k):
+        raise RuntimeError("db hiccup on shared conn")
+
+    monkeypatch.setattr("sembr.summarizer.mr_extract.get_extraction", boom)
+    good = _match("11111111-1111-1111-1111-111111111111", title="ok")
+    bad = _match("22222222-2222-2222-2222-222222222222", title="ok")
+
+    # Must NOT raise out of map_for_reduce (no asyncio.gather crash).
+    records, n_failed = await _run([good, bad], llm, intent.id)
+
+    assert n_failed == 2  # both cache reads blew up → both degraded
+    assert all(r.get("no_relevant_content") for r in records)
+    assert records[0]["index"] == 1 and records[1]["index"] == 2  # alignment preserved
+
+
+async def test_dirty_cache_row_falls_through_to_map(mem_conn):
+    """🟡-1: a cache row whose extraction isn't a dict → re-map instead of KeyError."""
+    intent = await create_intent(
+        mem_conn, IntentCreate(name="i", text="t", channels=[{"type": "email", "to": ["a@b.com"]}])
+    )
+    aid = "11111111-1111-1111-1111-111111111111"
+    # Insert a dirty row directly: extraction = JSON 'null' (decodes to None, not a dict).
+    await mem_conn.execute(
+        "INSERT INTO mr_extraction_cache (article_id, intent_id, schema_version, extraction) "
+        "VALUES (?,?,?,?)",
+        (aid, intent.id, _VER, "null"),
+    )
+    await mem_conn.commit()
+    llm = MagicMock()
+    llm.structured = _good_structured()
+
+    records, n_failed = await _run([_match(aid)], llm, intent.id)
+
+    assert n_failed == 0
+    assert llm.structured.await_count == 1  # dirty row ignored → fresh map ran
+    assert records[0]["claims"][0]["text"] == "fact text"

@@ -96,6 +96,20 @@ def _thesis_block(records: list[dict]) -> str | None:
     return "## 各篇论点（thesis，供资产影响/反共识等推断节用）\n" + "\n".join(lines)
 
 
+def _is_empty(v) -> bool:
+    """Whether a claim-extra value should be omitted from the `(field=value)` tag.
+
+    Drops only genuinely-empty values (None / empty string / empty container) and
+    a bool ``False`` flag. Crucially does NOT drop numeric ``0`` / ``0.0`` — the
+    old ``v in (None, "", [], {}, False)`` test ate them via ``0 == False``,
+    silently swallowing a real "0" against the 数字原样照抄 contract. ``is False``
+    (not ``== False``) keeps that bool-only without re-catching 0.
+    """
+    if v is None or v is False:
+        return True
+    return isinstance(v, str | list | dict) and len(v) == 0
+
+
 def _facts_block(records: list[dict], spec: GeneratedSpec, include_quote: bool) -> str:
     labels = {s.key: (s.label or s.key) for s in spec.sections}
     order = [s.key for s in spec.sections]
@@ -109,7 +123,7 @@ def _facts_block(records: list[dict], spec: GeneratedSpec, include_quote: bool) 
             sec = c.get("section") or "other"
             extras = []
             for k, v in c.items():
-                if k in _RESERVED or v in (None, "", [], {}, False):
+                if k in _RESERVED or _is_empty(v):
                     continue
                 extras.append(f"{k}={v if not isinstance(v, list) else '; '.join(map(str, v))}")
             tag = f"({', '.join(extras)}) " if extras else ""

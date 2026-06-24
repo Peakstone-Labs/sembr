@@ -91,6 +91,11 @@ async def migrate_summary_history_add_reduce_mode(conn: aiosqlite.Connection) ->
     ``db/intents.py`` ALTER migrations). Old rows keep NULL → rendered as
     "unknown". Safe on every startup; must run after
     ``init_summary_history_table``.
+
+    Bare ``execute``/``commit`` (not ``transaction()``) is intentional: this is
+    one-time startup DDL run before the scheduler / matcher / API start, so there
+    are no concurrent writers to serialise against — same posture as the
+    ``db/intents.py`` ALTER migrations.
     """
     try:
         await conn.execute("ALTER TABLE summary_history ADD COLUMN reduce_mode TEXT")

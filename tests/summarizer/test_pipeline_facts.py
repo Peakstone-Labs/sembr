@@ -238,3 +238,20 @@ async def test_reduce_mode_fallback_raw_when_all_fail(env):
     assert result is not None
     assert result.reduce_mode == "facts_fallback_raw"
     assert "Source: https://example.com" in _prompt_of(llm)
+
+
+async def test_facts_over_budget_dequote_then_fallback_raw(env):
+    """§4.4: facts map OK but overflow budget → dequote → still over → fallback_raw.
+
+    PREAMBLE_V2 alone is >800 chars, so a ~1000-char prompt budget can't fit facts
+    even after dropping quotes, while the tiny raw body still fits."""
+    llm = _facts_llm()
+    llm.max_prompt_chars = 1000
+    pipeline = _pipeline(env, llm, extraction_enabled=True)
+
+    result = await pipeline.compute_summary([_match()])
+
+    assert result is not None
+    assert result.reduce_mode == "facts_fallback_raw"
+    llm.structured.assert_awaited()  # map DID run (facts built) — not a spec/all-fail case
+    assert "Source: https://example.com" in _prompt_of(llm)  # raw fallback used

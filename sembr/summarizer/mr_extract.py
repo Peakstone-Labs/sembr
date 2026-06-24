@@ -214,32 +214,42 @@ async def map_for_reduce(
         base = {"index": i + 1, "source_name": source_name, "published_at": published_at}
         article_id = getattr(match, "article_id", None)
 
-        # Cheap cache read stays outside the semaphore so a fully-cached recall
-        # never occupies provider slots (mirrors _extract_citation's skip check).
-        cached = (
-            await get_extraction(conn, article_id, intent_id, schema_version)
-            if article_id
-            else None
-        )
-        if cached is not None:
-            records[i] = {
-                **cached["extraction"],
-                **base,
-                "published_at": cached.get("published_at") or published_at,
-            }
-            return
+        # ONE try wraps the WHOLE article — cache read, dict unpack, AND extract.
+        # Any single-article failure (DB hiccup on the shared conn, a dirty cache
+        # row missing/!= dict "extraction", an LLM 5xx) must degrade to an empty
+        # record, never escape through asyncio.gather and sink the run. The outer
+        # _build_facts_articles_text deliberately does NOT guard map_for_reduce,
+        # so this per-article isolation is what upholds the "failure doesn't sink
+        # the run" + D2 fail-open guarantee.
+        try:
+            # Cheap cache read stays outside the semaphore so a fully-cached recall
+            # never occupies provider slots (mirrors _extract_citation's skip check).
+            cached = (
+                await get_extraction(conn, article_id, intent_id, schema_version)
+                if article_id
+                else None
+            )
+            if cached is not None and isinstance(cached.get("extraction"), dict):
+                records[i] = {
+                    **cached["extraction"],
+                    **base,
+                    # cache row's stored published_at (set at extract time) wins,
+                    # else the recall payload's; the extraction JSON carries no
+                    # published_at field of its own.
+                    "published_at": cached.get("published_at") or published_at,
+                }
+                return
 
-        title = payload.get("title") or ""
-        body = payload.get("body") or ""
-        if not article_id or not body.strip():
-            # Empty/missing body: can't map → empty record (no LLM call), counts
-            # as a degradation so the caller can flag facts_partial.
-            n_failed += 1
-            records[i] = {**base, "no_relevant_content": True, "claims": []}
-            return
+            title = payload.get("title") or ""
+            body = payload.get("body") or ""
+            if not article_id or not body.strip():
+                # Empty/missing body: can't map → empty record (no LLM call),
+                # counted so the caller can flag facts_partial.
+                n_failed += 1
+                records[i] = {**base, "no_relevant_content": True, "claims": []}
+                return
 
-        async with sem:
-            try:
+            async with sem:
                 result = await extract_one(
                     llm,
                     spec,
@@ -264,17 +274,18 @@ async def map_for_reduce(
                     published_at=published_at,
                 )
                 records[i] = {**extraction, **base}
-            except Exception as exc:
-                # Per-article failure (LLM 5xx after retries, schema miss after
-                # repair). Record empty + count; never sink the run.
-                n_failed += 1
-                records[i] = {**base, "no_relevant_content": True, "claims": []}
-                logger.warning(
-                    "map_for_reduce: extract failed for article=%s intent=%d: %s",
-                    article_id,
-                    intent_id,
-                    str(exc)[:200],
-                )
+        except Exception as exc:
+            # Any per-article failure (DB error, dirty cache row, LLM 5xx after
+            # retries, schema miss after repair) → empty record + count; never
+            # sink the run.
+            n_failed += 1
+            records[i] = {**base, "no_relevant_content": True, "claims": []}
+            logger.warning(
+                "map_for_reduce: map failed for article=%s intent=%d: %s",
+                article_id,
+                intent_id,
+                str(exc)[:200],
+            )
 
     await asyncio.gather(*(_one(i, m) for i, m in enumerate(matches)))
     return [r for r in records if r is not None], n_failed

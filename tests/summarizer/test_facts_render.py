@@ -113,3 +113,48 @@ def test_source_name_fallback_when_no_source_org() -> None:
     # article 3 has only source_name → article list uses it as the org fallback
     out = render_facts(_records(), _SPEC)
     assert "[3] x-feed" in out
+
+
+def test_numeric_zero_claim_field_is_not_dropped() -> None:
+    """🟡-2: a numeric 0/0.0 extra must render (not eaten by 0 == False)."""
+    records = [
+        {
+            "index": 1,
+            "source_org": "Fed",
+            "published_at": "2026-06-01",
+            "claims": [
+                {"section": "facts", "text": "no change", "bps_change": 0, "pct": 0.0},
+            ],
+        }
+    ]
+    out = render_facts(records, _SPEC)
+    assert "bps_change=0" in out
+    assert "pct=0.0" in out
+
+
+def test_false_flag_and_empty_values_still_dropped() -> None:
+    """_is_empty still omits None / '' / [] / {} and a bool False flag."""
+    records = [
+        {
+            "index": 1,
+            "source_org": "Fed",
+            "published_at": "2026-06-01",
+            "claims": [
+                {
+                    "section": "facts",
+                    "text": "t",
+                    "flag": False,
+                    "blank": "",
+                    "none_v": None,
+                    "empty_list": [],
+                    "kept": "yes",
+                },
+            ],
+        }
+    ]
+    out = render_facts(records, _SPEC)
+    assert "flag=" not in out
+    assert "blank=" not in out
+    assert "none_v=" not in out
+    assert "empty_list=" not in out
+    assert "kept=yes" in out
