@@ -138,7 +138,22 @@ class APIBackend(BaseLLMBackend):
             except (KeyError, IndexError, ValueError) as exc:
                 raise LLMError(f"Unexpected LLM response shape: {exc}") from exc
             if not isinstance(text, str) or not text.strip():
-                raise LLMError("LLM returned empty or non-string content")
+                # HTTP 200 but a degenerate/empty completion — a provider-side
+                # flake (deepseek occasionally returns null content under
+                # json_mode). Retry like a transient 5xx instead of raising on
+                # the spot: on the map path (extract_one → structured → chat) one
+                # empty reply would otherwise sink a whole article into
+                # facts_partial. Only the final attempt's emptiness surfaces as
+                # an error (raised below after the loop).
+                last_exc = LLMError("LLM returned empty or non-string content")
+                logger.warning(
+                    "chat: empty content on attempt %d/%d, retrying",
+                    attempt + 1,
+                    self._chat_max_retries,
+                )
+                if attempt < last_attempt:
+                    await asyncio.sleep(min(2**attempt, 20))
+                continue
             return text
 
         raise LLMError(f"LLM chat failed after {self._chat_max_retries} attempts: {last_exc}")

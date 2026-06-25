@@ -162,11 +162,26 @@ async def test_chat_scrubs_api_key_from_error_body():
 
 
 @respx.mock
-async def test_chat_empty_content_raises():
-    respx.post(_URL).mock(return_value=_ok("   "))
-    b = _backend()
+async def test_chat_empty_content_retries_then_succeeds(_no_sleep):
+    # A degenerate empty completion (HTTP 200, blank content) is a provider-side
+    # flake — retried like a 5xx so one null reply doesn't drop a mapped article.
+    route = respx.post(_URL).mock(side_effect=[_ok("   "), _ok("recovered")])
+    b = _backend(chat_max_retries=3)
+    out = await b.chat("hi")
+    assert out == "recovered"
+    assert route.call_count == 2  # one empty + one success
+    await b.aclose()
+
+
+@respx.mock
+async def test_chat_empty_content_exhausts_retries_raises(_no_sleep):
+    # Every attempt empty → retried up to chat_max_retries, then raised (the
+    # caller's per-article guard turns this into facts_partial, not a crash).
+    route = respx.post(_URL).mock(return_value=_ok("   "))
+    b = _backend(chat_max_retries=2)
     with pytest.raises(LLMError):
         await b.chat("hi")
+    assert route.call_count == 2  # retried, not raised on the first empty
     await b.aclose()
 
 
