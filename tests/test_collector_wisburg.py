@@ -50,8 +50,12 @@ def _detail(
     title: str = "标题",
     summary: str = "### 主要观点\n内容",
     dt: str = "2026-06-10T04:36:23+08:00",
+    meta: object = None,
 ) -> dict:
-    return _envelope({"id": item_id, "title": title, "datetime": dt, "url": "", "summary": summary})
+    data: dict = {"id": item_id, "title": title, "datetime": dt, "url": "", "summary": summary}
+    if meta is not None:
+        data["meta"] = meta
+    return _envelope(data)
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +132,90 @@ async def test_fetch_happy_path(monkeypatch) -> None:
     # Bearer header attached to both list and detail calls
     for call in respx.calls:
         assert call.request.headers["authorization"] == "Bearer test-key"
+
+
+# ---------------------------------------------------------------------------
+# fetch — meta source preamble (path A: feed source_org enrichment)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+@pytest.mark.anyio
+async def test_fetch_meta_prepended_to_body(monkeypatch) -> None:
+    """name + description → both rendered as a markdown preamble above the
+    summary, which is preserved verbatim after it."""
+    _use_key(monkeypatch)
+    respx.get(REPORTS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json=_list_page([{"id": 1, "title": "t1", "datetime": "2026-06-10T04:00:00+08:00"}]),
+        )
+    )
+    respx.get(f"{REPORTS_URL}/1").mock(
+        return_value=httpx.Response(
+            200,
+            json=_detail(
+                1,
+                summary="### 主要观点\n内容",
+                meta={"name": "花旗", "description": "引用了Citi研究员的报告，原文12页。"},
+            ),
+        )
+    )
+
+    articles = await WisburgSource(REPORTS_URL).fetch(since=None)
+
+    body = articles[0].body
+    assert body == (
+        "> 发布机构：花旗\n"
+        "> 来源说明：引用了Citi研究员的报告，原文12页。\n\n"
+        "### 主要观点\n内容"
+    )
+
+
+@respx.mock
+@pytest.mark.anyio
+async def test_fetch_meta_name_only(monkeypatch) -> None:
+    """am-reports shape: description is null → only the institution line is
+    added (no empty 来源说明 stub)."""
+    _use_key(monkeypatch)
+    respx.get(REPORTS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json=_list_page([{"id": 1, "title": "t1", "datetime": "2026-06-10T04:00:00+08:00"}]),
+        )
+    )
+    respx.get(f"{REPORTS_URL}/1").mock(
+        return_value=httpx.Response(
+            200,
+            json=_detail(1, summary="正文", meta={"name": "CharlesSchwab", "description": None}),
+        )
+    )
+
+    articles = await WisburgSource(REPORTS_URL).fetch(since=None)
+
+    assert articles[0].body == "> 发布机构：CharlesSchwab\n\n正文"
+
+
+@respx.mock
+@pytest.mark.anyio
+@pytest.mark.parametrize("meta", [None, "not-a-dict", {}, {"name": "", "description": ""}])
+async def test_fetch_no_meta_body_is_summary(monkeypatch, meta) -> None:
+    """No meta / malformed meta / all-empty fields → body is the bare summary
+    (earningscalls keeps working untouched)."""
+    _use_key(monkeypatch)
+    respx.get(REPORTS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json=_list_page([{"id": 1, "title": "t1", "datetime": "2026-06-10T04:00:00+08:00"}]),
+        )
+    )
+    respx.get(f"{REPORTS_URL}/1").mock(
+        return_value=httpx.Response(200, json=_detail(1, summary="纯摘要", meta=meta))
+    )
+
+    articles = await WisburgSource(REPORTS_URL).fetch(since=None)
+
+    assert articles[0].body == "纯摘要"
 
 
 # ---------------------------------------------------------------------------
