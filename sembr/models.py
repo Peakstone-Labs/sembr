@@ -261,6 +261,9 @@ class IntentCreate(BaseModel):
     # Structured extraction (map/reduce) on for this intent. The spec is always
     # this intent's own prompts/extraction/intent-{id}; this bool only gates use.
     extraction_enabled: bool = False
+    # Per-intent markdown KB (events index). Independent of extraction_enabled —
+    # KB can exist for any intent. Default off, gated per-intent like extraction.
+    kb_enabled: bool = False
     feed_filter: FeedFilter | None = None
     timezone: str = "UTC"
     language: str = "zh"
@@ -307,6 +310,7 @@ class IntentUpdate(BaseModel):
     system_template: str | None = None
     instruction_template: str | None = None
     extraction_enabled: bool | None = None
+    kb_enabled: bool | None = None
     feed_filter: FeedFilter | None = None
     timezone: str | None = None
     language: str | None = None
@@ -366,6 +370,7 @@ class Intent(BaseModel):
     system_template: str
     instruction_template: str
     extraction_enabled: bool
+    kb_enabled: bool
     feed_filter: FeedFilter | None
     timezone: str
     language: str
