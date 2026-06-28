@@ -43,6 +43,7 @@ from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
 from sembr.api.history import router as history_router
 from sembr.api.intents import router as intents_router
+from sembr.api.kb import router as kb_router
 from sembr.api.maintenance import router as maintenance_router
 from sembr.api.prompts import router as prompts_router
 from sembr.api.restart import router as restart_router
@@ -77,6 +78,7 @@ from sembr.db.summary_history import (
 )
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
+from sembr.kb.lint import add_kb_lint_job
 from sembr.kb.store import KbStore
 from sembr.logbus.install import install_logbus
 from sembr.maintenance import (
@@ -340,6 +342,7 @@ async def lifespan(app: FastAPI):
     # Per-intent KB store (delta-label/kb SF1). One instance shared by the ingest
     # callback (here), the weekly lint job, and the /api/kb endpoints.
     kb_store = KbStore()
+    add_kb_lint_job(scheduler, kb_store)  # weekly KB health check + auto-fix (O2)
     pipeline = SummaryPipeline(
         llm=llm_backend,
         get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(iid),
@@ -452,6 +455,7 @@ app.include_router(external_fire_router)
 app.include_router(history_router)
 app.include_router(extraction_spec_router)
 app.include_router(prompts_router)
+app.include_router(kb_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)
 app.include_router(restart_router)

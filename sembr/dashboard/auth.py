@@ -30,6 +30,8 @@ _PROTECTED_PREFIXES = (
     "/dashboard/",
     "/api/dashboard/",
     "/api/prompts/",
+    # KB endpoints (delta-label/kb): per-intent events.md read/edit/rebuild/lint.
+    "/api/kb/",
     "/api/settings/",
     "/api/external/",
     # map sub-feature: extract-sources / extractions endpoints live under

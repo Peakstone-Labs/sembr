@@ -15,6 +15,7 @@ Responsibilities:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -77,11 +78,23 @@ class KbStore:
         return p.read_text(encoding="utf-8")
 
     def head_hash(self) -> str | None:
-        """Current KB git HEAD short hash — the optimistic-lock token for PUT (F2)."""
+        """Current KB git HEAD short hash — overall KB version (informational)."""
         try:
             return self.git.head_hash()
         except GitUnavailableError:
             return None
+
+    def content_hash(self, intent_id: int, kind: str = "events") -> str | None:
+        """Per-file content hash — the PUT optimistic-lock token (F2).
+
+        Per-file (not the repo-global git HEAD) so another intent's ingest
+        committing between a dashboard GET and PUT doesn't trigger a false
+        conflict. None when the KB isn't built yet.
+        """
+        content = self.read(intent_id, kind)
+        if content is None:
+            return None
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
 
     # -- write ------------------------------------------------------------- #
 
