@@ -158,6 +158,64 @@ def test_apply_merge_no_false_key_match_keeps_distinct_event() -> None:
     assert "<!--k:distinct-event-->" in out
 
 
+def test_stable_fallback_key_content_derived() -> None:
+    # Same text → same key; different text → different key; never positional.
+    assert M.stable_fallback_key("事件A的内容") == M.stable_fallback_key("事件A的内容")
+    assert M.stable_fallback_key("事件A的内容") != M.stable_fallback_key("不同的事件B")
+    assert not M.stable_fallback_key("x").startswith("event-0")  # not positional
+
+
+def test_apply_merge_chinese_key_no_cross_day_collision() -> None:
+    """Review 🔴-1: Chinese key/title slugifies to '' → fallback must be content-
+    derived, not positional, so day-2 candidate 0 doesn't clobber day-1's event."""
+    md = "## 货币政策\n"
+    # Day 1: candidate 0, LLM returns a Chinese key (slugifies to "") + Chinese title.
+    cA = [M.Candidate(text="第一天的事件A内容", section="货币政策")]
+    aA = [
+        M._Assignment(
+            candidate_index=0,
+            key="中文键A",
+            is_new=True,
+            title="事件A",
+            section="货币政策",
+            state="状态A",
+        )
+    ]
+    outA, _ = M.apply_merge(md, cA, aA, "2026-06-01")
+    keysA = set(M.parse_events(outA))
+    assert len(keysA) == 1
+
+    # Day 2: candidate 0 is a DIFFERENT event — must NOT reuse day-1's key.
+    cB = [M.Candidate(text="第二天完全不同的事件B内容", section="货币政策")]
+    aB = [
+        M._Assignment(
+            candidate_index=0,
+            key="中文键B",
+            is_new=True,
+            title="事件B",
+            section="货币政策",
+            state="状态B",
+        )
+    ]
+    outB, stats = M.apply_merge(outA, cB, aB, "2026-06-02")
+    assert stats.new == 1
+    assert len(M.parse_events(outB)) == 2  # both events kept (no overwrite, no loss)
+
+    # Re-merging day-1's exact text updates that line in place (stable key match).
+    aA2 = [
+        M._Assignment(
+            candidate_index=0,
+            key="",
+            is_new=False,
+            title="事件A",
+            section="货币政策",
+            state="状态A更新",
+        )
+    ]
+    outA2, stats2 = M.apply_merge(outB, cA, aA2, "2026-06-03")
+    assert stats2.updated == 1 and len(M.parse_events(outA2)) == 2
+
+
 def test_archive_expired_moves_not_deletes() -> None:
     out, n = M.archive_expired(EVENTS_MD, "2026-07-25")  # >30d after 2026-06-x
     assert n == 3
@@ -326,6 +384,23 @@ async def test_store_lock_is_per_intent(tmp_path) -> None:
     store = _store(tmp_path)
     assert store._lock(1) is store._lock(1)
     assert store._lock(1) is not store._lock(2)
+
+
+def test_store_rebuild_inflight_guard(tmp_path) -> None:
+    store = _store(tmp_path)
+    assert store.try_begin_rebuild(1) is True
+    assert store.try_begin_rebuild(1) is False  # already in flight
+    store.end_rebuild(1)
+    assert store.try_begin_rebuild(1) is True  # released → claimable again
+
+
+def test_store_forget_intent_clears_state(tmp_path) -> None:
+    store = _store(tmp_path)
+    lock = store._lock(5)
+    store.try_begin_rebuild(5)
+    store.forget_intent(5)
+    assert 5 not in store._rebuilding
+    assert store._lock(5) is not lock  # old lock dropped, fresh one created
 
 
 async def test_store_concurrent_writers_no_corruption(tmp_path) -> None:

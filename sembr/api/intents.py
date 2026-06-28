@@ -470,5 +470,10 @@ async def delete_intent_handler(intent_id: int, request: Request) -> Response:
     from sembr.matcher.backfill_tasks import forget_intent_lock  # noqa: PLC0415
 
     forget_intent_lock(intent_id)
+    # Same hygiene for the KB store's per-intent lock / rebuild flag (review 🟢-1).
+    # getattr-guarded: test apps that mount only the intents router have no kb_store.
+    kb_store = getattr(request.app.state, "kb_store", None)
+    if kb_store is not None:
+        kb_store.forget_intent(intent_id)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

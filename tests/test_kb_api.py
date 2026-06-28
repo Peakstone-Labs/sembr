@@ -151,6 +151,15 @@ def test_rebuild_no_history_422(tmp_path) -> None:
         assert c.post("/api/kb/2/rebuild", json={}).status_code == 422
 
 
+def test_rebuild_inflight_409(tmp_path) -> None:
+    """Review 🟡-1: a concurrent rebuild is rejected (no double pro distill)."""
+    with _client(tmp_path) as c:
+        c.app.state.kb_store.try_begin_rebuild(1)  # simulate one in flight
+        r = c.post("/api/kb/1/rebuild", json={"confirm": True})
+        assert r.status_code == 409
+        c.app.state.kb_store.end_rebuild(1)
+
+
 def test_manual_lint(tmp_path) -> None:
     with _client(tmp_path) as c:
         # not built yet → 409.

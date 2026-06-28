@@ -83,7 +83,10 @@ def render_events(events: list[_DistillEvent], now_date: str) -> str:
     for section in order:
         out.append(f"## {section}")
         for e in by_section[section]:
-            base = _merge.slugify(e.title) or "event"
+            # Content-derived fallback, not "event" (review 🔴-1): Chinese titles
+            # all slugify to "" → without a content hash they'd collapse to
+            # event/event-2/… positional keys that don't survive across days.
+            base = _merge.slugify(e.title) or _merge.stable_fallback_key(e.title)
             key = base
             n = 2
             while key in used_keys:

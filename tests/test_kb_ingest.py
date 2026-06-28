@@ -183,6 +183,31 @@ def test_render_events_canonical_and_dedup() -> None:
     assert "首见 2026-06-25" in mlf_line  # bad-date → fallback
 
 
+def test_render_events_chinese_titles_distinct_stable_keys() -> None:
+    """Review 🔴-1: all-Chinese titles must get distinct, stable content-hash keys,
+    not collapse to positional event/event-2."""
+    evs = [
+        D._DistillEvent(
+            title="中国宏观甲",
+            section="S",
+            first_seen="2026-06-01",
+            last_seen="2026-06-01",
+            state="a",
+        ),
+        D._DistillEvent(
+            title="中国宏观乙",
+            section="S",
+            first_seen="2026-06-01",
+            last_seen="2026-06-01",
+            state="b",
+        ),
+    ]
+    keys = set(M.parse_events(D.render_events(evs, "2026-06-25")))
+    assert len(keys) == 2  # distinct, not collapsed
+    # stable across re-render (same titles → same keys).
+    assert set(M.parse_events(D.render_events(evs, "2026-06-26"))) == keys
+
+
 async def test_distill_events_produces_mergeable_index() -> None:
     backend = _FakeDistillBackend(
         [

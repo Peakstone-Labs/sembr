@@ -141,6 +141,12 @@ async def rebuild_kb(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="no summary history to distill — run the intent first",
         )
+    # In-flight guard (review 🟡-1): reject a concurrent rebuild so two requests
+    # can't both fire a pro distill (the expensive, once-meant-to-be-rare action).
+    if not store.try_begin_rebuild(intent_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="rebuild already in progress"
+        )
     backend = request.app.state.llm_backend
     model = request.app.state.settings.effective_kb_distill_model
     try:
@@ -156,6 +162,8 @@ async def rebuild_kb(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=f"distill failed: {exc}"
         ) from exc
+    finally:
+        store.end_rebuild(intent_id)
     return {
         "status": "rebuilt",
         "intent_id": intent_id,

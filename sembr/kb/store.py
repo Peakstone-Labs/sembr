@@ -49,6 +49,10 @@ class KbStore:
         self.root = Path(root)
         self.git = git or GitRepo(self.root)
         self._locks: dict[int, asyncio.Lock] = {}
+        # Intents with a rebuild (cold-start distill) currently in flight — an
+        # in-flight guard so two concurrent rebuilds can't both fire a pro distill
+        # (review 🟡-1). Distinct from the per-intent write lock.
+        self._rebuilding: set[int] = set()
 
     # -- paths ------------------------------------------------------------- #
 
@@ -67,6 +71,30 @@ class KbStore:
             lock = asyncio.Lock()
             self._locks[intent_id] = lock
         return lock
+
+    def try_begin_rebuild(self, intent_id: int) -> bool:
+        """Claim the rebuild slot for an intent. False if one is already running.
+
+        Single-event-loop so this check-and-set is atomic without a lock (review
+        🟡-1). Caller must pair a True return with ``end_rebuild`` in a finally.
+        """
+        if intent_id in self._rebuilding:
+            return False
+        self._rebuilding.add(intent_id)
+        return True
+
+    def end_rebuild(self, intent_id: int) -> None:
+        self._rebuilding.discard(intent_id)
+
+    def forget_intent(self, intent_id: int) -> None:
+        """Drop per-intent in-memory state on intent DELETE (review 🟢-1).
+
+        Mirrors matcher.backfill_tasks.forget_intent_lock — keeps the lock dict
+        from accumulating zombie entries. The on-disk KB is left as-is (git
+        history); only the transient lock / rebuild flag are cleared.
+        """
+        self._locks.pop(intent_id, None)
+        self._rebuilding.discard(intent_id)
 
     # -- read -------------------------------------------------------------- #
 

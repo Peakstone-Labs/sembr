@@ -19,6 +19,7 @@ rendered, visible in git diff, regex-extractable by this module.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -60,11 +61,24 @@ def slugify(raw: str) -> str:
     """Deterministically canonicalize a key to ``[a-z0-9-]`` (defends F6/F10).
 
     The LLM is asked for a slug but may return spaces/case/unicode; we never trust
-    it to be well-formed. Non-ascii (e.g. Chinese) collapses to empty, so we fall
-    back to a stable hash-free placeholder built from the title at the call site.
+    it to be well-formed. Non-ascii (e.g. Chinese) collapses to empty, so the
+    caller falls back to ``stable_fallback_key`` (content hash, not position).
     """
     s = _SLUG_BAD.sub("-", raw.strip().lower()).strip("-")
     return s
+
+
+def stable_fallback_key(text: str) -> str:
+    """Content-derived fallback key when slugify yields empty (review 🔴-1).
+
+    Must NOT be positional (e.g. ``event-{index}``): a positional key makes
+    candidate 0 of two different days collide, so a Chinese-titled event A on day 1
+    and a different event A' on day 2 would share a key — A' overwrites A, or the
+    weekly dedup drops one (violating C1 "don't lose events"). A content hash gives
+    the *same* event the *same* key across days and distinct events distinct keys.
+    """
+    h = hashlib.sha1(text.strip().encode("utf-8")).hexdigest()[:10]
+    return f"event-{h}"
 
 
 @dataclass
@@ -225,7 +239,10 @@ def apply_merge(
     for a in assignments:
         if not (0 <= a.candidate_index < len(candidates)):
             continue  # model referenced a candidate that doesn't exist — ignore
-        key = a.key or slugify(a.title) or f"event-{a.candidate_index}"
+        # Fallback key is content-derived, never positional (review 🔴-1): a
+        # Chinese key/title slugifies to "" and a positional fallback would collide
+        # across days → event overwrite / dedup loss (C1).
+        key = a.key or slugify(a.title) or stable_fallback_key(candidates[a.candidate_index].text)
         # Index is resolved fresh (not cached): a prior new-line insertion shifts
         # all later indices, so a cached map would point at the wrong line.
         idx = _find_key_line(lines, key) if (not a.is_new and key in present_keys) else None
@@ -288,8 +305,10 @@ def archive_expired(
         if kept and kept[-1].strip():
             kept.append("")
         kept.append(f"## {ARCHIVE_SECTION}")
-    # Append moved lines after the archive header (at end of doc).
-    for line in moved:
+    # Append moved lines after the archive header. reversed() because each insert
+    # goes right after the header, so iterating reversed preserves the original
+    # relative order in the archive section (review 🟢-2).
+    for line in reversed(moved):
         _insert_under_section(kept, ARCHIVE_SECTION, line)
     return "\n".join(kept) + "\n", len(moved)
 
@@ -301,7 +320,7 @@ def archive_expired(
 _ASSIGN_SYSTEM = """你在维护一个长期事件进展索引。给你今天简报里抽出的若干"候选事件"、当前索引里**已存在的事件键清单**、以及当前索引的**章节标题清单**。
 
 为每个候选事件输出一条 assignment：
-- `key`：事件键(小写英文/拼音连字符 slug)。**只有当候选与某个已存在键确属同一事件时才复用该键**;有任何不确定就造一个新 slug(`is_new=true`)。宁可新建也不要把语义不同的事件强行并入已有键。
+- `key`：事件键,**必须是纯 ASCII 小写英文/拼音连字符 slug([a-z0-9-])**,严禁中文或其他非 ASCII 字符(否则该 key 会被判为无效)。**只有当候选与某个已存在键确属同一事件时才复用该键**;有任何不确定就造一个新 slug(`is_new=true`)。宁可新建也不要把语义不同的事件强行并入已有键。
 - `is_new`：复用已存在键填 false;新事件填 true。
 - `title`：简短事件名(不带 markdown)。
 - `section`：从给定章节标题里选最贴切的一个;若都不合适,原样给出你认为合适的标题(系统会回退到"未分类")。
