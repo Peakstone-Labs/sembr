@@ -121,6 +121,21 @@ class Settings(BaseSettings):
             "Leave empty to reuse the summarization model."
         ),
     )
+    kb_merge_model: str = Field(
+        default="",
+        description=(
+            "Model for the per-intent KB incremental merge (event-key assignment). "
+            "Leave empty to reuse the summarization model (flash, recommended)."
+        ),
+    )
+    kb_distill_model: str = Field(
+        default="",
+        description=(
+            "Model for KB cold-start distillation (the 'rebuild KB' action). A "
+            "stronger model (e.g. a pro tier) is recommended for the one-off "
+            "rebuild; leave empty to reuse the summarization model."
+        ),
+    )
     reduce_concurrency: int = Field(
         default=16,
         ge=1,
@@ -349,6 +364,20 @@ class Settings(BaseSettings):
         # default install can auto-generate extraction specs with no extra config.
         # Mirrors the same fallback pattern used by effective_reduce_model.
         return self.meta_extraction_model or self.llm_model
+
+    @property
+    def effective_kb_merge_model(self) -> str:
+        # KB incremental merge (key-assignment) — a conservative small task; flash
+        # is recommended (design §7.1, Phase-4c flash > pro). Empty reuses the
+        # summarization model (flash by default), so no extra config to run.
+        return self.kb_merge_model or self.llm_model
+
+    @property
+    def effective_kb_distill_model(self) -> str:
+        # KB cold-start distillation (rebuild). A stronger model (pro) gives a
+        # better initial index but the deployment may not have one provisioned, so
+        # default reuses the summarization model; ops opts into pro via env.
+        return self.kb_distill_model or self.llm_model
 
     @property
     def proxy_hosts_set(self) -> frozenset[str]:

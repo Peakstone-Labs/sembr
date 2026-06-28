@@ -370,7 +370,10 @@ class Intent(BaseModel):
     system_template: str
     instruction_template: str
     extraction_enabled: bool
-    kb_enabled: bool
+    # Defaulted (unlike extraction_enabled) so the many test fixtures that
+    # hand-build Intent need no churn; production always routes through
+    # db.intents._row_to_intent which sets it explicitly from the DB row.
+    kb_enabled: bool = False
     feed_filter: FeedFilter | None
     timezone: str
     language: str
