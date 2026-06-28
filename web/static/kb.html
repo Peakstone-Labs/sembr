@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KB · Events Index</title>
+<link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
+<link rel="stylesheet" href="/dashboard/style.css?v=20">
+<script defer src="/dashboard/vendor/alpine.min.js"></script>
+<script src="/dashboard/kb.js?v=1"></script>
+<style>
+  /* Full-screen standalone editor (the modal's "open in new window" target). */
+  .kb-page { display:flex; flex-direction:column; height:100vh; box-sizing:border-box; padding:14px 18px; gap:8px; }
+  .kb-page textarea { flex:1; width:100%; box-sizing:border-box; font-family:var(--font-mono, monospace);
+    font-size:0.85rem; line-height:1.55; resize:none; }
+  .kb-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div class="kb-page" x-data="kbModal()" x-init="initStandalone()" x-cloak>
+  <div class="kb-bar">
+    <strong>KB · Events Index · <span x-text="intentName"></span></strong>
+    <button @click="rebuild()" :disabled="rebuilding"
+            x-text="rebuilding ? 'Rebuilding…' : (exists ? 'Rebuild KB' : 'Build KB')"></button>
+    <button @click="lint()" :disabled="linting || !exists"
+            x-text="linting ? 'Linting…' : 'Lint now'"></button>
+    <button @click="load()" :disabled="loading">Reload</button>
+    <button class="primary" @click="save()" :disabled="submitting || !dirty"
+            x-text="submitting ? 'Saving…' : 'Save'" style="margin-left:auto;"></button>
+  </div>
+  <div class="kb-bar" style="font-size:0.8rem;">
+    <span class="muted" x-show="dirty">Unsaved changes</span>
+    <span style="color:#d33;" x-show="error" x-text="error"></span>
+    <span class="muted" x-show="status" x-text="status"></span>
+    <span class="muted" x-show="!exists && !loading">KB not built yet — click Build KB.</span>
+  </div>
+  <div x-show="warnings.length" style="font-size:0.75rem;">
+    <template x-for="w in warnings" :key="w">
+      <div style="padding:2px 0 2px 8px; border-left:2px solid #e0a000;" x-text="w"></div>
+    </template>
+  </div>
+  <textarea x-model="content" spellcheck="false" :disabled="loading"
+            placeholder="events.md — one event per line; the <!--k:slug--> anchors are managed automatically."></textarea>
+</div>
+</body>
+</html>
