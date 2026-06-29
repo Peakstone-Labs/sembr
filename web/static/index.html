@@ -2940,6 +2940,11 @@
           <button @click="rebuild()" :disabled="rebuilding"
                   x-text="rebuilding ? 'Rebuilding…' : (exists ? 'Rebuild KB' : 'Build KB')"
                   title="Re-distill the events index from history (overwrites)"></button>
+          <label class="muted" style="font-size:0.72rem; display:flex; align-items:center; gap:4px;"
+                 title="Days of history to distill when building/rebuilding">
+            <input type="number" min="1" max="365" x-model.number="rebuildDays" :disabled="rebuilding"
+                   style="width:56px;"> days
+          </label>
           <button @click="lint()" :disabled="linting || !exists"
                   x-text="linting ? 'Linting…' : 'Lint now'"
                   title="Run the health-check cleanup now"></button>
@@ -2981,7 +2986,7 @@
 <script src="/dashboard/codehl.js?v=1"></script>
 <script src="/dashboard/intents.js?v=30"></script>
 <script src="/dashboard/templates.js?v=5"></script>
-<script src="/dashboard/kb.js?v=4"></script>
+<script src="/dashboard/kb.js?v=5"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=14"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>

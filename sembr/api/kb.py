@@ -51,6 +51,10 @@ class KbPutRequest(BaseModel):
 
 class KbRebuildRequest(BaseModel):
     confirm: bool = False
+    # Days of history to distill for the cold start. None → fall back to the
+    # intent's schedule.history_days (else _DEFAULT_HISTORY_DAYS). KB is a
+    # long-term index, so the UI defaults this larger than the daily history_days.
+    days: int | None = Field(default=None, ge=1, le=365)
 
 
 def _store(request: Request) -> KbStore:
@@ -135,7 +139,7 @@ async def rebuild_kb(
             status_code=status.HTTP_409_CONFLICT,
             detail="KB already exists; pass confirm=true to overwrite",
         )
-    days = getattr(intent.schedule, "history_days", None) or _DEFAULT_HISTORY_DAYS
+    days = body.days or getattr(intent.schedule, "history_days", None) or _DEFAULT_HISTORY_DAYS
     history = await format_history_text(get_conn(), intent_id, days, None)
     if not history or not history.strip():
         raise HTTPException(
@@ -168,6 +172,7 @@ async def rebuild_kb(
     return {
         "status": "rebuilt",
         "intent_id": intent_id,
+        "days": days,
         "events": len(_merge.parse_events(content)),
         "content_hash": store.content_hash(intent_id),
     }

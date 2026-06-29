@@ -36,6 +36,10 @@ function kbModal() {
     enabled: false,
     toggleBusy: false,
 
+    // Days of history the cold-start distill (Build/Rebuild) reads. KB is a
+    // long-term index, so default larger than the daily history_days.
+    rebuildDays: 60,
+
     // Generation guard: bumped on every (re)load so a slow in-flight GET for a
     // previously-opened intent can't overwrite the content of a later one
     // (memory feedback_alpine_modal_async_guard / feedback_frontend in-flight guard).
@@ -169,10 +173,11 @@ function kbModal() {
       )) return;
       this.rebuilding = true;
       this.error = '';
-      this.status = 'Rebuilding from history… this can take a while.';
+      this.status = `Rebuilding from the last ${this.rebuildDays} days… this can take a while.`;
       try {
         const res = await this._request(
-          'POST', `/api/kb/${this.intentId}/rebuild`, { confirm: true },
+          'POST', `/api/kb/${this.intentId}/rebuild`,
+          { confirm: true, days: Number(this.rebuildDays) || undefined },
         );
         const d = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -180,7 +185,7 @@ function kbModal() {
           this.status = '';
           return;
         }
-        this.status = `Rebuilt: ${d.events} events`;
+        this.status = `Rebuilt from ${d.days} days: ${d.events} events`;
         await this.load();
       } catch (e) {
         this.error = 'Network error: ' + e.message;

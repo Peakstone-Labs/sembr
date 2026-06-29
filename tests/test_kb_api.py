@@ -164,6 +164,15 @@ def test_rebuild_no_history_422(tmp_path) -> None:
         assert c.post("/api/kb/2/rebuild", json={}).status_code == 422
 
 
+def test_rebuild_days_param(tmp_path) -> None:
+    with _client(tmp_path) as c:
+        r = c.post("/api/kb/1/rebuild", json={"confirm": True, "days": 14})
+        assert r.status_code == 200 and r.json()["days"] == 14
+        # out-of-range days rejected by the schema.
+        assert c.post("/api/kb/1/rebuild", json={"confirm": True, "days": 0}).status_code == 422
+        assert c.post("/api/kb/1/rebuild", json={"confirm": True, "days": 999}).status_code == 422
+
+
 def test_rebuild_inflight_409(tmp_path) -> None:
     """Review 🟡-1: a concurrent rebuild is rejected (no double pro distill)."""
     with _client(tmp_path) as c:
