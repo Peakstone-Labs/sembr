@@ -28,9 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reduce step; defaults to `LLM_MODEL`), `META_EXTRACTION_MODEL` (model for spec
   auto-generation; defaults to `LLM_MODEL`), and `REDUCE_CONCURRENCY` (parallel
   source extractions, default `16`). See [Configuration](docs/configuration.md).
+- **Better source attribution for Wisburg reports** — Wisburg report details now
+  carry a per-article publisher/provenance (`meta`); sembr folds it into the
+  article body so structured extraction can attribute the real institution
+  (e.g. 花旗) to `source_org` instead of the generic feed label. Applies to
+  newly fetched articles.
 
 ### Fixed
 
+- **Empty LLM completions are retried instead of dropped** — some providers
+  occasionally return HTTP 200 with empty/null content under JSON mode. The chat
+  call now retries within its existing backoff rather than failing on the first
+  empty reply, so a single empty completion no longer drops a whole article from
+  a structured-extraction run (which previously degraded the digest to
+  `facts_partial`). The reduce call stays single-attempt to preserve cron timing.
 - **Feed config edits now reach the running scheduler** — editing a feed's
   `config` (e.g. toggling `ignore_published_watermark`) while the feed stayed
   enabled persisted to the database but left the already-registered polling job
