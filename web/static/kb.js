@@ -195,8 +195,8 @@ function kbModal() {
           this.error = this._extractError(d, `HTTP ${res.status}`);
           return;
         }
-        this.status = `Lint: ${d.merged_dups} merged · ${d.archived} archived · `
-          + `${d.marked} marked · ${d.empty_sections} empty-sections removed`;
+        this.status = `Lint: ${d.merged_dups} dup-merged · ${d.merged_near_dup} near-dup-merged · `
+          + `${d.archived} archived · ${d.marked} marked`;
         await this.load();
       } catch (e) {
         this.error = 'Network error: ' + e.message;
