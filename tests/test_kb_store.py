@@ -370,11 +370,7 @@ async def test_store_ingest_merges_and_commits(tmp_path) -> None:
 
 
 async def test_store_key_integrity_warnings() -> None:
-    bad = (
-        "## S\n"
-        "- <!--k:ok--> **t**（首见 2026-06-01，最新 2026-06-01）：s\n"
-        "- 这一行丢了键注释\n"
-    )
+    bad = "## S\n- <!--k:ok--> **t**（首见 2026-06-01，最新 2026-06-01）：s\n- 这一行丢了键注释\n"
     warns = KbStore.validate_key_integrity(bad)
     assert len(warns) == 1
     assert "missing key anchor" in warns[0]

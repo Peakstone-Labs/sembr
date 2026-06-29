@@ -6,9 +6,9 @@ intent. The only `kind` this round is the **event index** (`events.md`): an
 incrementally-merged table of `event-key -> first-seen / latest date -> latest
 state`, distilled from the intent's cron digests.
 
-Design: `sembr-dev-docs/development/delta-label-accuracy/kb/design.md`.
+Design notes live in the internal development docs (delta-label-accuracy / kb).
 The KB lives under the gitignored `data/kb/` runtime tree (a nested independent
-git repo), NOT in the public sembr code repo — see design §5.
+git repo), NOT in the public sembr code repo.
 """
 
 from __future__ import annotations

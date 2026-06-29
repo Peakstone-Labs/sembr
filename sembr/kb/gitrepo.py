@@ -32,8 +32,7 @@ class GitUnavailableError(RuntimeError):
     """Raised when the ``git`` binary is missing or a git call fails.
 
     Store callers catch this and degrade gracefully: the events.md write still
-    lands (content preserved), only the version-history commit is skipped + logged
-    (design R5).
+    lands (content preserved), only the version-history commit is skipped + logged.
     """
 
 

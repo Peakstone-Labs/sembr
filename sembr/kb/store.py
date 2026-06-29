@@ -166,7 +166,7 @@ class KbStore:
             name, email = identity
             return self.git.commit_all(message, name=name, email=email)
         except GitUnavailableError as exc:
-            # R5: content is preserved; only the version-history commit is skipped.
+            # Degrade gracefully: content is preserved; only the version commit is skipped.
             logger.warning("kb commit skipped (git unavailable): %s", exc)
             return None
 
