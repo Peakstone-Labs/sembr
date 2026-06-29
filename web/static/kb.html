@@ -7,7 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
 <link rel="stylesheet" href="/dashboard/style.css?v=20">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
-<script src="/dashboard/kb.js?v=5"></script>
+<script src="/dashboard/kb.js?v=6"></script>
 <style>
   /* Full-screen standalone editor (the modal's "open in new window" target). */
   .kb-page { display:flex; flex-direction:column; height:100vh; box-sizing:border-box; padding:14px 18px; gap:8px; }
@@ -20,13 +20,8 @@
 <div class="kb-page" x-data="kbModal()" x-init="initStandalone()" x-cloak>
   <div class="kb-bar">
     <strong>KB · Events Index · <span x-text="intentName"></span></strong>
-    <button @click="rebuild()" :disabled="rebuilding"
+    <button @click="rebuildDialog = true" :disabled="rebuilding"
             x-text="rebuilding ? 'Rebuilding…' : (exists ? 'Rebuild KB' : 'Build KB')"></button>
-    <label class="muted" style="font-size:0.8rem; display:flex; align-items:center; gap:4px;"
-           title="Days of history to distill when building/rebuilding">
-      <input type="number" min="1" max="365" x-model.number="rebuildDays" :disabled="rebuilding"
-             style="width:56px;"> days
-    </label>
     <button @click="lint()" :disabled="linting || !exists"
             x-text="linting ? 'Linting…' : 'Lint now'"></button>
     <button @click="load()" :disabled="loading">Reload</button>
@@ -55,6 +50,33 @@
   </div>
   <textarea x-model="content" spellcheck="false" :disabled="loading"
             placeholder="events.md — one event per line; the <!--k:slug--> anchors are managed automatically."></textarea>
+
+  <!-- Build/Rebuild confirm dialog (days input + overwrite warning) -->
+  <div class="modal-overlay" x-show="rebuildDialog" x-cloak @click.self="rebuildDialog=false"
+       style="z-index:600;">
+    <div class="modal-panel" style="max-width:460px;">
+      <div class="modal-header">
+        <span class="modal-title" x-text="exists ? 'Rebuild KB' : 'Build KB'"></span>
+        <button class="modal-close" @click="rebuildDialog=false">✕</button>
+      </div>
+      <div class="muted" style="font-size:0.8rem; margin-bottom:10px;">
+        Distill the events index from the last <strong x-text="rebuildDays"></strong> days of this intent's history.
+      </div>
+      <div x-show="exists" class="fire-warning" style="margin-bottom:12px;">
+        This OVERWRITES the current KB (the previous version stays in git history).
+      </div>
+      <div class="form-field">
+        <label class="field-label">Days of history</label>
+        <input type="number" x-model.number="rebuildDays" min="1" max="365">
+        <span class="field-hint">1 to 365</span>
+      </div>
+      <div class="modal-footer">
+        <button @click="rebuildDialog=false">Cancel</button>
+        <button class="primary" @click="rebuild()" :disabled="rebuilding"
+                x-text="rebuilding ? 'Building…' : (exists ? 'Rebuild' : 'Build')"></button>
+      </div>
+    </div>
+  </div>
 </div>
 </body>
 </html>

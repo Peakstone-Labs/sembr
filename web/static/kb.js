@@ -39,6 +39,7 @@ function kbModal() {
     // Days of history the cold-start distill (Build/Rebuild) reads. KB is a
     // long-term index, so default larger than the daily history_days.
     rebuildDays: 60,
+    rebuildDialog: false,  // the Build/Rebuild confirm dialog (days input + overwrite warning)
 
     // Generation guard: bumped on every (re)load so a slow in-flight GET for a
     // previously-opened intent can't overwrite the content of a later one
@@ -167,10 +168,8 @@ function kbModal() {
     },
 
     async rebuild() {
-      // O3: rebuilding overwrites the current KB by re-distilling from history.
-      if (this.exists && !confirm(
-        'Rebuild will OVERWRITE the current KB by re-distilling it from history. Continue?'
-      )) return;
+      // Confirmation + overwrite warning live in the rebuild dialog (O3); close it.
+      this.rebuildDialog = false;
       this.rebuilding = true;
       this.error = '';
       this.status = `Rebuilding from the last ${this.rebuildDays} days… this can take a while.`;
