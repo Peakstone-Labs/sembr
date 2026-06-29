@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -42,6 +43,7 @@ from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
 from sembr.api.history import router as history_router
 from sembr.api.intents import router as intents_router
+from sembr.api.kb import router as kb_router
 from sembr.api.maintenance import router as maintenance_router
 from sembr.api.prompts import router as prompts_router
 from sembr.api.restart import router as restart_router
@@ -76,6 +78,8 @@ from sembr.db.summary_history import (
 )
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
+from sembr.kb.lint import add_kb_lint_job
+from sembr.kb.store import KbStore
 from sembr.logbus.install import install_logbus
 from sembr.maintenance import (
     add_dead_ttl_job,
@@ -131,6 +135,29 @@ async def _get_intent_prompt_ctx(
         intent.language,
         history_days,
         intent.extraction_enabled,
+    )
+
+
+async def _kb_ingest(
+    result: SummaryResult,
+    *,
+    store: KbStore,
+    backend,
+    merge_model: str,
+) -> None:
+    """on_kb_ingest callback: incrementally merge a fresh digest into the KB.
+
+    Early-returns when the intent has kb_enabled=0 (so wiring the callback is safe
+    for every intent; only opted-in intents touch the KB). Reached only on the
+    cron persist path (the pipeline guards on persist) and runs in a never-raise
+    block there, so an ingest failure can't block notification/email.
+    """
+    intent = await get_intent(get_conn(), result.intent_id)
+    if intent is None or not intent.kb_enabled:
+        return
+    run_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    await store.ingest(
+        result.intent_id, run_at, result.summary, backend=backend, merge_model=merge_model
     )
 
 
@@ -312,6 +339,10 @@ async def lifespan(app: FastAPI):
     # Assign on_match before scheduler.start() so first ticks always find a callback
     llm_backend = build_llm_backend(settings)
     email_ch = EmailChannel(settings)
+    # Per-intent KB store (delta-label/kb SF1). One instance shared by the ingest
+    # callback (here), the weekly lint job, and the /api/kb endpoints.
+    kb_store = KbStore()
+    add_kb_lint_job(scheduler, kb_store)  # weekly KB health check + auto-fix (O2)
     pipeline = SummaryPipeline(
         llm=llm_backend,
         get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(iid),
@@ -325,6 +356,9 @@ async def lifespan(app: FastAPI):
             get_conn(), iid, days, now
         ),
         on_persist=lambda r: save_summary(get_conn(), r),
+        on_kb_ingest=lambda r: _kb_ingest(
+            r, store=kb_store, backend=llm_backend, merge_model=settings.effective_kb_merge_model
+        ),
         # Live (reduce_model, reduce_concurrency) for the facts/map-reduce branch
         # — read fresh so dashboard tuning takes effect without a restart.
         get_reduce_ctx=lambda: (
@@ -340,6 +374,8 @@ async def lifespan(app: FastAPI):
     # be set in lifespan adjacent to on_match so both are wired before the
     # first request lands.
     app.state.summary_pipeline = pipeline
+    # KB store handle for the /api/kb endpoints + weekly lint job (P4).
+    app.state.kb_store = kb_store
     app.state.qdrant = qdrant
     app.state.scheduler = scheduler
     app.state.settings = settings
@@ -419,6 +455,7 @@ app.include_router(external_fire_router)
 app.include_router(history_router)
 app.include_router(extraction_spec_router)
 app.include_router(prompts_router)
+app.include_router(kb_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)
 app.include_router(restart_router)

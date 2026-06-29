@@ -1249,6 +1249,8 @@
                 <button @click="openAdvanced(intent)" title="Generate / edit the extraction spec">Advanced</button>
                 <button @click="openHistory(intent)"
                         :class="(expandedIntentId===intent.id && expanded.kind==='history') ? 'primary' : ''">History</button>
+                <button @click="$dispatch('kb-open', {intentId: intent.id, intentName: intent.name})"
+                        title="View / edit this intent's knowledge base (events index)">KB</button>
                 <button class="fire-btn" @click="openFire(intent)">Fire</button>
                 <button class="danger" @click="confirmDelete(intent)">Delete</button>
               </div>
@@ -2924,10 +2926,55 @@
 
 </div><!-- /settings-view -->
 
+<!-- ── KB (events index) modal — own Alpine root, opened via the `kb-open` event ── -->
+<div x-data="kbModal()" @kb-open.window="open($event.detail)">
+  <template x-teleport="body">
+    <div class="modal-overlay" x-show="open_" x-cloak @click.self="close()"
+         @keydown.escape.window="open_ && close()">
+      <div class="modal-panel" style="max-width:880px; max-height:90vh; display:flex; flex-direction:column;">
+        <div class="modal-header">
+          <span class="modal-title">KB · Events Index · <span x-text="intentName"></span></span>
+          <button class="modal-close" @click="close()">✕</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 0;">
+          <button @click="rebuild()" :disabled="rebuilding"
+                  x-text="rebuilding ? 'Rebuilding…' : (exists ? 'Rebuild KB' : 'Build KB')"
+                  title="Re-distill the events index from history (overwrites)"></button>
+          <button @click="lint()" :disabled="linting || !exists"
+                  x-text="linting ? 'Linting…' : 'Lint now'"
+                  title="Run the health-check cleanup now"></button>
+          <button @click="openNewWindow()" title="Open this KB full-screen in a new window">Open in new window</button>
+          <span class="muted" style="font-size:0.75rem; margin-left:auto;"
+                x-show="!exists && !loading">KB not built yet — click Build KB.</span>
+        </div>
+        <div x-show="error" class="muted" style="color:#d33; font-size:0.8rem;" x-text="error"></div>
+        <div x-show="status" class="muted" style="font-size:0.8rem;" x-text="status"></div>
+        <div x-show="warnings.length" style="font-size:0.75rem; margin:4px 0;">
+          <div class="muted" style="margin-bottom:2px;">Warnings:</div>
+          <template x-for="w in warnings" :key="w">
+            <div style="padding:2px 0 2px 8px; border-left:2px solid #e0a000;" x-text="w"></div>
+          </template>
+        </div>
+        <textarea x-model="content" spellcheck="false" :disabled="loading"
+                  style="flex:1; min-height:50vh; width:100%; box-sizing:border-box; font-family:var(--font-mono, monospace); font-size:0.82rem; line-height:1.5; resize:vertical;"
+                  placeholder="events.md — one event per line; the &lt;!--k:slug--&gt; anchors are managed automatically."></textarea>
+        <div class="modal-footer">
+          <span class="muted" style="font-size:0.72rem; margin-right:auto;"
+                x-show="dirty">Unsaved changes</span>
+          <button @click="close()">Close</button>
+          <button class="primary" @click="save()" :disabled="submitting || !dirty"
+                  x-text="submitting ? 'Saving…' : 'Save'"></button>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>
+
 <script src="/dashboard/feeds.js?v=6"></script>
 <script src="/dashboard/codehl.js?v=1"></script>
 <script src="/dashboard/intents.js?v=30"></script>
 <script src="/dashboard/templates.js?v=5"></script>
+<script src="/dashboard/kb.js?v=1"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=13"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>
