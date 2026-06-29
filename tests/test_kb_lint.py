@@ -60,7 +60,7 @@ def test_mark_malformed_marks_headless_thread_not_delete() -> None:
     out, n = L.mark_malformed(content)
     assert n == 1 and L._MALFORMED_MARK in out
     assert "### 缺键的线索" in out  # not deleted
-    out2, n2 = L.mark_malformed(out)
+    _, n2 = L.mark_malformed(out)
     assert n2 == 0  # idempotent
 
 
