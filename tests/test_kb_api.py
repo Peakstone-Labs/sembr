@@ -26,26 +26,34 @@ from sembr.models import IntentCreate
 from sembr.summarizer.models import SummaryResult
 
 
-class _FakeDistillBackend:
+class _FakeBackend:
+    """Schema-aware fake: serves both the distill (threads=) and lint near-dup
+    (groups=) structured() calls the KB endpoints make."""
+
     async def structured(self, prompt, schema, *, system=None, model=None, repair_attempts=2):
-        return schema(
-            threads=[
-                {
-                    "title": "逆回购利率",
-                    "section": "货币政策",
-                    "first_seen": "2026-06-01",
-                    "current_state": "维持1.50%",
-                    "timeline": [{"date": "2026-06-20", "entry": "维持1.50%"}],
-                },
-                {
-                    "title": "社融",
-                    "section": "增长与数据",
-                    "first_seen": "2026-06-05",
-                    "current_state": "同比多增",
-                    "timeline": [{"date": "2026-06-19", "entry": "同比多增"}],
-                },
-            ]
-        )
+        fields = schema.model_fields
+        if "threads" in fields:
+            return schema(
+                threads=[
+                    {
+                        "title": "逆回购利率",
+                        "section": "货币政策",
+                        "first_seen": "2026-06-01",
+                        "current_state": "维持1.50%",
+                        "timeline": [{"date": "2026-06-20", "entry": "维持1.50%"}],
+                    },
+                    {
+                        "title": "社融",
+                        "section": "增长与数据",
+                        "first_seen": "2026-06-05",
+                        "current_state": "同比多增",
+                        "timeline": [{"date": "2026-06-19", "entry": "同比多增"}],
+                    },
+                ]
+            )
+        if "groups" in fields:  # near-dup lint: no merges in this fixture
+            return schema(groups=[])
+        return schema()
 
 
 def _intent_body(name: str) -> IntentCreate:
@@ -73,8 +81,10 @@ def _client(tmp_path):
             run_at=run_at,
         )
         app.state.kb_store = KbStore(root=tmp_path, git=GitRepo(tmp_path))
-        app.state.llm_backend = _FakeDistillBackend()
-        app.state.settings = SimpleNamespace(effective_kb_distill_model="fake-pro")
+        app.state.llm_backend = _FakeBackend()
+        app.state.settings = SimpleNamespace(
+            effective_kb_distill_model="fake-pro", effective_kb_merge_model="fake-flash"
+        )
         yield
         await conn.close()
 
@@ -170,4 +180,4 @@ def test_manual_lint(tmp_path) -> None:
         c.post("/api/kb/1/rebuild", json={})
         r = c.post("/api/kb/1/lint")
         assert r.status_code == 200
-        assert set(r.json()) == {"merged_dups", "archived", "marked", "empty_sections"}
+        assert set(r.json()) == {"merged_dups", "merged_near_dup", "archived", "marked"}

@@ -186,6 +186,22 @@ def test_render_threads_canonical_with_timeline() -> None:
     assert mlf.first == "2026-06-25"  # bad first_seen → fallback to now_date
 
 
+def test_render_threads_uses_llm_ascii_key() -> None:
+    """R1b: prefer the LLM's ASCII key; empty key → title slug → hash fallback."""
+    t = D._DistillThread(
+        key="oil-price",
+        title="油价",
+        section="石油市场",
+        first_seen="2026-06-01",
+        current_state="跌",
+        timeline=[D._TimelineEntry(date="2026-06-01", entry="x")],
+    )
+    assert "<!--k:oil-price-->" in D.render_threads([t], "2026-06-25")  # ascii key, not a hash
+    t2 = D._DistillThread(**_thread("逆回购", "S", "2026-06-01", "x", [("2026-06-01", "y")]))
+    key2 = next(iter(M.parse_events(D.render_threads([t2], "2026-06-25"))))
+    assert key2.startswith("event-")  # no LLM key + Chinese title → content-hash fallback
+
+
 def test_render_threads_chinese_titles_distinct_stable_keys() -> None:
     """Review 🔴-1: all-Chinese titles get distinct, stable content-hash keys."""
     ts = [

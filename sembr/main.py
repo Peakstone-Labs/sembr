@@ -342,7 +342,9 @@ async def lifespan(app: FastAPI):
     # Per-intent KB store (delta-label/kb SF1). One instance shared by the ingest
     # callback (here), the weekly lint job, and the /api/kb endpoints.
     kb_store = KbStore()
-    add_kb_lint_job(scheduler, kb_store)  # weekly KB health check + auto-fix (O2)
+    # weekly KB health check + auto-fix (O2); backend+model enable the LLM
+    # near-duplicate thread merge (R2a).
+    add_kb_lint_job(scheduler, kb_store, llm_backend, settings.effective_kb_merge_model)
     pipeline = SummaryPipeline(
         llm=llm_backend,
         get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(iid),

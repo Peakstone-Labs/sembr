@@ -109,3 +109,69 @@ def test_add_kb_lint_job_idempotent_registration(tmp_path) -> None:
     L.add_kb_lint_job(sched, store)
     job = sched.get_job("weekly-kb-lint")
     assert job is not None and "cron" in str(job.trigger).lower()
+
+
+# --------------------------------------------------------------------------- #
+# LLM near-duplicate merge (R2a)
+# --------------------------------------------------------------------------- #
+
+
+class _FakeNearDupBackend:
+    def __init__(self, groups: list[dict]) -> None:
+        self._groups = groups
+
+    async def structured(self, prompt, schema, *, system=None, model=None, repair_attempts=2):
+        return schema(groups=self._groups)
+
+
+async def test_merge_near_duplicates_unions_timelines() -> None:
+    content = (
+        "## S\n\n"
+        "### 海峡管控 <!--k:control-->\n首见 2026-06-01 · 最新 2026-06-10 · 当前：A\n"
+        "- 2026-06-01 a\n- 2026-06-10 b\n"
+        "\n### 通行政策 <!--k:policy-->\n首见 2026-06-05 · 最新 2026-06-20 · 当前：B\n- 2026-06-20 c\n"
+    )
+    backend = _FakeNearDupBackend(
+        [
+            {
+                "canonical_key": "control",
+                "canonical_title": "海峡管控与通行",
+                "section": "S",
+                "merge_keys": ["control", "policy"],
+            }
+        ]
+    )
+    out, n = await L.merge_near_duplicates(content, backend, "m")
+    assert n == 1
+    threads = M.parse_events(out)
+    assert set(threads) == {"control"}  # policy folded into control, none lost
+    ctrl = threads["control"]
+    assert {d for d, _ in ctrl.entries} == {"2026-06-01", "2026-06-10", "2026-06-20"}  # unioned
+    assert ctrl.title == "海峡管控与通行" and ctrl.last == "2026-06-20" and ctrl.current == "B"
+
+
+async def test_merge_near_duplicates_noop_when_no_groups() -> None:
+    content = (
+        "## S\n\n### t <!--k:t-->\n首见 2026-06-01 · 最新 2026-06-01 · 当前：x\n- 2026-06-01 a\n"
+    )
+    out, n = await L.merge_near_duplicates(content, _FakeNearDupBackend([]), "m")
+    assert n == 0 and out == content  # untouched when nothing to merge
+
+
+async def test_merge_near_duplicates_ignores_invalid_group() -> None:
+    content = (
+        "## S\n\n### t <!--k:t-->\n首见 2026-06-01 · 最新 2026-06-01 · 当前：x\n- 2026-06-01 a\n"
+    )
+    # group references a non-existent key + only 1 valid → must be a no-op (not crash).
+    backend = _FakeNearDupBackend(
+        [
+            {
+                "canonical_key": "t",
+                "canonical_title": "T",
+                "section": "S",
+                "merge_keys": ["t", "ghost"],
+            }
+        ]
+    )
+    out, n = await L.merge_near_duplicates(content, backend, "m")
+    assert n == 0 and out == content

@@ -176,7 +176,13 @@ async def rebuild_kb(
 async def lint_kb(intent_id: int, request: Request) -> dict[str, Any]:
     await _require_intent(intent_id)
     store = _store(request)
-    stats = await _lint.run_for_intent(store, intent_id, identity=MANUAL_LINT_IDENTITY)
+    stats = await _lint.run_for_intent(
+        store,
+        intent_id,
+        identity=MANUAL_LINT_IDENTITY,
+        backend=request.app.state.llm_backend,
+        model=request.app.state.settings.effective_kb_merge_model,
+    )
     if stats.skipped == "not_bootstrapped":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -184,7 +190,7 @@ async def lint_kb(intent_id: int, request: Request) -> dict[str, Any]:
         )
     return {
         "merged_dups": stats.merged_dups,
+        "merged_near_dup": stats.merged_near_dup,
         "archived": stats.archived,
         "marked": stats.marked,
-        "empty_sections": stats.empty_sections,
     }

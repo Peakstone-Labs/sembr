@@ -42,15 +42,21 @@ RETENTION_DAYS = 30  # thread with no update for this many days → archived (wh
 CHUNK_MIN = 3  # fewer candidates ⇒ digest format likely changed → skip (F5)
 ARCHIVE_SECTION = "已归档"
 FALLBACK_SECTION = "未分类"
+ORPHAN_SECTION = "⚠️未识别(请补回 key 或修正格式)"
 
 _DATE_FMT = "%Y-%m-%d"
 
 # --- structure regexes (we own this format; strict match, tolerant on misses) ---
 _SECTION_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$")
 _THREAD_RE = re.compile(r"^###\s+(?P<title>.+?)\s*<!--k:(?P<key>[a-z0-9][a-z0-9-]*)-->\s*$")
+# Separator between 首见/最新/当前 tolerant of hand-edit variants ·｜|,，、 (💡-1).
+_SEP = r"\s*[·｜|,，、]\s*"
 _META_RE = re.compile(
-    r"^首见\s*(?P<first>\d{4}-\d{2}-\d{2})\s*·\s*最新\s*(?P<last>\d{4}-\d{2}-\d{2})"
-    r"\s*·\s*当前[：:]\s*(?P<current>.*?)\s*$"  # .*? so an empty 当前： still matches (review 🟡-2)
+    r"^首见\s*(?P<first>\d{4}-\d{2}-\d{2})"
+    + _SEP
+    + r"最新\s*(?P<last>\d{4}-\d{2}-\d{2})"
+    + _SEP
+    + r"当前[：:]\s*(?P<current>.*?)\s*$"  # .*? so an empty 当前： still matches (🟡-2)
 )
 _ENTRY_RE = re.compile(r"^-\s+(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<text>.*\S)\s*$")
 _KEY_RE = re.compile(r"<!--k:([a-z0-9][a-z0-9-]*)-->")
@@ -212,11 +218,8 @@ def parse_doc(events_md: str) -> tuple[list[Thread], list[str]]:
 
 def render_doc(threads: list[Thread], leading: list[str] | None = None) -> str:
     """Render threads back to markdown, grouped by section (first-appearance order;
-    archive section last). Timeline entries sorted by date. Deterministic."""
+    archive section last; orphans last of all). Timeline entries sorted. Deterministic."""
     out: list[str] = []
-    if leading:
-        out.extend(leading)
-        out.append("")
     order: list[str] = []
     by_sec: dict[str, list[Thread]] = {}
     for t in threads:
@@ -237,6 +240,14 @@ def render_doc(threads: list[Thread], leading: list[str] | None = None) -> str:
                 out.append(f"- {d} {text}")
             out.extend(t.extra)
             out.append("")
+    # Orphans (pre-first-thread lines + headless ### blocks from hand-edits) go LAST
+    # under a flagged section — visible + lint-markable, not silently relocated to
+    # the top (review 🟢-1). Idempotent: re-parsing keeps them here.
+    if leading:
+        out.append(f"## {ORPHAN_SECTION}")
+        out.append("")
+        out.extend(leading)
+        out.append("")
     return "\n".join(out).rstrip("\n") + "\n"
 
 

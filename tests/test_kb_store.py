@@ -93,6 +93,18 @@ def test_meta_empty_current_roundtrip_stable() -> None:
     assert M.render_doc(*M.parse_doc(rendered)).count("首见 ") == 1
 
 
+def test_meta_separator_variants_parse() -> None:
+    """💡-1: tolerate hand-edit separator variants (· ｜ | , ，) in the meta line."""
+    for sep in ["·", "|", "｜", ",", "，"]:
+        md = (
+            f"## S\n\n### t <!--k:t-->\n首见 2026-06-01 {sep} 最新 2026-06-02 {sep} 当前：x\n"
+            "- 2026-06-01 a\n"
+        )
+        threads = M.parse_doc(md)[0]
+        assert len(threads) == 1
+        assert threads[0].last == "2026-06-02" and threads[0].current == "x"
+
+
 def test_headless_thread_not_merged_into_previous() -> None:
     """Review 🟡-1: a headless '### ' block (key deleted) must not have its timeline
     entries absorbed into the previous thread."""
