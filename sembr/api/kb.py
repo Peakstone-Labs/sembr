@@ -75,7 +75,7 @@ async def _require_intent(intent_id: int) -> Intent:
 @router.get("/api/kb/{intent_id}/{kind}")
 async def get_kb(intent_id: int, kind: str, request: Request) -> dict[str, Any]:
     _check_kind(kind)
-    await _require_intent(intent_id)
+    intent = await _require_intent(intent_id)
     store = _store(request)
     content = store.read(intent_id, kind)
     path = store.path(intent_id, kind)
@@ -87,6 +87,7 @@ async def get_kb(intent_id: int, kind: str, request: Request) -> dict[str, Any]:
         "size_bytes": len((content or "").encode("utf-8")),
         "mtime": path.stat().st_mtime if path.exists() else None,
         "content_hash": store.content_hash(intent_id, kind),
+        "kb_enabled": intent.kb_enabled,  # daily auto-ingest switch (UI toggle)
     }
 
 

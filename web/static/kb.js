@@ -32,6 +32,10 @@ function kbModal() {
     status: '',
     warnings: [],
 
+    // kb_enabled: daily cron auto-ingest switch (independent of the editor).
+    enabled: false,
+    toggleBusy: false,
+
     // Generation guard: bumped on every (re)load so a slow in-flight GET for a
     // previously-opened intent can't overwrite the content of a later one
     // (memory feedback_alpine_modal_async_guard / feedback_frontend in-flight guard).
@@ -116,6 +120,7 @@ function kbModal() {
         this.originalContent = this.content;
         this.baseHash = d.content_hash;
         this.exists = d.exists;
+        this.enabled = !!d.kb_enabled;
         this.warnings = [];
       } catch (e) {
         if (gen === this._gen) this.error = 'Load failed: ' + e.message;
@@ -202,6 +207,29 @@ function kbModal() {
         this.error = 'Network error: ' + e.message;
       } finally {
         this.linting = false;
+      }
+    },
+
+    async toggleKbEnabled(checked) {
+      // Daily cron auto-ingest switch. Optimistic; reverts on failure.
+      const gen = this._gen;
+      this.toggleBusy = true;
+      this.error = '';
+      try {
+        const res = await this._request('PUT', `/intents/${this.intentId}`, { kb_enabled: checked });
+        const d = await res.json().catch(() => ({}));
+        if (gen !== this._gen) return;
+        if (!res.ok) {
+          this.error = this._extractError(d, `HTTP ${res.status}`);
+          this.enabled = !checked;  // revert the switch
+          return;
+        }
+        this.enabled = !!d.kb_enabled;
+        this.status = this.enabled ? '已开启每日自动更新' : '已关闭每日自动更新';
+      } catch (e) {
+        if (gen === this._gen) { this.error = 'Network error: ' + e.message; this.enabled = !checked; }
+      } finally {
+        if (gen === this._gen) this.toggleBusy = false;
       }
     },
 

@@ -2944,8 +2944,15 @@
                   x-text="linting ? 'Linting…' : 'Lint now'"
                   title="Run the health-check cleanup now"></button>
           <button @click="openNewWindow()" title="Open this KB full-screen in a new window">Open in new window</button>
-          <span class="muted" style="font-size:0.75rem; margin-left:auto;"
-                x-show="!exists && !loading">KB not built yet — click Build KB.</span>
+          <label class="toggle-wrap" style="margin-left:auto;"
+                 :style="toggleBusy ? 'opacity:.6; pointer-events:none; margin-left:auto;' : 'margin-left:auto;'"
+                 title="每天 cron 出 digest 后自动增量更新此 KB(kb_enabled)">
+            <span class="toggle">
+              <input type="checkbox" :checked="enabled" @change="toggleKbEnabled($event.target.checked)">
+              <span class="toggle-slider"></span>
+            </span>
+            <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;">每日自动更新</span>
+          </label>
         </div>
         <div x-show="error" class="muted" style="color:#d33; font-size:0.8rem;" x-text="error"></div>
         <div x-show="status" class="muted" style="font-size:0.8rem;" x-text="status"></div>
@@ -2974,7 +2981,7 @@
 <script src="/dashboard/codehl.js?v=1"></script>
 <script src="/dashboard/intents.js?v=30"></script>
 <script src="/dashboard/templates.js?v=5"></script>
-<script src="/dashboard/kb.js?v=2"></script>
+<script src="/dashboard/kb.js?v=3"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=14"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>

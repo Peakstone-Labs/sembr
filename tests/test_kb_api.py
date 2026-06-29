@@ -100,6 +100,7 @@ def test_get_unbuilt_kb(tmp_path) -> None:
         body = r.json()
         assert body["exists"] is False and body["content"] == ""
         assert body["content_hash"] is None
+        assert body["kb_enabled"] is False  # toggle data source (intent default off)
 
 
 def test_put_get_roundtrip(tmp_path) -> None:
