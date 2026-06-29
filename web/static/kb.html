@@ -6,14 +6,21 @@
 <title>KB · Events Index</title>
 <link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
 <link rel="stylesheet" href="/dashboard/style.css?v=20">
+<script src="/dashboard/codehl.js?v=1"></script>
+<script src="/dashboard/vendor/marked.min.js?v=2"></script>
+<script src="/dashboard/vendor/dompurify.min.js?v=2"></script>
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
-<script src="/dashboard/kb.js?v=6"></script>
+<script src="/dashboard/kb.js?v=7"></script>
 <style>
   /* Full-screen standalone editor (the modal's "open in new window" target). */
   .kb-page { display:flex; flex-direction:column; height:100vh; box-sizing:border-box; padding:14px 18px; gap:8px; }
-  .kb-page textarea { flex:1; width:100%; box-sizing:border-box; font-family:var(--font-mono, monospace);
-    font-size:0.85rem; line-height:1.55; resize:none; }
   .kb-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  /* Split: highlighted editor (left) + rendered preview (right). */
+  .kb-split { flex:1; display:flex; gap:10px; min-height:0; }
+  .kb-split .code-editor { flex:1; height:auto; }   /* override the fixed 360px */
+  .kb-split .code-editor-hl, .kb-split .code-editor-input { font-size:0.84rem; line-height:1.55; }
+  .kb-preview { flex:1; overflow:auto; padding:8px 12px; border:1px solid var(--border);
+    border-radius:4px; line-height:1.6; }
 </style>
 </head>
 <body>
@@ -48,8 +55,18 @@
       <div style="padding:2px 0 2px 8px; border-left:2px solid #e0a000;" x-text="w"></div>
     </template>
   </div>
-  <textarea x-model="content" spellcheck="false" :disabled="loading"
-            placeholder="events.md — one event per line; the <!--k:slug--> anchors are managed automatically."></textarea>
+  <div class="kb-split">
+    <!-- left: syntax-highlighted overlay editor -->
+    <div class="code-editor">
+      <pre class="code-editor-hl" aria-hidden="true" x-ref="kbHl" x-html="highlightMarkdown(content)"></pre>
+      <textarea class="code-editor-input" x-ref="kbInput" x-model="content" spellcheck="false" :disabled="loading"
+                @scroll="$refs.kbHl.scrollTop = $event.target.scrollTop; syncScroll($event.target, $refs.kbPreview)"
+                placeholder="events.md — one event per line; the <!--k:slug--> anchors are managed automatically."></textarea>
+    </div>
+    <!-- right: rendered markdown, proportional scroll-synced with the editor -->
+    <div class="kb-preview history-summary" x-ref="kbPreview" x-html="renderedHtml"
+         @scroll="syncScroll($refs.kbPreview, $refs.kbInput)"></div>
+  </div>
 
   <!-- Build/Rebuild confirm dialog (days input + overwrite warning) -->
   <div class="modal-overlay" x-show="rebuildDialog" x-cloak @click.self="rebuildDialog=false"

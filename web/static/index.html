@@ -2962,9 +2962,20 @@
             <div style="padding:2px 0 2px 8px; border-left:2px solid #e0a000;" x-text="w"></div>
           </template>
         </div>
-        <textarea x-model="content" spellcheck="false" :disabled="loading"
-                  style="flex:1; min-height:50vh; width:100%; box-sizing:border-box; font-family:var(--font-mono, monospace); font-size:0.82rem; line-height:1.5; resize:vertical;"
-                  placeholder="events.md — one event per line; the &lt;!--k:slug--&gt; anchors are managed automatically."></textarea>
+        <div style="display:flex; gap:6px; margin:6px 0 4px;">
+          <button @click="view='edit'" :class="view==='edit' ? 'primary' : ''" style="font-size:0.75rem;">Edit</button>
+          <button @click="view='preview'" :class="view==='preview' ? 'primary' : ''" style="font-size:0.75rem;">Preview</button>
+        </div>
+        <!-- Edit: syntax-highlighted overlay editor (same as Advanced/templates) -->
+        <div class="code-editor" x-show="view==='edit'" style="flex:1; height:auto; min-height:45vh;">
+          <pre class="code-editor-hl" aria-hidden="true" x-ref="kbHl" x-html="highlightMarkdown(content)"></pre>
+          <textarea class="code-editor-input" x-model="content" spellcheck="false" :disabled="loading"
+                    @scroll="$refs.kbHl.scrollTop = $event.target.scrollTop"
+                    placeholder="events.md — one event per line; the &lt;!--k:slug--&gt; anchors are managed automatically."></textarea>
+        </div>
+        <!-- Preview: rendered markdown -->
+        <div class="history-summary" x-show="view==='preview'" x-html="renderedHtml"
+             style="flex:1; min-height:45vh; overflow:auto; padding:8px 12px; border:1px solid var(--border); border-radius:4px; line-height:1.6;"></div>
         <div class="modal-footer">
           <span class="muted" style="font-size:0.72rem; margin-right:auto;"
                 x-show="dirty">Unsaved changes</span>
@@ -3010,7 +3021,7 @@
 <script src="/dashboard/codehl.js?v=1"></script>
 <script src="/dashboard/intents.js?v=30"></script>
 <script src="/dashboard/templates.js?v=5"></script>
-<script src="/dashboard/kb.js?v=6"></script>
+<script src="/dashboard/kb.js?v=7"></script>
 <script src="/dashboard/logs.js?v=2"></script>
 <script src="/dashboard/settings.js?v=14"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>

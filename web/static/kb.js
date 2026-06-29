@@ -41,6 +41,9 @@ function kbModal() {
     rebuildDays: 60,
     rebuildDialog: false,  // the Build/Rebuild confirm dialog (days input + overwrite warning)
 
+    view: 'edit',          // modal tab: 'edit' (highlighted source) | 'preview' (rendered)
+    _syncing: false,       // re-entrancy guard for the split-view proportional scroll sync
+
     // Generation guard: bumped on every (re)load so a slow in-flight GET for a
     // previously-opened intent can't overwrite the content of a later one
     // (memory feedback_alpine_modal_async_guard / feedback_frontend in-flight guard).
@@ -48,6 +51,30 @@ function kbModal() {
 
     get dirty() {
       return this.content !== this.originalContent;
+    },
+
+    // Display-only markdown syntax highlight for the overlay editor (codehl.js).
+    highlightMarkdown(text) {
+      return window.ceHighlightMarkdown ? window.ceHighlightMarkdown(text) + '\n' : text;
+    },
+
+    // Rendered (sanitized) markdown for the preview pane (marked + DOMPurify).
+    get renderedHtml() {
+      if (window.marked && window.DOMPurify) {
+        return window.DOMPurify.sanitize(
+          window.marked.parse(this.content || '', { breaks: true, gfm: true }));
+      }
+      return '<p class="muted">(markdown renderer unavailable)</p>';
+    },
+
+    // Proportional scroll sync for the split view: map src scroll % → dst.
+    syncScroll(srcEl, dstEl) {
+      if (this._syncing || !srcEl || !dstEl) return;
+      this._syncing = true;
+      const sMax = Math.max(1, srcEl.scrollHeight - srcEl.clientHeight);
+      const dMax = Math.max(0, dstEl.scrollHeight - dstEl.clientHeight);
+      dstEl.scrollTop = (srcEl.scrollTop / sMax) * dMax;
+      requestAnimationFrame(() => { this._syncing = false; });
     },
 
     // ── HTTP helpers (mirror templates.js) ─────────────────
