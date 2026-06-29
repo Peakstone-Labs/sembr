@@ -1,20 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Incremental event-index merge (design §4, recommended scheme B).
+"""Incremental event-index merge — v2 "tracked thread + timeline" model.
 
-The hard constraints — *converge, don't drop, git-auditable* — are guaranteed by
-**code**, not by the LLM. The LLM only does the narrow, low-risk part it's good
-at: assign each new digest bullet a stable event key (reusing an existing key on
-a clear same-event match, else a new slug) and a one-line latest state. All
-mutation of the file (which line changes, what's appended, what's archived) is
-deterministic here, so we never let the model rewrite the whole page and silently
-lose events (the Phase-3 wash lesson, design §4.1).
+Each event is a coarse **tracked thread** (target ~10-20 per intent), rendered as
+a markdown block:
 
-`events.md` is the single human-readable source of truth. Each event is one line:
+    ## 海峡通行与管控
 
-    - <!--k:7day-reverse-repo--> **7天逆回购利率**（首见 2026-05-12，最新 2026-06-27）：下调10bp至1.40%
+    ### 海峡开闭与管控权 <!--k:strait-control-->
+    首见 2026-06-13 · 最新 2026-06-29 · 当前：伊朗坚持管理权，通行受阻但部分恢复
+    - 2026-06-17 美伊签 MOU，规定立即开放(60天免费)、解封、启动核谈
+    - 2026-06-21 伊朗正式宣布关闭海峡；美军否认
+    - 2026-06-29 伊朗外长重申管理权，革命卫队要求协调；IMO 暂停撤离
 
-The ``<!--k:slug-->`` HTML comment is the deterministic key anchor: invisible when
-rendered, visible in git diff, regex-extractable by this module.
+A daily merge consolidates that day's digest points into **at most one dated entry
+per thread** (appended to the timeline), matching candidates against existing
+threads by *title + current state* (not bare slugs). The hard guarantees —
+converge / don't drop / git-auditable — stay in deterministic code; the LLM only
+decides "which thread does today's news belong to + one-line progress + updated
+current state". Append-only timelines are naturally non-lossy and show how an
+event evolved, not just its latest snapshot.
+
+This supersedes the v1 one-line-per-event (latest-state-only) model.
 """
 
 from __future__ import annotations
@@ -31,70 +37,69 @@ from sembr.summarizer.llm.base import BaseLLMBackend
 
 logger = logging.getLogger(__name__)
 
-# Tunables (design §4.3; on-box calibrated). RETENTION_DAYS = user decision O1.
-RETENTION_DAYS = 30
-CHUNK_MIN = 3  # fewer candidates than this ⇒ digest format likely changed → skip (F5)
+# Tunables (events-v2 decisions; on-box calibrated).
+RETENTION_DAYS = 30  # thread with no update for this many days → archived (whole block)
+CHUNK_MIN = 3  # fewer candidates ⇒ digest format likely changed → skip (F5)
 ARCHIVE_SECTION = "已归档"
-FALLBACK_SECTION = "未分类"  # used when the LLM proposes a section not already present (F6)
+FALLBACK_SECTION = "未分类"
 
 _DATE_FMT = "%Y-%m-%d"
-_RUN_AT_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
-# Canonical event line. We own this format (code builds every line on create and
-# rebuilds it on update), so a strict regex is safe; non-matching lines are left
-# untouched here and handled by lint (malformed marking, design §7.2).
-_LINE_RE = re.compile(
-    r"^\s*[-*]\s+<!--k:(?P<key>[a-z0-9][a-z0-9-]*)-->\s*"
-    r"\*\*(?P<title>.+?)\*\*"
-    r"（首见\s*(?P<first>\d{4}-\d{2}-\d{2})，最新\s*(?P<last>\d{4}-\d{2}-\d{2})）："
-    r"(?P<state>.*\S)\s*$"
-)
-_KEY_RE = re.compile(r"<!--k:([a-z0-9][a-z0-9-]*)-->")
+# --- structure regexes (we own this format; strict match, tolerant on misses) ---
 _SECTION_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$")
-_BULLET_RE = re.compile(r"^\s*[-*]\s+(?P<body>.+\S)\s*$")
-# Strip a leading delta label like [新增] / 【升级】 from a digest bullet.
+_THREAD_RE = re.compile(r"^###\s+(?P<title>.+?)\s*<!--k:(?P<key>[a-z0-9][a-z0-9-]*)-->\s*$")
+_META_RE = re.compile(
+    r"^首见\s*(?P<first>\d{4}-\d{2}-\d{2})\s*·\s*最新\s*(?P<last>\d{4}-\d{2}-\d{2})"
+    r"\s*·\s*当前[：:]\s*(?P<current>.*\S)\s*$"
+)
+_ENTRY_RE = re.compile(r"^-\s+(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<text>.*\S)\s*$")
+_KEY_RE = re.compile(r"<!--k:([a-z0-9][a-z0-9-]*)-->")
+# digest chunking
+_BULLET_RE = re.compile(r"^\s*[-*]\s+(?P<body>.*\S)\s*$")
 _LABEL_RE = re.compile(r"^\s*[\[【][^\]】]{1,8}[\]】]\s*")
 _SLUG_BAD = re.compile(r"[^a-z0-9]+")
 
 
 def slugify(raw: str) -> str:
-    """Deterministically canonicalize a key to ``[a-z0-9-]`` (defends F6/F10).
-
-    The LLM is asked for a slug but may return spaces/case/unicode; we never trust
-    it to be well-formed. Non-ascii (e.g. Chinese) collapses to empty, so the
-    caller falls back to ``stable_fallback_key`` (content hash, not position).
-    """
-    s = _SLUG_BAD.sub("-", raw.strip().lower()).strip("-")
-    return s
+    """Canonicalize to ``[a-z0-9-]``; non-ascii (Chinese) collapses to '' → caller
+    falls back to ``stable_fallback_key`` (content hash, never positional)."""
+    return _SLUG_BAD.sub("-", raw.strip().lower()).strip("-")
 
 
 def stable_fallback_key(text: str) -> str:
     """Content-derived fallback key when slugify yields empty (review 🔴-1).
 
-    Must NOT be positional (e.g. ``event-{index}``): a positional key makes
-    candidate 0 of two different days collide, so a Chinese-titled event A on day 1
-    and a different event A' on day 2 would share a key — A' overwrites A, or the
-    weekly dedup drops one (violating C1 "don't lose events"). A content hash gives
-    the *same* event the *same* key across days and distinct events distinct keys.
+    Never positional: same text → same key across days; distinct text → distinct.
     """
-    h = hashlib.sha1(text.strip().encode("utf-8")).hexdigest()[:10]
-    return f"event-{h}"
+    return "event-" + hashlib.sha1(text.strip().encode("utf-8")).hexdigest()[:10]
 
 
 @dataclass
 class Candidate:
-    """One deterministic chunk of today's digest (design §4.1 step 1)."""
-
     text: str
     section: str | None
 
 
 @dataclass
+class Thread:
+    """One tracked event: a coarse topic with a dated progress timeline."""
+
+    key: str
+    title: str
+    section: str
+    first: str
+    last: str
+    current: str
+    entries: list[tuple[str, str]] = field(default_factory=list)  # (ISO date, text)
+    extra: list[str] = field(default_factory=list)  # verbatim hand-edited stray lines
+
+
+@dataclass
 class MergeStats:
-    new: int = 0
-    updated: int = 0
-    archived: int = 0
-    skipped: str | None = None  # None = applied; else reason ("low_candidates")
+    new: int = 0  # new threads created
+    updated: int = 0  # existing threads that got a fresh timeline entry
+    archived: int = 0  # threads moved to 已归档
+    skipped: str | None = None
 
 
 @dataclass
@@ -103,13 +108,13 @@ class MergeResult:
     stats: MergeStats = field(default_factory=MergeStats)
 
 
-class _Assignment(BaseModel):
-    candidate_index: int
+class _ThreadUpdate(BaseModel):
     key: str
     is_new: bool
     title: str
     section: str
-    state: str
+    entry: str  # one-line progress for TODAY on this thread
+    current_state: str  # updated one-line current status
 
     @field_validator("key")
     @classmethod
@@ -118,66 +123,118 @@ class _Assignment(BaseModel):
 
 
 class _AssignResult(BaseModel):
-    assignments: list[_Assignment]
+    updates: list[_ThreadUpdate]
 
 
 # --------------------------------------------------------------------------- #
-# Deterministic helpers (no LLM — unit-testable)
+# Deterministic parse / render (no LLM — unit-testable)
 # --------------------------------------------------------------------------- #
 
 
 def chunk_digest(digest_text: str) -> list[Candidate]:
-    """Split a digest into candidate events: one per bullet, tagged with its section.
-
-    Deterministic, depends on the digest being bullet/section structured (the
-    standard summary format). Leading delta labels are stripped so the candidate
-    text is the bare event content. If this yields < CHUNK_MIN the caller skips
-    the day (digest format likely changed — F5).
-    """
-    candidates: list[Candidate] = []
-    current_section: str | None = None
+    """Split a digest into candidate points (one per bullet, tagged with section)."""
+    out: list[Candidate] = []
+    section: str | None = None
     for line in digest_text.splitlines():
         sec = _SECTION_RE.match(line)
         if sec:
-            current_section = sec.group("title")
+            section = sec.group("title")
             continue
-        bullet = _BULLET_RE.match(line)
-        if not bullet:
+        b = _BULLET_RE.match(line)
+        if not b:
             continue
-        body = _LABEL_RE.sub("", bullet.group("body")).strip()
+        body = _LABEL_RE.sub("", b.group("body")).strip()
         if body:
-            candidates.append(Candidate(text=body, section=current_section))
-    return candidates
-
-
-@dataclass
-class _ParsedLine:
-    key: str
-    title: str
-    first: str
-    last: str
-    state: str
-
-
-def _parse_line(line: str) -> _ParsedLine | None:
-    m = _LINE_RE.match(line)
-    if not m:
-        return None
-    return _ParsedLine(m["key"], m["title"], m["first"], m["last"], m["state"])
-
-
-def build_line(key: str, title: str, first: str, last: str, state: str) -> str:
-    return f"- <!--k:{key}--> **{title}**（首见 {first}，最新 {last}）：{state}"
-
-
-def parse_events(events_md: str) -> dict[str, _ParsedLine]:
-    """Map event key → parsed line for every canonical event line in the doc."""
-    out: dict[str, _ParsedLine] = {}
-    for line in events_md.splitlines():
-        parsed = _parse_line(line)
-        if parsed:
-            out[parsed.key] = parsed
+            out.append(Candidate(text=body, section=section))
     return out
+
+
+def parse_doc(events_md: str) -> tuple[list[Thread], list[str]]:
+    """Parse events.md into ordered threads + any leading orphan lines.
+
+    Tolerant: a ``### head`` starts a thread; the first ``首见…`` line fills its
+    meta; ``- DATE text`` lines are timeline entries; any other non-blank line
+    inside a block is preserved verbatim in ``thread.extra`` (so hand-edits aren't
+    dropped — C1). Lines before the first thread are kept as leading orphans.
+    """
+    threads: list[Thread] = []
+    leading: list[str] = []
+    section: str | None = None
+    cur: Thread | None = None
+    for line in events_md.splitlines():
+        sec = _SECTION_RE.match(line)
+        if sec:
+            section = sec.group("title")
+            cur = None
+            continue
+        head = _THREAD_RE.match(line)
+        if head:
+            cur = Thread(
+                key=head.group("key"),
+                title=head.group("title").strip().strip("*").strip(),
+                section=section or FALLBACK_SECTION,
+                first="",
+                last="",
+                current="",
+            )
+            threads.append(cur)
+            continue
+        if cur is None:
+            if line.strip():
+                leading.append(line)
+            continue
+        meta = _META_RE.match(line)
+        if meta and not cur.first:
+            cur.first, cur.last, cur.current = meta.group("first", "last", "current")
+            continue
+        ent = _ENTRY_RE.match(line)
+        if ent:
+            cur.entries.append((ent.group("date"), ent.group("text")))
+            continue
+        if line.strip():
+            cur.extra.append(line)
+    # backfill missing first/last from entries (malformed / meta-less blocks)
+    for t in threads:
+        if t.entries:
+            dates = [d for d, _ in t.entries]
+            t.first = t.first or min(dates)
+            t.last = t.last or max(dates)
+    return threads, leading
+
+
+def render_doc(threads: list[Thread], leading: list[str] | None = None) -> str:
+    """Render threads back to markdown, grouped by section (first-appearance order;
+    archive section last). Timeline entries sorted by date. Deterministic."""
+    out: list[str] = []
+    if leading:
+        out.extend(leading)
+        out.append("")
+    order: list[str] = []
+    by_sec: dict[str, list[Thread]] = {}
+    for t in threads:
+        s = t.section or FALLBACK_SECTION
+        if s not in by_sec:
+            by_sec[s] = []
+            order.append(s)
+        by_sec[s].append(t)
+    if ARCHIVE_SECTION in order:
+        order = [s for s in order if s != ARCHIVE_SECTION] + [ARCHIVE_SECTION]
+    for s in order:
+        out.append(f"## {s}")
+        out.append("")
+        for t in by_sec[s]:
+            out.append(f"### {t.title} <!--k:{t.key}-->")
+            out.append(f"首见 {t.first} · 最新 {t.last} · 当前：{t.current}")
+            for d, text in sorted(t.entries):
+                out.append(f"- {d} {text}")
+            out.extend(t.extra)
+            out.append("")
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def parse_events(events_md: str) -> dict[str, Thread]:
+    """Map key → Thread (len() = thread count). Kept name for API/probe compat."""
+    return {t.key: t for t in parse_doc(events_md)[0]}
 
 
 def existing_keys(events_md: str) -> set[str]:
@@ -185,175 +242,112 @@ def existing_keys(events_md: str) -> set[str]:
 
 
 def section_titles(events_md: str) -> list[str]:
-    return [m.group("title") for line in events_md.splitlines() if (m := _SECTION_RE.match(line))]
+    seen: list[str] = []
+    for t in parse_doc(events_md)[0]:
+        if t.section not in seen:
+            seen.append(t.section)
+    return seen
 
 
-def _find_key_line(lines: list[str], key: str) -> int | None:
-    """Current index of the canonical line for *key*, or None.
+def apply_updates(
+    threads: list[Thread], updates: list[_ThreadUpdate], today: str
+) -> tuple[list[Thread], MergeStats]:
+    """Apply per-thread updates: append one dated entry to matched threads (replacing
+    any existing same-day entry — max one/day), create new threads otherwise.
 
-    Resolved fresh on each use (never cached) — inserting a new line shifts all
-    later indices, so a cached map would go stale mid-merge.
-    """
-    anchor = f"<!--k:{key}-->"
-    for i, line in enumerate(lines):
-        if anchor in line and _parse_line(line) is not None:
-            return i
-    return None
-
-
-def _insert_under_section(lines: list[str], section: str, new_line: str) -> None:
-    """Insert *new_line* right after the ``## section`` header (creating it if absent)."""
-    for i, line in enumerate(lines):
-        m = _SECTION_RE.match(line)
-        if m and m.group("title") == section:
-            lines.insert(i + 1, new_line)
-            return
-    # Section missing → create it at end of doc, then the line under it.
-    if lines and lines[-1].strip():
-        lines.append("")
-    lines.append(f"## {section}")
-    lines.append(new_line)
-
-
-def apply_merge(
-    events_md: str,
-    candidates: list[Candidate],
-    assignments: list[_Assignment],
-    now_date: str,
-) -> tuple[str, MergeStats]:
-    """Apply assignments deterministically. Code — not the LLM — guarantees no drop.
-
-    - existing key → rebuild ONLY that line: keep title + first-seen, set latest =
-      now, replace state. Every other line is byte-preserved.
-    - new key → build a fresh line and append under its (validated) section.
-
-    A new key is only treated as "existing update" when the key is actually
-    present; otherwise it's appended — so a model that wrongly flags ``is_new`` for
-    an event with a matching key still can't clobber an unrelated line (F10).
-    """
-    lines = events_md.splitlines()
-    present_keys = set(parse_events(events_md))
-    present_sections = set(section_titles(events_md))
+    An update whose key already exists is treated as an UPDATE even if is_new=True,
+    so the LLM can't spawn duplicate-key blocks (the v1 day-1 explosion bug)."""
+    by_key = {t.key: t for t in threads}
+    present_sections = {t.section for t in threads}
     stats = MergeStats()
-
-    for a in assignments:
-        if not (0 <= a.candidate_index < len(candidates)):
-            continue  # model referenced a candidate that doesn't exist — ignore
-        # Fallback key is content-derived, never positional (review 🔴-1): a
-        # Chinese key/title slugifies to "" and a positional fallback would collide
-        # across days → event overwrite / dedup loss (C1).
-        key = a.key or slugify(a.title) or stable_fallback_key(candidates[a.candidate_index].text)
-        # Index is resolved fresh (not cached): a prior new-line insertion shifts
-        # all later indices, so a cached map would point at the wrong line.
-        idx = _find_key_line(lines, key) if (not a.is_new and key in present_keys) else None
-        if idx is not None:
-            parsed = _parse_line(lines[idx])
-            assert parsed is not None  # _find_key_line only returns parseable lines
-            lines[idx] = build_line(key, parsed.title, parsed.first, now_date, a.state)
+    for u in updates:
+        key = u.key or stable_fallback_key(u.title)
+        t = by_key.get(key)
+        if t is not None:
+            t.entries = [(d, x) for d, x in t.entries if d != today]  # one entry per day
+            t.entries.append((today, u.entry))
+            t.last = max(t.last, today) if t.last else today
+            t.current = u.current_state
             stats.updated += 1
         else:
-            # New (or claimed-existing but key absent): append, never overwrite.
-            section = a.section if a.section in present_sections else FALLBACK_SECTION
-            new_line = build_line(key, a.title, now_date, now_date, a.state)
-            _insert_under_section(lines, section, new_line)
+            section = u.section.strip() if u.section.strip() else FALLBACK_SECTION
+            t = Thread(
+                key=key,
+                title=u.title,
+                section=section,
+                first=today,
+                last=today,
+                current=u.current_state,
+                entries=[(today, u.entry)],
+            )
+            threads.append(t)
+            by_key[key] = t
             present_sections.add(section)
-            present_keys.add(key)
             stats.new += 1
+    return threads, stats
 
-    return "\n".join(lines) + "\n", stats
 
-
-def archive_expired(
-    events_md: str,
-    now_date: str,
-    retention_days: int = RETENTION_DAYS,
-) -> tuple[str, int]:
-    """Move events whose latest date is older than retention into ``## 已归档``.
-
-    Archive, don't delete (design O1/C1 — never lose history). Lines already under
-    the archive section are left in place.
-    """
-    cutoff = datetime.strptime(now_date, _DATE_FMT).replace(tzinfo=UTC) - timedelta(
+def archive_expired(threads: list[Thread], today: str, retention_days: int = RETENTION_DAYS) -> int:
+    """Move whole threads with no update for >retention_days into ``已归档`` (not
+    deleted — C1). Returns how many were archived."""
+    cutoff = datetime.strptime(today, _DATE_FMT).replace(tzinfo=UTC) - timedelta(
         days=retention_days
     )
-    lines = events_md.splitlines()
-    kept: list[str] = []
-    moved: list[str] = []
-    current_section: str | None = None
-    for line in lines:
-        sec = _SECTION_RE.match(line)
-        if sec:
-            current_section = sec.group("title")
-            kept.append(line)
+    n = 0
+    for t in threads:
+        if t.section == ARCHIVE_SECTION or not t.last:
             continue
-        parsed = _parse_line(line)
-        if parsed and current_section != ARCHIVE_SECTION:
-            try:
-                last = datetime.strptime(parsed.last, _DATE_FMT).replace(tzinfo=UTC)
-            except ValueError:
-                kept.append(line)  # unparseable date — leave for lint, don't drop
-                continue
-            if last < cutoff:
-                moved.append(line)
-                continue
-        kept.append(line)
-
-    if not moved:
-        return events_md, 0
-
-    if ARCHIVE_SECTION not in section_titles("\n".join(kept)):
-        if kept and kept[-1].strip():
-            kept.append("")
-        kept.append(f"## {ARCHIVE_SECTION}")
-    # Append moved lines after the archive header. reversed() because each insert
-    # goes right after the header, so iterating reversed preserves the original
-    # relative order in the archive section (review 🟢-2).
-    for line in reversed(moved):
-        _insert_under_section(kept, ARCHIVE_SECTION, line)
-    return "\n".join(kept) + "\n", len(moved)
+        try:
+            last = datetime.strptime(t.last, _DATE_FMT).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        if last < cutoff:
+            t.section = ARCHIVE_SECTION
+            n += 1
+    return n
 
 
 # --------------------------------------------------------------------------- #
-# LLM key-assignment (the only non-deterministic step)
+# LLM thread assignment (the only non-deterministic step)
 # --------------------------------------------------------------------------- #
 
-_ASSIGN_SYSTEM = """你在维护一个长期事件进展索引。给你今天简报里抽出的若干"候选事件"、当前索引里**已存在的事件键清单**、以及当前索引的**章节标题清单**。
+_ASSIGN_SYSTEM = """你在维护一个长期事件【追踪索引】:每个主题是一条"追踪线索",有标题、当前状态、和一条按日期推进的时间线。
 
-为每个候选事件输出一条 assignment：
-- `key`：事件键,**必须是纯 ASCII 小写英文/拼音连字符 slug([a-z0-9-])**,严禁中文或其他非 ASCII 字符(否则该 key 会被判为无效)。**只有当候选与某个已存在键确属同一事件时才复用该键**;有任何不确定就造一个新 slug(`is_new=true`)。宁可新建也不要把语义不同的事件强行并入已有键。
-- `is_new`：复用已存在键填 false;新事件填 true。
-- `title`：简短事件名(不带 markdown)。
-- `section`：从给定章节标题里选最贴切的一个;若都不合适,原样给出你认为合适的标题(系统会回退到"未分类")。
-- `state`：该事件**最新状态**的一句话(含关键数字),用于写进索引行。
+给你:今天简报抽出的候选要点、以及当前索引里【已存在的追踪线索】(每条给 key | 标题 | 当前状态)。
 
-只输出 JSON,形如 {"assignments":[{"candidate_index":0,"key":"...","is_new":false,"title":"...","section":"...","state":"..."}]}。每个候选必须恰好一条,candidate_index 从 0 开始。"""
+把今天的候选要点【归并】到它们所属的线索,为每条【今天有进展】的线索输出一条更新:
+- `key`:线索键,**纯 ASCII 小写连字符 slug([a-z0-9-])**,严禁中文。**优先复用已存在线索的 key**——根据标题/当前状态判断该候选属于哪条已有线索;只有确实是全新主题才造新 key 并 `is_new=true`。
+- `is_new`:复用已存在线索填 false;全新线索填 true。
+- `title`:线索标题(简短,不带 markdown)。
+- `section`:主题分节(如 海峡通行与管控/军事冲突/石油市场/外交与国际反应/停火与和平协议 等)。
+- `entry`:该线索【今天】的进展,**一句话汇总**(含关键数字)。把同一线索的多个候选要点合并成这一句,**不要为每个要点单独输出**。
+- `current_state`:综合后该线索的最新当前状态,一句话。
+
+**粒度要粗**:整个索引维持约 10-20 条线索;绝不要把同一主题拆成很多条。每条线索今天最多一条更新。没有新进展的线索不要输出。
+
+只输出 JSON,形如 {"updates":[{"key":"...","is_new":false,"title":"...","section":"...","entry":"...","current_state":"..."}]}。"""
 
 
-def _build_assign_prompt(candidates: list[Candidate], keys: set[str], sections: list[str]) -> str:
-    cand_block = "\n".join(
-        f"[{i}] (原章节: {c.section or '无'}) {c.text}" for i, c in enumerate(candidates)
+def _build_assign_prompt(candidates: list[Candidate], threads: list[Thread]) -> str:
+    existing = (
+        "\n".join(f"- {t.key} | {t.title} | 当前：{t.current}" for t in threads)
+        if threads
+        else "(空,目前没有已存在线索)"
     )
-    keys_block = ", ".join(sorted(keys)) if keys else "(空,目前没有已存在键)"
-    sec_block = ", ".join(sections) if sections else "(空)"
+    cand = "\n".join(f"[{i}] ({c.section or '无'}) {c.text}" for i, c in enumerate(candidates))
     return (
-        f"## 已存在的事件键清单\n{keys_block}\n\n"
-        f"## 当前索引章节标题清单\n{sec_block}\n\n"
-        f"## 今天的候选事件({len(candidates)} 条)\n{cand_block}\n\n"
-        "为每个候选输出 assignment(JSON)。"
+        f"## 已存在的追踪线索({len(threads)} 条)\n{existing}\n\n"
+        f"## 今天的候选要点({len(candidates)} 条)\n{cand}\n\n"
+        "把候选要点归并到线索,只为今天有进展的线索各输出一条更新(JSON)。"
     )
 
 
-async def assign_keys(
-    candidates: list[Candidate],
-    keys: set[str],
-    sections: list[str],
-    backend: BaseLLMBackend,
-    model: str | None,
-) -> list[_Assignment]:
-    """LLM step: assign each candidate a (possibly reused) key + latest state."""
-    prompt = _build_assign_prompt(candidates, keys, sections)
+async def assign_threads(
+    candidates: list[Candidate], threads: list[Thread], backend: BaseLLMBackend, model: str | None
+) -> list[_ThreadUpdate]:
+    prompt = _build_assign_prompt(candidates, threads)
     result = await backend.structured(prompt, _AssignResult, system=_ASSIGN_SYSTEM, model=model)
-    return result.assignments
+    return result.updates
 
 
 async def merge_digest(
@@ -363,28 +357,20 @@ async def merge_digest(
     backend: BaseLLMBackend,
     model: str | None,
 ) -> MergeResult:
-    """Incrementally merge today's digest into an existing events.md.
-
-    Caller (store) guarantees ``events_md`` is the current content (bootstrap done).
-    Returns the new content + stats; a skip (low candidate count) returns the
-    input unchanged with ``stats.skipped`` set.
-    """
+    """Incrementally merge today's digest into an existing events.md (thread model)."""
     now_date = run_at[:10] if len(run_at) >= 10 else datetime.now(UTC).strftime(_DATE_FMT)
     candidates = chunk_digest(digest_text)
     if len(candidates) < CHUNK_MIN:
         logger.warning(
-            "kb merge: only %d candidate(s) (< CHUNK_MIN=%d) — digest format may have "
-            "changed; skipping ingest for run_at=%s",
+            "kb merge: only %d candidate(s) (< CHUNK_MIN=%d) — skipping ingest for run_at=%s",
             len(candidates),
             CHUNK_MIN,
             run_at,
         )
         return MergeResult(content=events_md, stats=MergeStats(skipped="low_candidates"))
 
-    assignments = await assign_keys(
-        candidates, existing_keys(events_md), section_titles(events_md), backend, model
-    )
-    merged, stats = apply_merge(events_md, candidates, assignments, now_date)
-    merged, n_archived = archive_expired(merged, now_date)
-    stats.archived = n_archived
-    return MergeResult(content=merged, stats=stats)
+    threads, leading = parse_doc(events_md)
+    updates = await assign_threads(candidates, threads, backend, model)
+    threads, stats = apply_updates(threads, updates, now_date)
+    stats.archived = archive_expired(threads, now_date)
+    return MergeResult(content=render_doc(threads, leading), stats=stats)

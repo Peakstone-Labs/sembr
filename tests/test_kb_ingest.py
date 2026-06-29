@@ -143,115 +143,77 @@ async def test_kb_ingest_skips_when_disabled() -> None:
 
 
 class _FakeDistillBackend:
-    def __init__(self, events: list[dict]) -> None:
-        self._events = events
+    def __init__(self, threads: list[dict]) -> None:
+        self._threads = threads
 
     async def structured(self, prompt, schema, *, system=None, model=None, repair_attempts=2):
-        return schema(events=self._events)
+        return schema(threads=self._threads)
 
 
-def test_render_events_canonical_and_dedup() -> None:
-    events = [
-        D._DistillEvent(
-            title="逆回购",
-            section="货币政策",
-            first_seen="2026-06-01",
-            last_seen="2026-06-20",
-            state="维持1.50%",
+def _thread(title, section, first, current, timeline):
+    return {
+        "title": title,
+        "section": section,
+        "first_seen": first,
+        "current_state": current,
+        "timeline": [{"date": d, "entry": e} for d, e in timeline],
+    }
+
+
+def test_render_threads_canonical_with_timeline() -> None:
+    threads = [
+        D._DistillThread(
+            **_thread(
+                "逆回购利率",
+                "货币政策",
+                "2026-06-01",
+                "维持1.50%",
+                [("2026-06-01", "招标1.50%"), ("2026-06-20", "维持")],
+            )
         ),
-        D._DistillEvent(
-            title="MLF",
-            section="货币政策",
-            first_seen="bad-date",
-            last_seen="2026-06-18",
-            state="等量续作",
-        ),
-        D._DistillEvent(
-            title="MLF",
-            section="货币政策",
-            first_seen="2026-06-02",
-            last_seen="2026-06-19",
-            state="重复名",
-        ),  # dup title → suffixed key
-    ]
-    md = D.render_events(events, "2026-06-25")
-    parsed = M.parse_events(md)
-    # 3 events, keys unique; the bad first_seen fell back to now_date.
-    assert len(parsed) == 3
-    assert "## 货币政策" in md
-    mlf_line = next(ln for ln in md.splitlines() if "MLF" in ln and "等量续作" in ln)
-    assert "首见 2026-06-25" in mlf_line  # bad-date → fallback
-
-
-def test_render_events_chinese_titles_distinct_stable_keys() -> None:
-    """Review 🔴-1: all-Chinese titles must get distinct, stable content-hash keys,
-    not collapse to positional event/event-2."""
-    evs = [
-        D._DistillEvent(
-            title="中国宏观甲",
-            section="S",
-            first_seen="2026-06-01",
-            last_seen="2026-06-01",
-            state="a",
-        ),
-        D._DistillEvent(
-            title="中国宏观乙",
-            section="S",
-            first_seen="2026-06-01",
-            last_seen="2026-06-01",
-            state="b",
+        D._DistillThread(
+            **_thread("MLF", "货币政策", "bad-date", "等量续作", [("2026-06-18", "等量续作")])
         ),
     ]
-    keys = set(M.parse_events(D.render_events(evs, "2026-06-25")))
-    assert len(keys) == 2  # distinct, not collapsed
-    # stable across re-render (same titles → same keys).
-    assert set(M.parse_events(D.render_events(evs, "2026-06-26"))) == keys
+    md = D.render_threads(threads, "2026-06-25")
+    threads_out = M.parse_doc(md)[0]
+    assert len(threads_out) == 2
+    # pure-Chinese title → opaque content-hash key (invisible HTML comment); MLF has
+    # ASCII so it slugs to "mlf". Look threads up by title, not key.
+    repo = next(t for t in threads_out if t.title == "逆回购利率")
+    assert len(repo.entries) == 2 and repo.current == "维持1.50%"
+    mlf = next(t for t in threads_out if t.title == "MLF")
+    assert mlf.first == "2026-06-25"  # bad first_seen → fallback to now_date
+
+
+def test_render_threads_chinese_titles_distinct_stable_keys() -> None:
+    """Review 🔴-1: all-Chinese titles get distinct, stable content-hash keys."""
+    ts = [
+        D._DistillThread(**_thread("中国宏观甲", "S", "2026-06-01", "a", [("2026-06-01", "x")])),
+        D._DistillThread(**_thread("中国宏观乙", "S", "2026-06-01", "b", [("2026-06-01", "y")])),
+    ]
+    keys = set(M.parse_events(D.render_threads(ts, "2026-06-25")))
+    assert len(keys) == 2
+    assert set(M.parse_events(D.render_threads(ts, "2026-06-26"))) == keys
 
 
 async def test_distill_events_produces_mergeable_index() -> None:
     backend = _FakeDistillBackend(
         [
-            {
-                "title": "逆回购利率",
-                "section": "货币政策",
-                "first_seen": "2026-06-01",
-                "last_seen": "2026-06-20",
-                "state": "维持1.50%",
-            },
-            {
-                "title": "社融",
-                "section": "增长与数据",
-                "first_seen": "2026-06-05",
-                "last_seen": "2026-06-19",
-                "state": "同比多增",
-            },
+            _thread("逆回购利率", "货币政策", "2026-06-01", "维持1.50%", [("2026-06-20", "维持")]),
+            _thread("社融", "增长与数据", "2026-06-05", "同比多增", [("2026-06-19", "多增")]),
         ]
     )
     md = await D.distill_events("=== 2026-06-20 ===\n逆回购维持...\n", backend, "pro", "2026-06-25")
-    assert (
-        M.parse_events(md).keys() == {"reverse-repo", "social-finance"}
-        or len(M.parse_events(md)) == 2
-    )
+    assert len(M.parse_events(md)) == 2  # canonical, parseable by the merge layer
 
 
 async def test_bootstrap_intent_writes_events(tmp_path) -> None:
     store = KbStore(root=tmp_path, git=GitRepo(tmp_path))
     backend = _FakeDistillBackend(
         [
-            {
-                "title": "逆回购利率",
-                "section": "货币政策",
-                "first_seen": "2026-06-01",
-                "last_seen": "2026-06-20",
-                "state": "维持1.50%",
-            },
-            {
-                "title": "降准",
-                "section": "货币政策",
-                "first_seen": "2026-06-10",
-                "last_seen": "2026-06-22",
-                "state": "预期升温",
-            },
+            _thread("逆回购利率", "货币政策", "2026-06-01", "维持1.50%", [("2026-06-20", "维持")]),
+            _thread("降准", "货币政策", "2026-06-10", "预期升温", [("2026-06-22", "升温")]),
         ]
     )
     content = await D.bootstrap_intent(store, 5, "history prose", backend, model="pro")

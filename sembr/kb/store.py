@@ -246,17 +246,16 @@ class KbStore:
 
     @staticmethod
     def validate_key_integrity(content: str) -> list[str]:
-        """Return warnings for event-looking lines that lost their ``<!--k:-->`` key.
+        """Return warnings for thread headings (``### ``) that lost their ``<!--k:-->``.
 
-        Hand-edits in the modal can delete the key comment; next ingest would then
-        treat the line as a brand-new event (F9). We don't reject the write (users
-        must be able to save) — we surface warnings so the UI can flag them, and
-        weekly lint merges the resulting near-duplicate keys.
+        Hand-edits in the modal can delete the key anchor; next ingest would then
+        treat the thread as brand-new (F9). We don't reject the write (users must be
+        able to save) — we surface warnings so the UI can flag them, and weekly lint
+        merges any resulting duplicate-key threads.
         """
         warnings: list[str] = []
         for i, line in enumerate(content.splitlines(), 1):
-            if _merge._SECTION_RE.match(line):
-                continue
-            if _merge._BULLET_RE.match(line) and "<!--k:" not in line:
-                warnings.append(f"line {i}: event bullet missing key anchor: {line.strip()[:80]}")
+            s = line.lstrip()
+            if s.startswith("### ") and "<!--k:" not in line:
+                warnings.append(f"line {i}: thread heading missing key anchor: {s[:80]}")
         return warnings

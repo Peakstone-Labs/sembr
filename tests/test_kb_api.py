@@ -29,20 +29,20 @@ from sembr.summarizer.models import SummaryResult
 class _FakeDistillBackend:
     async def structured(self, prompt, schema, *, system=None, model=None, repair_attempts=2):
         return schema(
-            events=[
+            threads=[
                 {
                     "title": "逆回购利率",
                     "section": "货币政策",
                     "first_seen": "2026-06-01",
-                    "last_seen": "2026-06-20",
-                    "state": "维持1.50%",
+                    "current_state": "维持1.50%",
+                    "timeline": [{"date": "2026-06-20", "entry": "维持1.50%"}],
                 },
                 {
                     "title": "社融",
                     "section": "增长与数据",
                     "first_seen": "2026-06-05",
-                    "last_seen": "2026-06-19",
-                    "state": "同比多增",
+                    "current_state": "同比多增",
+                    "timeline": [{"date": "2026-06-19", "entry": "同比多增"}],
                 },
             ]
         )
@@ -117,7 +117,9 @@ def test_put_oversize_413(tmp_path) -> None:
 
 
 def test_put_key_integrity_warnings(tmp_path) -> None:
-    content = "## S\n- this bullet has no key anchor\n"
+    content = (
+        "## S\n\n### 缺键的线索\n首见 2026-06-01 · 最新 2026-06-01 · 当前：x\n- 2026-06-01 y\n"
+    )
     with _client(tmp_path) as c:
         r = c.put("/api/kb/1/events", json={"content": content})
         assert r.status_code == 200

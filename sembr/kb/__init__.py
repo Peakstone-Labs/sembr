@@ -2,9 +2,10 @@
 """Per-intent markdown knowledge base (delta-label-accuracy SF1).
 
 This package maintains a git-versioned, human-readable/editable markdown KB per
-intent. The only `kind` this round is the **event index** (`events.md`): an
-incrementally-merged table of `event-key -> first-seen / latest date -> latest
-state`, distilled from the intent's cron digests.
+intent. The only `kind` this round is the **event index** (`events.md`): a set of
+coarse **tracked threads** (~10-20 per intent), each with a current-state line and
+an append-only dated **timeline** showing how the event evolved — incrementally
+merged from the intent's cron digests (one entry per thread per day).
 
 Design notes live in the internal development docs (delta-label-accuracy / kb).
 The KB lives under the gitignored `data/kb/` runtime tree (a nested independent
