@@ -1,0 +1,1974 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Intent-driven news monitoring via Reverse RAG">
+      
+      
+      
+        <link rel="canonical" href="https://peakstone-labs.github.io/sembr/modules/dashboard/">
+      
+      
+        <link rel="prev" href="../api/">
+      
+      
+        <link rel="next" href="../../deployment/public/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>dashboard - sembr</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dashboard" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="sembr" class="md-header__button md-logo" aria-label="sembr" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            sembr
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              dashboard
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Peakstone-Labs/sembr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Peakstone-Labs/sembr
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Modules
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/public/" class="md-tabs__link">
+          
+  
+  
+  Deployment
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../zh/" class="md-tabs__link">
+          
+  
+  
+  中文文档
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="sembr" class="md-nav__button md-logo" aria-label="sembr" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    sembr
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Peakstone-Labs/sembr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Peakstone-Labs/sembr
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../db/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../db-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../embedder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    embedder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vector-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    vector_store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../collector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    collector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../summarizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    summarizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notifier/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    notifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logbus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    logbus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    api
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    dashboard
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#responsibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Responsibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-in-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not in scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability tables
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#public-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Public interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#routes-routespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routes (routes.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sse-logs_routespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SSE (logs_routes.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-model-helpers-read_modelpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read-model helpers (read_model.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#system-metrics-sampler-system_metricspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System metrics sampler (system_metrics.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-log-helpers-eventspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event log helpers (events.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retention-retentionpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retention (retention.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auth-authpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auth (auth.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-consumers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream consumers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#templates-tab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Templates tab
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/public/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/wechat-official-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WeChat Official Accounts (add-on)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    中文文档
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    中文文档
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    简介
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速上手
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    配置参考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/deployment/wechat-official-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    微信公众号接入（附加）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#responsibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Responsibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-in-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not in scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability tables
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#public-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Public interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#routes-routespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routes (routes.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sse-logs_routespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SSE (logs_routes.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-model-helpers-read_modelpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read-model helpers (read_model.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#system-metrics-sampler-system_metricspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System metrics sampler (system_metrics.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-log-helpers-eventspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event log helpers (events.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retention-retentionpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retention (retention.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auth-authpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auth (auth.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-consumers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream consumers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#templates-tab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Templates tab
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/Peakstone-Labs/sembr/edit/main/docs/modules/dashboard.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="dashboard">dashboard<a class="headerlink" href="#dashboard" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Read-model aggregation, observability tables, and the JSON endpoints behind the bundled monitoring UI. Owns <code>/api/dashboard/*</code> (snapshot, drill-downs, articles, sources, logs SSE) and the auth middleware that gates every other authenticated route. Pure read-side — no business writes happen here.</p>
+</blockquote>
+<p>The static HTML + Alpine.js + Chart.js frontend lives in <code>web/static/</code> and is served by <code>main.py</code> via <code>StaticFiles</code>; it is not part of this module.</p>
+<h2 id="responsibility">Responsibility<a class="headerlink" href="#responsibility" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Build the dashboard's polling snapshot — feeds + last-24h fetch stats per feed + embedder call stats + Qdrant point count + component health + per-container CPU/Mem/uptime samples, in a single response</li>
+<li>Serve drill-down endpoints for the per-feed event log, embedder event log, articles in each pipeline bucket (pending / dead / qdrant — qdrant accepts <code>ingested_from</code> / <code>ingested_to</code> / <code>feed_id</code> / <code>title_q</code> filter), and the source-type → JSON-Schema map used by the create-feed form</li>
+<li>Define the two append-only event tables (<code>feed_fetch_log</code>, <code>embed_call_log</code>) and expose <code>log_*_event</code> helpers that the collector and embedder call after every batch</li>
+<li>Run the hourly retention prune that keeps the event tables bounded by both age and per-feed cap</li>
+<li>Run the lifespan-managed system-metrics sampler that polls <code>docker stats</code> for the compose stack at the snapshot poll cadence and feeds a 60-point in-memory rolling buffer</li>
+<li>Gate every authenticated route via <code>DashboardTokenMiddleware</code> — checked once per request against <code>Settings.dashboard_token</code></li>
+<li>Stream live log records over SSE via <code>logs_routes.py</code> (the bus itself lives in <a href="../logbus/">logbus</a>)</li>
+</ul>
+<h2 id="not-in-scope">Not in scope<a class="headerlink" href="#not-in-scope" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Writing observability records — collector and embedder call <code>log_fetch_event</code> / <code>log_embed_event</code> themselves; this module only defines the helpers and reads them back</li>
+<li>Owning the LogBus — <code>dashboard.logs_routes</code> is a thin SSE adapter over the bus the <a href="../logbus/">logbus</a> module owns</li>
+<li>Authoring the frontend — <code>web/static/*</code> is not part of this module's review surface</li>
+<li>Multi-user auth — the single shared <code>DASHBOARD_TOKEN</code> is the entire authentication model</li>
+</ul>
+<h2 id="observability-tables">Observability tables<a class="headerlink" href="#observability-tables" title="Permanent link">&para;</a></h2>
+<p>Both tables are append-only; no <code>UPDATE</code> / <code>DELETE</code> happens on the write path. Retention prunes by age and (for <code>feed_fetch_log</code>) per-feed FIFO cap.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">feed_fetch_log</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="n">id</span><span class="w">              </span><span class="nb">INTEGER</span><span class="w"> </span><span class="n">PK</span><span class="w"> </span><span class="n">AUTOINCREMENT</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="n">feed_id</span><span class="w">         </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="n">FK</span><span class="w"> </span><span class="n">feeds</span><span class="p">(</span><span class="n">id</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="n">started_at</span><span class="w">      </span><span class="nb">TEXT</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w">  </span><span class="c1">-- ISO8601 +00:00 (NEVER mix Z with +00:00)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="n">elapsed_ms</span><span class="w">      </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="n">ok</span><span class="w">              </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w">  </span><span class="c1">-- 0/1</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="n">items_seen</span><span class="w">      </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="n">items_new</span><span class="w">       </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="n">error_class</span><span class="w">     </span><span class="nb">TEXT</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="n">error_message</span><span class="w">   </span><span class="nb">TEXT</span><span class="w">              </span><span class="c1">-- truncated to 500 chars</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="k">INDEX</span><span class="w"> </span><span class="p">(</span><span class="n">feed_id</span><span class="p">,</span><span class="w"> </span><span class="n">started_at</span><span class="w"> </span><span class="k">DESC</span><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="k">INDEX</span><span class="w"> </span><span class="p">(</span><span class="n">started_at</span><span class="p">)</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="n">embed_call_log</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="n">id</span><span class="w">              </span><span class="nb">INTEGER</span><span class="w"> </span><span class="n">PK</span><span class="w"> </span><span class="n">AUTOINCREMENT</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span><span class="n">started_at</span><span class="w">      </span><span class="nb">TEXT</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">  </span><span class="n">elapsed_ms</span><span class="w">      </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">  </span><span class="n">ok</span><span class="w">              </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">  </span><span class="n">batch_size</span><span class="w">      </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">  </span><span class="n">total_chars</span><span class="w">     </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span><span class="n">timeout_seconds</span><span class="w"> </span><span class="nb">REAL</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">  </span><span class="n">error_class</span><span class="w">     </span><span class="nb">TEXT</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">  </span><span class="n">error_message</span><span class="w">   </span><span class="nb">TEXT</span><span class="w">              </span><span class="c1">-- truncated to 500 chars</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">  </span><span class="k">INDEX</span><span class="w"> </span><span class="p">(</span><span class="n">started_at</span><span class="p">)</span>
+</code></pre></div>
+<p><code>started_at</code> strings are written exclusively as <code>datetime.isoformat()</code> on a tz-aware UTC datetime, producing <code>"YYYY-MM-DDTHH:MM:SS+00:00"</code>. The retention cutoff and the sparkline window comparisons are lexicographic — mixing in a <code>Z</code>-suffixed value would silently break range queries because <code>+00:00</code> and <code>Z</code> lex-sort differently. The snapshot response field <code>generated_at</code> is the only place the <code>Z</code> shorthand appears, and only because it's response-only and never a query input.</p>
+<h2 id="public-interface">Public interface<a class="headerlink" href="#public-interface" title="Permanent link">&para;</a></h2>
+<h3 id="routes-routespy">Routes (<code>routes.py</code>)<a class="headerlink" href="#routes-routespy" title="Permanent link">&para;</a></h3>
+<p>All under <code>/api/dashboard</code>. Every route takes its dependencies from <code>request.app.state</code> rather than importing them — keeps tests trivial.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>GET  /config                                       poll_interval, auth_required, display_timezone (auth-free)
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>GET  /snapshot                                     top-level dashboard read; one round-trip; includes system_metrics
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>GET  /feeds                                        paginated feeds list with tags/group/next-run
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>GET  /feeds/{feed_id}/events?limit=&amp;offset=        per-feed fetch event drill-down
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>GET  /feeds/{feed_id}/articles?limit=&amp;offset=      articles ingested under one feed (Qdrant scroll)
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>GET  /sources/schemas                              source_type → JSON-Schema map (form metadata)
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>GET  /embedder/events?limit=                       embedder call drill-down
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>GET  /articles?bucket=&amp;limit=&amp;offset=&amp;...          pending / dead / qdrant article list
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>                                                   bucket=qdrant additionally accepts
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>                                                     ingested_from=YYYY-MM-DD (UTC, inclusive)
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>                                                     ingested_to=YYYY-MM-DD   (UTC, exclusive +1d)
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>                                                     feed_id=&lt;int&gt;
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>                                                     title_q=&lt;MatchText&gt;      (uses the title text-index)
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>GET  /articles/{md5}?bucket=                       single article detail
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>POST /restart                                      api + rsshub double-restart trigger (header-token)
+</code></pre></div>
+<p><code>/api/dashboard/config</code> is the only auth-free endpoint — the login page calls it before bootstrap so it knows whether a token is required. Everything else is gated by <code>DashboardTokenMiddleware</code>.</p>
+<h3 id="sse-logs_routespy">SSE (<code>logs_routes.py</code>)<a class="headerlink" href="#sse-logs_routespy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>GET /api/dashboard/logs/tags         {&quot;tags&quot;: [{name, level}], &quot;available_levels&quot;: [...]}
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>PUT /api/dashboard/logs/level        {tag, level} → 204
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>GET /api/dashboard/logs/stream?tag=  text/event-stream — history snapshot then live entries
+</code></pre></div>
+<p>Tag-level changes are process-memory only and do not persist across restart. The <code>http</code> tag also resyncs the underlying stdlib loggers (<code>httpx</code>, <code>httpcore</code>, <code>uvicorn.access</code>) via <code>THIRD_PARTY_LOGGERS_BY_TAG</code>, the same map <a href="../logbus/">logbus</a> uses on startup. The SSE generator subscribes with a tag filter so the bus never fans out unwanted entries to a per-tag subscriber.</p>
+<h3 id="read-model-helpers-read_modelpy">Read-model helpers (<code>read_model.py</code>)<a class="headerlink" href="#read-model-helpers-read_modelpy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">build_snapshot</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">qdrant_handle</span><span class="p">,</span> <span class="n">embedder</span><span class="p">,</span> <span class="n">metrics_collector</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SnapshotResponse</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">list_feeds_with_meta</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">proxy_hosts</span><span class="p">,</span> <span class="n">scheduler</span><span class="p">,</span> <span class="n">now</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FeedListResponse</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">list_feed_events</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">feed_id</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">FeedFetchEvent</span><span class="p">]</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">list_embed_events</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">EmbedCallEvent</span><span class="p">]</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">list_articles_pending</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ArticleListItem</span><span class="p">]</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">list_articles_dead</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ArticleListItem</span><span class="p">]</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">list_articles_qdrant</span><span class="p">(</span><span class="n">qdrant_client</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">ingested_from</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>                     <span class="n">ingested_to</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">feed_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">title_q</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ArticleListItem</span><span class="p">]</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">list_feed_articles_qdrant</span><span class="p">(</span><span class="n">qdrant_client</span><span class="p">,</span> <span class="n">feed_id</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ArticleListItem</span><span class="p">]</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">get_article_detail</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">qdrant_client</span><span class="p">,</span> <span class="n">md5</span><span class="p">,</span> <span class="n">bucket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ArticleDetail</span> <span class="o">|</span> <span class="kc">None</span>
+</code></pre></div>
+<p><code>build_snapshot</code> is the hot path — the dashboard polls it every <code>dashboard_poll_interval_seconds</code>. It dispatches the two Qdrant network calls (<code>ping</code> inside <code>_component_status</code>, and <code>count</code>) as <code>asyncio.create_task</code>s up front so they overlap with the SQLite work. The two SQLite scans that aggregate <code>feed_fetch_log</code> use a window function (<code>ROW_NUMBER() OVER (PARTITION BY feed_id ORDER BY id DESC)</code>) to read the last 50 rows per feed in a single index scan rather than a per-feed correlated subquery.</p>
+<p><code>metrics_collector</code> is the lifespan-owned <code>SystemMetricsCollector</code> (see <a href="#system-metrics-sampler-system_metricspy">System metrics sampler</a>). It is injected as a function argument rather than read from <code>app.state</code> so this module never imports FastAPI types — the route handler in <code>routes.py</code> is the single boundary that touches <code>request.app.state.metrics_collector</code>. When the collector is <code>None</code> (no docker socket / dev box) or has flipped to <code>available=False</code> (docker daemon unreachable), <code>system_metrics</code> is <code>null</code> in the response and the dashboard renders a "—" placeholder.</p>
+<p>The Qdrant article-list helpers (<code>list_articles_qdrant</code>, <code>list_feed_articles_qdrant</code>) share a <code>_scroll_articles_qdrant</code> helper because Qdrant's scroll API takes an opaque <code>next_page_offset</code> cursor rather than a numeric offset — the helper walks forward <code>limit + offset</code> items and drops the first <code>offset</code>. That makes deep pagination linear in <code>offset</code>; the UI default of 50/page keeps it cheap.</p>
+<p><code>list_articles_qdrant</code> accepts four keyword-only filter args. The route layer parses <code>ingested_from</code> / <code>ingested_to</code> from <code>YYYY-MM-DD</code> UTC dates and shifts the upper bound by +1 day so the underlying ts comparison is half-open <code>[from, to)</code> while the UI presents it as inclusive. All three filterable fields (<code>ingested_at_ts</code>, <code>feed_id</code>, <code>title</code>) have payload indexes — <code>MatchText</code> against <code>title</code> requires the text-index added in <code>vector_store.news.ensure_news_collection</code> (lifespan-startup idempotent), without which Qdrant silently degrades to a full collection scan.</p>
+<h3 id="system-metrics-sampler-system_metricspy">System metrics sampler (<code>system_metrics.py</code>)<a class="headerlink" href="#system-metrics-sampler-system_metricspy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">SystemMetricsCollector</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Module-level rolling buffer (deque maxlen=60) of docker stats samples.&quot;&quot;&quot;</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">append</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SystemMetricsBlock</span> <span class="o">|</span> <span class="kc">None</span>  <span class="c1"># None when unavailable / empty</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">mark_unavailable</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">mark_available</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">add_system_metrics_job</span><span class="p">(</span><span class="n">scheduler</span><span class="p">,</span> <span class="n">collector</span><span class="p">,</span> <span class="n">interval_seconds</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+<p>An APScheduler <code>IntervalTrigger</code> job ticks every <code>dashboard_poll_interval_seconds</code>, calls <code>_take_docker_sample</code> in a thread (5 s <code>asyncio.wait_for</code> cap), and appends the result to the collector. Containers are auto-discovered by docker compose's <code>com.docker.compose.project=&lt;project&gt;</code> label so adding/renaming a service in <code>docker-compose.yml</code> shows up automatically.</p>
+<p>The standard docker-stats CPU% formula is used: <code>(cpu_delta / sys_delta) * online_cpus * 100</code>. The very first sample after lifespan startup has no <code>precpu_stats</code> baseline, so CPU% returns <code>None</code> for that sample only — the dashboard renders "—" while uptime and memory are already valid. Subsequent samples are real percentages.</p>
+<p>The <code>add_job</code> call passes <code>coalesce=True, replace_existing=True</code> and <strong>never</strong> passes <code>next_run_time=None</code> — the latter is APScheduler's pause sentinel and would silently leave the sampler dormant.</p>
+<h3 id="event-log-helpers-eventspy">Event log helpers (<code>events.py</code>)<a class="headerlink" href="#event-log-helpers-eventspy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">log_fetch_event</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">feed_id</span><span class="p">,</span> <span class="n">started_at</span><span class="p">,</span> <span class="n">elapsed_ms</span><span class="p">,</span> <span class="n">ok</span><span class="p">,</span> <span class="n">items_seen</span><span class="p">,</span> <span class="n">items_new</span><span class="p">,</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>                <span class="n">error_class</span><span class="p">,</span> <span class="n">error_message</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">log_embed_event</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">started_at</span><span class="p">,</span> <span class="n">elapsed_ms</span><span class="p">,</span> <span class="n">ok</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span> <span class="n">total_chars</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>                <span class="n">timeout_seconds</span><span class="p">,</span> <span class="n">error_class</span><span class="p">,</span> <span class="n">error_message</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+<p>Each call opens its own <code>transaction()</code> so it never shares a <code>BEGIN</code> with the business path that triggered it. Callers must wrap the call in <code>try / except</code> and only <code>logger.warning</code> on failure — observability faults must not poison the collect/embed loop. <code>error_message</code> is truncated to 500 characters.</p>
+<h3 id="retention-retentionpy">Retention (<code>retention.py</code>)<a class="headerlink" href="#retention-retentionpy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">add_log_retention_job</span><span class="p">(</span><span class="n">scheduler</span><span class="p">,</span> <span class="n">settings</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+<p>Registers an APScheduler job (id <code>dashboard_log_retention</code>, hourly, <code>coalesce=True</code>, <code>replace_existing=True</code>) that runs three deletes in one transaction:</p>
+<ol>
+<li><code>DELETE FROM feed_fetch_log WHERE started_at &lt; cutoff</code></li>
+<li><code>DELETE FROM embed_call_log  WHERE started_at &lt; cutoff</code></li>
+<li><code>DELETE FROM feed_fetch_log WHERE id IN (...)</code> — keep newest <code>dashboard_log_max_per_feed</code> rows per feed via window function</li>
+</ol>
+<p>Failures are logged at WARNING and swallowed; the next hourly tick retries.</p>
+<h3 id="auth-authpy">Auth (<code>auth.py</code>)<a class="headerlink" href="#auth-authpy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">DashboardTokenMiddleware</span><span class="p">(</span><span class="n">BaseHTTPMiddleware</span><span class="p">):</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-request gate on /dashboard/*, /api/dashboard/*, /api/prompts/*,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="sd">    /api/settings/*, /intents*, /feeds*. No-op when DASHBOARD_TOKEN is empty.&quot;&quot;&quot;</span>
+</code></pre></div>
+<ul>
+<li>Lookup order for the supplied token: <code>X-Dashboard-Token</code> header, then <code>sembr_dashboard_token</code> cookie. Constant-time compare via <code>secrets.compare_digest</code></li>
+<li>The login page (<code>/dashboard/login.html</code>) and vendor JS (<code>/dashboard/vendor/...</code>) are unconditionally exempt so the user can bootstrap a cookie</li>
+<li>Failed auth on <code>/api/*</code> returns <code>401 {"error": "unauthorized"}</code>; on the page surface it returns a 302 redirect to the login page</li>
+<li><code>/api/settings/*</code> and <code>/api/prompts/*</code> are listed here as a defense-in-depth gate, but <code>/api/settings/*</code> ALSO requires an <code>X-Dashboard-Token</code> header via its own <code>Depends(require_header_token)</code> — the middleware's cookie path is CSRF-able from a logged-in browser, so the settings router insists on the header</li>
+</ul>
+<p>The middleware's protected list is by inclusion (allowlist of namespaces, not denylist), so <code>/health</code> and other unspecified routes pass through untouched.</p>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dashboard_token</code></td>
+<td><code>""</code> (SecretStr)</td>
+<td>Empty disables auth. Set in production. Constant-time compared with whatever the client supplies</td>
+</tr>
+<tr>
+<td><code>dashboard_poll_interval_seconds</code></td>
+<td><code>10</code></td>
+<td>Bounded <code>[2, 120]</code>. Returned via <code>/config</code> and used by the bundled JS</td>
+</tr>
+<tr>
+<td><code>dashboard_log_retention_days</code></td>
+<td><code>7</code></td>
+<td>Age cutoff for the hourly retention prune</td>
+</tr>
+<tr>
+<td><code>dashboard_log_max_per_feed</code></td>
+<td><code>1000</code></td>
+<td>Per-feed FIFO cap on <code>feed_fetch_log</code> rows</td>
+</tr>
+<tr>
+<td><code>display_timezone</code></td>
+<td><code>Asia/Shanghai</code></td>
+<td>Returned via <code>/config</code> so the dashboard can render timestamps in the operator's preferred zone. Email rendering uses the per-intent timezone instead — see <a href="../notifier/">notifier</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="upstream-dependencies">Upstream dependencies<a class="headerlink" href="#upstream-dependencies" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>sembr.config</code> — <code>Settings.dashboard_*</code> fields</li>
+<li><code>sembr.db.sqlite</code> — <code>get_conn</code>, <code>transaction</code>, <code>sqlite_ok</code></li>
+<li><code>sembr.db.feeds</code>, <code>sembr.db.feed_tags</code> — feed list + tag map for the snapshot</li>
+<li><code>sembr.collector.scheduler.SOURCE_REGISTRY</code> — read once for <code>/sources/schemas</code>; lets a plugin source registered via <code>entry_points</code> appear in the create-feed form without a code change</li>
+<li><code>sembr.collector.host_limiter.derive_group_key</code> — group key for the feeds-list response so the UI can show per-host concurrency grouping</li>
+<li><code>sembr.vector_store.news.ALIAS_NAME</code> — every Qdrant call routes through this alias (<code>news_current</code>); a model-version swap re-points the alias and the dashboard sees the new collection without code change</li>
+<li><code>sembr.logbus</code> — the bus and tag map; SSE adapter lives in <code>logs_routes.py</code></li>
+<li><code>apscheduler.AsyncIOScheduler</code> — used by <code>retention.add_log_retention_job</code> and (via main.py lifespan) for the dashboard log-retention cron</li>
+</ul>
+<h2 id="downstream-consumers">Downstream consumers<a class="headerlink" href="#downstream-consumers" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>web/static/*</code> — the bundled monitoring frontend. No external integration calls these endpoints today, but they are documented under <code>/docs</code></li>
+<li><code>main.py</code> — wires <code>DashboardTokenMiddleware</code> into the FastAPI app, includes <code>routes.router</code> and <code>logs_router</code>, and calls <code>add_log_retention_job</code> during lifespan startup</li>
+</ul>
+<h2 id="templates-tab">Templates tab<a class="headerlink" href="#templates-tab" title="Permanent link">&para;</a></h2>
+<p>The dashboard's Templates tab (between Intents and Logs) is the runtime editor for prompt templates that the summarizer feeds the LLM on every digest tick. State / network logic lives in <code>web/static/templates.js</code> (<code>templatesTab()</code> Alpine component), markup + modals in <code>web/static/index.html</code>, hash routing in <code>web/static/app.js</code>. The component consumes <code>GET/POST/PUT/DELETE/POST-rename /api/prompts/templates/*</code> (see <code>docs/modules/api.md</code>) and writes are auth-gated by the same <code>DashboardTokenMiddleware</code> as every other dashboard surface.</p>
+<p>UI behaviour:</p>
+<ul>
+<li>Two columns (system / instruction) list every on-disk template. Each row shows <code>is_builtin</code>, <code>ref_count</code>, the list of referencing intents, file size, and mtime so the operator can see at a glance which templates are in use and which can be deleted safely.</li>
+<li>Per-row actions: <strong>Edit / View</strong> (read-only for builtins), <strong>Duplicate</strong> (open the create modal pre-seeded with this row as <code>source</code>), <strong>Rename</strong>, <strong>Delete</strong> — the latter two are disabled on builtin rows; the server still enforces 403/422 if a client bypasses the UI.</li>
+<li>The editor is a <code>&lt;textarea&gt;</code> (mtime / size badges in the header). Save sends <code>PUT { content }</code>; the server runs the strict-placeholder dry-render and rejects unknown <code>{...}</code> keys with HTTP 422. The error message names the exact placeholder that failed.</li>
+<li>Delete is gated by <code>ref_count == 0</code> from the cached list. A race (an intent grabbing the template after the cache and before the request) returns HTTP 409 with <code>ref_intents</code> in the body — the UI pops a toast and refetches the list so the operator can see the new dependency.</li>
+<li>Rename is the only action that crosses into SQLite. The frontend treats it as one request: file move + <code>UPDATE intents SET {kind}_template = ?</code> happens server-side, with reverse-rename rollback if the SQLite step fails. After success, the UI refetches the full list because every referencing intent's row is also affected.</li>
+</ul>
+<p>If the rename rollback itself fails (filesystem error during reverse <code>os.rename</code>), the server returns HTTP 500 with a manual-recovery message. The operator's recovery path is: read the LogBus entry (logs at ERROR with both old and new paths plus the SQLite error), <code>docker compose exec api ls /app/prompts/{kind}/</code>, and either move the file back manually or run a UPDATE statement to align the intents column with the actual on-disk filename.</p>
+<h2 id="known-constraints">Known constraints<a class="headerlink" href="#known-constraints" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Single-process state</strong>: the SSE subscriber registry, the LogBus ring buffer, and the in-process tag-level overrides all live in module-level Python state. A multi-worker uvicorn deployment shows each worker its own slice of logs — a tab open against worker 1 sees nothing emitted from worker 2. The 1.0 topology is single-worker; multi-worker deployments need an external aggregator (Loki, Vector, etc.)</li>
+<li><strong>Polling, not push</strong>: the snapshot endpoint is designed for short-interval polling (default 10 s) rather than a server-push channel. Live log streaming is the only push surface and it deliberately covers logs only — feed/embedder stats refresh at the polling cadence</li>
+<li><strong>Qdrant <code>qdrant_count</code> returns -1 on error</strong>: a Qdrant outage during a snapshot poll is reported as a sentinel <code>-1</code> count in the response body so the UI can render a "—" rather than crash. The component health block in the same response signals the underlying state. Future work should split this into <code>qdrant_count</code> plus an explicit <code>qdrant_count_error</code> field</li>
+<li><strong>Article-list deep pagination is linear</strong>: Qdrant's scroll cursor is opaque, so <code>offset=N</code> walks <code>limit + N</code> points then drops the first <code>N</code>. The UI defaults to 50/page and rarely paginates beyond a few pages, so this is acceptable today</li>
+<li><strong>Article detail by <code>md5</code> accepts any string</strong>: <code>get_article_detail</code> calls <code>uuid.UUID(hex=md5)</code> for the Qdrant bucket; an invalid hex string raises and the route returns 404 (via the surrounding try/except). A more strictly-validated route would return 422, but the practical UX is identical</li>
+<li><strong>Retention failures are silent in the UI</strong>: the prune job logs at WARNING but the dashboard surface has no widget for "retention last ran at ...". Operators rely on the LogBus / docker logs to spot a sustained failure</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

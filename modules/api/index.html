@@ -1,0 +1,1941 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Intent-driven news monitoring via Reverse RAG">
+      
+      
+      
+        <link rel="canonical" href="https://peakstone-labs.github.io/sembr/modules/api/">
+      
+      
+        <link rel="prev" href="../logbus/">
+      
+      
+        <link rel="next" href="../dashboard/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>api - sembr</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="sembr" class="md-header__button md-logo" aria-label="sembr" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            sembr
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              api
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Peakstone-Labs/sembr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Peakstone-Labs/sembr
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Modules
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/public/" class="md-tabs__link">
+          
+  
+  
+  Deployment
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../zh/" class="md-tabs__link">
+          
+  
+  
+  中文文档
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="sembr" class="md-nav__button md-logo" aria-label="sembr" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    sembr
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Peakstone-Labs/sembr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Peakstone-Labs/sembr
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../db/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../db-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../embedder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    embedder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vector-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    vector_store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../collector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    collector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../summarizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    summarizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notifier/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    notifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logbus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    logbus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    api
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    api
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#responsibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Responsibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-in-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not in scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#routers-and-prefixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routers and prefixes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#request-flow-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request flow patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Request flow patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-store-writes-intent-crud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-store writes (intent CRUD)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-store-writes-feed-crud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-store writes (feed CRUD)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fire-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fire endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#history-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        History endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings-editor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings editor
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auth model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-consumers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream consumers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/public/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/wechat-official-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WeChat Official Accounts (add-on)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    中文文档
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    中文文档
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    简介
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速上手
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    配置参考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/deployment/wechat-official-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    微信公众号接入（附加）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#responsibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Responsibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-in-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not in scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#routers-and-prefixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routers and prefixes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#request-flow-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request flow patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Request flow patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-store-writes-intent-crud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-store writes (intent CRUD)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-store-writes-feed-crud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-store writes (feed CRUD)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fire-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fire endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#history-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        History endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings-editor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings editor
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auth model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-consumers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream consumers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/Peakstone-Labs/sembr/edit/main/docs/modules/api.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="api">api<a class="headerlink" href="#api" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>FastAPI REST layer. Owns the public HTTP surface — feed and intent CRUD, on-demand fire endpoints, prompt template inspection, the runtime settings editor, and the health probe. The dashboard's bundled JS is the primary consumer; the same routes are also documented contracts that an external integration can call.</p>
+</blockquote>
+<p>Interactive API docs are auto-generated at <strong><code>/docs</code></strong> (Swagger UI) and <strong><code>/redoc</code></strong> as long as the API container is running.</p>
+<h2 id="responsibility">Responsibility<a class="headerlink" href="#responsibility" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Expose every read-and-write surface that a user or operator needs after the container is up</li>
+<li>Validate request bodies via Pydantic before any side effect runs</li>
+<li>Coordinate the multi-store writes that an intent or feed change requires (SQLite + Qdrant + APScheduler + the in-process event-cache) so the four stores stay consistent or roll back together</li>
+<li>Return precise HTTP status codes — <code>404</code> when a resource truly doesn't exist, <code>422</code> for schema/template validation, <code>409</code> for shape conflicts (e.g. firing an event-mode intent), <code>429</code> for the per-resource fire throttle, <code>503</code> for "embedder still loading", <code>500</code> only when an underlying store is broken</li>
+<li>Provide a CSRF-resistant control plane for editing the on-disk <code>.env</code> and triggering the matching container restart</li>
+</ul>
+<h2 id="not-in-scope">Not in scope<a class="headerlink" href="#not-in-scope" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Any HTML rendering — <code>dashboard</code> owns that</li>
+<li>Per-job business logic — the routers call into <code>collector</code> / <code>matcher</code> / <code>summarizer</code> / <code>notifier</code> and only orchestrate</li>
+<li>Background work — fire endpoints kick off <code>asyncio.create_task</code> and return a polling URL; <code>dashboard.routes</code> and <code>logs_routes</code> own anything that needs SSE</li>
+<li>Authentication beyond the simple <code>DASHBOARD_TOKEN</code> shared secret — multi-user auth is out of scope for 1.0</li>
+</ul>
+<h2 id="routers-and-prefixes">Routers and prefixes<a class="headerlink" href="#routers-and-prefixes" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Prefix</th>
+<th>Routes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>health.py</code></td>
+<td>(none)</td>
+<td><code>GET /health</code></td>
+</tr>
+<tr>
+<td><code>feeds.py</code></td>
+<td><code>/feeds</code></td>
+<td><code>POST /</code>, <code>GET /</code>, <code>PATCH /{id}</code>, <code>PATCH /{id}/tags</code>, <code>DELETE /{id}</code></td>
+</tr>
+<tr>
+<td><code>feeds_fire.py</code></td>
+<td><code>/feeds</code></td>
+<td><code>POST /{id}/fire?dry_run=</code>, <code>GET /{id}/fire/{task_id}</code></td>
+</tr>
+<tr>
+<td><code>intents.py</code></td>
+<td><code>/intents</code></td>
+<td><code>POST /</code>, <code>GET /</code>, <code>GET /{id}</code>, <code>PUT /{id}</code>, <code>DELETE /{id}</code></td>
+</tr>
+<tr>
+<td><code>history.py</code></td>
+<td>(none)</td>
+<td><code>GET /intents/{id}/history</code>, <code>DELETE /intents/{id}/history/{row_id}</code>, <code>POST /intents/{id}/backfill</code>, <code>GET /intents/{id}/backfill/{task_id}</code>, <code>POST /intents/{id}/history/aggregate</code>, <code>POST /intents/{id}/history/aggregate/send</code>, <code>GET /intents/{id}/history/export</code></td>
+</tr>
+<tr>
+<td><code>fire.py</code></td>
+<td>(none)</td>
+<td><code>POST /intents/{id}/fire</code>, <code>GET /intents/{id}/fire/{task_id}</code></td>
+</tr>
+<tr>
+<td><code>prompts.py</code></td>
+<td><code>/api/prompts</code></td>
+<td><code>GET /templates</code> (rich), <code>GET /templates/{kind}/{name}</code>, <code>POST /templates/{kind}</code>, <code>PUT /templates/{kind}/{name}</code>, <code>DELETE /templates/{kind}/{name}</code>, <code>POST /templates/{kind}/{name}/rename</code></td>
+</tr>
+<tr>
+<td><code>settings.py</code></td>
+<td><code>/api/settings</code></td>
+<td><code>GET /schema</code>, <code>GET /values</code>, <code>POST /save</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>history.py</code>, <code>fire.py</code>, and <code>feeds_fire.py</code> are deliberately separate from the CRUD modules because they own a different lifecycle — they create a <code>FireTask</code> in memory, dispatch a background coroutine, and expose a polling endpoint. Splitting them keeps the CRUD routers small and lets the fire-task lifecycle evolve without disturbing the create/update path.</p>
+<h2 id="request-flow-patterns">Request flow patterns<a class="headerlink" href="#request-flow-patterns" title="Permanent link">&para;</a></h2>
+<h3 id="multi-store-writes-intent-crud">Multi-store writes (intent CRUD)<a class="headerlink" href="#multi-store-writes-intent-crud" title="Permanent link">&para;</a></h3>
+<p>Creating, updating, and deleting an intent touches four stores in a fixed order. The pattern below is what <code>intents.py</code> enforces; an integration cannot create an intent directly in any single store and expect the others to follow.</p>
+<p><strong><code>POST /intents</code></strong></p>
+<ol>
+<li>Validate prompts (system + instruction templates exist on disk)</li>
+<li>Insert the SQLite row (autoincrement assigns the id)</li>
+<li>Embed the intent text once</li>
+<li>Upsert the Qdrant point under that id with the matcher payload (<code>text</code>, <code>threshold</code>, <code>enabled</code>, <code>tags</code>, <code>embedding_model_version</code>, timestamps)</li>
+<li>If the intent's schedule is event-mode, add it to the in-process <code>event_intent_cache</code></li>
+<li>If the intent is enabled, register the matcher job (cron-mode only — event-mode dispatches via the cache)</li>
+</ol>
+<p>If any step after the SQLite insert fails, the prior steps are rolled back in reverse order: cache → Qdrant → SQLite. The HTTP response is <code>500</code> and the failure is logged.</p>
+<p><strong><code>PUT /intents/{id}</code></strong> distinguishes between text changes and metadata-only changes — only a text change re-embeds and replaces the Qdrant vector. Metadata-only updates use <code>update_intent_payload</code> (Qdrant payload write without re-embedding). When the text changes, <code>match_seen</code> is also cleared so the re-embedded vector can re-match articles it would otherwise have seen.</p>
+<p><strong><code>DELETE /intents/{id}</code></strong> unregisters the matcher job first (so no new ticks fire during the delete), removes the cache entry, then deletes the Qdrant point, then the SQLite row. If the SQLite delete fails after Qdrant succeeded, the row remains visible via <code>GET</code> but the matcher won't consume it (its vector is gone) — the operator gets a structured error log so they can reconcile by retrying the delete.</p>
+<h3 id="multi-store-writes-feed-crud">Multi-store writes (feed CRUD)<a class="headerlink" href="#multi-store-writes-feed-crud" title="Permanent link">&para;</a></h3>
+<p><code>feeds.py</code> follows the same pattern at smaller scale: SQLite first (with auto-rollback on scheduler failure), then <code>add_feed_job</code> to register the polling cron, with try/except deletion of the SQLite row if scheduler registration raises. Patch handlers compute the diff against the loaded current row and only touch the scheduler when <code>enabled</code> actually toggles or <code>poll_interval_minutes</code> changes.</p>
+<p><code>DELETE /feeds/{id}</code> cascades feed-id removal across every intent's <code>feed_filter.ids</code> array in the same SQLite transaction as the delete itself, then re-registers the affected intents' matcher jobs so the updated filter takes effect immediately. A re-registration failure is logged but does not fail the request — the next process restart picks up the correct state from disk.</p>
+<h3 id="fire-endpoints">Fire endpoints<a class="headerlink" href="#fire-endpoints" title="Permanent link">&para;</a></h3>
+<p>Both <code>/intents/{id}/fire</code> and <code>/feeds/{id}/fire</code> follow the same shape:</p>
+<ol>
+<li>Validate the resource exists and is in a fireable state (cron-mode only for intents; any state for feeds)</li>
+<li>Throttle check — 1 fire per resource per 60 seconds, in-memory state</li>
+<li>Create an in-memory <code>FireTask</code> with a UUID</li>
+<li>Dispatch the work via <code>asyncio.create_task</code>; the task is held in a module-level <code>set</code> to keep it alive against the GC, with <code>add_done_callback(set.discard)</code> removing it on completion</li>
+<li>Return <code>202 Accepted</code> with <code>task_id</code> and <code>status_url</code></li>
+</ol>
+<p>The status endpoint reads the same in-memory task. Because the storage is per-process, a multi-worker uvicorn deployment would route the GET to a worker that may not own the task. The 1.0 topology is single-worker.</p>
+<p><code>POST /feeds/{id}/fire?dry_run=true</code> reuses the same host rate limiter that the scheduler uses (<code>get_host_limiter()</code> from <code>collector.scheduler</code>) so a dry-run cannot bypass the per-host concurrency ceiling.</p>
+<h3 id="history-endpoints">History endpoints<a class="headerlink" href="#history-endpoints" title="Permanent link">&para;</a></h3>
+<p><code>history.py</code> manages persisted cron summary records and their lifecycle:</p>
+<p><strong>List / delete / export</strong>: <code>GET /intents/{intent_id}/history</code> returns paginated summary rows with <code>since</code>/<code>until</code> date filtering and timezone-aware boundary conversion. <code>DELETE /intents/{intent_id}/history/{row_id}</code> removes one row and evicts its citations from <code>match_seen</code> so a re-backfill can re-match them. <code>GET /intents/{intent_id}/history/export</code> returns JSON with <code>indent=2</code>.</p>
+<p><strong>Backfill</strong>: <code>POST /intents/{intent_id}/backfill</code> replays past cron fire-times through the standard scan+summarize pipeline, writing a <code>summary_history</code> row for each tick. The backfill anchors its lookback window against Qdrant's oldest <code>ingested_at_ts</code> so it never overshoots into a period that contains no articles. Status is polled via <code>GET /intents/{intent_id}/backfill/{task_id}</code> (same in-memory task pattern as the fire endpoints).</p>
+<p><strong>Aggregate</strong>: <code>POST /intents/{intent_id}/history/aggregate</code> runs an LLM call over multiple history rows' summaries, water-filling them into the backend's prompt budget. <code>POST /intents/{intent_id}/history/aggregate/send</code> does the same and dispatches the result via the intent's configured channels.</p>
+<p>All history endpoints require the intent to have a cron-mode schedule (event-mode intents produce no history rows) and at least one configured channel. The aggregate endpoints additionally require <code>{history}</code> in the intent's system or instruction template — the prompt injection point is what the aggregate pipeline replaces with the joined history rows.</p>
+<h3 id="settings-editor">Settings editor<a class="headerlink" href="#settings-editor" title="Permanent link">&para;</a></h3>
+<p><code>/api/settings/*</code> is the only router that writes to the host filesystem and triggers container restarts. It enforces a stricter auth model and rejects values that violate the passthrough whitelist.</p>
+<ul>
+<li><strong>Header-only auth</strong>: every endpoint depends on an <code>X-Dashboard-Token</code> HTTP header, never a cookie. The cookie path that the dashboard middleware accepts elsewhere would let any logged-in browser tab CSRF a settings save; the explicit header dependency closes that hole. Empty <code>dashboard_token</code> is treated as "no auth configured" so dev mode stays usable, but production deployments must set one.</li>
+<li><strong>Schema-driven UI</strong>: <code>GET /schema</code> introspects <code>Settings.model_fields</code> to derive each field's type (<code>str</code> / <code>int</code> / <code>float</code> / <code>bool</code> / <code>secret</code> / <code>enum</code> / <code>path</code>), constraints (<code>ge</code>/<code>le</code>), and description. The frontend renders a form from this without hardcoding any field. Hidden fields (currently <code>EMBEDDER_BACKEND</code>) stay on disk untouched but are filtered out of the schema and values responses.</li>
+<li><strong>Mask sentinel</strong>: secret-typed fields and passthrough variables whose name contains a sensitive substring (<code>TOKEN</code>, <code>COOKIE</code>, <code>SECRET</code>, <code>KEY</code>, <code>PASSWORD</code>, <code>SESSION</code>) are returned as <code>••••••</code>. When the client sends the same sentinel back via <code>POST /save</code>, the existing on-disk value is preserved untouched. This is what lets the operator save unrelated changes without ever exposing the secret in the HTTP body. Adding a brand-new key with the literal sentinel as its value is rejected with <code>422</code>.</li>
+<li><strong>Passthrough whitelist</strong>: keys outside the sembr settings model must match the strict <code>^[A-Z][A-Z0-9_]*$</code> pattern AND begin with one of <code>TWITTER_</code>, <code>TELEGRAM_</code>, <code>GITHUB_</code>, <code>RSSHUB_</code>, <code>SOCIAL_</code>, <code>OPENAI_</code>. The whitelist exists so RSSHub can add new sources without a sembr code change but a malicious key can't slip into the file.</li>
+<li><strong>Restart orchestration</strong>: a save that touches a sembr field triggers an api self-restart (delayed <code>SIGTERM</code> so the response can flush first, then <code>restart: unless-stopped</code> brings the container back); a save that touches a passthrough field triggers a force-recreate of the RSSHub service via <code>docker compose up -d --force-recreate --no-deps rsshub</code>. RSSHub failures are downgraded to a <code>200</code> response with <code>rsshub_restart_failed=true</code> so the api self-restart always still happens — disk and process state converge regardless of the RSSHub outcome.</li>
+</ul>
+<p>The <code>.env</code> writer (<code>settings_envfile.py</code>) is hand-rolled rather than <code>python-dotenv</code> because the latter rewrites the whole file on every save and drops the section header comments operators rely on for navigation. The implementation preserves comments, blank lines, and group ordering verbatim, and is backed by a <code>.env.bak</code> copy taken before each write — direct in-place writes (rather than tmp+rename) avoid <code>EBUSY</code> from Docker Desktop's bind-mounted file system.</p>
+<h2 id="health">Health<a class="headerlink" href="#health" title="Permanent link">&para;</a></h2>
+<p><code>GET /health</code> is the K8s/docker readiness probe.</p>
+<ul>
+<li>Returns <code>503 starting</code> when lifespan hasn't finished setting <code>app.state.qdrant</code> / <code>app.state.embedder</code> (start-up race protection)</li>
+<li>Otherwise returns <code>200 ok</code> iff Qdrant ping succeeds AND SQLite is reachable AND the embedder reports <code>"ok"</code>. <code>"loading"</code> and <code>"error"</code> both fail the probe</li>
+<li>Real-time — there is no caching layer, every probe re-pings each component</li>
+</ul>
+<h2 id="auth-model">Auth model<a class="headerlink" href="#auth-model" title="Permanent link">&para;</a></h2>
+<p>Two distinct mechanisms protect the api today, both rooted in the same <code>DASHBOARD_TOKEN</code> Settings field:</p>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Mechanism</th>
+<th>CSRF-safe?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dashboard pages, dashboard JSON endpoints, prompts, fire</td>
+<td><code>DashboardTokenMiddleware</code> — accepts <code>X-Dashboard-Token</code> header <strong>or</strong> <code>dashboard_token</code> cookie</td>
+<td>No (cookies cross-origin)</td>
+</tr>
+<tr>
+<td><code>/api/settings/*</code></td>
+<td><code>Depends(require_header_token)</code> — header <strong>only</strong>, constant-time compare via <code>secrets.compare_digest</code></td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<p>When <code>DASHBOARD_TOKEN</code> is empty, both surfaces let every request through. This is intentional for the dev experience (<code>docker compose up</code> and start clicking) but means a public-internet deployment without a token is fully open. Operators are expected to set a token before exposing the api beyond localhost.</p>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>The api router itself reads no configuration directly — all settings come through <code>Settings</code> (<code>sembr.config</code>) and are accessed via <code>request.app.state.settings</code>. The fields that affect routing behavior:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Used by</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dashboard_token</code></td>
+<td>settings router auth, dashboard middleware</td>
+<td>Shared secret; empty disables auth</td>
+</tr>
+</tbody>
+</table>
+<p>The prompts root is a module-level constant <code>sembr.summarizer.templates.PROMPTS_DIR</code> (= <code>Path("/app/prompts")</code>) — not a Settings field. The legacy <code>Settings.prompts_dir</code> was removed in the template-management refactor; both <code>prompts.py</code> and <code>intents.py::_validate_templates</code> now read the constant directly.</p>
+<h2 id="upstream-dependencies">Upstream dependencies<a class="headerlink" href="#upstream-dependencies" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>sembr.db.*</code> — SQLite CRUD helpers for feeds, intents, match_seen</li>
+<li><code>sembr.vector_store.intents</code> — Qdrant point upsert / payload update / delete; <code>ALIAS_NAME</code> for collection routing</li>
+<li><code>sembr.vector_store.qdrant.extract_point_vector</code> — used by PUT to re-cache a vector for a previously-disabled event-mode intent</li>
+<li><code>sembr.matcher.jobs</code> — register / unregister / re-register intent jobs in APScheduler</li>
+<li><code>sembr.matcher.event_cache</code> — <code>EventIntentEntry</code> for the in-process event-mode cache</li>
+<li><code>sembr.matcher.scan</code> — scan-once execution path for fire endpoints</li>
+<li><code>sembr.matcher.fire_tasks</code> / <code>sembr.collector.fire_tasks</code> — in-memory task registries with throttling</li>
+<li><code>sembr.collector.scheduler</code> — <code>add_feed_job</code>, <code>remove_feed_job</code>, <code>get_host_limiter()</code>, <code>SOURCE_REGISTRY</code></li>
+<li><code>sembr.summarizer.templates</code> — <code>PROMPTS_DIR</code>, <code>BUILTIN_NAMES</code>, <code>MAX_TEMPLATE_BYTES</code>, plus the read helpers (<code>template_path</code>, <code>template_exists</code>, <code>list_templates</code>, <code>load_template</code>) and write helpers (<code>save_template_atomic</code>, <code>delete_template</code>, <code>rename_template</code>, <code>try_render</code>) consumed by <code>prompts.py</code></li>
+<li><code>sembr.db.intents</code> — <code>list_template_refs</code>, <code>rename_intent_template</code> (the cascade UPDATE for the rename endpoint, wrapped by <code>prompts.py</code> in <code>db.sqlite.transaction()</code>)</li>
+</ul>
+<h2 id="downstream-consumers">Downstream consumers<a class="headerlink" href="#downstream-consumers" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>web/static/*</code> — the bundled dashboard JS calls every endpoint here</li>
+<li>External integrations — same routes, documented under <code>/docs</code></li>
+<li>The summarizer's <code>on_summary</code> and <code>on_template_error</code> callbacks are wired in <code>main.py</code>'s lifespan, not in this module — but they are the things that ultimately deliver an intent's matched articles after the api creates it</li>
+</ul>
+<h2 id="known-constraints">Known constraints<a class="headerlink" href="#known-constraints" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Single-process state</strong>: fire-task storage, throttle counters, and the event-mode intent cache all live in module-level Python state. A multi-worker uvicorn deployment would route <code>GET /fire/{task_id}</code> to a worker that may not have created the task. The 1.0 topology is single-worker; a multi-worker deployment requires moving these to Redis or another shared store</li>
+<li><strong>PUT failure with text-change is destructive on Qdrant</strong>: when the new vector has been written but a downstream step fails, the rollback path deletes the new Qdrant point — the original vector is already gone. The SQLite row is rolled back, but the operator must re-PUT to re-embed before the matcher can find the intent again. The <code>500</code> response and the <code>ERROR</code>-level log explain this; a fully-symmetric rollback would require capturing the prior vector from Qdrant before the upsert, which is structural work for a follow-up</li>
+<li><strong>No upper bound on body size for feeds</strong>: the api does not cap <code>FeedCreate.config</code> size or <code>IntentCreate.text</code> length beyond Pydantic's per-field validators. Misuse could fill a SQLite row with a megabyte of payload. In practice the dashboard caps these client-side; a hostile direct call would be limited only by FastAPI's default body size limit</li>
+<li><strong>Settings save runs no Pydantic round-trip</strong>: a value that fails <code>Settings(**values)</code> validation (e.g. <code>MATCHER_DEFAULT_THRESHOLD=not-a-number</code>) is written to disk anyway. The api self-restart then crashes during <code>Settings()</code> instantiation and <code>restart: unless-stopped</code> puts the container into a crash loop. The dashboard form mirrors the schema constraints, so this is reachable only by hand-crafting the POST body, but a future Pydantic dry-run would close the gap</li>
+<li><strong>Self-restart only works inside Docker</strong>: the SIGTERM-then-let-restart-policy-bring-us-back path assumes a container runtime with a restart policy (<code>restart: unless-stopped</code>). A bare <code>uvicorn</code> invocation will exit and stay down. Documented in operator-facing docs</li>
+<li><strong>Throttle is in-process and short-lived</strong>: 1-fire-per-60s per resource is an anti-foot-gun, not a security control. Any client can wait the throttle out</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1960 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Intent-driven news monitoring via Reverse RAG">
+      
+      
+      
+        <link rel="canonical" href="https://peakstone-labs.github.io/sembr/modules/collector/">
+      
+      
+        <link rel="prev" href="../vector-store/">
+      
+      
+        <link rel="next" href="../matcher/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>collector - sembr</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#collector" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="sembr" class="md-header__button md-logo" aria-label="sembr" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            sembr
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              collector
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Peakstone-Labs/sembr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Peakstone-Labs/sembr
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Modules
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/public/" class="md-tabs__link">
+          
+  
+  
+  Deployment
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../zh/" class="md-tabs__link">
+          
+  
+  
+  中文文档
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="sembr" class="md-nav__button md-logo" aria-label="sembr" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    sembr
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Peakstone-Labs/sembr" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Peakstone-Labs/sembr
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../db/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../db-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    db schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../embedder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    embedder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vector-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    vector_store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    collector
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    collector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#responsibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Responsibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-in-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not in scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#public-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Public interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-abc-basepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source ABC (base.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rss-source-rsspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RSS source (rss.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wisburg-source-wisburgpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wisburg source (wisburg.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deterministic-phase-jitter-phasepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deterministic phase + jitter (phase.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-host-concurrency-host_limiterpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-host concurrency (host_limiter.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scheduler-entry-points-schedulerpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scheduler entry points (scheduler.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-fire-fire_taskspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual fire (fire_tasks.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#initial-seeds-initial_feedspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Initial seeds (initial_feeds.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-consumers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream consumers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../summarizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    summarizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notifier/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    notifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logbus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    logbus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    api
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/public/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/wechat-official-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WeChat Official Accounts (add-on)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    中文文档
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    中文文档
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    简介
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速上手
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    配置参考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../zh/deployment/wechat-official-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    微信公众号接入（附加）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#responsibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Responsibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-in-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not in scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#public-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Public interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-abc-basepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source ABC (base.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rss-source-rsspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RSS source (rss.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wisburg-source-wisburgpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wisburg source (wisburg.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deterministic-phase-jitter-phasepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deterministic phase + jitter (phase.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-host-concurrency-host_limiterpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-host concurrency (host_limiter.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scheduler-entry-points-schedulerpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scheduler entry points (scheduler.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-fire-fire_taskspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual fire (fire_tasks.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#initial-seeds-initial_feedspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Initial seeds (initial_feeds.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-consumers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream consumers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/Peakstone-Labs/sembr/edit/main/docs/modules/collector.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="collector">collector<a class="headerlink" href="#collector" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Article ingestion pipeline. Polls each feed on its own APScheduler interval, normalises entries into <code>RawArticle</code>, deduplicates by <code>MD5(url+title)</code>, and writes to <code>pending_articles</code> for the embedder to pick up. Per-host concurrency is gated by a process-local semaphore.</p>
+</blockquote>
+<h2 id="responsibility">Responsibility<a class="headerlink" href="#responsibility" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Define the source ABC (<code>BaseSource</code>) so additional source types (HN, Reddit, custom HTTP) can be plugged in without touching the scheduler</li>
+<li>Ship a working RSS source (<code>RSSSource</code>) for the bundled feed seeds</li>
+<li>Run one APScheduler <code>IntervalTrigger</code> job per enabled feed, with a deterministic phase offset and per-fire jitter so polls do not synchronise across restarts</li>
+<li>Cap concurrent fetches against the same host (or the same first-path-segment behind a known proxy) via <code>HostLimiter</code></li>
+<li>Write per-fetch observability rows (<code>feed_fetch_log</code>) — events that distinguish "fetch failed" from "fetch ok, no new items"</li>
+<li>Provide a manual feed-fire entry point with a 60 s real-fire rate limit and dry-run mode (<code>fire_tasks</code>)</li>
+<li>Seed an initial set of feeds on first startup if no feed has ever been seeded (<code>initial_feeds</code>)</li>
+</ul>
+<h2 id="not-in-scope">Not in scope<a class="headerlink" href="#not-in-scope" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Embedding (lives in <code>embedder</code>)</li>
+<li>Vector storage (lives in <code>vector_store</code>)</li>
+<li>Article body parsing past HTML-stripping + entity decode — full readability extraction is a future feature</li>
+<li>Distributed multi-worker coordination — the limiter and fire-task store are process-local</li>
+</ul>
+<h2 id="public-interface">Public interface<a class="headerlink" href="#public-interface" title="Permanent link">&para;</a></h2>
+<h3 id="source-abc-basepy">Source ABC (<code>base.py</code>)<a class="headerlink" href="#source-abc-basepy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nd">@dataclass</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">RawArticle</span><span class="p">:</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">url</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">body</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">content_quality</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;full&quot;</span><span class="p">,</span> <span class="s2">&quot;summary&quot;</span><span class="p">,</span> <span class="s2">&quot;stub&quot;</span><span class="p">,</span> <span class="s2">&quot;title_only&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">published_at</span><span class="p">:</span> <span class="n">datetime</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">feed_md5</span><span class="p">:</span> <span class="nb">str</span>          <span class="c1"># MD5(url + title), 32 lowercase hex chars</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="k">class</span><span class="w"> </span><span class="nc">BaseSource</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fetch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">since</span><span class="p">:</span> <span class="n">datetime</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawArticle</span><span class="p">]</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">health</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bool</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">config_schema</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span>
+</code></pre></div>
+<p><code>content_quality</code> lets downstream stages decide how to handle near-empty articles (e.g., a <code>title_only</code> entry is fine for matching but not for summary). The <code>feed_md5</code> field is the dedup fingerprint and the article id used downstream as the deterministic Qdrant point UUID.</p>
+<h3 id="rss-source-rsspy">RSS source (<code>rss.py</code>)<a class="headerlink" href="#rss-source-rsspy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">RSSSource</span><span class="p">(</span><span class="n">BaseSource</span><span class="p">):</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">30.0</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">FetchError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span> <span class="o">...</span>
+</code></pre></div>
+<p>Per-fetch behaviour:</p>
+<ul>
+<li><code>httpx.AsyncClient(timeout=..., follow_redirects=True)</code> with <code>User-Agent: sembr/0.1 feedparser</code></li>
+<li>Raises <code>FetchError</code> on HTTP failure or unparseable feed (no entries + bozo or unrecognised version) so the caller does not advance the cursor and re-tries the same <code>since</code> window next tick</li>
+<li>Falls back through <code>entry.content</code> → <code>entry.summary</code> → <code>entry.title</code>, classifying as <code>full</code> / <code>summary</code> / <code>stub</code> / <code>title_only</code></li>
+<li>Strips HTML tags AND decodes entities (<code>&amp;amp;</code> → <code>&amp;</code>) so the embedder sees the text the article meant</li>
+<li><code>since</code> filtering is "err on inclusion": entries without a usable <code>published_parsed</code> / <code>updated_parsed</code> are kept and rely on the downstream MD5 dedup</li>
+</ul>
+<h3 id="wisburg-source-wisburgpy">Wisburg source (<code>wisburg.py</code>)<a class="headerlink" href="#wisburg-source-wisburgpy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">WisburgSource</span><span class="p">(</span><span class="n">BaseSource</span><span class="p">):</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">30.0</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">ENDPOINT_URLS</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>        <span class="c1"># the three whitelisted endpoint URLs</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">normalize_wisburg_url</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span>  <span class="c1"># shared with FeedCreate&#39;s url validator</span>
+</code></pre></div>
+<p><code>source_type="wisburg-report"</code> — Wisburg open-API research-note streams
+(<code>/api/reports</code>, <code>/api/earningscalls</code>, <code>/api/am-reports</code>). The endpoint
+identity is the <code>feed.url</code> itself (whitelist-validated on write), so the
+feeds-table UNIQUE constraint blocks duplicate feeds per endpoint. Auth is a
+single Bearer key (<code>WISBURG_API_KEY</code>); empty key → <code>FetchError</code> on fetch and
+<code>health() == False</code>.</p>
+<p>Per-fetch behaviour:</p>
+<ul>
+<li><strong>N+1 fetch</strong>: the list endpoint returns only <code>{id,title,datetime}</code>; each
+  item costs one extra <code>GET &lt;endpoint&gt;/&lt;id&gt;</code> for the markdown <code>summary</code>
+  (stored as <code>body</code>, <code>content_quality="summary"</code>). Detail calls run
+  sequentially — upstream allows 1000 req/h and daily volume is tens of items</li>
+<li><strong>Watermark</strong>: <code>startTime = max(since − 1h, now − 7d)</code>; first pull uses
+  <code>now − 1d</code>. The 1h overlap re-reads the trailing edge (MD5 dedup absorbs
+  it); the 7d clamp keeps a stale cursor from turning into a backfill</li>
+<li><strong>All-or-nothing failure</strong>: any transient failure (HTTP error, timeout,
+  non-success response envelope) raises <code>FetchError</code> so the cursor doesn't
+  advance past never-inserted items. Only terminal per-item misses are
+  skipped with a warning: detail 404/410, missing title, empty summary</li>
+<li>Article <code>url</code> is the API detail URL
+  (<code>https://api-omen.wisburg.com/api/&lt;endpoint&gt;/&lt;id&gt;</code>) — stable and unique,
+  which keeps the <code>MD5(url+title)</code> fingerprint stable across ticks</li>
+</ul>
+<h3 id="deterministic-phase-jitter-phasepy">Deterministic phase + jitter (<code>phase.py</code>)<a class="headerlink" href="#deterministic-phase-jitter-phasepy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">derive_phase_seconds</span><span class="p">(</span><span class="n">feed_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">period_seconds</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">derive_jitter_seconds</span><span class="p">(</span><span class="n">period_seconds</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span>
+</code></pre></div>
+<p>Phase is <code>MD5("feed-{id}")</code> mod period — survives restarts, spreads first-run timing across feeds. Jitter is clamped to <code>[60, 600]</code> seconds and applied per-fire by the <code>IntervalTrigger</code>.</p>
+<h3 id="per-host-concurrency-host_limiterpy">Per-host concurrency (<code>host_limiter.py</code>)<a class="headerlink" href="#per-host-concurrency-host_limiterpy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">derive_group_key</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">proxy_hosts</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">HostLimiter</span><span class="p">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">proxy_hosts</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">max_per_host</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">group_key_for</span><span class="p">(</span><span class="n">url</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="nd">@asynccontextmanager</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">acquire</span><span class="p">(</span><span class="n">group_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span>
+</code></pre></div>
+<p>Default group key is <code>host[:port]</code>; when the host appears in <code>proxy_hosts</code> (e.g. an RSSHub instance fronting many backends), the first path segment is appended so different upstream feeds do not collapse onto the same semaphore. The <code>asyncio.Lock</code> used for lazy-creating semaphores is itself lazily initialised — <code>HostLimiter</code> can be constructed before an event loop exists (static tests / module-level construction).</p>
+<h3 id="scheduler-entry-points-schedulerpy">Scheduler entry points (<code>scheduler.py</code>)<a class="headerlink" href="#scheduler-entry-points-schedulerpy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">SOURCE_REGISTRY</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">[</span><span class="n">BaseSource</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;rss&quot;</span><span class="p">:</span> <span class="n">RSSSource</span><span class="p">}</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">register_source</span><span class="p">(</span><span class="n">source_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="bp">cls</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">BaseSource</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">make_scheduler</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">AsyncIOScheduler</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">set_host_limiter</span><span class="p">(</span><span class="n">limiter</span><span class="p">:</span> <span class="n">HostLimiter</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">collect_feed</span><span class="p">(</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">feed_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">feed_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">feed_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">source_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]]</span>                <span class="c1"># (items_seen, items_new, articles)</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">add_feed_job</span><span class="p">(</span><span class="n">scheduler</span><span class="p">:</span> <span class="n">AsyncIOScheduler</span><span class="p">,</span> <span class="n">feed</span><span class="p">:</span> <span class="n">Feed</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">remove_feed_job</span><span class="p">(</span><span class="n">scheduler</span><span class="p">:</span> <span class="n">AsyncIOScheduler</span><span class="p">,</span> <span class="n">feed_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+<p><code>collect_feed</code> is the coroutine APScheduler invokes on every tick. One tick:</p>
+<ol>
+<li>Look up the source class; unknown type returns <code>(0, 0, [])</code> and writes no event row (config error, not a fetch attempt)</li>
+<li>Read <code>feeds.last_collected_at</code> to compute <code>since</code>; missing/unparseable falls back to <code>None</code></li>
+<li>Acquire the host-limiter slot for this feed's group key (or <code>nullcontext()</code> if no limiter is wired — production always wires one in <code>main.lifespan</code>, tests can call directly)</li>
+<li><code>source.fetch(since=since)</code> — <code>FetchError</code> and unexpected exceptions both write a failure event row and return without advancing the cursor</li>
+<li>For each fetched article: <code>insert_article_pending</code> (returns True on insert, False on dedup); per-article failures are logged but do not abort the batch</li>
+<li><code>update_last_collected</code> advances the cursor only after a successful fetch (the <code>since</code> window will not re-process anything)</li>
+<li>Emit the success event row with <code>(items_seen, items_new)</code></li>
+</ol>
+<p>The function records two timestamps internally: a queued-at (entered the limiter context) and a started-at (acquired the slot). The fetch event's <code>elapsed_ms</code> reflects actual fetch time, not queue-wait time, so the dashboard's per-feed throughput stays meaningful when many feeds queue against the same host.</p>
+<p><code>add_feed_job</code> registers the per-feed <code>IntervalTrigger</code> job with <code>coalesce=True</code>, <code>max_instances=1</code>, and <code>next_run_time = now + phase_s</code>. <code>remove_feed_job</code> ignores <code>JobLookupError</code> — useful when the service restarted between a feed's deletion and its job removal.</p>
+<h3 id="manual-fire-fire_taskspy">Manual fire (<code>fire_tasks.py</code>)<a class="headerlink" href="#manual-fire-fire_taskspy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nd">@dataclass</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">FeedFireTask</span><span class="p">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">feed_id</span><span class="p">:</span> <span class="nb">int</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">dry_run</span><span class="p">:</span> <span class="nb">bool</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">status</span><span class="p">:</span> <span class="nb">str</span>               <span class="c1"># &quot;running&quot; | &quot;done&quot; | &quot;error&quot;</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">started_at</span><span class="p">:</span> <span class="n">datetime</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">finished_at</span><span class="p">:</span> <span class="n">datetime</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">articles_fetched</span><span class="p">:</span> <span class="nb">int</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">articles_new</span><span class="p">:</span> <span class="nb">int</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>    <span class="n">articles</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>    <span class="n">error</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="k">def</span><span class="w"> </span><span class="nf">create_task</span><span class="p">(</span><span class="n">feed_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">dry_run</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FeedFireTask</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_task</span><span class="p">(</span><span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FeedFireTask</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="k">def</span><span class="w"> </span><span class="nf">throttle_check</span><span class="p">(</span><span class="n">feed_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">rate_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">60</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="k">def</span><span class="w"> </span><span class="nf">sweep_expired</span><span class="p">(</span><span class="n">ttl_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3600</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span>
+</code></pre></div>
+<p>In-memory state, process-local. <code>throttle_check</code> consults <code>_last_fire_at[feed_id]</code>; <code>create_task</code> updates that map only when <code>dry_run=False</code>, so dry runs are unrate-limited. APScheduler runs <code>sweep_expired</code> every five minutes; the API layer also stamps it on every fire to keep the map bounded.</p>
+<h3 id="initial-seeds-initial_feedspy">Initial seeds (<code>initial_feeds.py</code>)<a class="headerlink" href="#initial-seeds-initial_feedspy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">INITIAL_FEEDS</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span>    <span class="c1"># name, url, poll_interval_minutes</span>
+</code></pre></div>
+<p>Loaded by <code>db.feeds.seed_initial_feeds</code> on first startup. Already-seeded URLs are recorded in <code>seeded_feeds</code> and never re-seeded, so users can delete defaults without them reappearing.</p>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>proxy_hosts_set</code></td>
+<td><code>frozenset()</code></td>
+<td>hosts whose first path segment becomes part of the group key (RSSHub-style)</td>
+</tr>
+<tr>
+<td>host-limiter <code>max_per_host</code></td>
+<td><code>2</code></td>
+<td>hard-coded in <code>main.lifespan</code>; promote to a setting if you need per-deployment tuning</td>
+</tr>
+<tr>
+<td>feed-fire rate limit</td>
+<td><code>60 s</code></td>
+<td>hard-coded in <code>fire_tasks._FIRE_RATE_LIMIT_SECONDS</code></td>
+</tr>
+<tr>
+<td>feed-fire task TTL</td>
+<td><code>3600 s</code></td>
+<td>hard-coded in <code>fire_tasks._TASK_TTL_SECONDS</code></td>
+</tr>
+<tr>
+<td><code>wisburg_api_key</code></td>
+<td><code>""</code></td>
+<td>Bearer key for <code>source_type="wisburg-report"</code>; empty disables wisburg feeds</td>
+</tr>
+<tr>
+<td>wisburg window constants</td>
+<td><code>1h</code> overlap / <code>7d</code> clamp / <code>1d</code> first pull / 5 pages</td>
+<td>hard-coded in <code>wisburg.py</code> module constants (they encode probed upstream behaviour, not user preference)</td>
+</tr>
+</tbody>
+</table>
+<p>Per-feed <code>timeout</code> lives in the feed's <code>config</code> JSON column; defaults to <code>30.0</code> if absent.</p>
+<p>Per-feed <code>ignore_published_watermark</code> (boolean, default <code>false</code>) lives in the same <code>config</code> column. When set, <code>collect_feed</code> passes <code>since=None</code> regardless of <code>last_collected_at</code>, so the RSS <code>published_at &lt;= since</code> pre-filter is skipped and dedup falls back to the <code>feed_items</code> MD5 ledger. Enable it for sources that stamp every item with a coarse or back-dated timestamp (e.g. research-report feeds that mark each entry with the publish day's <code>00:00</code>), which the watermark would otherwise skip on every poll.</p>
+<h2 id="upstream-dependencies">Upstream dependencies<a class="headerlink" href="#upstream-dependencies" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>db.feeds</code> — <code>fingerprint_exists</code>, <code>insert_fingerprint</code>, <code>update_last_collected</code>, <code>seed_initial_feeds</code></li>
+<li><code>db.articles</code> — <code>insert_article_pending</code> (handles dedup + body cap)</li>
+<li><code>db.sqlite.get_conn</code> — shared aiosqlite connection</li>
+<li><code>dashboard.events.log_fetch_event</code> — best-effort observability</li>
+</ul>
+<h2 id="downstream-consumers">Downstream consumers<a class="headerlink" href="#downstream-consumers" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>embedder.scheduler.embedder_worker</code> — pulls from <code>pending_articles</code> written by this module</li>
+<li><code>api.feeds</code> — registers / removes per-feed jobs through <code>add_feed_job</code> / <code>remove_feed_job</code></li>
+<li><code>api.feeds_fire</code> — reuses <code>SOURCE_REGISTRY</code>, <code>_LIMITER_REF</code>, and <code>collect_feed</code> for manual fires; reuses <code>fire_tasks</code> for state</li>
+<li><code>dashboard.read_model</code> — reads <code>feed_fetch_log</code> rows produced here</li>
+</ul>
+<h2 id="known-constraints">Known constraints<a class="headerlink" href="#known-constraints" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Single-process state</strong>: <code>_LIMITER_REF</code>, <code>SOURCE_REGISTRY</code>, and <code>_feed_fire_tasks</code> are module-level globals. The deployment model is single-process Docker; multi-worker setups would need a distributed semaphore and an external task store.</li>
+<li><strong>Dedup is post-fetch</strong>: <code>RSSSource.fetch</code> returns every entry that survives the <code>since</code> filter; deduplication happens in <code>db.articles.insert_article_pending</code> via the <code>feed_items</code> MD5 unique key. A feed that re-emits the same article with a slightly different URL or title will be ingested again.</li>
+<li><strong>Cursor advances only on fetch success</strong>: a <code>FetchError</code> keeps <code>last_collected_at</code> unchanged so the next tick re-tries the same window — articles published during a brief outage are not lost. Persistent fetch failure means the cursor stays put and the same <code>since</code> is re-sent until success.</li>
+<li><strong>No content extraction</strong>: the body is <code>feedparser</code>'s <code>content</code> / <code>summary</code> / <code>title</code> field with HTML stripped and entities decoded. There is no readability-style article-page fetch; for paywalled or summary-only feeds, the embedder works on whatever the RSS itself ships.</li>
+<li><strong>Limiter-acquire latency is not bounded</strong>: <code>HostLimiter.acquire</code> waits indefinitely for a free slot. Combined with <code>max_instances=1</code> per feed, a stuck slot can stall a feed; the per-feed timeout protects only the HTTP call, not the queue wait.</li>
+<li><strong><code>fire_tasks.throttle_check</code> is racy</strong>: two coroutines that both pass the check before either calls <code>create_task</code> will both create real fires. The 60 s rate limit is a soft guard against the dashboard's own duplicate clicks, not a hard interlock.</li>
+<li><strong>Initial seeds are baked in</strong>: <code>INITIAL_FEEDS</code> is a Python list in source. Operators who want a different default set must edit the file (or delete defaults after first boot — they will not re-seed). Promoting this to a YAML / settings list is on the list for a future round.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
