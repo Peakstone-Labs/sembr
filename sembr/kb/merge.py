@@ -50,7 +50,7 @@ _SECTION_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$")
 _THREAD_RE = re.compile(r"^###\s+(?P<title>.+?)\s*<!--k:(?P<key>[a-z0-9][a-z0-9-]*)-->\s*$")
 _META_RE = re.compile(
     r"^首见\s*(?P<first>\d{4}-\d{2}-\d{2})\s*·\s*最新\s*(?P<last>\d{4}-\d{2}-\d{2})"
-    r"\s*·\s*当前[：:]\s*(?P<current>.*\S)\s*$"
+    r"\s*·\s*当前[：:]\s*(?P<current>.*?)\s*$"  # .*? so an empty 当前： still matches (review 🟡-2)
 )
 _ENTRY_RE = re.compile(r"^-\s+(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<text>.*\S)\s*$")
 _KEY_RE = re.compile(r"<!--k:([a-z0-9][a-z0-9-]*)-->")
@@ -178,6 +178,14 @@ def parse_doc(events_md: str) -> tuple[list[Thread], list[str]]:
                 current="",
             )
             threads.append(cur)
+            continue
+        if line.lstrip().startswith("### "):
+            # Heading-looking but no key anchor (a hand-edit deleted it): END the
+            # current thread so this block's entries don't merge into the previous
+            # one (review 🟡-1 / C1 — don't pollute). Preserve verbatim as an orphan;
+            # lint.mark_malformed flags the headless head, key-integrity warns on PUT.
+            cur = None
+            leading.append(line)
             continue
         if cur is None:
             if line.strip():

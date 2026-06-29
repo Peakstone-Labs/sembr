@@ -81,6 +81,34 @@ def test_slugify_and_fallback() -> None:
     assert M.stable_fallback_key("事件A") != M.stable_fallback_key("事件B")
 
 
+def test_meta_empty_current_roundtrip_stable() -> None:
+    """Review 🟡-2: an empty 当前： must still parse, so render→parse is stable and
+    the meta line doesn't get duplicated (unbounded growth) each pass."""
+    md = "## S\n\n### t <!--k:t-->\n首见 2026-06-01 · 最新 2026-06-01 · 当前：\n- 2026-06-01 e\n"
+    threads, leading = M.parse_doc(md)
+    assert len(threads) == 1 and threads[0].current == ""
+    rendered = M.render_doc(threads, leading)
+    # exactly one meta line; idempotent round-trip (no duplicate 首见 lines).
+    assert rendered.count("首见 ") == 1
+    assert M.render_doc(*M.parse_doc(rendered)).count("首见 ") == 1
+
+
+def test_headless_thread_not_merged_into_previous() -> None:
+    """Review 🟡-1: a headless '### ' block (key deleted) must not have its timeline
+    entries absorbed into the previous thread."""
+    md = (
+        "## S\n\n"
+        "### 正常 <!--k:k1-->\n首见 2026-06-01 · 最新 2026-06-01 · 当前：x\n- 2026-06-01 正常进展\n"
+        "\n### 缺键的块\n- 2026-06-02 手写进展\n"
+    )
+    threads, _ = M.parse_doc(md)
+    k1 = next(t for t in threads if t.key == "k1")
+    assert ("2026-06-02", "手写进展") not in k1.entries  # not polluted into k1
+    assert all("手写进展" not in x for _, x in k1.entries)
+    # the headless content is preserved somewhere in the rendered output (not lost).
+    assert "手写进展" in M.render_doc(threads, M.parse_doc(md)[1])
+
+
 # --------------------------------------------------------------------------- #
 # apply_updates
 # --------------------------------------------------------------------------- #
