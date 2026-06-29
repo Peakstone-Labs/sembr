@@ -111,7 +111,7 @@ def _seed_intent_via(
     """Sync wrapper using the TestClient's event loop."""
     import asyncio  # noqa: PLC0415
 
-    return asyncio.get_event_loop().run_until_complete(
+    return asyncio.run(
         _seed_intent_async(
             conn_holder["conn"],
             name,

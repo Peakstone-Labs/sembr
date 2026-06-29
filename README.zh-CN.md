@@ -171,6 +171,7 @@ curl -X POST http://localhost:8000/intents \
 - **监控 dashboard**：每个 feed 的健康度、embedder 延迟、各容器 CPU / 内存 / uptime、Qdrant 文章库按日期 / 源 / 标题筛、log SSE、一键重启
 - **运行时 settings 编辑器** —— 写宿主机 `.env` 然后原地重建受影响的容器，全程在 UI 里搞定
 - **自定义 prompt 模板** —— system + instruction 两种，落盘前严格校验占位符，dashboard 提供 CRUD
+- **LLM 结构化抽取（map-reduce，按 intent 开关）** —— 把每篇源文章抽成按 spec 定义的事实（机构 / 论点 / 分节 claims + 逐字引语），再 reduce 进简报而不是直接喂原文，降低幻觉与错误归属；抽取 spec 自动生成、dashboard 可编辑
 
 → 模块细节：[docs/modules/](docs/modules/index.md)
 

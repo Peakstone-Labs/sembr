@@ -145,6 +145,9 @@ function templatesTab() {
       return this.editor.content !== this.editor.originalContent;
     },
 
+    // Markdown highlight for the overlay editor (shared impl, codehl.js).
+    highlightMarkdown(text) { return window.ceHighlightMarkdown(text); },
+
     isActive(kind, name) {
       return this.editor.kind === kind && this.editor.name === name;
     },

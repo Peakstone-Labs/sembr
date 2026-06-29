@@ -13,7 +13,12 @@ Wire shape (probed against the live API, 2026-06-10):
 - list  ``GET <endpoint>?first=100&startTime=<iso>&after=<cursor>`` returns
   only ``{id,title,datetime}`` per item — the body requires one extra
   ``GET <endpoint>/<id>`` per item (N+1). Detail returns
-  ``{id,title,datetime,url,summary}`` where ``summary`` is markdown.
+  ``{id,title,datetime,url,summary}`` where ``summary`` is markdown, plus
+  an optional ``meta`` object ``{name,description}`` — a per-article
+  publisher + provenance line added upstream ~2026-06-27 (probed: present on
+  reports, name-only on am-reports, absent on earningscalls). We fold it into
+  the body via ``_meta_preamble`` so the map-extraction LLM can attribute the
+  real institution to ``source_org`` instead of the generic feed label.
 - every response is wrapped in ``{request_id,code,status,message,data}``;
   ``code==200 and status==0`` is the only success shape.
 - ``end_cursor`` is an offset counter; deep pagination fails with code 1004,
@@ -107,6 +112,35 @@ def _parse_datetime_or_none(raw: Any) -> datetime | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC)
+
+
+def _meta_preamble(detail: dict[str, Any]) -> str:
+    """Path-A source enrichment: render the detail's ``meta`` object as a short
+    markdown preamble to prepend to the body.
+
+    Wisburg detail grew an optional per-article ``meta`` (``{name,description}``)
+    where ``name`` is the publishing institution (e.g. '花旗') and
+    ``description`` is provenance prose (analyst, page count, publish date).
+    Surfacing it at the top of the body lets the map-extraction LLM lift the
+    institution into ``source_org`` rather than falling back to the generic feed
+    label ('外资研报'). Prepended, not appended, so it survives the downstream
+    body-length cap (db/articles.py).
+
+    Upstream coverage is uneven — ``meta`` is absent on earningscalls, name-only
+    on am-reports — so each field degrades to omission, never a stub line; a
+    missing/malformed ``meta`` yields an empty string (body unchanged).
+    """
+    meta = detail.get("meta")
+    if not isinstance(meta, dict):
+        return ""
+    lines: list[str] = []
+    name = str(meta.get("name") or "").strip()
+    desc = str(meta.get("description") or "").strip()
+    if name:
+        lines.append(f"> 发布机构：{name}")
+    if desc:
+        lines.append(f"> 来源说明：{desc}")
+    return "\n".join(lines) + "\n\n" if lines else ""
 
 
 def _unwrap_envelope(data: Any, *, where: str) -> Any:
@@ -300,7 +334,10 @@ class WisburgSource(BaseSource):
                     # md5 fingerprint and re-import everything).
                     url=detail_url,
                     title=title,
-                    body=summary,
+                    # Prepend the meta source line (institution + provenance)
+                    # so the map-extraction LLM can attribute source_org; no-op
+                    # when meta is absent (earningscalls) — body == summary.
+                    body=_meta_preamble(detail) + summary,
                     content_quality="summary",
                     published_at=_parse_datetime_or_none(detail.get("datetime")),
                     feed_md5=_md5_url_title(detail_url, title),

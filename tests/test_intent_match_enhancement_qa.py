@@ -199,9 +199,7 @@ def test_post_intent_with_sub_texts() -> None:
 
         from sembr.db.intent_sub_texts import list_for_intent  # noqa: PLC0415
 
-        sub_rows = asyncio.get_event_loop().run_until_complete(
-            list_for_intent(conn_holder["conn"], intent_id)
-        )
+        sub_rows = asyncio.run(list_for_intent(conn_holder["conn"], intent_id))
         assert len(sub_rows) == 1
         assert sub_rows[0].language == "en"
         assert sub_rows[0].text == "Strait of Hormuz daily"
@@ -455,9 +453,7 @@ def test_put_label_only_change_skips_qdrant() -> None:
 
         from sembr.db.intent_sub_texts import list_for_intent  # noqa: PLC0415
 
-        sub_rows = asyncio.get_event_loop().run_until_complete(
-            list_for_intent(conn_holder["conn"], iid)
-        )
+        sub_rows = asyncio.run(list_for_intent(conn_holder["conn"], iid))
         assert len(sub_rows) == 1
         assert sub_rows[0].language == "zh"
         assert sub_rows[0].text == "unchanged text"
@@ -707,9 +703,7 @@ def test_summarizer_only_sees_main_text() -> None:
             loaded.language,
         )
 
-    _sys_tpl, _inst_tpl, intent_text, _language = asyncio.get_event_loop().run_until_complete(
-        _run()
-    )
+    _sys_tpl, _inst_tpl, intent_text, _language = asyncio.run(_run())
     assert intent_text == "main text only"
     assert intent_text != "should NOT appear in summarizer"
     # sub_texts should never leak into the summarizer prompt context

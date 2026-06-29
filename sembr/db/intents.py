@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS intents (
     tags                 TEXT    NOT NULL DEFAULT '[]',
     system_template      TEXT    NOT NULL DEFAULT 'default',
     instruction_template TEXT    NOT NULL DEFAULT 'default',
+    extraction_enabled   INTEGER NOT NULL DEFAULT 0,
     feed_filter          TEXT    NOT NULL DEFAULT 'null',
     schedule             TEXT    NOT NULL DEFAULT '{}',
     timezone             TEXT    NOT NULL DEFAULT 'UTC',
@@ -73,6 +74,11 @@ _MIGRATIONS = [
     "ALTER TABLE intents ADD COLUMN schedule TEXT NOT NULL DEFAULT '{}'",
     "ALTER TABLE intents ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'",
     "ALTER TABLE intents ADD COLUMN language TEXT NOT NULL DEFAULT 'zh'",
+    # spec-autogen: whether structured extraction (map/reduce) is on for this
+    # intent. Real new column for existing prod DBs (idempotent via duplicate-
+    # column suppression). The old extraction_template column is dropped below —
+    # the spec name is now always intent-{id}, and this bool gates use.
+    "ALTER TABLE intents ADD COLUMN extraction_enabled INTEGER NOT NULL DEFAULT 0",
 ]
 
 # Backfill old scan_interval_seconds into the new schedule JSON column.
@@ -128,13 +134,16 @@ _DROP_COLUMNS = [
     "ALTER TABLE intents DROP COLUMN lookback_window_seconds",
     "ALTER TABLE intents DROP COLUMN first_scan_at",
     "ALTER TABLE intents DROP COLUMN skip_seen",
+    # spec-autogen: extraction_template retired (spec name is always intent-{id};
+    # use is gated by the extraction_enabled bool added above).
+    "ALTER TABLE intents DROP COLUMN extraction_template",
 ]
 
 _SELECT_INTENTS = (
     "SELECT id,name,text,threshold,enabled,channels,tags,"
     "system_template,instruction_template,"
     "feed_filter,schedule,timezone,language,"
-    "created_at,updated_at FROM intents"
+    "created_at,updated_at,extraction_enabled FROM intents"
 )
 
 
@@ -209,7 +218,9 @@ def _row_to_intent(row: tuple) -> Intent:
     # row indices: 0=id 1=name 2=text 3=threshold 4=enabled 5=channels 6=tags
     #              7=system_template 8=instruction_template
     #              9=feed_filter 10=schedule 11=timezone 12=language
-    #              13=created_at 14=updated_at
+    #              13=created_at 14=updated_at 15=extraction_enabled
+    # extraction_enabled is appended last (not interleaved) so adding it leaves
+    # every existing index above untouched.
     schedule = _SCHEDULE_ADAPTER.validate_python(json.loads(row[10]))
     return Intent(
         id=row[0],
@@ -221,6 +232,7 @@ def _row_to_intent(row: tuple) -> Intent:
         tags=json.loads(row[6]),
         system_template=row[7],
         instruction_template=row[8],
+        extraction_enabled=bool(row[15]),
         feed_filter=_parse_feed_filter(row[9]),
         schedule=schedule,
         timezone=row[11],
@@ -248,10 +260,10 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
         cursor = await txn.execute(
             """INSERT INTO intents
                    (name,text,threshold,enabled,channels,tags,
-                    system_template,instruction_template,
+                    system_template,instruction_template,extraction_enabled,
                     feed_filter,schedule,timezone,language,
                     created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 body.name,
                 body.text,
@@ -261,6 +273,7 @@ async def create_intent(conn: aiosqlite.Connection, body: IntentCreate) -> Inten
                 tags_json,
                 body.system_template,
                 body.instruction_template,
+                int(body.extraction_enabled),
                 feed_filter_json,
                 schedule_json,
                 body.timezone,
@@ -334,6 +347,11 @@ async def _update_intent_in_txn(
         if body.instruction_template is not None
         else current.instruction_template
     )
+    new_extraction_enabled = (
+        body.extraction_enabled
+        if body.extraction_enabled is not None
+        else current.extraction_enabled
+    )
     # Use model_fields_set to distinguish explicit null (clear to full-scan) from omitted (no-op)
     new_feed_filter = (
         body.feed_filter if "feed_filter" in body.model_fields_set else current.feed_filter
@@ -349,7 +367,7 @@ async def _update_intent_in_txn(
     await txn.execute(
         """UPDATE intents
            SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
-               system_template=?,instruction_template=?,
+               system_template=?,instruction_template=?,extraction_enabled=?,
                feed_filter=?,schedule=?,timezone=?,language=?,
                updated_at=?
            WHERE id=?""",
@@ -362,6 +380,7 @@ async def _update_intent_in_txn(
             tags_json,
             new_system_template,
             new_instruction_template,
+            int(new_extraction_enabled),
             feed_filter_json,
             schedule_json,
             new_timezone,
@@ -401,7 +420,7 @@ async def _update_intent_raw_in_txn(
     await txn.execute(
         """UPDATE intents
            SET name=?,text=?,threshold=?,enabled=?,channels=?,tags=?,
-               system_template=?,instruction_template=?,
+               system_template=?,instruction_template=?,extraction_enabled=?,
                feed_filter=?,schedule=?,timezone=?,language=?,
                updated_at=?
            WHERE id=?""",
@@ -414,6 +433,7 @@ async def _update_intent_raw_in_txn(
             tags_json,
             snapshot.system_template,
             snapshot.instruction_template,
+            int(snapshot.extraction_enabled),
             feed_filter_json,
             schedule_json,
             snapshot.timezone,

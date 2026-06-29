@@ -172,6 +172,7 @@ Want **WeChat Official Accounts (微信公众号)**? They have no official feed 
 - **Monitoring dashboard**: live feed health, embedder latency, container CPU / mem / uptime, Qdrant article browser with date / source / title filters, log SSE, one-click restart
 - **Runtime settings editor** that writes the host `.env` and recreates the affected containers in place — you can do everything from the UI
 - **Custom prompt templates** — system + instruction, with strict-placeholder validation and dashboard CRUD
+- **LLM structured extraction (map-reduce, opt-in per intent)** — extract each source into spec-defined facts (org / thesis / claims + verbatim quotes), then reduce those into the digest instead of raw text to cut hallucination and mis-attribution; auto-generated, dashboard-editable extraction specs
 
 → Module-by-module deep dives: [docs/modules/](docs/modules/index.md)
 

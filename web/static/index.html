@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=12">
+<link rel="stylesheet" href="/dashboard/style.css?v=20">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -1246,6 +1246,7 @@
             <td>
               <div class="action-cell">
                 <button @click="openEdit(intent)">Edit</button>
+                <button @click="openAdvanced(intent)" title="Generate / edit the extraction spec">Advanced</button>
                 <button @click="openHistory(intent)"
                         :class="(expandedIntentId===intent.id && expanded.kind==='history') ? 'primary' : ''">History</button>
                 <button class="fire-btn" @click="openFire(intent)">Fire</button>
@@ -1283,7 +1284,13 @@
                   <tbody>
                     <template x-for="row in expanded.rows" :key="row.id">
                       <tr>
-                        <td class="mono" x-text="fmtHistoryRunAt(row.run_at, intent.timezone)"></td>
+                        <td class="mono">
+                          <span x-text="fmtHistoryRunAt(row.run_at, intent.timezone)"></span>
+                          <span x-show="reduceModeBadge(row.reduce_mode)" class="rm-badge"
+                                :class="reduceModeClass(row.reduce_mode)"
+                                :title="reduceModeTitle(row.reduce_mode)"
+                                x-text="reduceModeBadge(row.reduce_mode)"></span>
+                        </td>
                         <td x-text="historySnippet(row)"></td>
                         <td class="mono" x-text="(row.citations || []).length"></td>
                         <td>
@@ -1963,21 +1970,49 @@
       <div class="modal-header">
         <span class="modal-title">
           History · <span class="mono" x-text="fmtHistoryRunAt(historyView.row?.run_at, historyView.timezone)"></span>
+          <span x-show="reduceModeBadge(historyView.row?.reduce_mode)" class="rm-badge"
+                :class="reduceModeClass(historyView.row?.reduce_mode)"
+                :title="reduceModeTitle(historyView.row?.reduce_mode)"
+                x-text="reduceModeBadge(historyView.row?.reduce_mode)"></span>
         </span>
         <button class="modal-close" @click="closeHistoryView()">✕</button>
       </div>
       <div style="padding:8px 0;">
         <div class="history-summary" style="line-height:1.6;" x-html="historyView.summaryHtml"></div>
         <div x-show="historyView.citations.length > 0" style="margin-top:18px;">
-          <div class="muted" style="font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:6px;">
-            Citations
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <div class="muted" style="font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase;">
+              Sources
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <label class="muted" style="font-size:0.75rem;">
+                <input type="checkbox" x-model="historyView.extract.override"> Overwrite existing
+              </label>
+              <button @click="startExtractSources()" :disabled="historyView.extract.running"
+                      x-text="historyView.extract.running ? 'Extracting…' : 'Extract facts'"></button>
+            </div>
+          </div>
+          <div x-show="historyView.extract.status" class="muted" style="font-size:0.75rem; margin-bottom:6px;">
+            <span x-text="`Done ${historyView.extract.progress.done} · Skipped ${historyView.extract.progress.skipped} · Failed ${historyView.extract.progress.errors} / ${historyView.extract.progress.total}`"></span>
+            <span x-show="historyView.extract.error" style="color:#d33;" x-text="' — ' + historyView.extract.error"></span>
+          </div>
+          <div x-show="historyView.extract.errors.length > 0" style="font-size:0.75rem; margin-bottom:8px;">
+            <div class="muted" style="margin-bottom:2px;">Failed articles:</div>
+            <template x-for="err in historyView.extract.errors" :key="err.article_id">
+              <div style="padding:2px 0 2px 8px; border-left:2px solid #d33;">
+                <span class="mono" x-text="err.article_id"></span><span class="muted"> — </span><span style="color:#d33;" x-text="err.reason"></span>
+              </div>
+            </template>
           </div>
           <table style="width:100%;">
             <thead>
-              <tr><th style="width:32px;">#</th><th>Title</th><th style="width:80px;">Score</th><th style="width:80px;">Body</th></tr>
+              <tr><th style="width:32px;">#</th><th>Title</th><th style="width:70px;">Score</th><th style="width:64px;"></th></tr>
             </thead>
-            <tbody>
-              <template x-for="(c, idx) in historyView.citations" :key="c.article_id || idx">
+            <!-- One <tbody> per citation: article row + its expand row are siblings
+                 inside the same tbody, so the expand opens directly below the row
+                 (not stacked at the list bottom). -->
+            <template x-for="(c, idx) in historyView.citations" :key="c.article_id || idx">
+              <tbody>
                 <tr>
                   <td class="mono" x-text="idx + 1"></td>
                   <td>
@@ -1986,21 +2021,51 @@
                        x-text="c.title || '(no title)'"></a>
                   </td>
                   <td class="mono" x-text="c.score ? c.score.toFixed(3) : '—'"></td>
-                  <td><button @click="loadCitationBody(c)" x-text="c.bodyOpen ? 'Hide' : 'Show'"></button></td>
+                  <td><button @click="toggleCitationExpand(c)" x-text="c.expandOpen ? 'Hide' : 'View'"></button></td>
                 </tr>
-              </template>
-            </tbody>
+                <tr x-show="c.expandOpen">
+                  <td colspan="4" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px;">
+                    <div style="margin:6px 0;">
+                      <div class="muted" style="font-size:0.7rem; text-transform:uppercase;">Article</div>
+                      <div x-show="c.bodyLoading" class="muted"><span class="spinner"></span></div>
+                      <div x-show="c.bodyError" style="color:#d33; font-size:0.8rem;" x-text="c.bodyError"></div>
+                      <pre x-show="c.body && !c.bodyError"
+                           style="white-space:pre-wrap; font-size:0.8rem; max-height:240px; overflow-y:auto;"
+                           x-text="c.body"></pre>
+                    </div>
+                    <div style="margin:6px 0;">
+                      <div class="muted" style="font-size:0.7rem; text-transform:uppercase;">Extracted facts</div>
+                      <div x-show="c.extractionLoading" class="muted"><span class="spinner"></span></div>
+                      <div x-show="c.extractionError" class="muted" style="font-size:0.8rem;" x-text="c.extractionError"></div>
+                      <div x-show="c.extraction && !c.extractionError">
+                        <div style="font-weight:600; font-size:0.82rem; margin-bottom:4px;" x-text="extractionHeader(c)"></div>
+                        <template x-for="sec in extractionSections(c)" :key="sec.key">
+                          <div style="margin-bottom:6px;">
+                            <div class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em;" x-text="sec.label"></div>
+                            <template x-for="(claim, ci) in sec.claims" :key="ci">
+                              <div style="padding:2px 0 2px 8px; border-left:2px solid var(--border); margin:3px 0;">
+                                <div style="font-size:0.82rem;">
+                                  <template x-for="flag in claimFlags(claim)" :key="flag">
+                                    <span style="display:inline-block; font-size:0.6rem; font-weight:700; padding:0 5px; margin-right:5px; border-radius:3px; background:#fde68a; color:#92400e; text-transform:uppercase; letter-spacing:0.05em; vertical-align:middle;"
+                                          x-text="flag"></span>
+                                  </template>
+                                  <span x-text="claim.text"></span>
+                                </div>
+                                <div class="muted" style="font-size:0.72rem;" x-show="claimContentTags(claim)" x-text="claimContentTags(claim)"></div>
+                                <div class="muted" style="font-size:0.68rem; opacity:0.7;" x-show="claimMetaTags(claim)" x-text="claimMetaTags(claim)"></div>
+                                <div class="muted" style="font-size:0.72rem; font-style:italic;" x-show="claim.quote" x-text="'「' + claim.quote + '」'"></div>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                        <div class="muted" x-show="!(c.extraction.claims && c.extraction.claims.length)" style="font-size:0.78rem;">(No extractable facts in this source)</div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </template>
           </table>
-          <template x-for="(c, idx) in historyView.citations" :key="'body-' + idx">
-            <div x-show="c.bodyOpen" style="margin-top:8px; padding:10px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:4px;">
-              <div class="muted" style="font-size:0.7rem;" x-text="(c.title || '') + ' — body'"></div>
-              <div x-show="c.bodyLoading" class="muted"><span class="spinner"></span></div>
-              <div x-show="c.bodyError" style="color:#d33; font-size:0.8rem;" x-text="c.bodyError"></div>
-              <pre x-show="c.body && !c.bodyError"
-                   style="white-space:pre-wrap; font-size:0.8rem; max-height:300px; overflow-y:auto;"
-                   x-text="c.body"></pre>
-            </div>
-          </template>
         </div>
       </div>
       <div class="modal-footer">
@@ -2197,6 +2262,93 @@
     </div>
   </div>
 
+  <!-- ── Advanced · Extraction Spec modal (spec-autogen) ── -->
+  <div class="modal-overlay" x-show="advanced.open" x-cloak @click.self="closeAdvanced()">
+    <div class="modal-panel" style="max-width:880px; width:92vw;">
+      <div class="modal-header">
+        <span class="modal-title">Advanced · Extraction Spec · <span x-text="advanced.intentName"></span></span>
+        <button class="modal-close" @click="closeAdvanced()">✕</button>
+      </div>
+
+      <!-- row 1: generate + digest toggle + status -->
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:6px 0 12px;">
+        <button class="primary" @click="generateSpec()" :disabled="advanced.generating">
+          <span x-show="!advanced.generating">Auto Generate</span>
+          <span x-show="advanced.generating">Generating… (may take a few min)</span>
+        </button>
+        <label class="radio-item" :style="advanced.digestAvailable ? '' : 'opacity:.5;'">
+          <input type="checkbox" x-model="advanced.useDigest" :disabled="!advanced.digestAvailable">
+          Calibrate with recent digest
+        </label>
+        <span x-show="!advanced.digestAvailable" class="field-hint">No history digest for this intent yet</span>
+        <span x-show="advanced.source==='fallback'" class="field-hint" style="color:var(--bad);">
+          Read-only starting point from a template — saving creates a spec for this intent; it won't modify the shared template
+        </span>
+      </div>
+      <div x-show="advanced.generateError" class="field-err-msg" x-text="advanced.generateError" style="margin-bottom:10px;"></div>
+
+      <!-- row 2: two editors, equal height -->
+      <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+        <div class="form-field" style="flex:1; min-width:320px;">
+          <label class="field-label code-editor-label">extraction_prompt (.md)</label>
+          <!-- single box: editable + markdown-highlighted (same overlay as json) -->
+          <div class="code-editor">
+            <pre class="code-editor-hl" aria-hidden="true" x-ref="mdHl"
+                 x-html="highlightMarkdown(advanced.mdText) + '\n'"></pre>
+            <textarea class="code-editor-input" x-model="advanced.mdText"
+                      @scroll="$refs.mdHl.scrollTop = $event.target.scrollTop"
+                      spellcheck="false"></textarea>
+          </div>
+        </div>
+        <div class="form-field" style="flex:1; min-width:320px;">
+          <label class="field-label code-editor-label">schema (.json)</label>
+          <!-- single box: editable + syntax-highlighted; Format floats bottom-right so the labels stay plain (aligned) -->
+          <div class="code-editor">
+            <pre class="code-editor-hl" aria-hidden="true" x-ref="jsonHl"
+                 x-html="highlightJson(advanced.jsonText) + '\n'"></pre>
+            <textarea class="code-editor-input" x-model="advanced.jsonText"
+                      @input="_validateJsonLocal()"
+                      @scroll="$refs.jsonHl.scrollTop = $event.target.scrollTop"
+                      spellcheck="false"></textarea>
+            <button class="code-editor-fmt" @click="prettifyJson()" title="Re-indent the JSON">Format</button>
+          </div>
+          <div x-show="advanced.jsonError" class="field-err-msg" x-text="advanced.jsonError" style="margin-top:6px;"></div>
+        </div>
+      </div>
+
+      <!-- save errors / warnings -->
+      <div x-show="advanced.saveErrors.length" style="margin-top:10px;">
+        <template x-for="e in advanced.saveErrors" :key="e.loc + e.msg">
+          <div class="field-err-msg"><span class="mono" x-text="e.loc"></span> <span x-text="e.msg"></span></div>
+        </template>
+      </div>
+      <div x-show="advanced.saveWarnings.length" style="margin-top:8px;">
+        <template x-for="w in advanced.saveWarnings" :key="w.loc + w.msg">
+          <div class="field-hint" style="color:var(--warn, #b8860b);">⚠ <span x-text="w.msg"></span></div>
+        </template>
+      </div>
+      <div x-show="advanced.enableError" class="field-err-msg" x-text="advanced.enableError" style="margin-top:8px;"></div>
+
+      <!-- row 3: check / save (draft) + structured-extraction toggle -->
+      <div class="modal-footer" style="margin-top:14px; align-items:center;">
+        <button @click="checkSpec()" :disabled="advanced.checking" title="Validate without saving">
+          <span x-show="!advanced.checking">Check</span><span x-show="advanced.checking">Checking…</span>
+        </button>
+        <button @click="saveSpec()" :disabled="advanced.saving">
+          <span x-show="!advanced.saving">Save</span><span x-show="advanced.saving">Saving…</span>
+        </button>
+        <label class="toggle-wrap" :style="advanced.toggleBusy ? 'opacity:.6; pointer-events:none;' : ''"
+               title="Enable structured extraction (map) for this intent">
+          <span class="toggle">
+            <input type="checkbox" :checked="advanced.enabled" @change="toggleSpecEnabled($event.target.checked)">
+            <span class="toggle-slider"></span>
+          </span>
+          <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;">Structured extraction</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Toast container ── -->
   <div class="toast-container">
     <template x-for="t in toasts" :key="t.id">
@@ -2309,10 +2461,15 @@
           </div>
         </header>
 
-        <textarea x-model="editor.content"
-                  :readonly="isEditorBuiltin"
-                  spellcheck="false"
-                  style="flex:1 1 auto; min-height:300px; font-family:'Geist Mono','JetBrains Mono',monospace; font-size:0.85rem; line-height:1.55; padding:14px; background:var(--bg-ink); color:#ededed; border:1px solid var(--bg-ink); border-radius:8px; resize:vertical; outline:none;"></textarea>
+        <!-- editable + markdown-highlighted overlay (same light surface as Advanced); shared codehl.js -->
+        <div class="code-editor code-editor--grow" style="flex:1 1 auto; min-height:300px;">
+          <pre class="code-editor-hl" aria-hidden="true" x-ref="tplHl"
+               x-html="highlightMarkdown(editor.content) + '\n'"></pre>
+          <textarea class="code-editor-input" x-model="editor.content"
+                    :readonly="isEditorBuiltin"
+                    spellcheck="false"
+                    @scroll="$refs.tplHl.scrollTop = $event.target.scrollTop"></textarea>
+        </div>
 
         <div x-show="editor.error" style="color:var(--bad); font-size:0.78rem; margin-top:6px;" x-text="editor.error"></div>
 
@@ -2768,10 +2925,11 @@
 </div><!-- /settings-view -->
 
 <script src="/dashboard/feeds.js?v=6"></script>
-<script src="/dashboard/intents.js?v=16"></script>
-<script src="/dashboard/templates.js?v=4"></script>
+<script src="/dashboard/codehl.js?v=1"></script>
+<script src="/dashboard/intents.js?v=30"></script>
+<script src="/dashboard/templates.js?v=5"></script>
 <script src="/dashboard/logs.js?v=2"></script>
-<script src="/dashboard/settings.js?v=12"></script>
+<script src="/dashboard/settings.js?v=13"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>
 <script src="/dashboard/app.js?v=10"></script>
 </body>

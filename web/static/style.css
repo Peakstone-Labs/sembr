@@ -581,6 +581,23 @@ input::placeholder { color: var(--text-dim); }
   font-variant-numeric: tabular-nums;
 }
 
+/* reduce_mode badge (design §9): generation-path marker on history rows so a
+   fail-open degradation (fallback / partial) is visible at a glance. */
+.rm-badge {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 600;
+  padding: 0 6px;
+  margin-left: 6px;
+  border-radius: 100px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.rm-ok      { background: #e3f5e3; color: #1a7f1a; }
+.rm-warn    { background: #fff3d6; color: #9a6a00; }
+.rm-bad     { background: #fde2e2; color: #c0392b; }
+.rm-neutral { background: var(--bg-secondary); color: var(--text-secondary); }
+
 .sub-tab-btn.active .count-badge {
   background: rgba(255,255,255,0.18);
   color: #ffffff;
@@ -2132,3 +2149,72 @@ button { gap: 7px; }
   stroke-width: 2;
 }
 
+
+/* ── Extraction-spec (spec-autogen) JSON editor ──
+   One box that is both editable and syntax-highlighted: a transparent <textarea>
+   (real caret + input) layered exactly over a read-only highlight <pre>. Both
+   layers share identical font/padding/wrap so glyphs and caret line up. */
+.code-editor {
+  position: relative;
+  height: 360px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+.code-editor-hl,
+.code-editor-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  border: 0;
+  tab-size: 2;
+}
+.code-editor-hl { z-index: 0; pointer-events: none; color: var(--text-primary); }
+.code-editor-input {
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text-primary);
+  resize: none;
+}
+.code-editor-input:focus { outline: none; }
+.code-editor-hl .json-key  { color: #0b5cab; }
+.code-editor-hl .json-str  { color: var(--good); }
+.code-editor-hl .json-num  { color: var(--warn-deep); }
+.code-editor-hl .json-bool { color: #8250df; }
+.code-editor-hl .json-null { color: var(--text-dim); }
+.code-editor-hl .md-h      { color: #0b5cab; font-weight: 600; }
+.code-editor-hl .md-bullet { color: var(--warn-deep); font-weight: 600; }
+.code-editor-hl .md-bold   { font-weight: 700; }
+.code-editor-hl .md-code   { color: var(--good); }
+.code-editor-hl .md-quote  { color: var(--text-dim); }
+/* plain equal-height labels so the two editors align (Format floats in the box) */
+.code-editor-label { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.code-editor-fmt {
+  position: absolute;
+  bottom: 8px;
+  right: 20px;          /* clear the scrollbar */
+  z-index: 2;
+  font-size: 0.7rem;
+  padding: 1px 8px;
+  opacity: 0.8;
+}
+.code-editor-fmt:hover { opacity: 1; }
+/* grow variant — templates editor: fills available height + larger font, but the
+   same light inset surface + highlight colors as the Advanced editors */
+.code-editor--grow { height: auto; }
+.code-editor--grow .code-editor-hl,
+.code-editor--grow .code-editor-input {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  padding: 14px;
+}

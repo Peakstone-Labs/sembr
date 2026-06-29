@@ -56,6 +56,16 @@ The same key is reused as `LLM_API_KEY` by default — SiliconFlow hosts both BG
 
 Only the API-style backend (any `/v1/chat/completions` endpoint) ships today.
 
+## Structured extraction & reduce (map-reduce)
+
+Opt-in **per intent** (a toggle in the dashboard, not a global env var). When on, the pipeline extracts each recalled article into a structured, spec-defined record and reduces those facts into the digest instead of raw article bodies; when off, it uses raw bodies as before. The models below default to the summarization model, so the feature needs no extra keys.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDUCE_MODEL` | — (reuses `LLM_MODEL`) | Model for per-article structured extraction and the reduce step. Leave blank to reuse the summarization model |
+| `META_EXTRACTION_MODEL` | — (reuses `LLM_MODEL`) | Model the spec auto-generator uses to draft a per-intent extraction spec. Leave blank to reuse the summarization model |
+| `REDUCE_CONCURRENCY` | `16` | How many source articles to extract in parallel. Higher clears large digests faster but bursts the provider; lower is gentler on rate limits (1–256) |
+
 ## Email notifier
 
 Email is the only built-in notification channel today. Leave `SMTP_HOST` empty to disable email delivery; the rest of the app still runs.

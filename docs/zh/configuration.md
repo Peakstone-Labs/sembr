@@ -56,6 +56,16 @@ LLM 默认共享同一把 Key（SiliconFlow 同时托管 BGE-M3 和 DeepSeek-V4-
 
 目前只内置 API 风格的 backend（任何 OpenAI 兼容 `/v1/chat/completions` 端点）。
 
+## 结构化抽取与 reduce（map-reduce）
+
+**按 intent 开关**（在 dashboard 里切，不是全局环境变量）。开启后，pipeline 先把每篇召回文章抽成结构化、按 spec 定义的记录，再把这些事实 reduce 进简报，而不是直接喂原文；关闭时和以前一样用原文。下面两个模型默认复用摘要模型，所以这个功能不需要额外的 key。
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `REDUCE_MODEL` | —（复用 `LLM_MODEL`） | 逐篇结构化抽取与 reduce 步骤所用模型。留空则复用摘要模型 |
+| `META_EXTRACTION_MODEL` | —（复用 `LLM_MODEL`） | spec 自动生成器用来起草每个 intent 抽取 spec 的模型。留空则复用摘要模型 |
+| `REDUCE_CONCURRENCY` | `16` | 并行抽取多少篇源文章。越高清空大 digest 越快但更冲击 provider，越低对限流越温和（1–256） |
+
 ## 邮件通知
 
 邮件是当前唯一的内置通知渠道。`SMTP_HOST` 留空即关闭邮件投递，应用其余部分仍可运行。

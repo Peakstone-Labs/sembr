@@ -48,6 +48,7 @@ def _fake_intent(intent_id=1, timezone_str="UTC", channels=None):
         language="en",
         system_template="default",
         instruction_template="default",
+        extraction_enabled=False,
         created_at=datetime.now(UTC).isoformat(),
         updated_at=datetime.now(UTC).isoformat(),
     )

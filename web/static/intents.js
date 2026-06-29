@@ -88,10 +88,47 @@ function intentsTab() {
     historyView: {
       open: false,
       row: null,            // selected summary_history row
+      intentId: null,       // owning intent id (for extract-sources endpoints)
       timezone: 'UTC',      // intent.timezone snapshot for run_at formatting
       summaryHtml: '',      // rendered markdown (DOMPurify-sanitized)
-      citations: [],        // citation rows with optional .body / .bodyLoading
+      citations: [],        // citation rows with optional .body / .extraction state
+      fieldMeta: {},        // spec field display map {name:{role,label,type}} from GET /extractions
+      // map sub-feature: per-digest source-extraction task state
+      extract: {
+        running: false, taskId: null, status: null, error: null,
+        override: false,
+        progress: { done: 0, skipped: 0, errors: 0, total: 0 },
+        errors: [],         // [{article_id, reason}]
+      },
     },
+    // Generation counter: bumped on every open/close so a late fetch/poll from a
+    // previous modal session can detect it is stale and drop its result
+    // (Alpine-modal async guard pattern).
+    _hvGen: 0,
+
+    // Advanced · extraction-spec panel (spec-autogen). Raw .md + .json editors;
+    // generate is synchronous; save (draft) and enable (activate) are separate.
+    advanced: {
+      open: false,
+      intentId: null,
+      intentName: '',
+      mdText: '',
+      jsonText: '',
+      jsonError: '',        // client-side parse error only (drift-guard)
+      useDigest: false,
+      digestAvailable: false,
+      source: 'none',       // own | fallback | none
+      enabled: false,
+      generating: false,
+      saving: false,
+      checking: false,      // validate-only (Check) in-flight
+      toggleBusy: false,    // enable/disable toggle in-flight
+      generateError: '',
+      saveErrors: [],       // [{loc,msg}]
+      saveWarnings: [],     // [{loc,msg}]
+      enableError: '',
+    },
+    _advGen: 0,             // async guard counter for the Advanced panel
 
     delHistory: {
       open: false,
@@ -777,6 +814,26 @@ function intentsTab() {
       return s.length > 120 ? s.slice(0, 120) + '…' : s;
     },
 
+    // ── reduce_mode badge (design §9): which path produced this digest, so a
+    // fail-open degradation is visible at a glance instead of in the logs.
+    // null/unknown → no badge.
+    reduceModeBadge(mode) {
+      return { raw: 'raw', facts: 'facts', facts_partial: 'partial',
+               facts_fallback_raw: 'fallback' }[mode] || '';
+    },
+    reduceModeClass(mode) {
+      return { facts: 'rm-ok', facts_partial: 'rm-warn',
+               facts_fallback_raw: 'rm-bad', raw: 'rm-neutral' }[mode] || '';
+    },
+    reduceModeTitle(mode) {
+      return {
+        raw: '原文直喂（未开启结构化抽取）',
+        facts: 'map-reduce：结构化 facts 注入',
+        facts_partial: 'facts 注入，但部分文章抽取失败（降级）',
+        facts_fallback_raw: '降级：开启了抽取但回退到原文直喂',
+      }[mode] || '';
+    },
+
     // Format a summary_history.run_at (UTC ISO string) in the intent's
     // configured timezone as "M/D H:MM" — no year, no timezone label.
     // Used by the History expand-row table, the View modal title, and the
@@ -827,37 +884,465 @@ function intentsTab() {
       const citations = (row.citations || []).map(c => ({
         ...c,
         body: null,
-        bodyOpen: false,
         bodyLoading: false,
         bodyError: null,
+        // in-place expand row + structured-extraction state (map sub-feature)
+        expandOpen: false,
+        extraction: null,         // cached extraction JSON once loaded
+        extractionLoading: false,
+        extractionError: null,    // e.g. not-extracted (404) / network error
       }));
+      this._hvGen++;  // invalidate any in-flight async from a prior session
       this.historyView = {
         open: true,
         row,
+        intentId: intent?.id ?? null,
         timezone: intent?.timezone || 'UTC',
         summaryHtml: html,
         citations,
+        fieldMeta: {},
+        extract: {
+          running: false, taskId: null, status: null, error: null,
+          override: false,
+          progress: { done: 0, skipped: 0, errors: 0, total: 0 },
+          errors: [],
+        },
       };
     },
 
     closeHistoryView() {
+      this._hvGen++;  // any pending poll/fetch sees a changed gen and bails
       this.historyView = {
         open: false,
         row: null,
+        intentId: null,
         timezone: 'UTC',
         summaryHtml: '',
         citations: [],
+        fieldMeta: {},
+        extract: {
+          running: false, taskId: null, status: null, error: null,
+          override: false,
+          progress: { done: 0, skipped: 0, errors: 0, total: 0 },
+          errors: [],
+        },
       };
     },
 
-    async loadCitationBody(citation) {
-      if (citation.body !== null || citation.bodyLoading) {
-        citation.bodyOpen = !citation.bodyOpen;
-        return;
+    // ── map sub-feature: in-place source expand (article + extracted facts) ──
+    toggleCitationExpand(c) {
+      c.expandOpen = !c.expandOpen;
+      if (!c.expandOpen) return;
+      // Lazy-load both panes on first open (each guards its own re-entry).
+      if (c.body === null && !c.bodyLoading) this.loadCitationBody(c);
+      if (c.extraction === null && !c.extractionLoading && !c.extractionError) {
+        this.loadCitationExtraction(c);
       }
+    },
+
+    async loadCitationExtraction(c) {
+      const gen = this._hvGen;
+      const intentId = this.historyView.intentId;
+      if (intentId == null) return;
+      c.extractionLoading = true;
+      c.extractionError = null;
+      try {
+        const res = await this._request(
+          'GET',
+          `/api/intents/${intentId}/extractions/${encodeURIComponent(c.article_id || '')}`
+        );
+        if (gen !== this._hvGen) return;  // modal closed/reopened — drop stale result
+        if (res.status === 404) {
+          c.extractionError = 'Not extracted — use Extract facts above';
+          c.extractionLoading = false;
+          return;
+        }
+        if (!res.ok) {
+          c.extractionError = `HTTP ${res.status}`;
+          c.extractionLoading = false;
+          return;
+        }
+        const data = await res.json();
+        if (gen !== this._hvGen) return;
+        // Spec field roles/labels — same for every source of this digest; store
+        // once so the generic renderer can bucket fields without hard-coded names.
+        this.historyView.fieldMeta = data.field_meta || {};
+        c.extraction = data.extraction || {};
+        c.extractionLoading = false;
+      } catch (e) {
+        if (gen !== this._hvGen) return;
+        c.extractionError = 'Network error: ' + e.message;
+        c.extractionLoading = false;
+      }
+    },
+
+    async startExtractSources() {
+      const ex = this.historyView.extract;
+      if (ex.running) return;  // in-flight guard
+      const intentId = this.historyView.intentId;
+      const rowId = this.historyView.row?.id;
+      if (intentId == null || rowId == null) return;
+      const gen = this._hvGen;
+      ex.running = true;
+      ex.status = 'running';
+      ex.error = null;
+      ex.errors = [];
+      ex.progress = { done: 0, skipped: 0, errors: 0, total: this.historyView.citations.length };
+      try {
+        const res = await this._request(
+          'POST',
+          `/api/intents/${intentId}/history/${rowId}/extract-sources?override=${ex.override ? 'true' : 'false'}`
+        );
+        if (gen !== this._hvGen) return;
+        if (!res.ok) {
+          ex.running = false;
+          ex.status = 'error';
+          // 409 in-progress / 422 spec_not_found / 5xx all surface here.
+          ex.error = res.status === 409 ? 'An extraction is already running' : `HTTP ${res.status}`;
+          return;
+        }
+        const data = await res.json();
+        if (gen !== this._hvGen) return;
+        ex.taskId = data.task_id;
+        ex.progress.total = data.total ?? ex.progress.total;
+        this._pollExtractSources(data.task_id, gen);
+      } catch (e) {
+        if (gen !== this._hvGen) return;
+        ex.running = false;
+        ex.status = 'error';
+        ex.error = 'Network error: ' + e.message;
+      }
+    },
+
+    async _pollExtractSources(taskId, gen) {
+      const ex = this.historyView.extract;
+      try {
+        const res = await this._request(
+          'GET',
+          `/api/intents/${this.historyView.intentId}/extract-sources/${taskId}`
+        );
+        if (gen !== this._hvGen) return;  // stale session
+        if (!res.ok) {
+          ex.running = false;
+          ex.status = 'error';
+          ex.error = `HTTP ${res.status}`;
+          return;
+        }
+        const data = await res.json();
+        if (gen !== this._hvGen) return;
+        ex.status = data.status;
+        ex.progress = data.progress || ex.progress;
+        ex.errors = data.errors || [];
+        if (data.status === 'running') {
+          // Re-arm rather than setInterval so polls never overlap.
+          setTimeout(() => this._pollExtractSources(taskId, gen), 1200);
+          return;
+        }
+        // Terminal (done / error): stop, then refresh extraction panes so any
+        // newly-cached source shows its JSON without reopening the modal.
+        ex.running = false;
+        if (data.status === 'error' && data.error_reason) ex.error = data.error_reason;
+        for (const c of this.historyView.citations) {
+          c.extraction = null;
+          c.extractionError = null;
+          c.extractionLoading = false;
+          if (c.expandOpen) this.loadCitationExtraction(c);
+        }
+      } catch (e) {
+        if (gen !== this._hvGen) return;
+        ex.running = false;
+        ex.status = 'error';
+        ex.error = 'Network error: ' + e.message;
+      }
+    },
+
+    // ── Advanced · extraction-spec panel (spec-autogen) ──────────────
+    // Generate (sync) → raw .md/.json edit → save (draft) → enable (activate).
+    // Async results are gated on _advGen so a late reply from a closed/reopened
+    // panel can't clobber current state (Alpine-modal async guard).
+    openAdvanced(intent) {
+      const gen = ++this._advGen;
+      Object.assign(this.advanced, {
+        open: true, intentId: intent.id, intentName: intent.name || '',
+        mdText: '', jsonText: '', jsonError: '', useDigest: false,
+        digestAvailable: false, source: 'none', enabled: false,
+        generating: false, saving: false, generateError: '',
+        saveErrors: [], saveWarnings: [], enableError: '',
+      });
+      this._loadAdvanced(intent.id, gen);
+    },
+    closeAdvanced() { this._advGen++; this.advanced.open = false; },
+
+    async _loadAdvanced(id, gen) {
+      try {
+        const res = await this._request('GET', `/api/intents/${id}/extraction-spec`);
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (!res.ok) { this.advanced.generateError = this._extractError(data, `HTTP ${res.status}`); return; }
+        this.advanced.mdText = data.md || '';
+        this.advanced.jsonText = data.json || '';
+        this.advanced.source = data.source || 'none';
+        this.advanced.enabled = !!data.enabled;
+        this.advanced.digestAvailable = !!data.digest_available;
+        this._validateJsonLocal();
+      } catch (e) {
+        if (gen === this._advGen) this.advanced.generateError = 'Network error: ' + e.message;
+      }
+    },
+
+    async generateSpec() {
+      if (this.advanced.generating) return;          // in-flight guard
+      const id = this.advanced.intentId, gen = this._advGen;
+      this.advanced.generating = true;
+      this.advanced.generateError = '';
+      this.advanced.saveErrors = [];
+      try {
+        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/generate`,
+          { use_digest: this.advanced.useDigest });
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (!res.ok) { this.advanced.generateError = this._extractError(data, `HTTP ${res.status}`); return; }
+        // Non-destructive on failure: only overwrite editors on success.
+        this.advanced.mdText = data.md || '';
+        this.advanced.jsonText = data.json || '';
+        this.advanced.saveWarnings = data.warnings || [];
+        this._validateJsonLocal();
+      } catch (e) {
+        if (gen === this._advGen) this.advanced.generateError = 'Network error: ' + e.message;
+      } finally {
+        if (gen === this._advGen) this.advanced.generating = false;
+      }
+    },
+
+    // Validate without saving (Check button) — surfaces errors + warnings so the
+    // user can sanity-check a hand-edited spec before committing it.
+    async checkSpec() {
+      if (this.advanced.checking) return;
+      this._validateJsonLocal();
+      if (this.advanced.jsonError) { this.advanced.saveErrors = [{ loc: 'json', msg: this.advanced.jsonError }]; return; }
+      const id = this.advanced.intentId, gen = this._advGen;
+      this.advanced.checking = true;
+      this.advanced.saveErrors = [];
+      try {
+        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/check`,
+          { md: this.advanced.mdText, json: this.advanced.jsonText });
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (!res.ok) { this.advanced.saveErrors = [{ loc: '', msg: this._extractError(data, `HTTP ${res.status}`) }]; return; }
+        this.advanced.saveErrors = data.errors || [];
+        this.advanced.saveWarnings = data.warnings || [];
+        if (!this.advanced.saveErrors.length && !this.advanced.saveWarnings.length) {
+          this.showToast('No issues found', 'success');
+        }
+      } catch (e) {
+        if (gen === this._advGen) this.advanced.saveErrors = [{ loc: '', msg: 'Network error: ' + e.message }];
+      } finally {
+        if (gen === this._advGen) this.advanced.checking = false;
+      }
+    },
+
+    async saveSpec() {
+      if (this.advanced.saving) return;
+      this._validateJsonLocal();
+      if (this.advanced.jsonError) { this.advanced.saveErrors = [{ loc: 'json', msg: this.advanced.jsonError }]; return; }
+      const id = this.advanced.intentId, gen = this._advGen;
+      this.advanced.saving = true;
+      this.advanced.saveErrors = [];
+      try {
+        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/save`,
+          { md: this.advanced.mdText, json: this.advanced.jsonText });
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (res.status === 422) {
+          this.advanced.saveErrors = (data.detail && data.detail.errors) || [{ loc: '', msg: 'Validation failed' }];
+          return;
+        }
+        if (!res.ok) { this.advanced.saveErrors = [{ loc: '', msg: this._extractError(data, `HTTP ${res.status}`) }]; return; }
+        this.advanced.source = 'own';
+        this.advanced.saveWarnings = data.warnings || [];
+        this.showToast('Spec saved (draft)', 'success');
+      } catch (e) {
+        if (gen === this._advGen) this.advanced.saveErrors = [{ loc: '', msg: 'Network error: ' + e.message }];
+      } finally {
+        if (gen === this._advGen) this.advanced.saving = false;
+      }
+    },
+
+    // Toggle structured extraction for this intent. On failure, revert the switch
+    // to its prior state (it was optimistically flipped by the native checkbox).
+    async toggleSpecEnabled(checked) {
+      const id = this.advanced.intentId, gen = this._advGen;
+      this.advanced.enableError = '';
+      this.advanced.toggleBusy = true;
+      try {
+        const res = await this._request('POST', `/api/intents/${id}/extraction-spec/enable`, { enabled: checked });
+        const data = await res.json().catch(() => ({}));
+        if (gen !== this._advGen) return;
+        if (!res.ok) {
+          this.advanced.enableError = this._extractError(data, `HTTP ${res.status}`);
+          this.advanced.enabled = !checked;   // revert the switch
+          return;
+        }
+        this.advanced.enabled = !!data.enabled;
+        this.showToast(this.advanced.enabled ? 'Structured extraction enabled' : 'Structured extraction disabled', 'success');
+      } catch (e) {
+        if (gen === this._advGen) { this.advanced.enableError = 'Network error: ' + e.message; this.advanced.enabled = !checked; }
+      } finally {
+        if (gen === this._advGen) this.advanced.toggleBusy = false;
+      }
+    },
+
+    prettifyJson() {
+      try {
+        this.advanced.jsonText = JSON.stringify(JSON.parse(this.advanced.jsonText), null, 2);
+        this.advanced.jsonError = '';
+      } catch (e) { this.advanced.jsonError = String((e && e.message) || e); }
+    },
+
+    // Drift-guard: ONLY parse + non-empty. The 12-rule set is the backend's job;
+    // mirroring it here would drift. Full validation surfaces as the save 422.
+    _validateJsonLocal() {
+      const t = (this.advanced.jsonText || '').trim();
+      if (!t) { this.advanced.jsonError = 'JSON must not be empty'; return; }
+      try { JSON.parse(t); this.advanced.jsonError = ''; }
+      catch (e) { this.advanced.jsonError = String((e && e.message) || e); }
+    },
+
+    // Overlay highlighters — shared impl in codehl.js (also used by the templates
+    // editor). escape-first / display-only; the backend validator is authoritative.
+    highlightJson(text) { return window.ceHighlightJson(text); },
+    highlightMarkdown(text) { return window.ceHighlightMarkdown(text); },
+
+    // Group a citation's extracted claims by section for the pretty card view.
+    // Section keys are humanized (no hard-coded fed_watch labels) so the render
+    // stays spec-agnostic.
+    extractionSections(c) {
+      const claims = (c.extraction && c.extraction.claims) || [];
+      const order = [];
+      const byKey = {};
+      for (const claim of claims) {
+        const key = claim.section || 'other';
+        if (!byKey[key]) {
+          byKey[key] = { key, label: key.replace(/_/g, ' '), claims: [] };
+          order.push(key);
+        }
+        byKey[key].claims.push(claim);
+      }
+      return order.map(k => byKey[k]);
+    },
+
+    // ── spec-driven claim rendering ──
+    // Field roles + labels come from the spec (historyView.fieldMeta, served by
+    // GET /extractions), so NO field name is hard-coded here. Swapping the
+    // intent's extraction template re-buckets every field automatically.
+    // The only fixed names are the universal claim shell the compiler guarantees.
+    _SHELL_FIELDS: ['section', 'text', 'quote', 'article_idx'],
+
+    _fieldMeta() {
+      return this.historyView.fieldMeta || {};
+    },
+    _roleOf(k) {
+      const m = this._fieldMeta()[k];
+      return (m && m.role) || 'content';
+    },
+    // A field value worth showing? Treats the "na" not-applicable sentinel as
+    // empty too (matches the object sub-value filter in _formatField) so
+    // "Stance: na" / "Direction: na" noise doesn't render.
+    _blank(v) {
+      return v === null || v === undefined || v === '' || v === false || v === 'na';
+    },
+    // A tag field that just repeats the quote (e.g. an "original sentence"
+    // field on an English source, where the verbatim quote IS that sentence)
+    // is noise — the quote line already shows it. Generic: not tied to any
+    // field name. Length guard keeps a short value (金十, CPI) that merely
+    // appears inside the quote from being suppressed.
+    _dupOfQuote(v, quote) {
+      if (typeof v !== 'string' || !quote) return false;
+      const a = v.trim();
+      const b = String(quote).trim();
+      if (!a || !b) return false;
+      if (a === b) return true;
+      return a.length >= 12 && b.length >= 12 && (a.includes(b) || b.includes(a));
+    },
+    _labelOf(k) {
+      const m = this._fieldMeta()[k];
+      if (m && m.label) return m.label;
+      const s = (k.startsWith('is_') ? k.slice(3) : k).replace(/_/g, ' ').trim();
+      return s ? s.charAt(0).toUpperCase() + s.slice(1) : k;
+    },
+    // Format a value by its SHAPE, not its name: array → per item
+    // (string | name=value | joined), object → "Label (sub: val, …)",
+    // scalar → "Label: value". Returns an array of strings.
+    _formatField(k, v) {
+      if (Array.isArray(v)) {
+        const out = [];
+        for (const m of v) {
+          if (typeof m === 'string') {
+            if (m.trim()) out.push(m.trim());
+          } else if (m && typeof m === 'object') {
+            if (m.name) out.push(`${m.name}=${m.value ?? ''}${m.unit || ''}`);
+            else {
+              const vals = Object.values(m).filter(x => x != null && x !== '');
+              if (vals.length) out.push(vals.join(' '));
+            }
+          }
+        }
+        return out;
+      }
+      if (v && typeof v === 'object') {
+        const sub = Object.entries(v).filter(([, x]) => x && x !== 'na').map(([kk, x]) => `${kk}: ${x}`);
+        return sub.length ? [`${this._labelOf(k)} (${sub.join(', ')})`] : [];
+      }
+      return [`${this._labelOf(k)}: ${v}`];
+    },
+
+    // What the fact is about (role=content / default). Spec section-specific
+    // fields land here automatically.
+    claimContentTags(claim) {
+      const parts = [];
+      const quote = claim && claim.quote;
+      for (const [k, v] of Object.entries(claim || {})) {
+        if (this._SHELL_FIELDS.includes(k) || this._roleOf(k) !== 'content') continue;
+        if (this._blank(v) || this._dupOfQuote(v, quote)) continue;
+        parts.push(...this._formatField(k, v));
+      }
+      return parts.join(' · ');
+    },
+
+    // Provenance / sourcing metadata (role=meta) — rendered subordinate.
+    claimMetaTags(claim) {
+      const parts = [];
+      const quote = claim && claim.quote;
+      for (const [k, v] of Object.entries(claim || {})) {
+        if (this._SHELL_FIELDS.includes(k) || this._roleOf(k) !== 'meta') continue;
+        if (this._blank(v) || this._dupOfQuote(v, quote)) continue;
+        parts.push(...this._formatField(k, v));
+      }
+      return parts.join(' · ');
+    },
+
+    // Boolean fields the spec marks role=flag → badge labels (e.g. "Projection").
+    claimFlags(claim) {
+      const out = [];
+      for (const [k, v] of Object.entries(claim || {})) {
+        if (this._roleOf(k) === 'flag' && v === true) out.push(this._labelOf(k));
+      }
+      return out;
+    },
+
+    extractionHeader(c) {
+      const e = c.extraction || {};
+      const org = e.source_org || '(Unknown publisher)';
+      return e.thesis ? `${org} · ${e.thesis}` : org;
+    },
+
+    async loadCitationBody(citation) {
+      // Load-only now (the row's open/closed state is `expandOpen`, toggled by
+      // toggleCitationExpand). Idempotent: re-entry while loaded/loading no-ops.
+      if (citation.body !== null || citation.bodyLoading) return;
+      const gen = this._hvGen;
       citation.bodyLoading = true;
       citation.bodyError = null;
-      citation.bodyOpen = true;
       // article_id from summary_history.citations is a UUID-formatted string
       // (8-4-4-4-12 hex); the dashboard articles endpoint expects the raw
       // MD5 (32-char hex). Strip the dashes.
@@ -867,15 +1352,18 @@ function intentsTab() {
           'GET',
           `/api/dashboard/articles/${md5}?bucket=qdrant`
         );
+        if (gen !== this._hvGen) return;  // modal closed/reopened — drop stale result
         if (!res.ok) {
-          citation.bodyError = `HTTP ${res.status}`;
+          citation.bodyError = res.status === 404 ? 'Source expired' : `HTTP ${res.status}`;
           citation.bodyLoading = false;
           return;
         }
         const data = await res.json();
+        if (gen !== this._hvGen) return;
         citation.body = data.body || '(empty body)';
         citation.bodyLoading = false;
       } catch (e) {
+        if (gen !== this._hvGen) return;
         citation.bodyError = 'Network error: ' + e.message;
         citation.bodyLoading = false;
       }

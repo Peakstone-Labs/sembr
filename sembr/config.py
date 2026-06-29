@@ -107,6 +107,32 @@ class Settings(BaseSettings):
         default=60.0,
         description="HTTP timeout (seconds) per summarization call.",
     )
+    reduce_model: str = Field(
+        default="",
+        description=(
+            "Model used for structured source extraction and the reduce step. "
+            "Leave empty to reuse the summarization model."
+        ),
+    )
+    meta_extraction_model: str = Field(
+        default="",
+        description=(
+            "Model used by the spec-autogen feature (extraction-spec generation). "
+            "Leave empty to reuse the summarization model."
+        ),
+    )
+    reduce_concurrency: int = Field(
+        default=16,
+        ge=1,
+        le=256,
+        description=(
+            "How many source articles to extract in parallel when running "
+            "'sources extraction' on a digest. Higher clears large digests "
+            "faster but bursts the LLM provider; lower is gentler on rate "
+            "limits. Bounded by the provider's concurrency/token limits, not "
+            "this host."
+        ),
+    )
     llm_max_prompt_chars: int = Field(
         default=1_500_000,
         ge=2_000,
@@ -310,6 +336,19 @@ class Settings(BaseSettings):
             "behind these proxies so they don't share a single rate limit."
         ),
     )
+
+    @property
+    def effective_reduce_model(self) -> str:
+        # Empty reduce_model falls back to the summarization model so a default
+        # install needs no extra config to run extraction.
+        return self.reduce_model or self.llm_model
+
+    @property
+    def effective_meta_extraction_model(self) -> str:
+        # Empty meta_extraction_model falls back to the summarization model so a
+        # default install can auto-generate extraction specs with no extra config.
+        # Mirrors the same fallback pattern used by effective_reduce_model.
+        return self.meta_extraction_model or self.llm_model
 
     @property
     def proxy_hosts_set(self) -> frozenset[str]:

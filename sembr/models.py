@@ -258,6 +258,9 @@ class IntentCreate(BaseModel):
     schedule: Schedule = Field(default_factory=lambda: CronSchedule(preset="daily"))
     system_template: str = "default"
     instruction_template: str = "default"
+    # Structured extraction (map/reduce) on for this intent. The spec is always
+    # this intent's own prompts/extraction/intent-{id}; this bool only gates use.
+    extraction_enabled: bool = False
     feed_filter: FeedFilter | None = None
     timezone: str = "UTC"
     language: str = "zh"
@@ -303,6 +306,7 @@ class IntentUpdate(BaseModel):
     schedule: Schedule | None = None
     system_template: str | None = None
     instruction_template: str | None = None
+    extraction_enabled: bool | None = None
     feed_filter: FeedFilter | None = None
     timezone: str | None = None
     language: str | None = None
@@ -361,6 +365,7 @@ class Intent(BaseModel):
     schedule: Schedule
     system_template: str
     instruction_template: str
+    extraction_enabled: bool
     feed_filter: FeedFilter | None
     timezone: str
     language: str
