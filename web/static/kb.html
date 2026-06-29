@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KB · Events Index</title>
 <link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
-<link rel="stylesheet" href="/dashboard/style.css?v=20">
+<link rel="stylesheet" href="/dashboard/style.css?v=21">
 <script src="/dashboard/codehl.js?v=1"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
 <script src="/dashboard/vendor/dompurify.min.js?v=2"></script>
@@ -19,8 +19,7 @@
   .kb-split { flex:1; display:flex; gap:10px; min-height:0; }
   .kb-split .code-editor { flex:1; height:auto; }   /* override the fixed 360px */
   .kb-split .code-editor-hl, .kb-split .code-editor-input { font-size:0.84rem; line-height:1.55; }
-  .kb-preview { flex:1; overflow:auto; padding:8px 12px; border:1px solid var(--border);
-    border-radius:4px; line-height:1.6; }
+  .kb-split .kb-preview { flex:1; }   /* visuals come from the shared .kb-preview in style.css */
 </style>
 </head>
 <body>
@@ -64,7 +63,7 @@
                 placeholder="events.md — one event per line; the <!--k:slug--> anchors are managed automatically."></textarea>
     </div>
     <!-- right: rendered markdown, proportional scroll-synced with the editor -->
-    <div class="kb-preview history-summary" x-ref="kbPreview" x-html="renderedHtml"
+    <div class="kb-preview" x-ref="kbPreview" x-html="renderedHtml"
          @scroll="syncScroll($refs.kbPreview, $refs.kbInput)"></div>
   </div>
 

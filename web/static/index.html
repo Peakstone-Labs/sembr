@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=20">
+<link rel="stylesheet" href="/dashboard/style.css?v=21">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -2973,9 +2973,9 @@
                     @scroll="$refs.kbHl.scrollTop = $event.target.scrollTop"
                     placeholder="events.md — one event per line; the &lt;!--k:slug--&gt; anchors are managed automatically."></textarea>
         </div>
-        <!-- Preview: rendered markdown -->
-        <div class="history-summary" x-show="view==='preview'" x-html="renderedHtml"
-             style="flex:1; min-height:45vh; overflow:auto; padding:8px 12px; border:1px solid var(--border); border-radius:4px; line-height:1.6;"></div>
+        <!-- Preview: rendered markdown (.kb-preview styles it; shared with the full-screen split) -->
+        <div class="kb-preview" x-show="view==='preview'" x-html="renderedHtml"
+             style="flex:1; min-height:45vh;"></div>
         <div class="modal-footer">
           <span class="muted" style="font-size:0.72rem; margin-right:auto;"
                 x-show="dirty">Unsaved changes</span>

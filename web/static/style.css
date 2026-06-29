@@ -2218,3 +2218,38 @@ button { gap: 7px; }
   line-height: 1.55;
   padding: 14px;
 }
+
+/* ── KB markdown preview (modal Preview tab + open-in-new-window split) ──
+   The global `* { padding:0 }` reset zeroes <ul> padding, so list bullets render
+   outside the box and get clipped ("half circle"); restore the indent + give the
+   rendered events.md a clean look (section / thread title / meta line / timeline). */
+.kb-preview {
+  padding: 10px 14px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  font-size: 0.86rem;
+  line-height: 1.62;
+  color: var(--text-secondary);
+}
+.kb-preview h2 {                                   /* section */
+  font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-dim); margin: 22px 0 10px; padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.kb-preview h2:first-child { margin-top: 2px; }
+.kb-preview h3 {                                   /* thread title */
+  font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin: 16px 0 3px;
+}
+.kb-preview p {                                    /* 首见 · 最新 · 当前 meta line */
+  margin: 1px 0 8px; font-size: 0.78rem; color: var(--text-dim);
+}
+.kb-preview ul, .kb-preview ol { margin: 4px 0 12px; padding-left: 1.5em; }   /* fix clipped bullets */
+.kb-preview li { margin: 3px 0; }
+.kb-preview li::marker { color: var(--text-dim); }
+.kb-preview strong { font-weight: 600; color: var(--text-primary); }
+.kb-preview code {
+  background: var(--bg-secondary); padding: 1px 5px; border-radius: 3px;
+  font-family: var(--font-mono); font-size: 0.85em;
+}
