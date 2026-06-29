@@ -166,9 +166,7 @@ async def test_fetch_meta_prepended_to_body(monkeypatch) -> None:
 
     body = articles[0].body
     assert body == (
-        "> 发布机构：花旗\n"
-        "> 来源说明：引用了Citi研究员的报告，原文12页。\n\n"
-        "### 主要观点\n内容"
+        "> 发布机构：花旗\n> 来源说明：引用了Citi研究员的报告，原文12页。\n\n### 主要观点\n内容"
     )
 
 
