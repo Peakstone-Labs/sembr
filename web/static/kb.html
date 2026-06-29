@@ -7,7 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
 <link rel="stylesheet" href="/dashboard/style.css?v=20">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
-<script src="/dashboard/kb.js?v=3"></script>
+<script src="/dashboard/kb.js?v=4"></script>
 <style>
   /* Full-screen standalone editor (the modal's "open in new window" target). */
   .kb-page { display:flex; flex-direction:column; height:100vh; box-sizing:border-box; padding:14px 18px; gap:8px; }
@@ -27,12 +27,12 @@
     <button @click="load()" :disabled="loading">Reload</button>
     <label class="toggle-wrap" style="margin-left:auto;"
            :style="toggleBusy ? 'opacity:.6; pointer-events:none; margin-left:auto;' : 'margin-left:auto;'"
-           title="每天 cron 出 digest 后自动增量更新此 KB(kb_enabled)">
+           title="Auto-update this KB after each scheduled (cron) run for this intent (kb_enabled)">
       <span class="toggle">
         <input type="checkbox" :checked="enabled" @change="toggleKbEnabled($event.target.checked)">
         <span class="toggle-slider"></span>
       </span>
-      <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;">每日自动更新</span>
+      <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;">Enable Auto Update</span>
     </label>
     <button class="primary" @click="save()" :disabled="submitting || !dirty"
             x-text="submitting ? 'Saving…' : 'Save'"></button>

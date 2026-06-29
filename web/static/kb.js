@@ -225,7 +225,7 @@ function kbModal() {
           return;
         }
         this.enabled = !!d.kb_enabled;
-        this.status = this.enabled ? '已开启每日自动更新' : '已关闭每日自动更新';
+        this.status = this.enabled ? 'Auto-update enabled' : 'Auto-update disabled';
       } catch (e) {
         if (gen === this._gen) { this.error = 'Network error: ' + e.message; this.enabled = !checked; }
       } finally {
