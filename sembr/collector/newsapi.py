@@ -418,15 +418,25 @@ class NewsApiMaster:
         # × 100 articles × ~5KB ≈ 5MB; cap=20 → ~10MB worst case.
         #
         # cap_reached is NOT treated as a failure: all fetched pages are valid,
-        # so we dispatch them and advance each feed's cursor to the oldest
-        # article timestamp seen. The next tick starts from that date, re-fetches
-        # overlapping articles (MD5 dedup discards duplicates), and progresses
-        # further into the backlog. This converges across ticks regardless of
-        # backlog depth; HTTP errors still drop the tick entirely.
+        # so we dispatch them and advance each feed's cursor to the NEWEST
+        # article timestamp seen, giving up on whatever backlog sits below the
+        # fetched window. HTTP errors still drop the tick entirely.
+        #
+        # This used to advance to the OLDEST timestamp, on the theory that the
+        # next tick would resume there and walk further back until the backlog
+        # was consumed. It does not converge: articlesSortBy="date" returns
+        # NEWEST-first, so every tick re-fetches the most recent
+        # max_pages × 100 articles and the oldest of them is always
+        # "now − (that many articles)". The cursor therefore tracks now()
+        # instead of climbing toward it, the watermark can never fire again,
+        # and every tick burns max_pages tokens forever. Observed in production
+        # 2026-08-15..22: 32 feeds, 800 articles/tick, 4.9% of them new, cursor
+        # stuck ~11h behind for a week until the monthly quota ran out.
         all_results: list[dict[str, Any]] = []
-        # Set to oldest article datetime when cap is reached mid-backlog so the
-        # dispatch section can use it for partial cursor advance instead of now().
-        cap_oldest_dt: datetime | None = None
+        # Set to the newest article datetime when cap is reached so the dispatch
+        # section can use it for the cursor advance instead of now(). Staying
+        # below now() by one article keeps the indexing-lag grace meaningful.
+        cap_cursor_dt: datetime | None = None
         async with limiter_ctx:
             async with httpx.AsyncClient(timeout=settings.newsapi_timeout_seconds) as client:
                 stopped_naturally = False
@@ -509,29 +519,35 @@ class NewsApiMaster:
                         break
 
                 if not stopped_naturally:
-                    # max_pages exhausted without watermark — backlog deeper
-                    # than one tick can cover. Find the oldest article datetime
-                    # in the batch so dispatch can set the cursor there; next
-                    # tick starts from that date and works further back.
+                    # max_pages exhausted without watermark — more articles in
+                    # the window than this tick can carry. Take the NEWEST
+                    # article datetime so the cursor jumps forward to the head
+                    # of the batch: the next tick starts from there, the
+                    # watermark fires again within a page or two, and the tick
+                    # cost falls back to 1-3 tokens. The articles below the
+                    # fetched window are forfeited — a deep backlog is a
+                    # backfill job, not something to pay realtime poll quota
+                    # for. See the cap_cursor_dt comment above for why walking
+                    # backwards instead deadlocks.
                     for raw in all_results:
                         raw_dt = raw.get("dateTime") if isinstance(raw, dict) else None
                         if not isinstance(raw_dt, str) or not raw_dt:
                             continue
                         try:
                             dt = _parse_date_time(raw_dt)
-                            if cap_oldest_dt is None or dt < cap_oldest_dt:
-                                cap_oldest_dt = dt
+                            if cap_cursor_dt is None or dt > cap_cursor_dt:
+                                cap_cursor_dt = dt
                         except ValueError:
                             pass
                     logger.warning(
                         "newsapi master tick: max_pages=%d cap reached "
-                        "(since=%s, %d feeds, %d articles); dispatching partial "
-                        "batch, cursor → %s",
+                        "(since=%s, %d feeds, %d articles); dispatching batch, "
+                        "cursor → %s (articles older than this are forfeited)",
                         max_pages,
                         universal_since,
                         len(per_feed),
                         len(all_results),
-                        cap_oldest_dt,
+                        cap_cursor_dt,
                     )
 
         # Unified dispatch — only reached after all fetched pages returned 2xx
@@ -584,12 +600,13 @@ class NewsApiMaster:
         # together. items_seen / items_new reflect totals across all fetched
         # pages (accumulated in slot during the dispatch loop above).
         #
-        # cap_oldest_dt is non-None when the tick was cap_reached: advance each
-        # cursor to the oldest article seen rather than now() so the next tick
-        # starts from that date and continues working through the backlog.
+        # cap_cursor_dt is non-None when the tick was cap_reached: advance each
+        # cursor to the newest article seen rather than now(), so the next tick
+        # resumes at the head of this batch and the watermark can fire again.
+        # None (the normal path) → update_last_collected writes now().
         elapsed_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
         for slot in per_feed.values():
-            await update_last_collected(conn, slot.feed_id, at=cap_oldest_dt)
+            await update_last_collected(conn, slot.feed_id, at=cap_cursor_dt)
             try:
                 await log_fetch_event(
                     feed_id=slot.feed_id,

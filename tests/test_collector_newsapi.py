@@ -988,14 +988,16 @@ async def test_master_tick_pagination_watermark_stops(monkeypatch, patched_get_c
 async def test_master_tick_pagination_cap_dispatches_partial(
     monkeypatch, patched_get_conn, caplog
 ) -> None:
-    """Cap reached without watermark → dispatch the partial batch and advance.
+    """Cap reached without watermark → dispatch the batch and advance.
 
     Every fetched page's articles are newer than universal_since (watermark
     never fires) → cap=10 reached. Instead of dropping the whole tick, the
     master dispatches all fetched articles and advances each feed's cursor to
-    the oldest article timestamp in the batch (not now()), so the next tick
-    continues working back through the backlog rather than re-fetching the same
-    newest pages forever.
+    the NEWEST article timestamp in the batch, so the next tick resumes at the
+    head of what was just fetched. Articles below the fetched window are
+    forfeited by design — see
+    test_master_tick_cap_cursor_jumps_to_head_and_recovers for why advancing to
+    the oldest timestamp instead deadlocks.
     """
     monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
     from sembr.config import get_settings
@@ -1049,12 +1051,15 @@ async def test_master_tick_pagination_cap_dispatches_partial(
         async with conn.execute("SELECT COUNT(*) FROM pending_articles") as cur:
             n = (await cur.fetchone())[0]
         assert n == 20
-        # Cursor advances off the old value toward the oldest article in the
-        # batch, so the next tick resumes from there instead of refreezing.
+        # Cursor jumps to the newest article in the batch (now), not the oldest
+        # (now - 1min) and not the old cut.
         async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
             row = await cur.fetchone()
         assert row[0] is not None
         assert row[0] != cut
+        assert row[0] == now.strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ), f"cap cursor must be the batch head, got {row[0]}"
         # One ok=True fetch_event per feed reflecting the dispatched totals.
         async with conn.execute(
             "SELECT feed_id, ok, items_seen, items_new, error_class FROM feed_fetch_log"
@@ -1071,6 +1076,104 @@ async def test_master_tick_pagination_cap_dispatches_partial(
         # Close the aiosqlite connection unconditionally: a bare assert failure
         # before an end-of-test close() leaks the connection's background thread
         # and hangs interpreter shutdown (and the whole CI job).
+        await conn.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_master_tick_cap_cursor_jumps_to_head_and_recovers(
+    monkeypatch, patched_get_conn
+) -> None:
+    """Cap once, then fall back to a single page — the cap must not self-sustain.
+
+    Regression for the production deadlock of 2026-08-15..22. The cap branch
+    used to advance the cursor to the OLDEST article in the batch. Because
+    articlesSortBy="date" returns newest-first, that pins the cursor at
+    "now − max_pages×100 articles", a point that moves forward in lockstep with
+    now(): the watermark can never fire again and every tick burns max_pages
+    tokens until the quota is gone (observed: 800 articles/tick, 4.9% new, for
+    a week).
+
+    Tick 1 fetches a batch spanning ~4.5h and hits the cap. Tick 2 serves
+    articles at now-3h. The watermark stops tick 2 on page 1 only if tick 1
+    left the cursor at the batch head (now); with the old oldest-article cursor
+    (now-4.5h) the stop line sits at now-6.5h and tick 2 would page all the way
+    to the cap again.
+    """
+    monkeypatch.setenv("NEWSAPI_API_KEY", "test-key")
+    from sembr.config import get_settings
+
+    get_settings.cache_clear()
+    now = datetime.now(UTC)
+    cut = (now - timedelta(days=30)).isoformat()
+    conn = await _setup_inmem_db_with_feeds(
+        [
+            {"id": 1, "url": "reuters.com", "last_collected_at": cut},
+        ]
+    )
+    patched_get_conn(conn)
+    try:
+        # Page idx covers [now-30*(idx-1)min, now-30*(idx-1)-1min]; 10 pages
+        # span ~4.5h, comfortably wider than the 2h indexing-lag grace so the
+        # oldest-vs-newest choice is observable.
+        def _spread_page(idx: int) -> dict:
+            base = 30 * (idx - 1)
+            return _page_envelope(
+                [
+                    {
+                        "url": f"https://r.com/t1-p{idx}-{i}",
+                        "title": f"T1 P{idx}-{i}",
+                        "body": "x" * 200,
+                        "dateTime": (now - timedelta(minutes=base + i)).strftime(
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        ),
+                        "source": {"uri": "reuters.com"},
+                    }
+                    for i in range(2)
+                ],
+                total=2000,
+            )
+
+        second_tick_page = _page_envelope(
+            [
+                {
+                    "url": "https://r.com/t2-below-watermark",
+                    "title": "T2 below watermark",
+                    "body": "x" * 200,
+                    "dateTime": (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "source": {"uri": "reuters.com"},
+                }
+            ],
+            total=2000,
+        )
+
+        # 10 responses for tick 1 + 10 identical ones for tick 2, so a
+        # regression pages on instead of raising StopIteration — the assert
+        # below then reports the real page count.
+        side_effects = [
+            httpx.Response(200, json=_spread_page(p), headers={"req-tokens": "1.000"})
+            for p in range(1, 11)
+        ] + [
+            httpx.Response(200, json=second_tick_page, headers={"req-tokens": "1.000"})
+            for _ in range(10)
+        ]
+        route = respx.post("https://eventregistry.org/api/v1/article/getArticles").mock(
+            side_effect=side_effects
+        )
+
+        await NewsApiMaster().tick()
+        assert route.call_count == 10, "tick 1 should exhaust max_pages"
+        async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
+            after_first = (await cur.fetchone())[0]
+        assert after_first == now.strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ), f"cursor must jump to the batch head, got {after_first}"
+
+        await NewsApiMaster().tick()
+        assert (
+            route.call_count == 11
+        ), f"tick 2 must stop on page 1 (watermark), took {route.call_count - 10} pages"
+    finally:
         await conn.close()
 
 
