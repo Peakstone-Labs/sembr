@@ -379,6 +379,59 @@ async def test_legacy_ttl_cascade_failure_logs_summary(caplog, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ttl_archive_bulk_batches(caplog):
+    """A 5k-point downtime backlog spans 20 sequential batches at the
+    production ``_ARCHIVE_BATCH=250`` — batch order and running counts must
+    stay correct across the whole run (the batch bound exists precisely so a
+    large backlog does not blow the per-batch memory budget)."""
+    conn = await _make_conn()
+    try:
+        n = 5000
+        md5s = [f"{i:032x}" for i in range(n)]
+        await _seed_base(conn, md5s)
+        uuids = [md5_to_uuid(m) for m in md5s]
+
+        async def retrieve_side_effect(**kwargs):
+            return [_retrieved_point(u) for u in kwargs["ids"]]
+
+        handle = _mk_handle(uuids, [])
+        handle.client.retrieve = AsyncMock(side_effect=retrieve_side_effect)
+
+        with caplog.at_level("INFO", logger="sembr.maintenance.qdrant_ttl"):
+            await _run_qdrant_ttl(handle, Settings())
+
+        retrieve_calls = handle.client.retrieve.call_args_list
+        upsert_calls = handle.client.upsert.call_args_list
+        delete_calls = handle.client.delete.call_args_list
+        assert len(retrieve_calls) == 20  # ceil(5000 / 250)
+        assert len(upsert_calls) == 20
+        assert len(delete_calls) == 20
+
+        # Batch order: batch i must carry exactly uuids[i*250:(i+1)*250], in
+        # sequence — not just the right total count.
+        for i, call in enumerate(retrieve_calls):
+            assert call.kwargs["ids"] == uuids[i * 250 : (i + 1) * 250]
+        for i, call in enumerate(upsert_calls):
+            got_ids = [p.id for p in call.kwargs["points"]]
+            assert got_ids == uuids[i * 250 : (i + 1) * 250]
+        for i, call in enumerate(delete_calls):
+            assert call.kwargs["points_selector"].points == uuids[i * 250 : (i + 1) * 250]
+
+        async with conn.execute("SELECT COUNT(*) FROM feed_items") as cur:
+            assert (await cur.fetchone())[0] == 0
+
+        summary = next(
+            r.getMessage() for r in caplog.records if "qdrant_ttl run:" in r.getMessage()
+        )
+        assert "archived=5000" in summary
+        assert "deleted_qdrant=5000" in summary
+        assert "deleted_feed_items=5000" in summary
+        assert "aborted_stage=none" in summary
+    finally:
+        await _close_conn(conn)
+
+
+@pytest.mark.asyncio
 async def test_archive_ttl_cascade_failure_logs_summary(caplog, monkeypatch):
     """A cascade failure still emits the conservation summary line — the
     ledger must have no silent gap (reconcile owns the data-side cleanup)."""

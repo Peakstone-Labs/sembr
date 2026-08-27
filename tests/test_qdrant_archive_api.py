@@ -277,6 +277,33 @@ def _unexpected_response(code: int):
     return UnexpectedResponse(status_code=code, reason_phrase="x", content=b"detail", headers=None)
 
 
+def test_semantic_qdrant_error_mapping():
+    """Direct coverage for the semantic-mode Qdrant exception branch
+    (``_semantic_search``'s ``query_points`` call, mapped through
+    ``_qdrant_http_error``). The filter-mode UnexpectedResponse sweep in
+    ``test_qdrant_status_mapping_whitelist`` only drives ``scroll`` — it does
+    not exercise this call site even though both share the same helper."""
+    app = _make_app()
+    client = TestClient(app)
+    qc = app.state.qdrant.client
+
+    qc.query_points = AsyncMock(side_effect=_unexpected_response(404))
+    resp = _search(client, {"query": "x"})
+    assert resp.status_code == 503
+
+    qc.query_points = AsyncMock(side_effect=_unexpected_response(429))
+    resp = _search(client, {"query": "x"})
+    assert resp.status_code == 503
+
+    qc.query_points = AsyncMock(side_effect=_unexpected_response(400))
+    resp = _search(client, {"query": "x"})
+    assert resp.status_code == 400
+
+    qc.query_points = AsyncMock(side_effect=RuntimeError("connection refused"))
+    resp = _search(client, {"query": "x"})
+    assert resp.status_code == 503
+
+
 def test_qdrant_status_mapping_whitelist():
     """Real UnexpectedResponse mapping: only 400/422 are caller errors.
     404 (collection/alias missing) and 429 (rate limit) are service-side —
@@ -304,6 +331,81 @@ def _listing_points(ts_list: list[int]) -> list[SimpleNamespace]:
         SimpleNamespace(id=f"id-{i}", payload=_payload(ingested_at_ts=ts))
         for i, ts in enumerate(ts_list)
     ]
+
+
+def test_archive_search_empty_and_bare():
+    """An empty archive must still answer 200 with an empty hits list in
+    BOTH modes (never a 4xx/5xx just because there is nothing to find), and
+    a bare filter-mode request (no query, no filters) issues a plain
+    newest-first scroll with no ``scroll_filter`` kwarg at all."""
+    qc = MagicMock()
+    qc.query_points = AsyncMock(return_value=_query_response([]))
+    app = _make_app(qdrant_client=qc)
+    client = TestClient(app)
+
+    resp = _search(client, {"query": "anything"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["mode"] == "semantic"
+    assert data["hits"] == []
+    assert data["warnings"] == []
+    assert data["next_cursor"] is None
+
+    qc.scroll = AsyncMock(return_value=([], None))
+    resp = _search(client, {"limit": 20})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["mode"] == "filter"
+    assert data["hits"] == []
+    assert data["next_cursor"] is None
+    kwargs = qc.scroll.call_args.kwargs
+    assert "scroll_filter" not in kwargs
+    assert kwargs["order_by"] == {"key": "ingested_at_ts", "direction": "desc"}
+
+
+def test_cursor_same_ts_boundary():
+    """A same-timestamp cluster larger than one page must page through with
+    no point lost (never returned) and none duplicated (returned twice) —
+    the accepted risk of this cursor design. Simulates a real Qdrant scroll:
+    each page excludes exactly the ids named in the request's
+    ``must_not has_id`` conditions."""
+    ts = 1_700_000_000
+    all_ids = [f"pt-{i}" for i in range(7)]
+    all_points = [SimpleNamespace(id=pid, payload=_payload(ingested_at_ts=ts)) for pid in all_ids]
+
+    async def fake_scroll(**kwargs):
+        excluded: set[str] = set()
+        scroll_filter = kwargs.get("scroll_filter")
+        if scroll_filter is not None:
+            for cond in scroll_filter.must_not or []:
+                has_id = getattr(cond, "has_id", None)
+                if has_id:
+                    excluded.update(has_id)
+        remaining = [p for p in all_points if p.id not in excluded]
+        return remaining[: kwargs["limit"]], None
+
+    qc = MagicMock()
+    qc.scroll = AsyncMock(side_effect=fake_scroll)
+    client = TestClient(_make_app(qdrant_client=qc))
+
+    seen: list[str] = []
+    cursor = None
+    for _ in range(10):  # generous upper bound; the walk must finish well before this
+        body: dict = {"limit": 3}
+        if cursor is not None:
+            body["cursor"] = cursor
+        resp = _search(client, body)
+        assert resp.status_code == 200
+        data = resp.json()
+        seen.extend(h["id"] for h in data["hits"])
+        cursor = data["next_cursor"]
+        if cursor is None:
+            break
+    else:
+        pytest.fail("pagination over a same-timestamp cluster did not terminate")
+
+    assert sorted(seen) == sorted(all_ids)  # nothing lost
+    assert len(seen) == len(set(seen))  # nothing duplicated
 
 
 def test_filter_mode_bare_listing_no_filter():
