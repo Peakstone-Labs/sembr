@@ -38,6 +38,9 @@ _PROTECTED_PREFIXES = (
     # /api/intents/* (not /intents/*) so an unauthenticated fetch gets a 401
     # JSON rather than a 302 redirect to the login page.
     "/api/intents/",
+    # Archive search/stats: agent-facing but token-gated like the rest of the
+    # dashboard API surface.
+    "/api/archive/",
     "/intents/",
     "/feeds/",
 )
@@ -47,6 +50,7 @@ _PROTECTED_EXACT = frozenset(
         "/api/dashboard",
         "/api/prompts",
         "/api/settings",
+        "/api/archive",
         "/intents",
         "/feeds",
     }

@@ -35,6 +35,7 @@ logging.getLogger("sembr").setLevel(logging.DEBUG)
 import aiosqlite
 
 from sembr.api import settings_restart
+from sembr.api.archive import router as archive_router
 from sembr.api.external_fire import router as external_fire_router
 from sembr.api.extraction_spec import router as extraction_spec_router
 from sembr.api.feeds import router as feeds_router
@@ -101,6 +102,7 @@ from sembr.summarizer.templates import PROMPTS_DIR
 from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
 from sembr.vector_store.intents import ensure_intents_collection
 from sembr.vector_store.news import ensure_news_collection
+from sembr.vector_store.news_archive import ensure_news_archive_collection
 from sembr.vector_store.qdrant import QdrantHandle
 
 logger = logging.getLogger(__name__)
@@ -223,6 +225,11 @@ async def lifespan(app: FastAPI):
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client, embedder)
+    # Archive bootstrap runs unconditionally (flag only gates the TTL
+    # migration): the /api/archive endpoints must never race a missing
+    # collection, and creating an empty one is free. Must precede router
+    # service so MatchText / order_by find their payload indexes in place.
+    await ensure_news_archive_collection(qdrant.client, embedder)
     # intent-match-enhancement: pass conn so the migration step (SELECT id,text FROM intents)
     # can re-embed main vectors for the new named-vector layout.
     await ensure_intents_collection(qdrant.client, embedder, conn=conn)
@@ -462,6 +469,7 @@ app.include_router(settings_router)
 app.include_router(dashboard_router)
 app.include_router(restart_router)
 app.include_router(maintenance_router)
+app.include_router(archive_router)
 app.include_router(logs_router)
 
 
