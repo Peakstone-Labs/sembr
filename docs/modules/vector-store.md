@@ -1,6 +1,6 @@
 # vector_store
 
-> Async Qdrant wrapper. Owns two collections — `intents_current` (intent vectors, query-side, full-precision) and `news_current` (article vectors, on-disk + INT8 quantization) — and the public/stable aliases that protect callers from the underlying versioned collection name.
+> Async Qdrant wrapper. Owns three collections — `intents_current` (intent vectors, query-side, full-precision), `news_current` (article vectors, on-disk + INT8 quantization) and `news_archive` (expired articles, permanent, disk-first) — and the public/stable aliases that protect callers from the underlying versioned collection names.
 
 ## Responsibility
 
@@ -70,8 +70,45 @@ Two payload indexes are created at bootstrap (idempotent on every startup):
 |---|---|---|
 | `ingested_at_ts` | INTEGER | Required for the dashboard's `scroll(order_by=...)`; Qdrant rejects un-indexed order keys |
 | `feed_id` | INTEGER | The Feeds tab drill-down filters by `feed_id`; without this the lookup degrades to a full-collection scan |
+| `title` | text (MULTILINGUAL tokenizer) | Dashboard title keyword search; the MULTILINGUAL tokenizer segments CJK at character level — the WORD tokenizer would treat a Chinese title as one long token and drop it |
 
 `upsert_news_points` is a thin alias-routing helper. The caller still owns `PointStruct` construction because the embedder worker has model-version metadata it must inject into payloads; the helper exists to keep the alias name from being duplicated at every write site.
+
+### News archive collection (`news_archive.py`)
+
+```python
+ARCHIVE_ALIAS = "news_archive"
+
+def archive_collection_name(model_version: str) -> str    # → f"news_archive_{model_version}"
+
+async def ensure_news_archive_collection(client, embedder) -> None
+async def upsert_archive_points(client, points, *, wait: bool = True) -> None
+
+# payload enrichment (pure functions, applied at migration time)
+def parse_published_at_ts(published_at) -> int | None
+def detect_lang(title, body) -> str               # "zh" / "en" / "other"
+def extract_url_domain(url) -> str | None
+def build_archive_point(point, matched_intents, archived_at_ts) -> PointStruct | None
+```
+
+The archive permanently keeps every article the retention job expires out of `news_current`, vector included, so old news stays semantically searchable through `POST /api/archive/search` (see the api module doc). The maintenance job **moves** points instead of deleting them: retrieve with vectors → enrich the payload → upsert into `news_archive` with `wait=True` → only then delete from `news_current` and cascade the SQLite rows. A failed archive write aborts the run with nothing deleted, so an article can never end up in neither store. Every run logs one summary line with `archived=` / `deleted_qdrant=` counters — on a clean run the two are equal. Setting `QDRANT_ARCHIVE_ENABLED=false` reverts the job to plain deletion (pre-archive behavior); the collection and its endpoints stay readable.
+
+Storage is **disk-first**, deliberately different from `news_current`: INT8 quantization with `always_ram=False`, `hnsw_config.on_disk=True`, and every payload index `on_disk=True`. The archive grows without bound inside the same memory-capped Qdrant container that serves the hot matcher/ingest path, so nothing archive-sized may pin RAM; archive queries are rare ad-hoc lookups where disk latency is acceptable.
+
+Archived payloads keep the original article fields and add six derived ones:
+
+| Field | Meaning |
+|---|---|
+| `published_at_ts` | epoch seconds parsed from `published_at`; **absent** when the source timestamp is missing, unparseable, or timezone-naive (guessing a timezone would silently shift the article by hours). Absent fields never match a range filter |
+| `body_len` | `len(body)` — length-floor filtering to skip stub articles |
+| `lang` | `zh` / `en` / `other` from a cheap CJK-vs-latin character heuristic |
+| `url_domain` | lowercased hostname without `www.` |
+| `matched_intents` | intent ids that had matched the article while it was live — captured at migration time, immediately before the cascade delete erases that history from SQLite. Intents deleted before migration are not represented. Always present (possibly empty) |
+| `archived_at_ts` | migration timestamp, for audits |
+
+All eight payload indexes (`ingested_at_ts`, `published_at_ts`, `body_len` as range-only integers; `feed_id`, `matched_intents` as lookup-only integers; `url_domain`, `lang` keywords; `title` MULTILINGUAL text) are created at bootstrap, before the API routers serve.
+
+**Backup**: the archive is the *only* copy of expired articles — their SQLite rows are deleted at migration. Deleting the collection or the Qdrant volume loses them permanently. Snapshot with `curl -X POST http://localhost:6333/collections/news_archive/snapshots` on the Qdrant host and copy the snapshot file off the box.
 
 ## Configuration
 

@@ -31,6 +31,7 @@ Interactive API docs are auto-generated at **`/docs`** (Swagger UI) and **`/redo
 | `fire.py` | (none) | `POST /intents/{id}/fire`, `GET /intents/{id}/fire/{task_id}` |
 | `prompts.py` | `/api/prompts` | `GET /templates` (rich), `GET /templates/{kind}/{name}`, `POST /templates/{kind}`, `PUT /templates/{kind}/{name}`, `DELETE /templates/{kind}/{name}`, `POST /templates/{kind}/{name}/rename` |
 | `settings.py` | `/api/settings` | `GET /schema`, `GET /values`, `POST /save` |
+| `archive.py` | `/api/archive` | `POST /search`, `GET /stats` |
 
 `history.py`, `fire.py`, and `feeds_fire.py` are deliberately separate from the CRUD modules because they own a different lifecycle — they create a `FireTask` in memory, dispatch a background coroutine, and expose a polling endpoint. Splitting them keeps the CRUD routers small and lets the fire-task lifecycle evolve without disturbing the create/update path.
 
@@ -98,6 +99,29 @@ All history endpoints require the intent to have a cron-mode schedule (event-mod
 - **Restart orchestration**: a save that touches a sembr field triggers an api self-restart (delayed `SIGTERM` so the response can flush first, then `restart: unless-stopped` brings the container back); a save that touches a passthrough field triggers a force-recreate of the RSSHub service via `docker compose up -d --force-recreate --no-deps rsshub`. RSSHub failures are downgraded to a `200` response with `rsshub_restart_failed=true` so the api self-restart always still happens — disk and process state converge regardless of the RSSHub outcome.
 
 The `.env` writer (`settings_envfile.py`) is hand-rolled rather than `python-dotenv` because the latter rewrites the whole file on every save and drops the section header comments operators rely on for navigation. The implementation preserves comments, blank lines, and group ordering verbatim, and is backed by a `.env.bak` copy taken before each write — direct in-place writes (rather than tmp+rename) avoid `EBUSY` from Docker Desktop's bind-mounted file system.
+
+## Archive search
+
+`archive.py` exposes the permanent news archive — articles the retention job has moved out of `news_current` (see the vector_store module doc) — for ad-hoc research queries, e.g. an agent pulling months-old coverage on a topic via `curl`.
+
+`POST /api/archive/search` serves two retrieval modes through one filter schema:
+
+- **Semantic** (body has `query`): the text is embedded and vector-searched. `limit` caps top-k (≤ 100), `min_score` sets a similarity floor, `exclude_ids` removes already-seen hits so repeated calls can dig deeper. Returns 503 while the embedder is still loading.
+- **Filter listing** (no `query`): newest-first by `ingested_at_ts`. A full page returns `next_cursor`; pass it back verbatim to fetch the next page. The cursor exists because Qdrant disables its normal scroll pagination under `order_by` — internally it replays the boundary timestamp plus the ids already returned at that timestamp.
+
+Filters apply in both modes: `ingested_from_ts`/`ingested_to_ts`, `published_from_ts`/`published_to_ts` (absent on articles whose source timestamp was unusable), `feed_ids` / `exclude_feed_ids`, `title_contains` (CJK-safe keyword match), `url_domains`, `min_body_len`, `matched_intent_ids` (intents that matched the article while it was live), `langs`. `include_body=false` drops the full text from hits for list views. Parameters that only make sense in the other mode (e.g. `min_score` without `query`, `cursor` with `query`) are rejected with 422 instead of being silently ignored.
+
+Each hit carries the article (title, url, body, timestamps), its archived metadata (`lang`, `url_domain`, `body_len`, `matched_intents`, `embedding_model_version`) and a best-effort `feed_name`. The response-level `warnings` array flags when archived vectors were produced by a different embedding model generation than the live embedder — similarity scores are unreliable until the model-upgrade flow reconciles the space.
+
+`GET /api/archive/stats` returns the exact point count and oldest/newest `ingested_at_ts` — an independent cross-check that the retention job archived exactly as many points as it deleted.
+
+Both endpoints sit behind the dashboard token gate:
+
+```bash
+curl -s -X POST http://localhost:8000/api/archive/search \
+  -H "X-Dashboard-Token: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"query": "衰退信号", "limit": 10, "langs": ["zh"], "include_body": false}'
+```
 
 ## Health
 
