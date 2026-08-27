@@ -218,6 +218,16 @@ class Settings(BaseSettings):
             "Must be at least 30 to cover the maximum intent lookback window."
         ),
     )
+    qdrant_archive_enabled: bool = Field(
+        default=True,
+        description=(
+            "When True, the TTL job moves expired article vectors into the "
+            "permanent news_archive collection before deleting them from "
+            "news_current. When False, the TTL job falls back to plain "
+            "deletion (pre-archive behavior); the archive collection and its "
+            "search endpoints stay available for previously archived points."
+        ),
+    )
     dead_articles_retention_days: int = Field(
         default=14,
         ge=1,
