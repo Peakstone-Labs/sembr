@@ -50,17 +50,31 @@ class _OrderBy:
 
 
 def _install_qdrant_stub() -> None:
+    # Fill-only (mirrors test_scan_once.py): prefer the real package when it
+    # is importable so the suite exercises real model validation; the stubs
+    # only fill in on machines without qdrant-client. Unconditional overwrite
+    # here used to leak a Range-without-lt stub into the dashboard filter
+    # tests once test_scan_once stopped re-clobbering it.
     if "qdrant_client" not in sys.modules:
-        sys.modules["qdrant_client"] = ModuleType("qdrant_client")
+        try:
+            import qdrant_client  # noqa: F401  (registers the real package)
+        except ImportError:
+            sys.modules["qdrant_client"] = ModuleType("qdrant_client")
     if "qdrant_client.models" not in sys.modules:
-        m = ModuleType("qdrant_client.models")
-        sys.modules["qdrant_client.models"] = m
+        try:
+            import qdrant_client.models  # noqa: F401
+        except ImportError:
+            sys.modules["qdrant_client.models"] = ModuleType("qdrant_client.models")
     m = sys.modules["qdrant_client.models"]
-    m.Range = _Range  # type: ignore[attr-defined]
-    m.MatchAny = _MatchAny  # type: ignore[attr-defined]
-    m.FieldCondition = _FieldCondition  # type: ignore[attr-defined]
-    m.Filter = _Filter  # type: ignore[attr-defined]
-    m.OrderBy = _OrderBy  # type: ignore[attr-defined]
+    for name, cls in (
+        ("Range", _Range),
+        ("MatchAny", _MatchAny),
+        ("FieldCondition", _FieldCondition),
+        ("Filter", _Filter),
+        ("OrderBy", _OrderBy),
+    ):
+        if not hasattr(m, name):
+            setattr(m, name, cls)
 
 
 _install_qdrant_stub()

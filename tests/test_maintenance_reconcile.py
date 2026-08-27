@@ -13,6 +13,8 @@ from sembr.config import Settings
 from sembr.db import sqlite as _sqlite_mod
 from sembr.db.articles import init_article_tables
 from sembr.db.feeds import init_feed_tables
+from sembr.db.intents import init_intent_tables
+from sembr.db.match_seen import init_match_seen_tables
 from sembr.maintenance.reconcile import _run_reconcile
 from sembr.vector_store.news import md5_to_uuid
 
@@ -22,6 +24,8 @@ async def _make_conn() -> aiosqlite.Connection:
     await conn.execute("PRAGMA foreign_keys=ON")
     await init_feed_tables(conn)
     await init_article_tables(conn)
+    await init_intent_tables(conn)
+    await init_match_seen_tables(conn)
     _sqlite_mod._conn = conn
     _sqlite_mod._WRITE_LOCK = asyncio.Lock()
     return conn
@@ -142,6 +146,43 @@ async def test_reconcile_idempotent():
     async with conn.execute("SELECT COUNT(*) FROM feed_items") as cur:
         second_remaining = (await cur.fetchone())[0]
     assert second_remaining == 40
+
+    await conn.close()
+    _sqlite_mod._conn = None
+    _sqlite_mod._WRITE_LOCK = None
+
+
+@pytest.mark.asyncio
+async def test_reconcile_sweeps_match_seen_orphans(caplog):
+    """match_seen rows whose article left news_current (failed TTL cascade)
+    must be swept; rows for live articles must survive. Without this sweep a
+    leftover row skip_seen-suppresses the article forever if re-collected."""
+    conn = await _make_conn()
+    feed_id = await _insert_feed(conn)
+    md5_live = "a" * 32
+    md5_gone = "b" * 32
+    # feed_items row only for the live article — the gone article's cascade
+    # half-succeeded: feed_items deleted, match_seen left behind.
+    await _insert_feed_item(conn, md5_live, feed_id)
+    await conn.execute(
+        "INSERT INTO intents (id, name, text, threshold, schedule, channels, enabled) "
+        "VALUES (1, 'i', 't', 0.75, '{\"mode\":\"event\"}', '[]', 1)"
+    )
+    u_live = md5_to_uuid(md5_live)
+    u_gone = md5_to_uuid(md5_gone)
+    for u in (u_live, u_gone):
+        await conn.execute("INSERT INTO match_seen (intent_id, article_id) VALUES (1, ?)", (u,))
+    await conn.commit()
+
+    qdrant = _make_qdrant_handle({md5_live})
+
+    with caplog.at_level("INFO", logger="sembr.maintenance.reconcile"):
+        await _run_reconcile(qdrant, Settings())
+
+    async with conn.execute("SELECT article_id FROM match_seen") as cur:
+        remaining = {r[0] for r in await cur.fetchall()}
+    assert remaining == {u_live}
+    assert any("match_seen_orphans_deleted=1" in r.getMessage() for r in caplog.records)
 
     await conn.close()
     _sqlite_mod._conn = None

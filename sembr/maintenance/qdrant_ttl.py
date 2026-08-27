@@ -43,9 +43,13 @@ _SCROLL_BATCH = 1000
 _QDRANT_DELETE_BATCH = 1000
 _SQLITE_DELETE_CHUNK = 500
 # Full migration batch (retrieve → enrich → upsert → delete → cascade).
-# Bounds peak memory to ~1000 × (payload ~10 KB + vector 4 KB) ≈ 14 MB
-# regardless of how large a downtime backlog gets.
-_ARCHIVE_BATCH = 1000
+# The peak-memory driver is NOT the payload (body p99 ≈ 12.5 KB) but the
+# vectors as Python float-object lists: measured 33.4 MB per 1000 × 1024-dim
+# retrieve, plus a list() copy (8.3 MB) and the upsert JSON serialization
+# (~21 MB) alive at the same time. The api container runs under a 1500m
+# mem_limit alongside matcher/summarizer work, so 250 keeps the migration
+# peak in the tens-of-MB range regardless of downtime-backlog size.
+_ARCHIVE_BATCH = 250
 
 
 async def _scroll_expired_uuids(qdrant_handle: QdrantHandle, cutoff_ts: int) -> list[str]:
@@ -254,7 +258,14 @@ async def _run_qdrant_ttl(qdrant_handle: QdrantHandle, settings: Settings) -> No
             _summary()
             return
         deleted_qdrant = len(purge_uuids)
-        deleted_fi, deleted_ms = await _cascade_delete_sqlite(purge_uuids)
+        try:
+            deleted_fi, deleted_ms = await _cascade_delete_sqlite(purge_uuids)
+        except Exception:
+            # Orphan rows are swept by the reconcile job (feed_items via its
+            # md5 scan, match_seen via its orphan sweep); the summary line
+            # must still go out so the ledger has no silent gap.
+            logger.warning("qdrant_ttl: sqlite cascade failed", exc_info=True)
+            aborted_stage = "cascade"
         _summary()
         return
 
@@ -286,7 +297,14 @@ async def _run_qdrant_ttl(qdrant_handle: QdrantHandle, settings: Settings) -> No
             )
 
         point_ids = [str(p.id) for p in points]
-        matched_by_id = await _fetch_matched_intents(point_ids)
+        try:
+            matched_by_id = await _fetch_matched_intents(point_ids)
+        except Exception:
+            # Nothing deleted yet — the whole remainder retries next interval.
+            # A SQLite read failure must not swallow the run's ledger line.
+            logger.warning("qdrant_ttl: match_seen lookup failed", exc_info=True)
+            aborted_stage = "match_seen"
+            break
         archived_at_ts = int(time.time())
 
         archive_points = []

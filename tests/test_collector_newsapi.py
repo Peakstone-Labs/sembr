@@ -1057,9 +1057,9 @@ async def test_master_tick_pagination_cap_dispatches_partial(
             row = await cur.fetchone()
         assert row[0] is not None
         assert row[0] != cut
-        assert row[0] == now.strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        ), f"cap cursor must be the batch head, got {row[0]}"
+        assert row[0] == now.strftime("%Y-%m-%dT%H:%M:%SZ"), (
+            f"cap cursor must be the batch head, got {row[0]}"
+        )
         # One ok=True fetch_event per feed reflecting the dispatched totals.
         async with conn.execute(
             "SELECT feed_id, ok, items_seen, items_new, error_class FROM feed_fetch_log"
@@ -1165,14 +1165,14 @@ async def test_master_tick_cap_cursor_jumps_to_head_and_recovers(
         assert route.call_count == 10, "tick 1 should exhaust max_pages"
         async with conn.execute("SELECT last_collected_at FROM feeds WHERE id=1") as cur:
             after_first = (await cur.fetchone())[0]
-        assert after_first == now.strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        ), f"cursor must jump to the batch head, got {after_first}"
+        assert after_first == now.strftime("%Y-%m-%dT%H:%M:%SZ"), (
+            f"cursor must jump to the batch head, got {after_first}"
+        )
 
         await NewsApiMaster().tick()
-        assert (
-            route.call_count == 11
-        ), f"tick 2 must stop on page 1 (watermark), took {route.call_count - 10} pages"
+        assert route.call_count == 11, (
+            f"tick 2 must stop on page 1 (watermark), took {route.call_count - 10} pages"
+        )
     finally:
         await conn.close()
 

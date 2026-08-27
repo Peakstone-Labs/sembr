@@ -34,7 +34,7 @@ The same key is reused as `LLM_API_KEY` by default — SiliconFlow hosts both BG
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant server URL. The bundled `docker-compose.yml` provisions this address |
 | `SQLITE_PATH` | `/app/data/sembr.db` | SQLite database path inside the container. The host maps `./data/` here via the compose bind mount |
 | `SEMBR_HOST_PORT` | `8000` | Host port exposed by Docker Compose. The in-container bind port is hardcoded to `8000` in the Dockerfile CMD; override the host side here |
-| `QDRANT_ARCHIVE_ENABLED` | `true` | When `true`, the retention job moves expired article vectors into the permanent `news_archive` collection before deleting them from `news_current`; `false` reverts to plain deletion (already-archived points stay searchable). Changing it requires `docker compose up -d` so the container is recreated with the new value — a plain restart keeps the old one. **Note**: archived articles exist only in `news_archive`; dropping that collection loses them permanently |
+| `QDRANT_ARCHIVE_ENABLED` | `true` | When `true`, the retention job moves expired article vectors into the permanent `news_archive` collection before deleting them from `news_current`; `false` reverts to plain deletion (already-archived points stay searchable). Changing it requires `docker compose up -d --build` so the container is recreated with the new value — a plain restart keeps the old one. **Note**: archived articles exist only in `news_archive`; dropping that collection loses them permanently |
 
 ## Embedder
 

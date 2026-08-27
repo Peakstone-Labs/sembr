@@ -27,11 +27,11 @@ import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from sembr.db.feeds import get_feed_names
 from sembr.db.sqlite import get_conn
-from sembr.vector_store.news_archive import ARCHIVE_ALIAS
+from sembr.vector_store.news_archive import ARCHIVE_ALIAS, archive_collection_name
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +45,20 @@ _CURSOR_BOUNDARY_CAP = 500
 
 
 class ArchiveCursor(BaseModel):
+    # Round-tripped verbatim by clients — a mistyped field name must error,
+    # not silently produce a cursor that never excludes anything.
+    model_config = ConfigDict(extra="forbid")
+
     before_ts: int
     boundary_ids: list[str] = Field(default_factory=list, max_length=_CURSOR_BOUNDARY_CAP)
 
 
 class ArchiveSearchRequest(BaseModel):
+    # Filter params come in singular/plural pairs (feed_ids, langs, ...); a
+    # mistyped name silently dropped would return the WHOLE archive as if
+    # filtered. Reject unknown fields instead.
+    model_config = ConfigDict(extra="forbid")
+
     # Retrieval mode: semantic when `query` is set, filter-listing otherwise.
     query: str | None = Field(default=None, max_length=2000)
     limit: int = Field(default=20, ge=1, le=100)
@@ -76,6 +85,15 @@ class ArchiveSearchRequest(BaseModel):
 
     include_body: bool = True
     cursor: ArchiveCursor | None = None
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def _blank_query_is_filter_mode(cls, v: Any) -> Any:
+        # "" / "   " is not a semantic query: normalize to None (filter mode)
+        # instead of embedding whitespace and returning meaningless scores.
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @model_validator(mode="after")
     def _mode_consistency(self) -> ArchiveSearchRequest:
@@ -118,6 +136,32 @@ class ArchiveStatsResponse(BaseModel):
     points_count: int
     earliest_ingested_at_ts: int | None = None
     latest_ingested_at_ts: int | None = None
+    # True when the archive alias points at the collection matching the live
+    # embedder's model generation; False on a mismatch (semantic scores
+    # unreliable, migrations may fail on dimension mismatch); None when the
+    # alias state could not be determined. Boolean only — physical collection
+    # names never appear in the contract.
+    alias_ok: bool | None = None
+
+
+_FEED_NAME_WARNING = (
+    "feed name resolution failed; feed_name fields are null but do not imply the feeds were deleted"
+)
+
+
+def _qdrant_http_error(exc: Exception, context: str) -> HTTPException:
+    """Map a Qdrant client failure to an HTTP status.
+
+    Qdrant rejecting the request (4xx, e.g. malformed point ids in
+    exclude_ids) is the caller's error → 400; everything else (connection
+    refused, timeout, 5xx) is service-side → 503.
+    """
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int) and 400 <= status_code < 500:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{context}: {exc}")
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"{context}: {exc}"
+    )
 
 
 def _build_filter(req: ArchiveSearchRequest) -> Any | None:
@@ -175,17 +219,22 @@ def _build_filter(req: ArchiveSearchRequest) -> Any | None:
     return Filter(must=must or None, must_not=must_not or None)
 
 
-async def _feed_names_for(payloads: list[dict]) -> dict[int, str]:
-    """Best-effort feed_id → name resolution; deleted feeds resolve to None
-    downstream (known orphan display gap, out of scope here)."""
+async def _feed_names_for(payloads: list[dict]) -> tuple[dict[int, str], bool]:
+    """Best-effort feed_id → name resolution.
+
+    Returns ``(names, ok)`` — ok=False means the lookup itself failed, which
+    callers surface as a response warning so "feed_name is null" stays
+    distinguishable from "feed was deleted" (the known orphan display gap,
+    out of scope here).
+    """
     feed_ids = sorted({p.get("feed_id") for p in payloads if isinstance(p.get("feed_id"), int)})
     if not feed_ids:
-        return {}
+        return {}, True
     try:
-        return await get_feed_names(get_conn(), feed_ids)
+        return await get_feed_names(get_conn(), feed_ids), True
     except Exception:
         logger.warning("archive search: feed name resolution failed", exc_info=True)
-        return {}
+        return {}, False
 
 
 def _hit(
@@ -237,16 +286,15 @@ async def _semantic_search(request: Request, req: ArchiveSearchRequest) -> Archi
             query_filter=_build_filter(req),
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"archive query failed: {exc}",
-        ) from exc
+        raise _qdrant_http_error(exc, "archive query failed") from exc
 
     points = response.points
     payloads = [(str(p.id), p.score, p.payload or {}) for p in points]
-    feed_names = await _feed_names_for([pl for _, _, pl in payloads])
+    feed_names, feed_names_ok = await _feed_names_for([pl for _, _, pl in payloads])
 
     warnings: list[str] = []
+    if not feed_names_ok:
+        warnings.append(_FEED_NAME_WARNING)
     if payloads:
         # One representative check per response: a generation mismatch means
         # the archive holds vectors from a different embedding model than the
@@ -292,13 +340,14 @@ async def _filter_listing(request: Request, req: ArchiveSearchRequest) -> Archiv
     try:
         points, _next_unused = await qdrant_client.scroll(**scroll_kwargs)
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"archive listing failed: {exc}",
-        ) from exc
+        raise _qdrant_http_error(exc, "archive listing failed") from exc
 
     payloads = [(str(p.id), p.payload or {}) for p in points]
-    feed_names = await _feed_names_for([pl for _, pl in payloads])
+    feed_names, feed_names_ok = await _feed_names_for([pl for _, pl in payloads])
+
+    warnings: list[str] = []
+    if not feed_names_ok:
+        warnings.append(_FEED_NAME_WARNING)
 
     next_cursor: ArchiveCursor | None = None
     if len(points) == req.limit and payloads:
@@ -311,13 +360,23 @@ async def _filter_listing(request: Request, req: ArchiveSearchRequest) -> Archiv
             if req.cursor is not None and req.cursor.before_ts == boundary_ts:
                 boundary_ids = req.cursor.boundary_ids + boundary_ids
             if len(boundary_ids) > _CURSOR_BOUNDARY_CAP:
+                # Truncation drops entries from the EXCLUSION list: points at
+                # this timestamp re-qualify on the next page, and since the
+                # descending order fills the page with that second first,
+                # paging may stop advancing past it entirely. Must be visible
+                # to the caller, not just the server log.
                 logger.warning(
-                    "archive listing: cursor boundary overflow (%d ids at ts=%d), "
-                    "truncating — next page may repeat a few same-second points",
+                    "archive listing: cursor boundary overflow (%d ids at ts=%d), truncating",
                     len(boundary_ids),
                     boundary_ts,
                 )
                 boundary_ids = boundary_ids[-_CURSOR_BOUNDARY_CAP:]
+                warnings.append(
+                    f"more than {_CURSOR_BOUNDARY_CAP} points share "
+                    f"ingested_at_ts={boundary_ts}; pagination cannot exclude "
+                    f"them all — results at this timestamp may repeat and "
+                    f"paging past it may not advance"
+                )
             next_cursor = ArchiveCursor(before_ts=boundary_ts, boundary_ids=boundary_ids)
 
     return ArchiveSearchResponse(
@@ -325,7 +384,7 @@ async def _filter_listing(request: Request, req: ArchiveSearchRequest) -> Archiv
         hits=[
             _hit(pid, None, pl, feed_names, include_body=req.include_body) for pid, pl in payloads
         ],
-        warnings=[],
+        warnings=warnings,
         next_cursor=next_cursor,
     )
 
@@ -356,18 +415,32 @@ async def archive_stats(request: Request) -> ArchiveStatsResponse:
         ts = (points[0].payload or {}).get("ingested_at_ts")
         return ts if isinstance(ts, int) else None
 
+    async def _alias_ok() -> bool | None:
+        # Health bit for the silent-degradation window when the alias points
+        # at a different model generation than the live embedder (semantic
+        # scores unreliable / migrations may fail). Boolean only — the
+        # physical collection name stays out of the contract.
+        try:
+            aliases = await qdrant_client.get_aliases()
+            target = {a.alias_name: a.collection_name for a in aliases.aliases}.get(ARCHIVE_ALIAS)
+            if target is None:
+                return False
+            expected = archive_collection_name(request.app.state.embedder.model_version)
+            return target == expected
+        except Exception:
+            logger.warning("archive stats: alias check failed", exc_info=True)
+            return None
+
     try:
         count_result = await qdrant_client.count(collection_name=ARCHIVE_ALIAS, exact=True)
         earliest = await _edge_ts("asc")
         latest = await _edge_ts("desc")
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"archive stats failed: {exc}",
-        ) from exc
+        raise _qdrant_http_error(exc, "archive stats failed") from exc
 
     return ArchiveStatsResponse(
         points_count=count_result.count,
         earliest_ingested_at_ts=earliest,
         latest_ingested_at_ts=latest,
+        alias_ok=await _alias_ok(),
     )

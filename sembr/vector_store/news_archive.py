@@ -223,7 +223,9 @@ def detect_lang(title: str, body: str) -> str:
     """Cheap zh/en/other tag from CJK-vs-latin letter counts.
 
     Samples the title plus the first 2000 body chars — enough to classify
-    while keeping migration cost flat for very long articles.
+    while keeping migration cost flat for very long articles. Only the CJK
+    Unified Ideographs block counts as CJK: kana / hangul text lands in
+    "other" (current sources are zh/en; revisit if ja/ko feeds arrive).
     """
     sample = f"{title} {body[:2000]}"
     cjk = sum(1 for ch in sample if "一" <= ch <= "鿿")

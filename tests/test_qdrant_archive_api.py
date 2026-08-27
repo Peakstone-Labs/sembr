@@ -190,8 +190,7 @@ def test_semantic_model_version_mismatch_warns():
     resp = _search(TestClient(app), {"query": "anything"})
     assert resp.status_code == 200
     warnings = resp.json()["warnings"]
-    assert len(warnings) == 1
-    assert "mismatch" in warnings[0]
+    assert any("generation mismatch" in w for w in warnings)
 
 
 def test_semantic_embedder_not_ready_503():
@@ -224,6 +223,51 @@ def test_param_caps_422():
     assert _search(client, {"limit": 101}).status_code == 422
     assert _search(client, {"query": "x" * 2001}).status_code == 422
     assert _search(client, {"exclude_ids": ["i"] * 1001}).status_code == 422
+
+
+def test_unknown_fields_rejected_422():
+    """Filter params come in singular/plural pairs — a typo silently ignored
+    would return the whole archive as if filtered. extra=forbid must 422."""
+    client = TestClient(_make_app())
+    resp = _search(client, {"limit": 5, "matched_intent_id": 29, "feed_id": 3})
+    assert resp.status_code == 422
+    body = resp.text
+    assert "matched_intent_id" in body
+
+    # The cursor is round-tripped verbatim; a mistyped cursor field must
+    # error too, not silently produce a cursor that excludes nothing.
+    resp = _search(client, {"cursor": {"before_ts": 1, "boundary_id": ["x"]}})
+    assert resp.status_code == 422
+
+
+def test_blank_query_is_filter_mode_and_never_embedded():
+    qc = MagicMock()
+    qc.scroll = AsyncMock(return_value=([], None))
+    embedder = _ready_embedder()
+    app = _make_app(qdrant_client=qc, embedder=embedder)
+    client = TestClient(app)
+
+    for blank in ("", "   "):
+        resp = _search(client, {"query": blank})
+        assert resp.status_code == 200
+        assert resp.json()["mode"] == "filter"
+    embedder.aembed.assert_not_called()
+
+
+def test_qdrant_4xx_maps_to_400_not_503():
+    class _ClientError(Exception):
+        status_code = 400
+
+    qc = MagicMock()
+    qc.scroll = AsyncMock(side_effect=_ClientError("bad point id"))
+    app = _make_app(qdrant_client=qc)
+
+    resp = _search(TestClient(app), {"limit": 5})
+    assert resp.status_code == 400
+
+    qc.scroll = AsyncMock(side_effect=RuntimeError("connection refused"))
+    resp = _search(TestClient(app), {"limit": 5})
+    assert resp.status_code == 503
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +338,57 @@ def test_filter_mode_cursor_round_trip_and_same_ts_accumulation():
     assert cursor["boundary_ids"] == ["prev-1", "prev-2", "id-0", "id-1"]
 
 
+def test_filter_mode_cursor_truncation_warns(monkeypatch):
+    """Overflowing the boundary cap must be visible to the caller — the
+    degradation is 'paging may not advance past this second', not a silent
+    server-side log line."""
+    import sembr.api.archive as archive_mod
+
+    monkeypatch.setattr(archive_mod, "_CURSOR_BOUNDARY_CAP", 2)
+    qc = MagicMock()
+    qc.scroll = AsyncMock(return_value=(_listing_points([90, 90]), None))
+    app = _make_app(qdrant_client=qc)
+
+    resp = _search(
+        TestClient(app),
+        {"limit": 2, "cursor": {"before_ts": 90, "boundary_ids": ["p1", "p2"]}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any("pagination cannot exclude" in w for w in data["warnings"])
+    # Truncated to the cap, keeping the most recent entries.
+    assert len(data["next_cursor"]["boundary_ids"]) == 2
+
+
+def test_feed_name_resolution_failure_warns():
+    """No SQLite conn in this test → resolution fails → callers must be able
+    to distinguish 'lookup failed' from 'feed deleted' via the warning."""
+    qc = MagicMock()
+    qc.scroll = AsyncMock(return_value=(_listing_points([100]), None))
+    app = _make_app(qdrant_client=qc)
+
+    resp = _search(TestClient(app), {"limit": 5})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["hits"][0]["feed_name"] is None
+    assert any("feed name resolution failed" in w for w in data["warnings"])
+
+
+def test_filter_built_from_real_qdrant_models():
+    """Guard against the test-stub regression: the Filter handed to Qdrant
+    must be the real qdrant_client model (validated), not a duck-typed stub —
+    the stub is fill-only now and this pins that property."""
+    from qdrant_client.models import Filter as RealFilter
+
+    qc = MagicMock()
+    qc.query_points = AsyncMock(return_value=_query_response([]))
+    app = _make_app(qdrant_client=qc)
+
+    resp = _search(TestClient(app), {"query": "x", "feed_ids": [1]})
+    assert resp.status_code == 200
+    assert isinstance(qc.query_points.call_args.kwargs["query_filter"], RealFilter)
+
+
 def test_filter_mode_include_body_false():
     qc = MagicMock()
     qc.scroll = AsyncMock(return_value=(_listing_points([100]), None))
@@ -346,6 +441,39 @@ def test_stats_empty_collection():
     assert data["latest_ingested_at_ts"] is None
 
 
+def _stats_qc(alias_target: str | None):
+    qc = MagicMock()
+    qc.count = AsyncMock(return_value=SimpleNamespace(count=1))
+    qc.scroll = AsyncMock(return_value=([], None))
+    aliases = []
+    if alias_target is not None:
+        aliases = [SimpleNamespace(alias_name="news_archive", collection_name=alias_target)]
+    qc.get_aliases = AsyncMock(return_value=SimpleNamespace(aliases=aliases))
+    return qc
+
+
+def test_stats_alias_ok_true_when_generation_matches():
+    app = _make_app(qdrant_client=_stats_qc("news_archive_bge-m3_v1"))
+    resp = TestClient(app).get("/api/archive/stats")
+    assert resp.status_code == 200
+    assert resp.json()["alias_ok"] is True
+
+
+def test_stats_alias_ok_false_on_mismatch_or_missing():
+    app = _make_app(qdrant_client=_stats_qc("news_archive_old-model"))
+    assert TestClient(app).get("/api/archive/stats").json()["alias_ok"] is False
+
+    app = _make_app(qdrant_client=_stats_qc(None))
+    assert TestClient(app).get("/api/archive/stats").json()["alias_ok"] is False
+
+
+def test_stats_alias_ok_none_when_check_fails():
+    qc = _stats_qc("news_archive_bge-m3_v1")
+    qc.get_aliases = AsyncMock(side_effect=RuntimeError("qdrant hiccup"))
+    app = _make_app(qdrant_client=qc)
+    assert TestClient(app).get("/api/archive/stats").json()["alias_ok"] is None
+
+
 # ---------------------------------------------------------------------------
 # Auth gate — one 401 assertion per endpoint, real middleware
 # ---------------------------------------------------------------------------
@@ -382,6 +510,15 @@ def test_search_with_token_passes_gate(auth_app):
     resp = TestClient(auth_app).post(
         "/api/archive/search",
         json={"limit": 1},
+        headers={"X-Dashboard-Token": "secret-test-token"},
+    )
+    assert resp.status_code == 200
+
+
+def test_stats_with_token_passes_gate(auth_app):
+    auth_app.state.qdrant.client = _stats_qc("news_archive_bge-m3_v1")
+    resp = TestClient(auth_app).get(
+        "/api/archive/stats",
         headers={"X-Dashboard-Token": "secret-test-token"},
     )
     assert resp.status_code == 200

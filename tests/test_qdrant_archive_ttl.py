@@ -316,6 +316,69 @@ async def test_archive_ttl_poisoned_point_skipped(caplog):
 
 
 @pytest.mark.asyncio
+async def test_archive_ttl_match_seen_fetch_failure_aborts(caplog, monkeypatch):
+    """The match_seen read is the fifth failure path: it must abort with
+    nothing deleted and still emit the ledger line (aborted_stage=match_seen),
+    not let the exception swallow the whole run's accounting."""
+    conn = await _make_conn()
+    try:
+        md5s = [f"{i:032x}" for i in range(2)]
+        await _seed_base(conn, md5s)
+        uuids = [md5_to_uuid(m) for m in md5s]
+
+        async def boom(_ids):
+            raise RuntimeError("db locked")
+
+        monkeypatch.setattr(qdrant_ttl_mod, "_fetch_matched_intents", boom)
+        handle = _mk_handle(uuids, [_retrieved_point(u) for u in uuids])
+
+        with caplog.at_level("INFO", logger="sembr.maintenance.qdrant_ttl"):
+            await _run_qdrant_ttl(handle, Settings())
+
+        handle.client.upsert.assert_not_called()
+        handle.client.delete.assert_not_called()
+        async with conn.execute("SELECT COUNT(*) FROM feed_items") as cur:
+            assert (await cur.fetchone())[0] == 2
+        summary = next(
+            r.getMessage() for r in caplog.records if "qdrant_ttl run:" in r.getMessage()
+        )
+        assert "aborted_stage=match_seen" in summary
+        assert "archived=0" in summary
+        assert "deleted_qdrant=0" in summary
+    finally:
+        await _close_conn(conn)
+
+
+@pytest.mark.asyncio
+async def test_legacy_ttl_cascade_failure_logs_summary(caplog, monkeypatch):
+    """The legacy pure-delete path must emit the ledger line on cascade
+    failure too — both paths share the no-silent-gap accounting semantics."""
+    conn = await _make_conn()
+    try:
+        md5s = [f"{i:032x}" for i in range(2)]
+        await _seed_base(conn, md5s)
+        uuids = [md5_to_uuid(m) for m in md5s]
+
+        async def boom(_uuids):
+            raise RuntimeError("sqlite gone")
+
+        monkeypatch.setattr(qdrant_ttl_mod, "_cascade_delete_sqlite", boom)
+        handle = _mk_handle(uuids, [])
+
+        with caplog.at_level("INFO", logger="sembr.maintenance.qdrant_ttl"):
+            await _run_qdrant_ttl(handle, Settings(qdrant_archive_enabled=False))
+
+        summary = next(
+            r.getMessage() for r in caplog.records if "qdrant_ttl run:" in r.getMessage()
+        )
+        assert "aborted_stage=cascade" in summary
+        assert "deleted_qdrant=2" in summary
+        assert "deleted_feed_items=0" in summary
+    finally:
+        await _close_conn(conn)
+
+
+@pytest.mark.asyncio
 async def test_archive_ttl_cascade_failure_logs_summary(caplog, monkeypatch):
     """A cascade failure still emits the conservation summary line — the
     ledger must have no silent gap (reconcile owns the data-side cleanup)."""

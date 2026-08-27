@@ -111,9 +111,11 @@ The `.env` writer (`settings_envfile.py`) is hand-rolled rather than `python-dot
 
 Filters apply in both modes: `ingested_from_ts`/`ingested_to_ts`, `published_from_ts`/`published_to_ts` (absent on articles whose source timestamp was unusable), `feed_ids` / `exclude_feed_ids`, `title_contains` (CJK-safe keyword match), `url_domains`, `min_body_len`, `matched_intent_ids` (intents that matched the article while it was live), `langs`. `include_body=false` drops the full text from hits for list views. Parameters that only make sense in the other mode (e.g. `min_score` without `query`, `cursor` with `query`) are rejected with 422 instead of being silently ignored.
 
-Each hit carries the article (title, url, body, timestamps), its archived metadata (`lang`, `url_domain`, `body_len`, `matched_intents`, `embedding_model_version`) and a best-effort `feed_name`. The response-level `warnings` array flags when archived vectors were produced by a different embedding model generation than the live embedder — similarity scores are unreliable until the model-upgrade flow reconciles the space.
+Each hit carries the article (title, url, body, timestamps), its archived metadata (`lang`, `url_domain`, `body_len`, `matched_intents`, `embedding_model_version`) and a best-effort `feed_name`. The response-level `warnings` array flags degradations the caller would otherwise misread: archived vectors from a different embedding model generation than the live embedder (similarity scores unreliable), a feed-name lookup failure (`feed_name: null` then does not mean the feed was deleted), and pagination hitting a same-second cluster too large to exclude (results at that timestamp may repeat and paging may not advance past it).
 
-`GET /api/archive/stats` returns the exact point count and oldest/newest `ingested_at_ts` — an independent cross-check that the retention job archived exactly as many points as it deleted.
+Unknown request fields are rejected with 422 rather than ignored — the filter names come in singular/plural pairs, and a typo silently dropped would return the whole archive as if filtered. A blank `query` is treated as absent (filter mode), never embedded.
+
+`GET /api/archive/stats` returns the exact point count, oldest/newest `ingested_at_ts`, and an `alias_ok` boolean (whether the archive storage matches the live embedder's model generation; `null` when the check itself failed) — an independent cross-check that the retention job archived exactly as many points as it deleted, plus an early signal for the model-upgrade window.
 
 Both endpoints sit behind the dashboard token gate:
 
