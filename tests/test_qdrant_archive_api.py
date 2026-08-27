@@ -254,20 +254,44 @@ def test_blank_query_is_filter_mode_and_never_embedded():
     embedder.aembed.assert_not_called()
 
 
-def test_qdrant_4xx_maps_to_400_not_503():
-    class _ClientError(Exception):
-        status_code = 400
-
+def test_empty_include_filters_rejected_422():
+    """[] on an include-filter would be truthiness-dropped and return the
+    whole archive; blank title_contains likewise. Both must 422. exclude_*
+    lists stay exempt (empty exclusion == no exclusion, unambiguous)."""
     qc = MagicMock()
-    qc.scroll = AsyncMock(side_effect=_ClientError("bad point id"))
-    app = _make_app(qdrant_client=qc)
+    qc.scroll = AsyncMock(return_value=([], None))
+    client = TestClient(_make_app(qdrant_client=qc))
 
-    resp = _search(TestClient(app), {"limit": 5})
-    assert resp.status_code == 400
+    assert _search(client, {"feed_ids": []}).status_code == 422
+    assert _search(client, {"langs": [], "query": "x"}).status_code == 422
+    assert _search(client, {"matched_intent_ids": []}).status_code == 422
+    assert _search(client, {"url_domains": []}).status_code == 422
+    assert _search(client, {"title_contains": "   "}).status_code == 422
+    # Exempt: empty exclusions are well-defined no-ops.
+    assert _search(client, {"exclude_feed_ids": [], "exclude_ids": []}).status_code == 200
+
+
+def _unexpected_response(code: int):
+    from qdrant_client.http.exceptions import UnexpectedResponse
+
+    return UnexpectedResponse(status_code=code, reason_phrase="x", content=b"detail", headers=None)
+
+
+def test_qdrant_status_mapping_whitelist():
+    """Real UnexpectedResponse mapping: only 400/422 are caller errors.
+    404 (collection/alias missing) and 429 (rate limit) are service-side —
+    agents treat HTTP 400 as 'fix your parameters, do not retry', which is
+    the wrong instruction for both."""
+    app = _make_app()
+    client = TestClient(app)
+    qc = app.state.qdrant.client
+
+    for qdrant_code, expected_http in ((400, 400), (404, 503), (429, 503)):
+        qc.scroll = AsyncMock(side_effect=_unexpected_response(qdrant_code))
+        assert _search(client, {"limit": 5}).status_code == expected_http, qdrant_code
 
     qc.scroll = AsyncMock(side_effect=RuntimeError("connection refused"))
-    resp = _search(TestClient(app), {"limit": 5})
-    assert resp.status_code == 503
+    assert _search(client, {"limit": 5}).status_code == 503
 
 
 # ---------------------------------------------------------------------------

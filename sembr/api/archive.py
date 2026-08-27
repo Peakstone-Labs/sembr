@@ -91,8 +91,34 @@ class ArchiveSearchRequest(BaseModel):
     def _blank_query_is_filter_mode(cls, v: Any) -> Any:
         # "" / "   " is not a semantic query: normalize to None (filter mode)
         # instead of embedding whitespace and returning meaningless scores.
+        # (Unlike the include-filters below, this degradation is visible: the
+        # response comes back with mode="filter".)
         if isinstance(v, str) and not v.strip():
             return None
+        return v
+
+    @field_validator("feed_ids", "url_domains", "matched_intent_ids", "langs")
+    @classmethod
+    def _no_empty_include_list(cls, v: Any, info: Any) -> Any:
+        # [] would be truthiness-dropped by the filter builder and return the
+        # WHOLE archive — indistinguishable from a real match. "restrict to
+        # the empty set" vs "forgot to fill in" is ambiguous, and an agent
+        # filtering ids down to [] is a normal program outcome, not a typo.
+        # Omit the field to skip the filter. (exclude_* lists are exempt:
+        # empty exclusion == no exclusion, no ambiguity.)
+        if v is not None and len(v) == 0:
+            raise ValueError(
+                f"{info.field_name}: [] is ambiguous — omit the field to skip the filter"
+            )
+        return v
+
+    @field_validator("title_contains")
+    @classmethod
+    def _no_blank_title_contains(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError(
+                "title_contains: blank is ambiguous — omit the field to skip the filter"
+            )
         return v
 
     @model_validator(mode="after")
@@ -149,19 +175,22 @@ _FEED_NAME_WARNING = (
 )
 
 
-def _qdrant_http_error(exc: Exception, context: str) -> HTTPException:
-    """Map a Qdrant client failure to an HTTP status.
+# Only codes where Qdrant explicitly rejected the request CONTENT count as
+# caller errors. 404 (collection/alias missing — service not ready), 408/409/
+# 429 (retryable service-side states) must map to 503: the agent callers
+# treat 400 as "don't retry, fix your parameters", which would send them
+# editing filters instead of reporting an outage.
+_CALLER_ERROR_CODES = frozenset({400, 422})
 
-    Qdrant rejecting the request (4xx, e.g. malformed point ids in
-    exclude_ids) is the caller's error → 400; everything else (connection
-    refused, timeout, 5xx) is service-side → 503.
-    """
-    status_code = getattr(exc, "status_code", None)
-    if isinstance(status_code, int) and 400 <= status_code < 500:
-        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{context}: {exc}")
-    return HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"{context}: {exc}"
-    )
+
+def _qdrant_http_error(exc: Exception, context: str) -> HTTPException:
+    """Map a Qdrant client failure to an HTTP status (whitelist, not range)."""
+    # Truncate: UnexpectedResponse stringifies with the raw response body
+    # attached; the operator gets the full traceback via server logs.
+    msg = f"{context}: {str(exc)[:200]}"
+    if getattr(exc, "status_code", None) in _CALLER_ERROR_CODES:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+    return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=msg)
 
 
 def _build_filter(req: ArchiveSearchRequest) -> Any | None:

@@ -40,6 +40,12 @@ _QDRANT_RETRIEVE_BATCH = 1000
 # one chunk behind reconcile.
 _SQLITE_DELETE_CHUNK = 500
 
+# match_seen sweep fail-safe floor: a zero-hit sweep over at least this many
+# articles is treated as an alias/storage incident rather than a real
+# all-orphan state (production baseline: thousands of live match_seen
+# articles, single-digit true orphans per run).
+_SWEEP_FAILSAFE_MIN = 100
+
 
 async def _sweep_match_seen_orphans(qdrant_handle: QdrantHandle) -> int:
     """Delete ``match_seen`` rows whose article no longer exists in
@@ -50,9 +56,12 @@ async def _sweep_match_seen_orphans(qdrant_handle: QdrantHandle) -> int:
     ``feed_items`` orphans, but ``match_seen`` is keyed by point uuid and has
     no other cleaner (only intent deletion cascades it). Without this sweep, a
     leftover ``(intent_id, article_id)`` row silently suppresses the article
-    via skip_seen if the same URL is ever re-collected. Archived articles do
-    not need these rows: their matched-intent history was copied into the
-    archive payload at migration time.
+    via skip_seen if the same URL is ever re-collected. The rows are safe to
+    drop on either TTL path: with archiving on, the matched-intent history
+    was copied into the archive payload at migration time; with archiving
+    off (legacy pure delete), the article is gone entirely and a dedup
+    record for a nonexistent article is meaningless — the same end state the
+    completed cascade would have produced.
     """
     conn = get_conn()
     async with conn.execute("SELECT DISTINCT article_id FROM match_seen") as cur:
@@ -80,6 +89,22 @@ async def _sweep_match_seen_orphans(qdrant_handle: QdrantHandle) -> int:
             with_vectors=False,
         )
         found.update(str(p.id) for p in points)
+
+    # Fail-safe: this sweep's orphan verdict is "retrieve found nothing", and
+    # retrieve SUCCEEDS with an empty result when the alias points at a
+    # rebuilt/foreign collection. Wiping all of match_seen in that state
+    # would disable skip_seen dedup wholesale (re-alert storm on the next
+    # matcher tick). Zero hits across a non-trivial scan is far more likely
+    # an alias/storage incident than a real all-orphan state — skip and
+    # scream; rows harmlessly wait for the next run.
+    if not found and len(article_ids) >= _SWEEP_FAILSAFE_MIN:
+        logger.error(
+            "reconcile: match_seen sweep found 0 of %d articles in news_current — "
+            "refusing to treat the whole table as orphaned (alias/storage "
+            "incident suspected); skipping this sweep",
+            len(article_ids),
+        )
+        return 0
 
     orphans = [a for a in article_ids if a not in found]
     deleted = 0
