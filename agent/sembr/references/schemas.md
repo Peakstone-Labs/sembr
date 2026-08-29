@@ -1,6 +1,6 @@
 # Request body schemas
 
-The two bodies agents need to construct: `IntentCreate` and `FeedCreate`. Fields not marked optional are required by the server.
+The bodies agents most often construct are `IntentCreate`, `FeedCreate`, `ExternalFireRequest`, and `ArchiveSearchRequest`. Fields not marked optional are required by the server.
 
 ## `IntentCreate`
 
@@ -116,5 +116,86 @@ Every field optional — omitted fields fall back to the intent's stored values.
   "threshold": 0.70,                        // 0.20–0.95 (wider than IntentCreate's 0.60–0.95)
   "skip_seen": false,                       // false = ignore prior match_seen; useful for diagnostics
   "feed_ids": null                          // null = all feeds; [1,3] = subset
+}
+```
+
+## `ArchiveSearchRequest` (body for `POST /api/archive/search`)
+
+Every field is optional and unknown fields are rejected (`extra="forbid"`). A non-blank `query` selects semantic mode; omitting it selects newest-first filter mode.
+
+```jsonc
+{
+  "query": "美联储降息路径",              // optional; ≤2000 chars. blank → filter mode
+  "limit": 20,                            // 1–100; default 20
+  "min_score": 0.50,                      // -1.0–1.0; semantic mode only
+  "exclude_ids": ["point-id"],           // ≤1000 ids; semantic deepening/dedup
+
+  "ingested_from_ts": 1780000000,         // inclusive Unix seconds
+  "ingested_to_ts": 1785000000,
+  "published_from_ts": 1780000000,        // missing/unparseable source dates do not match
+  "published_to_ts": 1785000000,
+  "feed_ids": [33, 37],                   // include any; [] is invalid—omit instead
+  "exclude_feed_ids": [108],
+  "title_contains": "Federal Reserve",   // blank is invalid
+  "url_domains": ["reuters.com"],        // [] is invalid
+  "min_body_len": 1000,                   // ≥0
+  "matched_intent_ids": [29],             // intent ids captured at archive time; [] is invalid
+  "langs": ["zh", "en"],                // [] is invalid
+
+  "include_body": false,                  // default true; body_len remains present
+  "cursor": {                             // filter mode only; pass next_cursor back verbatim
+    "before_ts": 1784902487,
+    "boundary_ids": ["point-id"]          // ≤500
+  }
+}
+```
+
+Mode consistency is strict:
+
+- `min_score` without a semantic `query` → 422.
+- `cursor` together with `query` → 422; semantic deepening uses `exclude_ids`.
+- Empty include filters (`feed_ids`, `url_domains`, `matched_intent_ids`, `langs`) and blank `title_contains` → 422 because silently treating them as “no filter” could expose the whole archive.
+- Empty exclusion lists are valid and mean no exclusion.
+
+### `ArchiveSearchResponse`
+
+```jsonc
+{
+  "mode": "semantic",                    // "semantic" | "filter"
+  "hits": [
+    {
+      "id": "point-id",
+      "score": 0.584,                     // null in filter mode
+      "title": "…",
+      "url": "https://…",
+      "body": null,                       // null when include_body=false
+      "published_at": "2026-07-20T12:00:00+00:00",
+      "published_at_ts": 1784548800,
+      "ingested_at_ts": 1784549000,
+      "feed_id": 33,
+      "feed_name": "Reuters",
+      "url_domain": "reuters.com",
+      "lang": "en",
+      "body_len": 4210,
+      "matched_intents": [29, 34],
+      "embedding_model_version": "bge-m3_v1",
+      "archived_at_ts": 1787141000
+    }
+  ],
+  "warnings": [],
+  "next_cursor": null                     // object only for a full filter-mode page
+}
+```
+
+`feed_name` is best-effort. A null value means either the feed no longer exists or name resolution degraded; check `warnings` before deciding which.
+
+### `ArchiveStatsResponse` (`GET /api/archive/stats`)
+
+```jsonc
+{
+  "points_count": 12345,
+  "earliest_ingested_at_ts": 1780000000,
+  "latest_ingested_at_ts": 1785000000,
+  "alias_ok": true                        // false=mismatch; null=check failed
 }
 ```

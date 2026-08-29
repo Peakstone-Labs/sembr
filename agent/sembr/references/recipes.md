@@ -99,6 +99,70 @@ echo "${STATE}" | jq .
 curl -s "${BASE}/feeds" "${H_TOKEN[@]}" | jq '.[] | {id, name, source_type, poll_interval_minutes, tags}'
 ```
 
+## Search the permanent archive semantically
+
+This searches retired historical articles and has no notifier or `match_seen` side effect. It does not include articles still in `news_current`.
+
+```bash
+ARCHIVE=$(curl -s -X POST "${BASE}/api/archive/search" "${H_JSON[@]}" "${H_TOKEN[@]}" -d '{
+  "query": "美联储官员对降息路径的表态",
+  "limit": 10,
+  "min_score": 0.50,
+  "langs": ["zh", "en"],
+  "include_body": false
+}')
+
+echo "${ARCHIVE}" | jq '{warnings, hits: [.hits[] | {id, score, title, url, lang, feed_name}]}'
+```
+
+For another semantic page, collect the returned ids and send them as `exclude_ids`; semantic mode never uses `cursor`:
+
+```bash
+EXCLUDE=$(echo "${ARCHIVE}" | jq -c '[.hits[].id]')
+jq -n --argjson ids "${EXCLUDE}" '{
+  query: "美联储官员对降息路径的表态",
+  limit: 10,
+  min_score: 0.50,
+  exclude_ids: $ids,
+  include_body: false
+}' | curl -s -X POST "${BASE}/api/archive/search" "${H_JSON[@]}" "${H_TOKEN[@]}" --data-binary @- | jq .
+```
+
+Always report non-empty `warnings` alongside the hits.
+
+## List/filter the archive with cursor pagination
+
+Omitting `query` selects newest-first filter mode. Pass `next_cursor` back verbatim; do not convert it into a Qdrant offset.
+
+```bash
+PAGE=$(curl -s -X POST "${BASE}/api/archive/search" "${H_JSON[@]}" "${H_TOKEN[@]}" -d '{
+  "langs": ["zh"],
+  "url_domains": ["reuters.com"],
+  "limit": 50,
+  "include_body": false
+}')
+echo "${PAGE}" | jq '{warnings, count: (.hits | length), next_cursor}'
+
+CURSOR=$(echo "${PAGE}" | jq -c '.next_cursor')
+if [ "${CURSOR}" != "null" ]; then
+  jq -n --argjson cursor "${CURSOR}" '{
+    langs: ["zh"],
+    url_domains: ["reuters.com"],
+    limit: 50,
+    include_body: false,
+    cursor: $cursor
+  }' | curl -s -X POST "${BASE}/api/archive/search" "${H_JSON[@]}" "${H_TOKEN[@]}" --data-binary @- | jq .
+fi
+```
+
+## Inspect archive health and size
+
+```bash
+curl -s "${BASE}/api/archive/stats" "${H_TOKEN[@]}" | jq .
+```
+
+Proceed with semantic ranking only when `alias_ok` is `true`. `false` means an embedding-generation mismatch; `null` means the alias check failed.
+
 ## Add an RSS feed and dry-run it
 
 ```bash
@@ -169,5 +233,17 @@ with httpx.Client(base_url=BASE, headers=HEADERS, timeout=30.0) as c:
     elif result["match_count"] > 50:
         _json(c.put(f"/intents/{intent_id}", json={"threshold": 0.68}))
 
-    # 5. Done — daily 07:30 NY-time cron takes over.
+    # 5. Pull historical coverage from the permanent archive (read-only).
+    archive = _json(c.post("/api/archive/search", json={
+        "query": "Federal Reserve policy impact on emerging-market currencies",
+        "limit": 10,
+        "min_score": 0.50,
+        "include_body": False,
+    }))
+    for warning in archive["warnings"]:
+        print("archive warning:", warning)
+    for hit in archive["hits"]:
+        print(f"  {hit['score']:.3f}  {hit['title']}  ({hit['url']})")
+
+    # 6. Done — daily 07:30 NY-time cron takes over.
 ```

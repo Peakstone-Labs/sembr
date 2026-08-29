@@ -11,6 +11,39 @@ Authoritative schema: `GET /openapi.json`. This page is a curated subset trackin
 | `GET /intents/{id}` | Full record for one intent. |
 | `GET /feeds` | List every feed (RSS / NewsAPI / Twitter). |
 
+## Permanent news archive (read-only)
+
+The archive contains articles that retention has moved out of `news_current`. These endpoints never send notifications and never write `match_seen`.
+
+| Method & path | Purpose |
+| --- | --- |
+| `POST /api/archive/search` | Semantic retrieval when the JSON body contains a non-blank `query`; otherwise newest-first filtered listing. Request/response shapes: `schemas.md`. |
+| `GET /api/archive/stats` | Exact point count, oldest/newest ingestion timestamps, and `alias_ok` health bit. |
+
+Both endpoints require `X-Dashboard-Token` when authentication is configured.
+
+Retrieval-mode rules:
+
+- **Semantic mode**: send `query`; paginate/deepen by sending prior point ids in `exclude_ids`. `min_score` is valid only in this mode. There is no cursor.
+- **Filter mode**: omit `query`; a full page returns `next_cursor`. Pass that object back verbatim. Results are ordered newest-first by `ingested_at_ts`.
+- Filters work in both modes: ingestion/publish time ranges, feed include/exclude, title keyword, URL domain, minimum body length, previously matched intent, and language.
+- The archive excludes still-live `news_current` articles. For a current stored intent, use `/api/external/intents/{id}/fire`; query both surfaces when the task spans historical and current coverage.
+
+Search returns `mode`, `hits`, `warnings`, and `next_cursor`. Always surface non-empty `warnings`: they distinguish degraded feed-name lookup, an embedding model mismatch, or a pagination boundary too large to exclude safely.
+
+`GET /api/archive/stats` returns:
+
+```jsonc
+{
+  "points_count": 12345,
+  "earliest_ingested_at_ts": 1780000000,
+  "latest_ingested_at_ts": 1785000000,
+  "alias_ok": true
+}
+```
+
+`alias_ok=false` means the stable alias does not target the collection for the live embedder generation; treat semantic ranking as unreliable. `null` means the alias check itself failed. Physical Qdrant collection names are intentionally absent from the API contract.
+
 ## Mutate intents
 
 | Method & path | Purpose |

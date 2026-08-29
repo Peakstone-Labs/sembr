@@ -1,6 +1,6 @@
 ---
 name: sembr
-description: HTTP-API reference for driving a running sembr instance — a self-hosted "intent radar" / Reverse RAG service that vector-matches RSS / NewsAPI / Twitter articles against natural-language intents and emails LLM-analyzed digests. Use when the user asks to create, list, update, delete, or fire (test-run) sembr intents or feeds; when they need IntentCreate / FeedCreate JSON shapes; when they need curl or Python `httpx` recipes against sembr; when they want diagnostic matching via `/api/external/intents/{id}/fire` without notifier side-effects; or when they hit a 401 / 409 / 422 / 429 from a sembr endpoint and need to interpret it.
+description: HTTP-API reference for driving a running sembr instance — a self-hosted "intent radar" / Reverse RAG service that vector-matches RSS / NewsAPI / Twitter articles against natural-language intents and emails LLM-analyzed digests. Use when the user asks to create, list, update, delete, or fire (test-run) sembr intents or feeds; search or filter the permanent news archive; inspect archive health and size; construct sembr request bodies; use curl or Python `httpx` against sembr; run diagnostic matching without notifier side-effects; or interpret sembr HTTP errors.
 ---
 
 # sembr — driving a running instance
@@ -11,7 +11,7 @@ This skill teaches an AI agent to operate a **running** sembr instance over HTTP
 
 sembr is a self-hosted **intent radar**. The user defines a natural-language *intent* (e.g. "Fed policy moves affecting EM currencies"). sembr stores the intent as a vector, continuously ingests articles from RSS / NewsAPI / Twitter, vector-matches new articles against every active intent on a schedule, and pushes an LLM-analyzed digest by email. This is **Reverse RAG** — vectors-as-queries, articles-as-data.
 
-You'll mostly be touching four resources: **intents** (CRUD), **feeds** (CRUD), **fire** (test-run an intent on demand), and **fire-task results**.
+You'll mostly be touching five resources: **intents** (CRUD), **feeds** (CRUD), **fire** (test-run an intent on demand), **fire-task results**, and the read-only **news archive** (historical semantic/filter retrieval).
 
 ## 2. Base URL and auth
 
@@ -24,7 +24,7 @@ BASE = http://<host>:<port>           # default http://localhost:8000
   ```
   X-Dashboard-Token: <token>
   ```
-  Wrong/missing → 401 on gated paths. Empty `DASHBOARD_TOKEN` bypasses auth entirely (local-dev only). When the token is set, every path under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external` (and the corresponding bare paths) is gated. Only `/health` and `/api/dashboard/config` are unauthenticated by design (so monitors and the login page can bootstrap without a token).
+  Wrong/missing → 401 on gated paths. Empty `DASHBOARD_TOKEN` bypasses auth entirely (local-dev only). When the token is set, every path under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external`, and `/api/archive` (and the corresponding bare paths) is gated. Only `/health` and `/api/dashboard/config` are unauthenticated by design (so monitors and the login page can bootstrap without a token).
 - Every POST/PUT/PATCH body is JSON. Set `Content-Type: application/json`.
 
 ## 3. Decision — which "fire" endpoint?
@@ -39,12 +39,19 @@ This is the question agents get wrong most often.
 
 Both intent-fire paths are **cron-mode only** — event-mode intents return **409**. Rate limit: **1 per intent (or feed) per 60 s** → 429.
 
+### Archive search versus intent fire
+
+Use `POST /api/archive/search` when the user wants older coverage retrieved by an ad-hoc topic or metadata filters. It is read-only: no notifier, no `match_seen` writes, and no rate-limit side effect. It returns source articles, not an LLM summary.
+
+The archive contains articles already retired from `news_current`; it is not a complete view of current news. Use `/api/external/intents/{id}/fire` to diagnose a stored intent against the current searchable window. If the user needs both historical and current coverage, query both surfaces and label which result came from which store.
+
 ## 4. Workflow signposts
 
 When the user asks for…
 
 - **The full endpoint list** (and which writes vs. reads) → read [`references/endpoints.md`](references/endpoints.md).
 - **To create an intent or feed** (body shape, threshold range, schedule modes, channel discriminated union, source-type configs) → read [`references/schemas.md`](references/schemas.md), then `POST /intents` or `POST /feeds`.
+- **To search/list historical news or inspect archive health** → read the archive sections in [`references/endpoints.md`](references/endpoints.md) and [`references/schemas.md`](references/schemas.md).
 - **Copy-pasteable curl or Python `httpx` recipes** (create intent, sync-fire, async-fire with polling loop, dry-run a new feed) → read [`references/recipes.md`](references/recipes.md).
 - **To interpret an HTTP error** (401 / 409 / 422 / 429 / 503, response body shape) → read [`references/errors.md`](references/errors.md).
 - **A discovery / sanity check** → `GET /health` (no auth), `GET /intents`, `GET /feeds`. If `/health` returns 503, the embedder probe is still warming — sleep 30 s and retry.
@@ -59,7 +66,9 @@ For anything not covered here, the authoritative schema is `GET /openapi.json`. 
 - **Don't `DELETE` intents or feeds without confirming.** Intent delete cascades `match_seen` and isn't reversible from the API.
 - **Honour the rate limit.** 429 means sleep ≥60 s, not retry harder. Check `Retry-After` if present.
 - **Don't commit / store `DASHBOARD_TOKEN`.** It's per-deployment.
-- **Send `X-Dashboard-Token` on every request.** The only token-free paths today are `/health` and `/api/dashboard/config`; everything else under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external` 401s without it.
+- **Send `X-Dashboard-Token` on every request.** The only token-free paths today are `/health` and `/api/dashboard/config`; operational paths under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external`, and `/api/archive` 401 without it when a token is configured.
+- **Don't call Qdrant directly for archive research.** Use `/api/archive/*`; it owns query embedding, stable aliases, validation, feed-name enrichment, and model-generation warnings.
+- **Don't silently discard archive `warnings`.** Surface them with the results. If `/api/archive/stats` reports `alias_ok=false` or a search warns of an embedding-generation mismatch, semantic scores are unreliable; report the condition instead of presenting a confident ranking.
 
 ## 6. Discovery and version
 
