@@ -31,6 +31,13 @@ _CREATE_IDX_MATCH_SEEN_ARTICLE = (
 )
 
 
+# SQLite's SQLITE_MAX_VARIABLE_NUMBER is 32766; chunking the read queries at
+# 500 keeps each statement far below it and matches the write-side chunk used
+# by the TTL cascade, so a single oversized caller list can never turn into a
+# hard error at the driver.
+_READ_CHUNK = 500
+
+
 async def init_match_seen_tables(conn: aiosqlite.Connection) -> None:
     await conn.execute(_CREATE_MATCH_SEEN)
     await conn.execute(_CREATE_IDX_MATCH_SEEN_ARTICLE)
@@ -76,3 +83,59 @@ async def clear_intent(conn: aiosqlite.Connection, intent_id: int) -> None:
     """
     async with transaction() as txn:
         await txn.execute("DELETE FROM match_seen WHERE intent_id=?", (intent_id,))
+
+
+async def article_ids_for_intents(
+    conn: aiosqlite.Connection,
+    intent_ids: list[int],
+) -> list[str]:
+    """DISTINCT ``article_id`` for every article any of ``intent_ids`` matched.
+
+    ``article_id`` IS the Qdrant point uuid (see ``maintenance/qdrant_ttl.py``),
+    so the returned list feeds a ``HasIdCondition`` directly — this is how the
+    unified search endpoint filters ``news_current`` by intent, where the
+    matched-intent history lives in SQLite rather than in the point payload.
+
+    Sorted so the resulting filter (and therefore any test asserting on it) is
+    deterministic. An empty ``intent_ids`` yields an empty list; callers must
+    treat that as "restrict to nothing", never as "no filter".
+    """
+    if not intent_ids:
+        return []
+    found: set[str] = set()
+    for i in range(0, len(intent_ids), _READ_CHUNK):
+        chunk = intent_ids[i : i + _READ_CHUNK]
+        ph = ",".join("?" * len(chunk))
+        async with conn.execute(
+            f"SELECT DISTINCT article_id FROM match_seen WHERE intent_id IN ({ph})",
+            chunk,
+        ) as cur:
+            found.update(r[0] for r in await cur.fetchall())
+    return sorted(found)
+
+
+async def matched_intents_for_articles(
+    conn: aiosqlite.Connection,
+    article_ids: list[str],
+) -> dict[str, list[int]]:
+    """Intent ids per article uuid — every requested id gets an entry.
+
+    Two callers with opposite deadlines share this: the TTL migration reads it
+    BEFORE its cascade delete (the rows are gone right after, and the archived
+    payload is the only place the history survives), while the search endpoint
+    reads it AFTER retrieval to fill in ``matched_intents`` for hits that are
+    still in ``news_current`` and therefore carry no such payload key.
+
+    Read-only and chunked to stay under the bind-parameter cap.
+    """
+    result: dict[str, list[int]] = {a: [] for a in article_ids}
+    for i in range(0, len(article_ids), _READ_CHUNK):
+        chunk = article_ids[i : i + _READ_CHUNK]
+        ph = ",".join("?" * len(chunk))
+        async with conn.execute(
+            f"SELECT article_id, intent_id FROM match_seen WHERE article_id IN ({ph})",
+            chunk,
+        ) as cur:
+            for article_id, intent_id in await cur.fetchall():
+                result[article_id].append(intent_id)
+    return result

@@ -18,9 +18,7 @@ can decide re-embed / stratify / freeze later.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from qdrant_client import AsyncQdrantClient
@@ -42,6 +40,12 @@ except ImportError:
         payload: dict
 
 
+from sembr.vector_store.derived_fields import (
+    build_derived_payload,
+    detect_lang,
+    extract_url_domain,
+    parse_published_at_ts,
+)
 from sembr.vector_store.qdrant import extract_point_vector
 
 logger = logging.getLogger(__name__)
@@ -194,62 +198,24 @@ async def ensure_news_archive_collection(client: AsyncQdrantClient, embedder: Ba
 
 
 # ---------------------------------------------------------------------------
-# Payload enrichment — pure functions defining the archive payload schema.
+# Payload enrichment.
+#
+# The three derived-value helpers moved to `vector_store/derived_fields.py`
+# when the unified search endpoint made ingest / backfill / migration share
+# one filter surface; they are re-exported here so existing importers of
+# `news_archive.parse_published_at_ts` (and friends) keep working.
 # ---------------------------------------------------------------------------
 
-
-def parse_published_at_ts(published_at: Any) -> int | None:
-    """Parse the payload ``published_at`` ISO string to epoch seconds.
-
-    Both collector paths (rss feedparser timestamps, newsapi dateTime) emit
-    tz-aware UTC datetimes, so a naive string can only come from an unknown
-    writer — treated as unparseable (field stays absent) instead of guessing
-    a timezone and silently shifting the article by hours. Absent fields
-    never match a Range filter, which is the intended "unknown time" query
-    semantics.
-    """
-    if not published_at or not isinstance(published_at, str):
-        return None
-    try:
-        dt = datetime.fromisoformat(published_at)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        return None
-    return int(dt.timestamp())
-
-
-def detect_lang(title: str, body: str) -> str:
-    """Cheap zh/en/other tag from CJK-vs-latin letter counts.
-
-    Samples the title plus the first 2000 body chars — enough to classify
-    while keeping migration cost flat for very long articles. Only the CJK
-    Unified Ideographs block counts as CJK: kana / hangul text lands in
-    "other" (current sources are zh/en; revisit if ja/ko feeds arrive).
-    """
-    sample = f"{title} {body[:2000]}"
-    cjk = sum(1 for ch in sample if "一" <= ch <= "鿿")
-    latin = sum(1 for ch in sample if ("a" <= ch <= "z") or ("A" <= ch <= "Z"))
-    informative = cjk + latin
-    if informative and cjk / informative >= 0.30:
-        return "zh"
-    if latin >= 20:
-        return "en"
-    return "other"
-
-
-def extract_url_domain(url: Any) -> str | None:
-    """Lowercased hostname without a leading ``www.``, or None."""
-    if not url or not isinstance(url, str):
-        return None
-    try:
-        host = urlsplit(url).hostname
-    except ValueError:
-        return None
-    if not host:
-        return None
-    host = host.lower().removeprefix("www.")
-    return host or None
+__all__ = [
+    "ARCHIVE_ALIAS",
+    "archive_collection_name",
+    "build_archive_point",
+    "detect_lang",
+    "ensure_news_archive_collection",
+    "extract_url_domain",
+    "parse_published_at_ts",
+    "upsert_archive_points",
+]
 
 
 def build_archive_point(
@@ -269,19 +235,9 @@ def build_archive_point(
     if vector is None:
         return None
     payload = dict(getattr(point, "payload", None) or {})
-    title = payload.get("title")
-    body = payload.get("body")
-    title = title if isinstance(title, str) else ""
-    body = body if isinstance(body, str) else ""
-
-    published_at_ts = parse_published_at_ts(payload.get("published_at"))
-    if published_at_ts is not None:
-        payload["published_at_ts"] = published_at_ts
-    payload["body_len"] = len(body)
-    payload["lang"] = detect_lang(title, body)
-    url_domain = extract_url_domain(payload.get("url"))
-    if url_domain is not None:
-        payload["url_domain"] = url_domain
+    # Recomputed from the source payload on every migration, so whether the
+    # backfill job already stamped this point is irrelevant to the result.
+    payload.update(build_derived_payload(payload))
     payload["matched_intents"] = matched_intents
     payload["archived_at_ts"] = archived_at_ts
     return PointStruct(id=str(point.id), vector=vector, payload=payload)

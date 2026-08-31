@@ -31,6 +31,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from sembr.config import Settings
+from sembr.db.match_seen import matched_intents_for_articles
 from sembr.db.sqlite import get_conn, transaction
 from sembr.vector_store.news import ALIAS_NAME, uuid_to_md5
 
@@ -149,20 +150,11 @@ async def _fetch_matched_intents(uuids: list[str]) -> dict[str, list[int]]:
 
     Must run BEFORE the batch's cascade delete — the rows are gone right
     after, and the archived payload is the only place this history survives.
-    Read-only, chunked to stay under the SQLite bind-parameter cap.
+    Thin wrapper: the query itself is shared with the search endpoint so the
+    archived snapshot and the live lookup can never diverge in what they count
+    as a match.
     """
-    result: dict[str, list[int]] = {u: [] for u in uuids}
-    conn = get_conn()
-    for i in range(0, len(uuids), _SQLITE_DELETE_CHUNK):
-        chunk = uuids[i : i + _SQLITE_DELETE_CHUNK]
-        ph = ",".join("?" * len(chunk))
-        async with conn.execute(
-            f"SELECT article_id, intent_id FROM match_seen WHERE article_id IN ({ph})",
-            chunk,
-        ) as cur:
-            for article_id, intent_id in await cur.fetchall():
-                result[article_id].append(intent_id)
-    return result
+    return await matched_intents_for_articles(get_conn(), uuids)
 
 
 def _log_ttl_summary(

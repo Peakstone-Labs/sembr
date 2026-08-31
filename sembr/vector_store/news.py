@@ -63,6 +63,8 @@ async def ensure_news_collection(client: AsyncQdrantClient, embedder: BaseEmbedd
         CreateAlias,
         CreateAliasOperation,
         Distance,
+        IntegerIndexParams,
+        KeywordIndexParams,
         PayloadSchemaType,
         ScalarQuantization,
         ScalarQuantizationConfig,
@@ -134,6 +136,33 @@ async def ensure_news_collection(client: AsyncQdrantClient, embedder: BaseEmbedd
             max_token_len=20,
         ),
     )
+
+    # Derived-field indexes for the unified `/api/news/search` endpoint. The
+    # same four filters already exist on `news_archive`; without them here the
+    # filter surface would mean different things on the two halves of the
+    # timeline, which is exactly what the unified endpoint exists to prevent.
+    #
+    # Storage differs from the archive on purpose: no `on_disk=True`. This is
+    # the hot collection (the matcher scans it every tick) and it is bounded by
+    # the retention window, so keeping its indexes resident costs a fixed few
+    # tens of MB; the archive grows forever and pays disk latency instead.
+    #
+    # Existing points do NOT gain these fields by creating the index — the
+    # backfill job (maintenance/derived_backfill.py) fills them in, and the
+    # `body_len` index is what lets it query its own queue.
+    for range_field in ("published_at_ts", "body_len"):
+        await client.create_payload_index(
+            collection_name=name,
+            field_name=range_field,
+            field_schema=IntegerIndexParams(type="integer", lookup=False, range=True),
+        )
+
+    for keyword_field in ("url_domain", "lang"):
+        await client.create_payload_index(
+            collection_name=name,
+            field_name=keyword_field,
+            field_schema=KeywordIndexParams(type="keyword"),
+        )
 
     all_aliases = await client.get_aliases()
     alias_map = {a.alias_name: a.collection_name for a in all_aliases.aliases}
