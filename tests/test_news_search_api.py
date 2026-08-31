@@ -293,6 +293,21 @@ def test_response_has_no_shard_markers():
     assert rejected.status_code == 422
 
 
+def test_search_200_when_archive_segment_is_empty():
+    """QA-6: with qdrant_archive_enabled=False the retention job never
+    migrates a point into news_archive, so the collection exists (bootstrap is
+    unconditional) but stays empty forever — not just "empty until the first
+    TTL run". The archive segment must still be queried and the request must
+    still succeed with only current-segment hits, not treat an empty segment
+    as a reason to skip or fail it."""
+    qc = _FakeQdrant(semantic={_CURRENT: [_scored("cur-1", 0.9)], _ARCHIVE: []})
+    resp = _search(_make_app(qc), {"query": "x"})
+
+    assert resp.status_code == 200
+    assert qc.called(_ARCHIVE)
+    assert [h["id"] for h in resp.json()["hits"]] == ["cur-1"]
+
+
 # ---------------------------------------------------------------------------
 # Filter construction
 # ---------------------------------------------------------------------------
@@ -374,6 +389,35 @@ def test_intent_filter_archive_uses_payload_match_any():
     assert not [c for c in f.must if getattr(c, "has_id", None) is not None]
 
 
+def test_exclude_ids_and_intent_filter_both_apply_per_segment():
+    """QA-5: exclude_ids and matched_intent_ids compile independently in
+    _build_filter, but a caller paging past ids it already saw relies on both
+    firing together — losing the exclusion because a request also scopes to
+    an intent would reintroduce ids the caller explicitly asked to skip."""
+    qc = _FakeQdrant(semantic={_CURRENT: [], _ARCHIVE: []})
+    resp = _search(
+        _make_app(qc),
+        {"query": "x", "matched_intent_ids": [29], "exclude_ids": ["cur-2"]},
+    )
+    assert resp.status_code == 200
+
+    cur_filter = qc.call_for(_CURRENT)["query_filter"]
+    cur_has_id_must = [c for c in cur_filter.must if getattr(c, "has_id", None) is not None]
+    assert cur_has_id_must and sorted(cur_has_id_must[0].has_id) == ["cur-1", "cur-2"]
+    cur_has_id_must_not = [
+        c for c in (cur_filter.must_not or []) if getattr(c, "has_id", None) is not None
+    ]
+    assert cur_has_id_must_not and cur_has_id_must_not[0].has_id == ["cur-2"]
+
+    arc_filter = qc.call_for(_ARCHIVE)["query_filter"]
+    by_key = {getattr(c, "key", None): c for c in arc_filter.must}
+    assert by_key["matched_intents"].match.any == [29]
+    arc_has_id_must_not = [
+        c for c in (arc_filter.must_not or []) if getattr(c, "has_id", None) is not None
+    ]
+    assert arc_has_id_must_not and arc_has_id_must_not[0].has_id == ["cur-2"]
+
+
 def test_intent_filter_empty_set_skips_current_segment():
     """`has_id: []` has no defined "restrict to nothing" meaning, so the
     segment is not queried at all."""
@@ -419,6 +463,18 @@ def test_dimension_rejection_is_an_outage_not_a_caller_error():
     assert _search(_make_app(qc), {"query": "x"}).status_code == 503
 
 
+def test_caller_error_mentioning_dimension_stays_400():
+    """Repair-pass narrowing guard: the outage carve-out matches the exact
+    upstream phrase "vector dimension error", not the bare substring
+    "dimension" — a fixable 400 that happens to mention a field literally
+    named "dimension" for unrelated reasons must not be reported as an
+    outage, which is the opposite of what a fixable-request caller needs."""
+    exc = RuntimeError("Wrong input: filter field 'embedding_dimension_meta' not indexed")
+    exc.status_code = 400
+    qc = _FakeQdrant(semantic={_CURRENT: [], _ARCHIVE: exc})
+    assert _search(_make_app(qc), {"query": "x"}).status_code == 400
+
+
 def test_intent_id_set_over_cap_returns_400(monkeypatch):
     """Silently truncating the id set would under-return with no signal."""
     from sembr.api import news_search as mod
@@ -457,6 +513,18 @@ def test_hit_matched_intents_archive_from_payload():
     qc = _FakeQdrant(semantic={_ARCHIVE: [_scored("a1", 0.9, matched_intents=[31])]})
     (hit,) = _search(_make_app(qc), {"query": "x"}).json()["hits"]
     assert hit["matched_intents"] == [31]
+
+
+def test_archive_matched_intents_survives_mixed_type_payload():
+    """Repair-pass guard for the archive branch of _fill_matched_intents: the
+    int filter runs OUTSIDE the try block, so a single non-int element in an
+    unconstrained Qdrant payload must not turn a documented degradation into
+    a 500. Only the int elements are kept and sorted; the rest are dropped."""
+    qc = _FakeQdrant(semantic={_ARCHIVE: [_scored("a1", 0.9, matched_intents=[31, None, "x", 5])]})
+    resp = _search(_make_app(qc), {"query": "x"})
+    assert resp.status_code == 200
+    (hit,) = resp.json()["hits"]
+    assert hit["matched_intents"] == [5, 31]
 
 
 def test_matched_intents_lookup_failure_degrades_with_warning(monkeypatch):
@@ -806,6 +874,116 @@ def test_feed_name_resolution_failure_warns(monkeypatch):
 
     assert data["hits"][0]["feed_name"] is None
     assert any("feed name resolution failed" in w for w in data["warnings"])
+
+
+# ---------------------------------------------------------------------------
+# QA: derived-filter accuracy against an independently-evaluated backend
+# ---------------------------------------------------------------------------
+
+
+def _condition_passes(condition, payload: dict) -> bool:
+    """Minimal interpreter for the Filter conditions this endpoint builds,
+    deliberately NOT sharing code with _build_filter — this is what lets it
+    cross-check that a structurally-correct condition also selects the right
+    rows, not just that it has the right shape (test_semantic_filter_construction
+    already pins the shape)."""
+    if getattr(condition, "has_id", None) is not None:
+        return True  # id-based conditions get their own coverage (QA-5)
+    key = getattr(condition, "key", None)
+    if key is None:
+        return True
+    value = payload.get(key)
+    match = getattr(condition, "match", None)
+    if match is not None:
+        any_values = getattr(match, "any", None)
+        if any_values is not None:
+            return value in any_values
+        text = getattr(match, "text", None)
+        if text is not None:
+            return isinstance(value, str) and text in value
+    rng = getattr(condition, "range", None)
+    if rng is not None:
+        if value is None:
+            return False
+        if rng.gte is not None and value < rng.gte:
+            return False
+        if rng.lte is not None and value > rng.lte:
+            return False
+    return True
+
+
+class _FilterEvaluatingQdrant:
+    """Unlike _FakeQdrant's fixed return lists, this actually applies the
+    constructed Filter to a payload set — needed to verify a derived filter
+    (lang / min_body_len / url_domains) selects the right points, not merely
+    that the condition it emits has the right key and operator."""
+
+    def __init__(self, points_by_segment: dict) -> None:
+        self._points = points_by_segment
+
+    async def query_points(self, *, collection_name, query, limit, score_threshold, query_filter):
+        pts = self._points.get(collection_name, [])
+        if query_filter is not None:
+            pts = [
+                p
+                for p in pts
+                if all(_condition_passes(c, p.payload) for c in (query_filter.must or []))
+            ]
+        return SimpleNamespace(points=pts[:limit])
+
+
+def test_derived_filters_select_the_right_points_after_backfill():
+    """QA-9: lang / min_body_len / url_domains each get one case, and the hit
+    set is checked against an independently-reasoned expectation rather than
+    the filter's internal structure — a Range or MatchAny built on the wrong
+    key would still pass a purely structural assertion but fail this one."""
+    points = [
+        _scored("p-zh-short-reuters", 0.5, lang="zh", body_len=50, url_domain="reuters.com"),
+        _scored("p-en-long-reuters", 0.5, lang="en", body_len=500, url_domain="reuters.com"),
+        _scored("p-zh-short-bloomberg", 0.5, lang="zh", body_len=10, url_domain="bloomberg.com"),
+        _scored("p-en-long-bloomberg", 0.5, lang="en", body_len=800, url_domain="bloomberg.com"),
+    ]
+    qc = _FilterEvaluatingQdrant({_CURRENT: points, _ARCHIVE: []})
+
+    got = _search(_make_app(qc), {"query": "x", "langs": ["zh"]}).json()["hits"]
+    assert {h["id"] for h in got} == {"p-zh-short-reuters", "p-zh-short-bloomberg"}
+
+    got = _search(_make_app(qc), {"query": "x", "min_body_len": 400}).json()["hits"]
+    assert {h["id"] for h in got} == {"p-en-long-reuters", "p-en-long-bloomberg"}
+
+    got = _search(_make_app(qc), {"query": "x", "url_domains": ["bloomberg.com"]}).json()["hits"]
+    assert {h["id"] for h in got} == {"p-zh-short-bloomberg", "p-en-long-bloomberg"}
+
+
+# ---------------------------------------------------------------------------
+# QA: fan-out cancellation
+# ---------------------------------------------------------------------------
+
+
+async def test_gather_segments_cancels_the_surviving_sibling_on_failure():
+    """QA-10: asyncio.gather does not cancel siblings on its own when one
+    fails. _gather_segments does that explicitly so a failed request never
+    leaves a segment query running past the response that reported the
+    failure — surfacing otherwise as "exception was never retrieved" noise,
+    or worse, work that outlives the request that spawned it."""
+    from sembr.api.news_search import _gather_segments
+
+    cancelled = asyncio.Event()
+
+    async def _hangs():
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    async def _fails():
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        await _gather_segments({"current": _hangs(), "archive": _fails()})
+
+    assert cancelled.is_set()
 
 
 # ---------------------------------------------------------------------------

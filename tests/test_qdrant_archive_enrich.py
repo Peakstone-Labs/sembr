@@ -158,3 +158,46 @@ def test_build_archive_point_non_string_body_and_title():
     assert pt is not None
     assert pt.payload["body_len"] == 0
     assert pt.payload["lang"] == "other"
+
+
+def test_build_archive_point_result_is_independent_of_prior_backfill():
+    """QA-8: the backfill job and the retention migration can race in either
+    order — a point may reach news_archive already carrying derived fields
+    the backfill job wrote, or never having been touched by it at all. The
+    fixture deliberately makes the pre-existing derived fields WRONG (stale
+    values a correct backfill would never have produced from this body/url):
+    if the archive path ever started preferring an existing key over
+    recomputing it, this is what would catch the divergence instead of
+    silently reproducing the same (right) answer twice."""
+    base = {
+        "url": "https://www.reuters.com/world/x",
+        "title": "Vodafone ups guidance",
+        "body": "Vodafone raised its outlook " * 10,
+        "published_at": "2026-07-27T06:49:53+00:00",
+        "feed_id": 3,
+        "embedding_model_version": "bge-m3_v1",
+        "ingested_at_ts": 1785000000,
+    }
+    never_backfilled = build_archive_point(
+        _point(dict(base)), matched_intents=[29], archived_at_ts=1790000000
+    )
+    stale_backfilled = build_archive_point(
+        _point(
+            {
+                **base,
+                "published_at_ts": 1,  # deliberately stale/wrong
+                "body_len": 999999,
+                "lang": "zh",
+                "url_domain": "not-the-real-domain.example",
+            }
+        ),
+        matched_intents=[29],
+        archived_at_ts=1790000000,
+    )
+    assert never_backfilled is not None
+    assert stale_backfilled is not None
+    assert never_backfilled.payload == stale_backfilled.payload
+    # And both equal the value a fresh computation gives — not the stale one.
+    assert stale_backfilled.payload["body_len"] == len(base["body"])
+    assert stale_backfilled.payload["lang"] == "en"
+    assert stale_backfilled.payload["url_domain"] == "reuters.com"
