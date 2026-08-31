@@ -248,6 +248,17 @@ async def get_qdrant_stats(request: Request) -> dict[str, Any]:
             alias, expected_collection = expected[name]
             segments[name] = await _segment_stats(client, alias, expected_collection)
         segments["current"]["derived_backfill_pending"] = await count_pending_derived(client)
+        # Split out of the pending count rather than deducted from it: a
+        # quarantined point genuinely lacks its derived fields, so removing it
+        # would turn "no point is missing the field" into the weaker "the job
+        # thinks it is done". Reported separately so a stuck backfill is
+        # distinguishable from one still draining. Process-local — a restart
+        # resets it to 0 and the next three rounds rediscover it. `null` (not
+        # 0) when the handle is absent, so "no state" never reads as "clean".
+        backfill_state = getattr(request.app.state, "news_derived_backfill_state", None)
+        segments["current"]["derived_backfill_quarantined"] = (
+            len(backfill_state.quarantined) if backfill_state is not None else None
+        )
     except Exception as exc:
         logger.exception("qdrant_stats: query failed")
         raise HTTPException(

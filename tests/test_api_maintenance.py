@@ -508,11 +508,42 @@ def test_qdrant_stats_returns_both_segments(app_factory):
     assert segments["current"]["latest_ingested_at_ts"] == 1786000000
     assert segments["current"]["alias_ok"] is True
     assert segments["current"]["derived_backfill_pending"] == 7
+    # No state handle on this hand-built test app → null, never 0: "we cannot
+    # see the quarantine set" must not read as "the quarantine set is empty".
+    assert segments["current"]["derived_backfill_quarantined"] is None
     assert segments["archive"]["points_count"] == 42
     assert segments["archive"]["alias_ok"] is True
     # The pending count belongs to the live store only; the archive was
     # enriched at migration time and has no backfill queue.
     assert "derived_backfill_pending" not in segments["archive"]
+
+
+def test_qdrant_stats_reports_quarantined_count_when_state_is_available(app_factory):
+    app = _with_embedder(app_factory(_stats_qdrant()))
+    app.state.news_derived_backfill_state = SimpleNamespace(quarantined={"a", "b"})
+    with TestClient(app) as client:
+        segments = client.get("/api/dashboard/maintenance/qdrant_stats").json()["segments"]
+
+    assert segments["current"]["derived_backfill_quarantined"] == 2
+    # Reported alongside, not deducted from, the pending count: a quarantined
+    # point really is missing its fields.
+    assert segments["current"]["derived_backfill_pending"] == 0
+
+
+def test_qdrant_stats_empty_segment_reports_null_edges(app_factory):
+    """A brand-new deployment, and any deployment with archiving disabled, has
+    an empty archive segment; the edge timestamps must come back null rather
+    than erroring."""
+    q = _stats_qdrant(counts={"news_current": 0, "news_archive": 0})
+    q.client.scroll = AsyncMock(return_value=([], None))
+    app = _with_embedder(app_factory(q))
+    with TestClient(app) as client:
+        segments = client.get("/api/dashboard/maintenance/qdrant_stats").json()["segments"]
+
+    for name in ("current", "archive"):
+        assert segments[name]["points_count"] == 0
+        assert segments[name]["earliest_ingested_at_ts"] is None
+        assert segments[name]["latest_ingested_at_ts"] is None
 
 
 def test_qdrant_stats_alias_ok_false_on_generation_mismatch(app_factory):

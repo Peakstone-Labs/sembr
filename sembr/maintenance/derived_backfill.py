@@ -81,6 +81,20 @@ _STALL_ROUNDS_BEFORE_QUARANTINE = 3
 # report it daily instead of every 30 minutes.
 _QUARANTINE_LOG_INTERVAL_SECONDS = 24 * 3600
 
+# Ceiling on the quarantine set. It is replayed as a `must_not has_id` on every
+# count and scroll, so an unbounded one walks the request body into megabytes —
+# the same reason the search endpoint caps its intent-derived id set. Past this
+# many unwritable points the job has stopped being a backfill and starts being
+# a load generator, so it gives up loudly instead.
+_QUARANTINE_CAP = 5_000
+
+# Startup pending count is awaited inside lifespan, so it needs a bound tighter
+# than the client's 30 s default: the collection bootstrap just created four
+# payload indexes, and a slow first count would hold /health down for no gain.
+# Timing out is not a degradation — it publishes "unknown", which callers treat
+# as pending.
+_INITIAL_COUNT_TIMEOUT_SECONDS = 5.0
+
 
 class BackfillState:
     """Cross-round memory for one registered job (process-local, not durable).
@@ -91,6 +105,7 @@ class BackfillState:
 
     def __init__(self) -> None:
         self.quarantined: set[str] = set()
+        self.exhausted = False
         self._stalled_ids: frozenset[str] = frozenset()
         self._stall_rounds = 0
         self._last_quarantine_log: float | None = None
@@ -112,6 +127,8 @@ class BackfillState:
             self.quarantined |= key
             self._stalled_ids = frozenset()
             self._stall_rounds = 0
+            if len(self.quarantined) >= _QUARANTINE_CAP:
+                self.exhausted = True
             return True
         return False
 
@@ -170,7 +187,10 @@ async def initialise_pending_flag(app: Any, qdrant_handle: QdrantHandle) -> None
     which is precisely the silent under-recall the warning exists to prevent.
     """
     try:
-        pending = await count_pending_derived(qdrant_handle.client)
+        pending = await asyncio.wait_for(
+            count_pending_derived(qdrant_handle.client),
+            timeout=_INITIAL_COUNT_TIMEOUT_SECONDS,
+        )
     except Exception:
         logger.warning(
             "news derived backfill: initial pending count failed; "
@@ -196,10 +216,11 @@ def _maybe_log_quarantine(state: BackfillState) -> None:
     logger.error(
         "news derived backfill: %d point(s) quarantined after %d rounds of zero "
         "progress and are skipped; they stay invisible to derived-field filters "
-        "until inspected (ids: %s)",
+        "until inspected (ids: %s)%s",
         len(state.quarantined),
         _STALL_ROUNDS_BEFORE_QUARANTINE,
         sorted(state.quarantined)[:10],
+        " — quarantine cap reached, backfill has given up" if state.exhausted else "",
     )
 
 
@@ -214,6 +235,13 @@ async def _run_news_derived_backfill(
     batches = 0
     updated = 0
     outcome = "converged"
+
+    if state.exhausted:
+        # Nothing left to try: the queue holds only points Qdrant will not
+        # accept payload writes for. Keep publishing the honest pending count
+        # so the search warning stays on, but stop spending rounds on it.
+        _maybe_log_quarantine(state)
+        return
 
     try:
         queue = await count_pending_derived(client, exclude_ids=state.quarantined)

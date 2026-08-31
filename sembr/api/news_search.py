@@ -71,7 +71,10 @@ _INTENT_ID_FILTER_CAP = 20_000
 # Request fields that filter on a DERIVED payload key. Points written before
 # the derived-field rollout carry none of these keys, and an absent key never
 # matches — so while the backfill queue is non-empty these filters under-return
-# older articles and the caller has to be told.
+# and the caller has to be told. Note WHICH articles are affected: only
+# `news_current` has a backfill queue, and it holds the retention window, so the
+# gap is in RECENT coverage. Archived points were enriched point-by-point at
+# migration time and are complete.
 _DERIVED_FILTER_FIELDS = (
     "published_from_ts",
     "published_to_ts",
@@ -118,7 +121,7 @@ class NewsSearchRequest(BaseModel):
     # Intents that matched the article. Live for articles still inside the
     # retention window, frozen at migration time for older ones — see the
     # agent skill; the difference is freshness, not meaning.
-    matched_intent_ids: list[int] | None = None
+    matched_intent_ids: list[int] | None = Field(default=None, max_length=1000)
     langs: list[str] | None = None
 
     include_body: bool = True
@@ -206,7 +209,17 @@ _MATCHED_INTENTS_WARNING = (
 
 _BACKFILL_PENDING_WARNING = (
     "derived fields are still being backfilled; filters on publication time, language, "
-    "url domain or body length may under-return older articles"
+    "url domain or body length may miss articles ingested before this deployment. "
+    "Those articles are in the RECENT window, not the deep archive — archived "
+    "articles were enriched individually and are complete. Filtering on "
+    "ingested_at_ts instead is unaffected and can be used as a complete fallback"
+)
+
+_INTENT_SET_EMPTY_WARNING = (
+    "matched_intent_ids matched no article in the recent window, so only archived "
+    "matches are returned; an empty result does not mean the intent never matched. "
+    "The live match table is reset whenever an intent's text or sub-texts change, "
+    "when a summary-history row is deleted, and when the intent itself is deleted"
 )
 
 
@@ -222,8 +235,19 @@ def _qdrant_http_error(exc: Exception, context: str) -> HTTPException:
     """Map a Qdrant client failure to an HTTP status (whitelist, not range)."""
     # Truncate: UnexpectedResponse stringifies with the raw response body
     # attached; the operator gets the full traceback via server logs.
-    msg = f"{context}: {str(exc)[:200]}"
+    raw = str(exc)
+    msg = f"{context}: {raw[:200]}"
     if getattr(exc, "status_code", None) in _CALLER_ERROR_CODES:
+        # One carve-out from the whitelist: a vector-dimension rejection is a
+        # 400 from Qdrant but not something the caller can fix. It means an
+        # alias still targets a previous model generation, which bootstrap
+        # logs and deliberately does not repair. Reporting it as a caller
+        # error sends the agent editing filters forever. Substring matching on
+        # an upstream message is brittle, but the failure it prevents (an
+        # unfixable request presented as fixable) is worse than the failure it
+        # risks (an outage reported as an outage one release later).
+        if "dimension" in raw.lower():
+            return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=msg)
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
     return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=msg)
 
@@ -473,7 +497,10 @@ async def _fill_matched_intents(
     for pid, _score, payload in rows_by_segment.get("archive", []):
         if pid in wanted:
             value = payload.get("matched_intents")
-            by_id[pid] = list(value) if isinstance(value, list) else []
+            # sorted() on both sides: the field claims one meaning across the
+            # whole timeline, and a point that is briefly in both stores must
+            # not change shape depending on which copy won the dedupe.
+            by_id[pid] = sorted(value) if isinstance(value, list) else []
     if not current_ids:
         return by_id, True
     try:
@@ -550,7 +577,9 @@ async def _semantic_search(request: Request, req: NewsSearchRequest) -> NewsSear
     merged = _merge_rows(rows_by_segment, key=lambda row: row[1] if row[1] is not None else 0.0)
     page = merged[: req.limit]
 
-    return await _respond(request, req, "semantic", page, rows_by_segment, segments, embedder)
+    return await _respond(
+        request, req, "semantic", page, rows_by_segment, segments, embedder, intent_ids
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -611,7 +640,7 @@ async def _filter_listing(request: Request, req: NewsSearchRequest) -> NewsSearc
     merged = _merge_rows(rows_by_segment, key=_listing_sort_key)
     page = merged[: req.limit]
 
-    return await _respond(request, req, "filter", page, rows_by_segment, segments, embedder=None)
+    return await _respond(request, req, "filter", page, rows_by_segment, segments, None, intent_ids)
 
 
 def _next_cursor_for(
@@ -688,8 +717,17 @@ async def _respond(
     rows_by_segment: dict[str, list[tuple[str, Any, dict]]],
     segments: dict[str, _SegmentRows],
     embedder: Any,
+    intent_article_ids: list[str],
 ) -> NewsSearchResponse:
     warnings: list[str] = []
+
+    # Skipping the live segment is the only correct way to express "restrict to
+    # the empty set", but on its own it is indistinguishable from "this intent
+    # never matched anything recent" — and the live match table is reset by
+    # three routine operations, not just intent deletion. Say so, or the caller
+    # reads a reset as a fact about the news.
+    if req.matched_intent_ids and not intent_article_ids:
+        warnings.append(_INTENT_SET_EMPTY_WARNING)
 
     feed_names, feed_names_ok = await _feed_names_for([pl for _pid, _s, pl in page])
     if not feed_names_ok:

@@ -203,6 +203,51 @@ async def test_count_pending_derived_excludes_quarantined_ids():
     assert qc.count.call_args.kwargs["exact"] is True
 
 
+@pytest.mark.asyncio
+async def test_backfill_stops_spending_rounds_once_quarantine_is_exhausted():
+    """The quarantine set is replayed as a `must_not has_id` on every count and
+    scroll, so letting it grow without bound turns the backfill into a load
+    generator against the collection it is supposed to be repairing."""
+    from sembr.maintenance import derived_backfill as mod
+
+    state = BackfillState()
+    state.quarantined = {f"id-{i}" for i in range(mod._QUARANTINE_CAP)}
+    state.exhausted = True
+
+    qc = MagicMock()
+    qc.count = AsyncMock()
+    qc.scroll = AsyncMock()
+    app = _app()
+
+    await _run_news_derived_backfill(_handle(qc), state, app)
+
+    qc.count.assert_not_called()
+    qc.scroll.assert_not_called()
+
+
+def test_quarantine_cap_flips_exhausted():
+    from sembr.maintenance import derived_backfill as mod
+
+    state = BackfillState()
+    batch = [f"id-{i}" for i in range(mod._QUARANTINE_CAP)]
+    for _round in range(mod._STALL_ROUNDS_BEFORE_QUARANTINE - 1):
+        assert state.note_stall(batch) is False
+        assert state.exhausted is False
+    assert state.note_stall(batch) is True
+    assert state.exhausted is True
+
+
+def test_note_stall_streak_resets_on_a_different_batch():
+    """Consecutive rounds on the SAME batch is the signal; a different batch
+    stalling means the queue moved, and carrying the streak over would
+    quarantine points that were never actually stuck."""
+    state = BackfillState()
+    assert state.note_stall(["a"]) is False
+    assert state.note_stall(["b"]) is False
+    assert state.note_stall(["a"]) is False
+    assert state.quarantined == set()
+
+
 def test_backfill_job_registration_parameters():
     """The schedule is a decision, not a default: a truncated round has to
     resume in minutes, not on the 24h maintenance cadence."""

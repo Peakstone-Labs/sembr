@@ -203,7 +203,8 @@ Operator surface, not a search surface; unlike the search contract it does expos
       "earliest_ingested_at_ts": 1780000000,
       "latest_ingested_at_ts": 1785000000,
       "alias_ok": true,                   // false=mismatch; null=check failed
-      "derived_backfill_pending": 0       // >0 ⇒ derived-field filters under-return
+      "derived_backfill_pending": 0,      // >0 ⇒ derived filters miss RECENT points
+      "derived_backfill_quarantined": 0   // given up on, since process start; null=unknown
     },
     "archive": {
       "points_count": 12345,

@@ -296,7 +296,10 @@ async def lifespan(app: FastAPI):
     # would otherwise serve derived-field queries against an unbackfilled
     # collection with no warning at all.
     await initialise_pending_flag(app, qdrant)
-    add_news_derived_backfill_job(scheduler, qdrant, app)
+    # Hold the job's state: the quarantine set is the only record of points the
+    # backfill has given up on, and without a handle it would exist solely
+    # inside the job's own closure where no operator can see it.
+    app.state.news_derived_backfill_state = add_news_derived_backfill_job(scheduler, qdrant, app)
     # Sweep expired fire tasks every 5 minutes
     from apscheduler.triggers.interval import IntervalTrigger as _IT  # noqa: PLC0415
 

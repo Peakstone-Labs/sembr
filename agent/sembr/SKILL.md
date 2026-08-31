@@ -49,7 +49,8 @@ Use `/api/external/intents/{id}/fire` instead when the question is "what would t
 
 Two properties of `matched_intents` are worth knowing before you read into it:
 
-- **Freshness differs by age.** For recent articles the list is read live from `match_seen`, so deleting an intent makes it disappear. For older articles it was frozen when the article was archived, so it can still name an intent that no longer exists. Both are correct; neither is a bug.
+- **Freshness differs by age.** For recent articles the list is read live from `match_seen`; for older ones it was frozen when the article was archived, so it can still name an intent that no longer exists. Both are correct; neither is a bug.
+- **The live half is reset by three routine operations**, not just intent deletion: changing an intent's `text` or sub-texts (re-embedding invalidates the old dedup log), deleting a summary-history row (it withdraws that row's citations), and deleting the intent. After any of them, `matched_intent_ids` returns only archived matches until the next scan re-populates the table — and the response says so in `warnings`. **An empty result there is a fact about the match table, not about the news.**
 - **Event-mode intents never appear in it.** They match through a different path that does not write `match_seen`, so an article matched by an event-mode intent shows `matched_intents: []` at every age.
 
 ## 4. Workflow signposts
@@ -75,7 +76,7 @@ For anything not covered here, the authoritative schema is `GET /openapi.json`. 
 - **Don't commit / store `DASHBOARD_TOKEN`.** It's per-deployment.
 - **Send `X-Dashboard-Token` on every request.** The only token-free paths today are `/health` and `/api/dashboard/config`; operational paths under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external`, and `/api/news` 401 without it when a token is configured.
 - **Don't call Qdrant directly for news research.** Use `POST /api/news/search`; it owns query embedding, the two-store fan-out, stable aliases, validation, feed-name enrichment, and model-generation warnings. Reading the collections yourself gets you half the timeline.
-- **Don't silently discard search `warnings`.** Surface them with the results. A warning about an embedding-generation mismatch means semantic scores are unreliable; a warning that derived fields are still being backfilled means filters on publication time, language, url domain or body length may under-return older articles — say so rather than presenting the short list as complete.
+- **Don't silently discard search `warnings`.** Surface them with the results. A warning about an embedding-generation mismatch means semantic scores are unreliable; a warning that derived fields are still being backfilled means filters on publication time, language, url domain or body length may miss articles ingested before that deployment. Those articles are in the **recent** window, not the deep archive — archived articles were enriched individually and are complete; filtering on `ingested_at_ts` instead is unaffected — say so rather than presenting the short list as complete. Read the direction carefully: the gap is in **recent** coverage, so this is not a warning you can shrug off as "only affects deep history".
 - **Don't read `GET /api/dashboard/maintenance/qdrant_stats` as a search surface.** It is the operator's view and deliberately exposes the storage split; `alias_ok=false` there means semantic ranking is unreliable, and a non-zero `derived_backfill_pending` means the same under-recall the search warning describes.
 
 ## 6. Discovery and version

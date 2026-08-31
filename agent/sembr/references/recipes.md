@@ -128,7 +128,7 @@ jq -n --argjson ids "${EXCLUDE}" '{
 }' | curl -s -X POST "${BASE}/api/news/search" "${H_JSON[@]}" "${H_TOKEN[@]}" --data-binary @- | jq .
 ```
 
-Always report non-empty `warnings` alongside the hits — one of them means the result may be missing older articles.
+Always report non-empty `warnings` alongside the hits — one of them means the result may be missing **recently ingested** articles.
 
 ## List/filter news with cursor pagination
 
@@ -161,7 +161,7 @@ fi
 curl -s "${BASE}/api/dashboard/maintenance/qdrant_stats" "${H_TOKEN[@]}" | jq .
 ```
 
-Operator surface: it reports each store separately, unlike search. Proceed with semantic ranking only when every `alias_ok` is `true` — `false` means an embedding-generation mismatch, `null` means the check itself failed. A non-zero `derived_backfill_pending` means filters on publication time, language, url domain or body length still under-return older articles.
+Operator surface: it reports each store separately, unlike search. Proceed with semantic ranking only when every `alias_ok` is `true` — `false` means an embedding-generation mismatch, `null` means the check itself failed. A non-zero `derived_backfill_pending` means filters on publication time, language, url domain or body length may miss articles ingested before that deployment. Those articles are in the **recent** window, not the deep archive — archived articles were enriched individually and are complete; filtering on `ingested_at_ts` instead is unaffected. `derived_backfill_quarantined` counts points the backfill gave up on since this process started; `null` means unavailable, not zero.
 
 ## Add an RSS feed and dry-run it
 

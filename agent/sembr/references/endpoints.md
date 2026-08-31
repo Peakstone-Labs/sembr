@@ -31,9 +31,10 @@ Retrieval-mode rules:
 - Filters work in both modes: ingestion/publish time ranges, feed include/exclude, title keyword, URL domain, minimum body length, previously matched intent, and language.
 - One page can span both stores; the cursor is a single object either way. Do not try to page the two stores separately.
 - `matched_intent_ids` works across the whole timeline. For recent articles it resolves against the live `match_seen` table; for archived ones against the snapshot taken at archive time. Event-mode intents never write `match_seen` and therefore never appear.
+- The live half of that table is reset when an intent's `text` / sub-texts change, when a summary-history row is deleted, and when the intent is deleted. If it resolves to nothing, the recent window is not queried at all and a `warnings` entry says so — treat that as "the match log was reset", not "the intent matched nothing recently".
 - For "what would this stored intent match right now", use `/api/external/intents/{id}/fire` instead — that runs the intent's own vector and threshold.
 
-Search returns `mode`, `hits`, `warnings`, and `next_cursor`. Always surface non-empty `warnings`: they distinguish degraded feed-name lookup, a degraded matched-intent lookup, an embedding model mismatch, a pagination boundary too large to exclude safely, and a derived-field backfill still in progress (in which case filters on publication time, language, url domain or body length may under-return older articles).
+Search returns `mode`, `hits`, `warnings`, and `next_cursor`. Always surface non-empty `warnings`: they distinguish degraded feed-name lookup, a degraded matched-intent lookup, an embedding model mismatch, a pagination boundary too large to exclude safely, and a derived-field backfill still in progress (in which case filters on publication time, language, url domain or body length may miss articles ingested before that deployment. Those articles are in the **recent** window, not the deep archive — archived articles were enriched individually and are complete; filtering on `ingested_at_ts` instead is unaffected).
 
 A failure in either store fails the whole request rather than returning half the timeline with a 200, so a successful response is always a complete answer for the filters you sent.
 
@@ -59,7 +60,11 @@ A failure in either store fails the whole request rather than returning half the
 }
 ```
 
-This is the operator surface, so it does expose the storage split — the search contract does not. `alias_ok=false` means the stable alias does not target the collection for the live embedder generation; treat semantic ranking as unreliable. `null` means the alias check itself failed. `derived_backfill_pending > 0` means some older points still lack the derived filter fields and those filters under-return until it reaches zero. Physical Qdrant collection names are intentionally absent from the contract.
+This is the operator surface, so it does expose the storage split — the search contract does not. `alias_ok=false` means the stable alias does not target the collection for the live embedder generation; treat semantic ranking as unreliable. `null` means the alias check itself failed. `derived_backfill_pending > 0` means some points **in the recent window** still lack the derived filter fields, and those filters under-return until it reaches zero; the archive is complete regardless. The field can also be reported by the search side as *unknown* (a failed count), which triggers the same warning **on purpose** — unknown is treated as pending, so a persistent warning during a Qdrant wobble is expected behaviour, not a bug to retry around.
+
+`derived_backfill_quarantined` counts points the backfill has given up on after repeated failed writes, **since this process started** (a restart resets it to 0 and the next few rounds rediscover them). `null` means the count is unavailable, not that it is zero. It is reported alongside `derived_backfill_pending`, never deducted from it — a quarantined point genuinely lacks its fields.
+
+Physical Qdrant collection names are intentionally absent from the contract.
 
 ## Mutate intents
 

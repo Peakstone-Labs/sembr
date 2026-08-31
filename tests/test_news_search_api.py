@@ -93,12 +93,12 @@ def sqlite_db():
 
 
 def _ready_embedder(**overrides) -> SimpleNamespace:
-    base = dict(
-        is_loaded=True,
-        model_version="bge-m3_v1",
-        max_input_chars=8000,
-        aembed=AsyncMock(return_value=[[0.1] * 4]),
-    )
+    base = {
+        "is_loaded": True,
+        "model_version": "bge-m3_v1",
+        "max_input_chars": 8000,
+        "aembed": AsyncMock(return_value=[[0.1] * 4]),
+    }
     base.update(overrides)
     return SimpleNamespace(**base)
 
@@ -383,7 +383,27 @@ def test_intent_filter_empty_set_skips_current_segment():
     assert resp.status_code == 200
     assert not qc.called(_CURRENT)
     assert qc.called(_ARCHIVE)
-    assert [h["id"] for h in resp.json()["hits"]] == ["a1"]
+    data = resp.json()
+    assert [h["id"] for h in data["hits"]] == ["a1"]
+    # …and the skip must be visible: the live match table is reset by three
+    # routine operations, so an empty result here is not evidence about the news.
+    assert any("matched no article in the recent window" in w for w in data["warnings"])
+
+
+def test_no_intent_empty_warning_when_the_set_is_non_empty():
+    qc = _FakeQdrant(semantic={_CURRENT: [], _ARCHIVE: []})
+    resp = _search(_make_app(qc), {"query": "x", "matched_intent_ids": [29]})
+    assert resp.json()["warnings"] == []
+
+
+def test_dimension_rejection_is_an_outage_not_a_caller_error():
+    """A 400 the caller cannot possibly fix must not be reported as a caller
+    error: an alias pointing at a previous model generation is an operator
+    problem, and 400 tells the agent to go on editing filters."""
+    exc = RuntimeError("Wrong input: Vector dimension error: expected dim: 1024, got 4")
+    exc.status_code = 400
+    qc = _FakeQdrant(semantic={_CURRENT: [], _ARCHIVE: exc})
+    assert _search(_make_app(qc), {"query": "x"}).status_code == 503
 
 
 def test_intent_id_set_over_cap_returns_400(monkeypatch):
@@ -535,6 +555,14 @@ def test_derived_filter_warns_while_backfill_pending():
         _make_app(qc, backfill_pending=113_000), {"query": "x", "langs": ["zh"]}
     ).json()["warnings"]
     assert any("still being backfilled" in w for w in warnings)
+    (warning,) = [w for w in warnings if "still being backfilled" in w]
+    # Only the live store has a backfill queue, and it holds the retention
+    # window — so the gap is in RECENT coverage. Saying "older articles" would
+    # send the caller the wrong way twice: trusting recent results that are
+    # short, and distrusting archived ones that are complete.
+    assert "RECENT window" in warning
+    assert "older articles" not in warning
+    assert "complete fallback" in warning
 
 
 def test_no_backfill_warning_once_converged():

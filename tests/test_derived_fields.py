@@ -16,15 +16,15 @@ from sembr.vector_store.derived_fields import build_derived_payload
 
 
 def _row(**overrides) -> PendingRow:
-    base = dict(
-        md5="a" * 32,
-        feed_id=7,
-        url="https://www.reuters.com/world/hormuz",
-        title="Fed holds rates steady",
-        body="The Federal Reserve kept rates unchanged " * 5,
-        published_at="2026-07-27T06:49:53+00:00",
-        retry_count=0,
-    )
+    base = {
+        "md5": "a" * 32,
+        "feed_id": 7,
+        "url": "https://www.reuters.com/world/hormuz",
+        "title": "Fed holds rates steady",
+        "body": "The Federal Reserve kept rates unchanged " * 5,
+        "published_at": "2026-07-27T06:49:53+00:00",
+        "retry_count": 0,
+    }
     base.update(overrides)
     return PendingRow(**base)
 
