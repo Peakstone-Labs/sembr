@@ -390,6 +390,19 @@ def test_intent_filter_empty_set_skips_current_segment():
     assert any("matched no article in the recent window" in w for w in data["warnings"])
 
 
+def test_intent_empty_warning_also_in_filter_mode():
+    """The warning is assembled from a value passed in by BOTH retrieval modes;
+    pinning only the semantic call site leaves the other one deletable. Filter
+    mode is the likelier one for this query shape — "list what this intent
+    matched recently" has no query text."""
+    qc = _FakeQdrant(listing={_ARCHIVE: [_listed("a1", 1785000000)]})
+    resp = _search(_make_app(qc), {"matched_intent_ids": [4242], "limit": 5})
+
+    assert resp.status_code == 200
+    assert not qc.called(_CURRENT)
+    assert any("matched no article in the recent window" in w for w in resp.json()["warnings"])
+
+
 def test_no_intent_empty_warning_when_the_set_is_non_empty():
     qc = _FakeQdrant(semantic={_CURRENT: [], _ARCHIVE: []})
     resp = _search(_make_app(qc), {"query": "x", "matched_intent_ids": [29]})
@@ -555,14 +568,20 @@ def test_derived_filter_warns_while_backfill_pending():
         _make_app(qc, backfill_pending=113_000), {"query": "x", "langs": ["zh"]}
     ).json()["warnings"]
     assert any("still being backfilled" in w for w in warnings)
-    (warning,) = [w for w in warnings if "still being backfilled" in w]
+    (warning,) = (w for w in warnings if "still being backfilled" in w)
     # Only the live store has a backfill queue, and it holds the retention
     # window — so the gap is in RECENT coverage. Saying "older articles" would
     # send the caller the wrong way twice: trusting recent results that are
     # short, and distrusting archived ones that are complete.
     assert "RECENT window" in warning
     assert "older articles" not in warning
-    assert "complete fallback" in warning
+    # The fallback advice must stay honest about its own scope: swapping in
+    # ingested_at_ts replaces a publication-time window, but there is no
+    # substitute for the language / domain / body-length predicates, and the
+    # affected hits carry null in exactly those fields.
+    assert "can fall back to ingested_at_ts" in warning
+    assert "have no equivalent" in warning
+    assert "complete fallback" not in warning
 
 
 def test_no_backfill_warning_once_converged():

@@ -11,8 +11,8 @@
 | `409` | Mode constraint — e.g. firing `/api/external/.../fire` on an **event-mode** intent | Either change the intent's `schedule.mode`, or use a different endpoint. Don't retry. |
 | `422` | Pydantic validation (including `extra="forbid"` on `ExternalFireRequest` and `NewsSearchRequest`) | Read `detail[].loc` and `detail[].msg` — the offending field is named explicitly. For news search, also check mode consistency and empty include filters. |
 | `429` | Rate-limited (fire endpoints: 1 / intent or feed / 60 s) | Sleep ≥60 s; check `Retry-After` if present. |
-| `502` | An operator endpoint's Qdrant query failed (e.g. `GET /api/dashboard/maintenance/qdrant_stats`) | Same class as 503: back off, retry, and report the outage. Not a request-shape problem. |
 | `500` | sembr-side error | The `detail` string on external endpoints is already scrubbed (no paths/URLs/tracebacks). Surface it to the operator; for full diagnostics check `docker compose logs api`. |
+| `502` | An operator endpoint's Qdrant query failed (e.g. `GET /api/dashboard/maintenance/qdrant_stats`) | Same class as 503: back off, retry, and report the outage. Not a request-shape problem. |
 | `503` | Service not ready/unavailable. `/health`: a component is warming or unhealthy. News search: embedder unavailable, Qdrant unreachable/rate-limited, a collection/alias missing, or the matched-intent pre-query failed. Either store failing fails the whole request — you never get half the timeline with a 200. | Retry later with bounded backoff and surface the outage. Do not rewrite filters unless the server returned 400/422. |
 
 ## Response body shapes
@@ -43,8 +43,8 @@ For the external-facing endpoints, error strings are **scrubbed before egress** 
 
 Search responses can succeed while reporting a degraded condition:
 
-- Non-empty search `warnings`: preserve and surface them with the result. They may say feed-name enrichment failed, the matched-intent lookup failed (so `matched_intents` is unfilled rather than genuinely empty), embedding generations differ, cursor pagination cannot safely exclude an unusually large same-second boundary, or derived fields are still being backfilled.
-- A backfill warning is a **recall** warning: filters on publication time, language, url domain or body length may miss articles ingested before that deployment. Those articles are in the **recent** window, not the deep archive — archived articles were enriched individually and are complete; filtering on `ingested_at_ts` instead is unaffected. Report the result as incomplete rather than presenting the short list as the answer, and note the direction — the gap is in recent coverage.
+- Non-empty search `warnings`: preserve and surface them with the result. There are six: feed-name enrichment failed; the matched-intent lookup failed (so `matched_intents` is unfilled rather than genuinely empty); `matched_intent_ids` resolved to no article in the recent window, so only archived matches were searched; embedding generations differ; cursor pagination cannot safely exclude an unusually large same-second boundary; derived fields are still being backfilled.
+- A backfill warning is a **recall** warning: filters on publication time, language, url domain or body length may miss articles ingested before that deployment. Those articles are in the **recent** window, not the deep archive — archived articles were enriched individually and are complete. Publication-time windows can fall back to `ingested_at_ts`, which is unaffected; the language, url-domain and body-length predicates have **no equivalent** while the queue is non-empty, and the affected hits carry `null` in those very fields, so client-side filtering cannot recover them either. Report the result as incomplete rather than presenting the short list as the answer, and note the direction — the gap is in recent coverage.
 - `GET /api/dashboard/maintenance/qdrant_stats` with `alias_ok=false`: semantic similarity is unreliable because the alias targets the wrong model generation.
 - `alias_ok=null`: the alias check itself failed. Treat health as unknown, not healthy.
 

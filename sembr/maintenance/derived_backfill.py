@@ -238,8 +238,13 @@ async def _run_news_derived_backfill(
 
     if state.exhausted:
         # Nothing left to try: the queue holds only points Qdrant will not
-        # accept payload writes for. Keep publishing the honest pending count
-        # so the search warning stays on, but stop spending rounds on it.
+        # accept payload writes for. This returns BEFORE the publish block, so
+        # the flag keeps whatever the round that gave up published — a non-zero
+        # raw count, hence the search warning stays on. That is the correct end
+        # state, but it is frozen: if those points later leave the collection
+        # the flag will not notice, and `exhausted` has no reset path, so
+        # recovery needs a process restart. The operator endpoint recomputes
+        # from Qdrant and is unaffected.
         _maybe_log_quarantine(state)
         return
 

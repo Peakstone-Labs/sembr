@@ -211,8 +211,11 @@ _BACKFILL_PENDING_WARNING = (
     "derived fields are still being backfilled; filters on publication time, language, "
     "url domain or body length may miss articles ingested before this deployment. "
     "Those articles are in the RECENT window, not the deep archive — archived "
-    "articles were enriched individually and are complete. Filtering on "
-    "ingested_at_ts instead is unaffected and can be used as a complete fallback"
+    "articles were enriched individually and are complete. Publication-time windows "
+    "can fall back to ingested_at_ts, which is unaffected; the language, url domain "
+    "and body length predicates have no equivalent while the queue is non-empty, and "
+    "the affected hits carry null in those fields so client-side filtering cannot "
+    "recover them either"
 )
 
 _INTENT_SET_EMPTY_WARNING = (
@@ -246,7 +249,7 @@ def _qdrant_http_error(exc: Exception, context: str) -> HTTPException:
         # an upstream message is brittle, but the failure it prevents (an
         # unfixable request presented as fixable) is worse than the failure it
         # risks (an outage reported as an outage one release later).
-        if "dimension" in raw.lower():
+        if "vector dimension error" in raw.lower():
             return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=msg)
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
     return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=msg)
@@ -499,8 +502,14 @@ async def _fill_matched_intents(
             value = payload.get("matched_intents")
             # sorted() on both sides: the field claims one meaning across the
             # whole timeline, and a point that is briefly in both stores must
-            # not change shape depending on which copy won the dedupe.
-            by_id[pid] = sorted(value) if isinstance(value, list) else []
+            # not change shape depending on which copy won the dedupe. The
+            # int filter is not decoration — this runs OUTSIDE the try below,
+            # and the live side sorts SQLite integers while this side sorts an
+            # unconstrained Qdrant payload, where a single non-int element
+            # would turn a documented degradation into a 500.
+            by_id[pid] = (
+                sorted(v for v in value if isinstance(v, int)) if isinstance(value, list) else []
+            )
     if not current_ids:
         return by_id, True
     try:

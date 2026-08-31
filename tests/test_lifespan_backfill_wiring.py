@@ -33,6 +33,24 @@ def _lifespan_ast() -> ast.AsyncFunctionDef:
     raise AssertionError("sembr/main.py no longer defines `async def lifespan`")
 
 
+def _awaited_names(fn: ast.AST) -> set[str]:
+    """Names called directly under an ``await``.
+
+    Dropping the ``await`` leaves the call site looking correct while the
+    coroutine never runs — the same end state as deleting the line, but it
+    surfaces only as a RuntimeWarning buried in the startup log.
+    """
+    names: set[str] = set()
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Await) or not isinstance(node.value, ast.Call):
+            continue
+        func = node.value.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+        if name:
+            names.add(name)
+    return names
+
+
 def _called_names_in_order(fn: ast.AST) -> list[str]:
     calls: list[tuple[int, str]] = []
     for node in ast.walk(fn):
@@ -56,6 +74,13 @@ def test_lifespan_publishes_pending_flag_before_registering_the_job():
     assert "add_news_derived_backfill_job" in names
     assert names.index("initialise_pending_flag") < names.index("add_news_derived_backfill_job"), (
         "the flag must have a value before the job that maintains it is registered"
+    )
+
+
+def test_lifespan_awaits_the_pending_flag_initialisation():
+    assert "initialise_pending_flag" in _awaited_names(_lifespan_ast()), (
+        "initialise_pending_flag is a coroutine; without `await` it never runs "
+        "and the flag is never published"
     )
 
 

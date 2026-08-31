@@ -519,15 +519,19 @@ def test_qdrant_stats_returns_both_segments(app_factory):
 
 
 def test_qdrant_stats_reports_quarantined_count_when_state_is_available(app_factory):
-    app = _with_embedder(app_factory(_stats_qdrant()))
+    app = _with_embedder(app_factory(_stats_qdrant(pending=7)))
     app.state.news_derived_backfill_state = SimpleNamespace(quarantined={"a", "b"})
     with TestClient(app) as client:
         segments = client.get("/api/dashboard/maintenance/qdrant_stats").json()["segments"]
 
     assert segments["current"]["derived_backfill_quarantined"] == 2
-    # Reported alongside, not deducted from, the pending count: a quarantined
-    # point really is missing its fields.
-    assert segments["current"]["derived_backfill_pending"] == 0
+    # 7, not 7-2. Reported alongside, never deducted from, the pending count:
+    # a quarantined point really is missing its fields, and deducting turns
+    # "no point is missing the field" into the weaker "the job thinks it is
+    # done" — the self-certifying reading this endpoint exists to avoid.
+    # Both numbers must be non-zero and different, or a deducting
+    # implementation would satisfy this assertion by accident.
+    assert segments["current"]["derived_backfill_pending"] == 7
 
 
 def test_qdrant_stats_empty_segment_reports_null_edges(app_factory):
