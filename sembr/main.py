@@ -35,7 +35,6 @@ logging.getLogger("sembr").setLevel(logging.DEBUG)
 import aiosqlite
 
 from sembr.api import settings_restart
-from sembr.api.archive import router as archive_router
 from sembr.api.external_fire import router as external_fire_router
 from sembr.api.extraction_spec import router as extraction_spec_router
 from sembr.api.feeds import router as feeds_router
@@ -46,6 +45,7 @@ from sembr.api.history import router as history_router
 from sembr.api.intents import router as intents_router
 from sembr.api.kb import router as kb_router
 from sembr.api.maintenance import router as maintenance_router
+from sembr.api.news_search import router as news_search_router
 from sembr.api.prompts import router as prompts_router
 from sembr.api.restart import router as restart_router
 from sembr.api.settings import router as settings_router
@@ -84,8 +84,10 @@ from sembr.kb.store import KbStore
 from sembr.logbus.install import install_logbus
 from sembr.maintenance import (
     add_dead_ttl_job,
+    add_news_derived_backfill_job,
     add_qdrant_ttl_job,
     add_reconcile_job,
+    initialise_pending_flag,
     manual_prune_sweep_expired,
 )
 from sembr.matcher.backfill_tasks import sweep_expired as backfill_sweep_expired
@@ -226,8 +228,9 @@ async def lifespan(app: FastAPI):
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client, embedder)
     # Archive bootstrap runs unconditionally (flag only gates the TTL
-    # migration): the /api/archive endpoints must never race a missing
-    # collection, and creating an empty one is free. Must precede router
+    # migration): /api/news/search fans out to both collections on every
+    # request and must never race a missing one, and creating an empty
+    # collection is free. Must precede router
     # service so MatchText / order_by find their payload indexes in place.
     await ensure_news_archive_collection(qdrant.client, embedder)
     # intent-match-enhancement: pass conn so the migration step (SELECT id,text FROM intents)
@@ -281,6 +284,19 @@ async def lifespan(app: FastAPI):
     add_reconcile_job(scheduler, qdrant, settings)
     add_qdrant_ttl_job(scheduler, qdrant, settings)
     add_dead_ttl_job(scheduler, settings)
+    # The derived-field backfill is deliberately NOT one of those three: it runs
+    # on its own 30-minute cadence with a 2-minute first fire, because a round
+    # cut short by its wall-clock budget has to resume in minutes — until it
+    # converges, every search using a derived-field filter carries an
+    # under-recall warning. Its 2-minute offset also keeps it clear of the
+    # 5/15/25 cluster.
+    #
+    # The pending flag is initialised HERE rather than left to the job's first
+    # round: that two-minute gap — or forever, if job registration failed —
+    # would otherwise serve derived-field queries against an unbackfilled
+    # collection with no warning at all.
+    await initialise_pending_flag(app, qdrant)
+    add_news_derived_backfill_job(scheduler, qdrant, app)
     # Sweep expired fire tasks every 5 minutes
     from apscheduler.triggers.interval import IntervalTrigger as _IT  # noqa: PLC0415
 
@@ -469,7 +485,7 @@ app.include_router(settings_router)
 app.include_router(dashboard_router)
 app.include_router(restart_router)
 app.include_router(maintenance_router)
-app.include_router(archive_router)
+app.include_router(news_search_router)
 app.include_router(logs_router)
 
 

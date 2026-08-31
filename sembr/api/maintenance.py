@@ -4,6 +4,7 @@
 Endpoints (prefix `/api/dashboard/maintenance`, gated by
 ``DashboardTokenMiddleware``):
 
+- ``GET  /qdrant_stats``                        per-segment vector-store health
 - ``GET  /feed_universe``                       feed picker data
 - ``POST /manual_prune``                        create planning task
 - ``GET  /manual_prune/{task_id}``              poll task state
@@ -25,7 +26,9 @@ from pydantic import BaseModel, Field
 from sembr.db.sqlite import get_conn
 from sembr.maintenance import manual_prune
 from sembr.maintenance import tasks as mp_tasks
-from sembr.vector_store.news import ALIAS_NAME
+from sembr.maintenance.derived_backfill import count_pending_derived
+from sembr.vector_store.news import ALIAS_NAME, collection_name
+from sembr.vector_store.news_archive import ARCHIVE_ALIAS, archive_collection_name
 
 logger = logging.getLogger(__name__)
 
@@ -163,3 +166,93 @@ async def post_manual_prune_confirm(request: Request, task_id: str) -> dict[str,
     task.status = "applying"
     _spawn(manual_prune.run_applying(task, qdrant))
     return {"task_id": task.task_id, "status": task.status}
+
+
+# ---------------------------------------------------------------------------
+# Vector-store health
+#
+# `/api/news/search` hides the two-collection split from callers on purpose.
+# Operations is the one audience that must see it: the container's memory
+# ceiling is shared, so "RSS is climbing" is only actionable once you know
+# WHICH store is growing. Hence per-segment counts here and nowhere else.
+# ---------------------------------------------------------------------------
+
+_STATS_SEGMENTS = ("current", "archive")
+
+
+async def _segment_stats(client: Any, alias: str, expected_collection: str) -> dict[str, Any]:
+    async def _edge_ts(direction: str) -> int | None:
+        points, _ = await client.scroll(
+            collection_name=alias,
+            with_payload=True,
+            with_vectors=False,
+            order_by={"key": "ingested_at_ts", "direction": direction},
+            limit=1,
+        )
+        if not points:
+            return None
+        ts = (points[0].payload or {}).get("ingested_at_ts")
+        return ts if isinstance(ts, int) else None
+
+    async def _alias_ok() -> bool | None:
+        # Health bit for the silent-degradation window when an alias points at
+        # a different model generation than the live embedder (semantic scores
+        # unreliable / migrations may fail on dimension mismatch). Boolean
+        # only — physical collection names stay out of the contract.
+        try:
+            aliases = await client.get_aliases()
+            target = {a.alias_name: a.collection_name for a in aliases.aliases}.get(alias)
+            if target is None:
+                return False
+            return target == expected_collection
+        except Exception:
+            logger.warning("qdrant_stats: alias check failed for %r", alias, exc_info=True)
+            return None
+
+    count_result = await client.count(collection_name=alias, exact=True)
+    return {
+        "points_count": count_result.count,
+        "earliest_ingested_at_ts": await _edge_ts("asc"),
+        "latest_ingested_at_ts": await _edge_ts("desc"),
+        "alias_ok": await _alias_ok(),
+    }
+
+
+@router.get("/qdrant_stats")
+async def get_qdrant_stats(request: Request) -> dict[str, Any]:
+    """Point counts, ingestion time ranges and alias health, per segment.
+
+    Independent of the retention job's own log counters, so migration
+    conservation can be reconciled from two sides. ``derived_backfill_pending``
+    is recomputed from Qdrant on every call rather than read back from the
+    backfill job's published flag — "the job says it finished" and "no point is
+    missing the field" are different claims, and only the second one is the
+    acceptance criterion.
+    """
+    qdrant = getattr(request.app.state, "qdrant", None)
+    if qdrant is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Qdrant not initialised",
+        )
+    client = qdrant.client
+    model_version = request.app.state.embedder.model_version
+    expected = {
+        "current": (ALIAS_NAME, collection_name(model_version)),
+        "archive": (ARCHIVE_ALIAS, archive_collection_name(model_version)),
+    }
+
+    segments: dict[str, Any] = {}
+    try:
+        for name in _STATS_SEGMENTS:
+            alias, expected_collection = expected[name]
+            segments[name] = await _segment_stats(client, alias, expected_collection)
+        segments["current"]["derived_backfill_pending"] = await count_pending_derived(client)
+    except Exception as exc:
+        logger.exception("qdrant_stats: query failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Qdrant stats failed: {str(exc)[:200]}",
+        ) from exc
+
+    return {"segments": segments}

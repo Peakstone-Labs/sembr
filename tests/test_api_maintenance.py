@@ -10,6 +10,7 @@ import tempfile
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -436,3 +437,131 @@ def test_manual_prune_confirm_unauthenticated_returns_401(app_with_auth_factory)
     with TestClient(app) as c:
         resp = c.post("/api/dashboard/maintenance/manual_prune/any-task-id/confirm")
         assert resp.status_code == 401, resp.text
+
+
+# ---------------------------------------------------------------------------
+# qdrant_stats (moved here from /api/archive/stats)
+# ---------------------------------------------------------------------------
+
+
+def _stats_qdrant(
+    *,
+    counts: dict[str, int] | None = None,
+    edges: dict[str, list[int]] | None = None,
+    aliases: dict[str, str] | None = None,
+    pending: int = 0,
+) -> MagicMock:
+    """Per-collection stub. `counts` are the plain point counts; the pending
+    count is recognised by its filter (the backfill queue query) rather than by
+    call order, so a reordering in the endpoint cannot silently swap them."""
+    counts = counts or {"news_current": 113_000, "news_archive": 42}
+    edges = edges or {"news_current": [1785000000, 1786000000], "news_archive": [1, 2]}
+    aliases = (
+        aliases
+        if aliases is not None
+        else {
+            "news_current": "news_bge-m3_v1",
+            "news_archive": "news_archive_bge-m3_v1",
+        }
+    )
+
+    q = MagicMock()
+
+    async def fake_count(**kwargs):
+        if kwargs.get("count_filter") is not None:
+            return SimpleNamespace(count=pending)
+        return SimpleNamespace(count=counts[kwargs["collection_name"]])
+
+    async def fake_scroll(**kwargs):
+        lo, hi = edges[kwargs["collection_name"]]
+        ts = lo if kwargs["order_by"]["direction"] == "asc" else hi
+        return [SimpleNamespace(id="x", payload={"ingested_at_ts": ts})], None
+
+    async def fake_get_aliases():
+        return SimpleNamespace(
+            aliases=[SimpleNamespace(alias_name=a, collection_name=c) for a, c in aliases.items()]
+        )
+
+    q.client.count = AsyncMock(side_effect=fake_count)
+    q.client.scroll = AsyncMock(side_effect=fake_scroll)
+    q.client.get_aliases = AsyncMock(side_effect=fake_get_aliases)
+    return q
+
+
+def _with_embedder(app: FastAPI, model_version: str = "bge-m3_v1") -> FastAPI:
+    app.state.embedder = SimpleNamespace(model_version=model_version)
+    return app
+
+
+def test_qdrant_stats_returns_both_segments(app_factory):
+    """D16: search hides the sharding; operations cannot. A climbing container
+    RSS is only actionable once you know which store is growing."""
+    app = _with_embedder(app_factory(_stats_qdrant(pending=7)))
+    with TestClient(app) as client:
+        resp = client.get("/api/dashboard/maintenance/qdrant_stats")
+
+    assert resp.status_code == 200, resp.text
+    segments = resp.json()["segments"]
+    assert set(segments) == {"current", "archive"}
+    assert segments["current"]["points_count"] == 113_000
+    assert segments["current"]["earliest_ingested_at_ts"] == 1785000000
+    assert segments["current"]["latest_ingested_at_ts"] == 1786000000
+    assert segments["current"]["alias_ok"] is True
+    assert segments["current"]["derived_backfill_pending"] == 7
+    assert segments["archive"]["points_count"] == 42
+    assert segments["archive"]["alias_ok"] is True
+    # The pending count belongs to the live store only; the archive was
+    # enriched at migration time and has no backfill queue.
+    assert "derived_backfill_pending" not in segments["archive"]
+
+
+def test_qdrant_stats_alias_ok_false_on_generation_mismatch(app_factory):
+    q = _stats_qdrant(
+        aliases={"news_current": "news_bge-m3_v0", "news_archive": "news_archive_bge-m3_v1"}
+    )
+    app = _with_embedder(app_factory(q))
+    with TestClient(app) as client:
+        segments = client.get("/api/dashboard/maintenance/qdrant_stats").json()["segments"]
+
+    assert segments["current"]["alias_ok"] is False
+    assert segments["archive"]["alias_ok"] is True
+
+
+def test_qdrant_stats_alias_ok_none_when_check_fails(app_factory):
+    q = _stats_qdrant()
+    q.client.get_aliases = AsyncMock(side_effect=RuntimeError("boom"))
+    app = _with_embedder(app_factory(q))
+    with TestClient(app) as client:
+        segments = client.get("/api/dashboard/maintenance/qdrant_stats").json()["segments"]
+
+    assert segments["current"]["alias_ok"] is None
+    assert segments["archive"]["alias_ok"] is None
+
+
+def test_qdrant_stats_qdrant_failure_is_502(app_factory):
+    q = _stats_qdrant()
+    q.client.count = AsyncMock(side_effect=RuntimeError("qdrant down"))
+    app = _with_embedder(app_factory(q))
+    with TestClient(app) as client:
+        resp = client.get("/api/dashboard/maintenance/qdrant_stats")
+
+    assert resp.status_code == 502
+
+
+def test_qdrant_stats_unauthenticated_returns_401(app_with_auth_factory):
+    """Own 401 assertion rather than borrowing a sibling endpoint's: the gate
+    is path-based, so a route move would silently drop this one out of a
+    "representative" test's reach."""
+    app = _with_embedder(app_with_auth_factory(_stats_qdrant()))
+    with TestClient(app) as client:
+        assert client.get("/api/dashboard/maintenance/qdrant_stats").status_code == 401
+
+
+def test_qdrant_stats_authenticated_succeeds(app_with_auth_factory):
+    app = _with_embedder(app_with_auth_factory(_stats_qdrant()))
+    with TestClient(app) as client:
+        resp = client.get(
+            "/api/dashboard/maintenance/qdrant_stats",
+            headers={"X-Dashboard-Token": "secret-test-token"},
+        )
+    assert resp.status_code == 200, resp.text
