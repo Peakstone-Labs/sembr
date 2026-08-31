@@ -11,38 +11,55 @@ Authoritative schema: `GET /openapi.json`. This page is a curated subset trackin
 | `GET /intents/{id}` | Full record for one intent. |
 | `GET /feeds` | List every feed (RSS / NewsAPI / Twitter). |
 
-## Permanent news archive (read-only)
+## News search (read-only)
 
-The archive contains articles that retention has moved out of `news_current`. These endpoints never send notifications and never write `match_seen`.
+One endpoint over the whole news timeline — recent and historical alike. It never sends notifications and never writes `match_seen`.
 
 | Method & path | Purpose |
 | --- | --- |
-| `POST /api/archive/search` | Semantic retrieval when the JSON body contains a non-blank `query`; otherwise newest-first filtered listing. Request/response shapes: `schemas.md`. |
-| `GET /api/archive/stats` | Exact point count, oldest/newest ingestion timestamps, and `alias_ok` health bit. |
+| `POST /api/news/search` | Semantic retrieval when the JSON body contains a non-blank `query`; otherwise newest-first filtered listing. Request/response shapes: `schemas.md`. |
+| `GET /api/dashboard/maintenance/qdrant_stats` | Operator view: per-store point counts, ingestion time ranges, alias health, backfill queue depth. |
 
-Both endpoints require `X-Dashboard-Token` when authentication is configured.
+Both require `X-Dashboard-Token` when authentication is configured.
+
+Storage is internally split between a live store and a permanent archive, and the search endpoint hides that completely: it queries both and returns one ranked list. There is no `scope` parameter and no marker on a hit. To restrict by age, use the time-range filters.
 
 Retrieval-mode rules:
 
 - **Semantic mode**: send `query`; paginate/deepen by sending prior point ids in `exclude_ids`. `min_score` is valid only in this mode. There is no cursor.
 - **Filter mode**: omit `query`; a full page returns `next_cursor`. Pass that object back verbatim. Results are ordered newest-first by `ingested_at_ts`.
 - Filters work in both modes: ingestion/publish time ranges, feed include/exclude, title keyword, URL domain, minimum body length, previously matched intent, and language.
-- The archive excludes still-live `news_current` articles. For a current stored intent, use `/api/external/intents/{id}/fire`; query both surfaces when the task spans historical and current coverage.
+- One page can span both stores; the cursor is a single object either way. Do not try to page the two stores separately.
+- `matched_intent_ids` works across the whole timeline. For recent articles it resolves against the live `match_seen` table; for archived ones against the snapshot taken at archive time. Event-mode intents never write `match_seen` and therefore never appear.
+- For "what would this stored intent match right now", use `/api/external/intents/{id}/fire` instead — that runs the intent's own vector and threshold.
 
-Search returns `mode`, `hits`, `warnings`, and `next_cursor`. Always surface non-empty `warnings`: they distinguish degraded feed-name lookup, an embedding model mismatch, or a pagination boundary too large to exclude safely.
+Search returns `mode`, `hits`, `warnings`, and `next_cursor`. Always surface non-empty `warnings`: they distinguish degraded feed-name lookup, a degraded matched-intent lookup, an embedding model mismatch, a pagination boundary too large to exclude safely, and a derived-field backfill still in progress (in which case filters on publication time, language, url domain or body length may under-return older articles).
 
-`GET /api/archive/stats` returns:
+A failure in either store fails the whole request rather than returning half the timeline with a 200, so a successful response is always a complete answer for the filters you sent.
+
+`GET /api/dashboard/maintenance/qdrant_stats` returns:
 
 ```jsonc
 {
-  "points_count": 12345,
-  "earliest_ingested_at_ts": 1780000000,
-  "latest_ingested_at_ts": 1785000000,
-  "alias_ok": true
+  "segments": {
+    "current": {
+      "points_count": 113000,
+      "earliest_ingested_at_ts": 1780000000,
+      "latest_ingested_at_ts": 1785000000,
+      "alias_ok": true,
+      "derived_backfill_pending": 0
+    },
+    "archive": {
+      "points_count": 12345,
+      "earliest_ingested_at_ts": 1770000000,
+      "latest_ingested_at_ts": 1779999999,
+      "alias_ok": true
+    }
+  }
 }
 ```
 
-`alias_ok=false` means the stable alias does not target the collection for the live embedder generation; treat semantic ranking as unreliable. `null` means the alias check itself failed. Physical Qdrant collection names are intentionally absent from the API contract.
+This is the operator surface, so it does expose the storage split — the search contract does not. `alias_ok=false` means the stable alias does not target the collection for the live embedder generation; treat semantic ranking as unreliable. `null` means the alias check itself failed. `derived_backfill_pending > 0` means some older points still lack the derived filter fields and those filters under-return until it reaches zero. Physical Qdrant collection names are intentionally absent from the contract.
 
 ## Mutate intents
 

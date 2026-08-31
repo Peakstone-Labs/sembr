@@ -24,7 +24,7 @@ BASE = http://<host>:<port>           # default http://localhost:8000
   ```
   X-Dashboard-Token: <token>
   ```
-  Wrong/missing → 401 on gated paths. Empty `DASHBOARD_TOKEN` bypasses auth entirely (local-dev only). When the token is set, every path under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external`, and `/api/archive` (and the corresponding bare paths) is gated. Only `/health` and `/api/dashboard/config` are unauthenticated by design (so monitors and the login page can bootstrap without a token).
+  Wrong/missing → 401 on gated paths. Empty `DASHBOARD_TOKEN` bypasses auth entirely (local-dev only). When the token is set, every path under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external`, and `/api/news` (and the corresponding bare paths) is gated. Only `/health` and `/api/dashboard/config` are unauthenticated by design (so monitors and the login page can bootstrap without a token).
 - Every POST/PUT/PATCH body is JSON. Set `Content-Type: application/json`.
 
 ## 3. Decision — which "fire" endpoint?
@@ -39,11 +39,18 @@ This is the question agents get wrong most often.
 
 Both intent-fire paths are **cron-mode only** — event-mode intents return **409**. Rate limit: **1 per intent (or feed) per 60 s** → 429.
 
-### Archive search versus intent fire
+### News search versus intent fire
 
-Use `POST /api/archive/search` when the user wants older coverage retrieved by an ad-hoc topic or metadata filters. It is read-only: no notifier, no `match_seen` writes, and no rate-limit side effect. It returns source articles, not an LLM summary.
+Use `POST /api/news/search` when the user wants coverage retrieved by an ad-hoc topic or metadata filters. It is read-only: no notifier, no `match_seen` writes, and no rate-limit side effect. It returns source articles, not an LLM summary.
 
-The archive contains articles already retired from `news_current`; it is not a complete view of current news. Use `/api/external/intents/{id}/fire` to diagnose a stored intent against the current searchable window. If the user needs both historical and current coverage, query both surfaces and label which result came from which store.
+**One call covers the whole timeline.** Recent and historical articles live in two separate vector stores, but that is an internal detail: the endpoint queries both and returns one ranked list. There is no `scope` parameter, nothing in a hit says which store it came from, and you must not try to reconstruct the split — to restrict by age, use the `ingested_*` / `published_*` time filters.
+
+Use `/api/external/intents/{id}/fire` instead when the question is "what would this *stored intent* match right now" — that path runs the intent's own vector and threshold, and returns an LLM summary.
+
+Two properties of `matched_intents` are worth knowing before you read into it:
+
+- **Freshness differs by age.** For recent articles the list is read live from `match_seen`, so deleting an intent makes it disappear. For older articles it was frozen when the article was archived, so it can still name an intent that no longer exists. Both are correct; neither is a bug.
+- **Event-mode intents never appear in it.** They match through a different path that does not write `match_seen`, so an article matched by an event-mode intent shows `matched_intents: []` at every age.
 
 ## 4. Workflow signposts
 
@@ -51,7 +58,7 @@ When the user asks for…
 
 - **The full endpoint list** (and which writes vs. reads) → read [`references/endpoints.md`](references/endpoints.md).
 - **To create an intent or feed** (body shape, threshold range, schedule modes, channel discriminated union, source-type configs) → read [`references/schemas.md`](references/schemas.md), then `POST /intents` or `POST /feeds`.
-- **To search/list historical news or inspect archive health** → read the archive sections in [`references/endpoints.md`](references/endpoints.md) and [`references/schemas.md`](references/schemas.md).
+- **To search/list news across the whole timeline, or inspect vector-store health** → read the news-search sections in [`references/endpoints.md`](references/endpoints.md) and [`references/schemas.md`](references/schemas.md).
 - **Copy-pasteable curl or Python `httpx` recipes** (create intent, sync-fire, async-fire with polling loop, dry-run a new feed) → read [`references/recipes.md`](references/recipes.md).
 - **To interpret an HTTP error** (401 / 409 / 422 / 429 / 503, response body shape) → read [`references/errors.md`](references/errors.md).
 - **A discovery / sanity check** → `GET /health` (no auth), `GET /intents`, `GET /feeds`. If `/health` returns 503, the embedder probe is still warming — sleep 30 s and retry.
@@ -66,9 +73,10 @@ For anything not covered here, the authoritative schema is `GET /openapi.json`. 
 - **Don't `DELETE` intents or feeds without confirming.** Intent delete cascades `match_seen` and isn't reversible from the API.
 - **Honour the rate limit.** 429 means sleep ≥60 s, not retry harder. Check `Retry-After` if present.
 - **Don't commit / store `DASHBOARD_TOKEN`.** It's per-deployment.
-- **Send `X-Dashboard-Token` on every request.** The only token-free paths today are `/health` and `/api/dashboard/config`; operational paths under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external`, and `/api/archive` 401 without it when a token is configured.
-- **Don't call Qdrant directly for archive research.** Use `/api/archive/*`; it owns query embedding, stable aliases, validation, feed-name enrichment, and model-generation warnings.
-- **Don't silently discard archive `warnings`.** Surface them with the results. If `/api/archive/stats` reports `alias_ok=false` or a search warns of an embedding-generation mismatch, semantic scores are unreliable; report the condition instead of presenting a confident ranking.
+- **Send `X-Dashboard-Token` on every request.** The only token-free paths today are `/health` and `/api/dashboard/config`; operational paths under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external`, and `/api/news` 401 without it when a token is configured.
+- **Don't call Qdrant directly for news research.** Use `POST /api/news/search`; it owns query embedding, the two-store fan-out, stable aliases, validation, feed-name enrichment, and model-generation warnings. Reading the collections yourself gets you half the timeline.
+- **Don't silently discard search `warnings`.** Surface them with the results. A warning about an embedding-generation mismatch means semantic scores are unreliable; a warning that derived fields are still being backfilled means filters on publication time, language, url domain or body length may under-return older articles — say so rather than presenting the short list as complete.
+- **Don't read `GET /api/dashboard/maintenance/qdrant_stats` as a search surface.** It is the operator's view and deliberately exposes the storage split; `alias_ok=false` there means semantic ranking is unreliable, and a non-zero `derived_backfill_pending` means the same under-recall the search warning describes.
 
 ## 6. Discovery and version
 

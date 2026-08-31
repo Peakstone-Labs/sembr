@@ -86,7 +86,7 @@ async def test_ensure_news_collection_idempotent_when_collection_exists():
 
 @pytest.mark.asyncio
 async def test_ensure_news_collection_creates_new_indexes():
-    """Design D17: the four derived-field indexes exist on `news_current` with
+    """The four derived-field indexes exist on `news_current` with
     the same range/lookup split as `news_archive`, but WITHOUT `on_disk` —
     this is the hot, retention-bounded collection, so its indexes stay
     resident. A silently-added `on_disk=True` would push matcher-tick filter

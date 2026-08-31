@@ -429,7 +429,7 @@ def _segments_to_query(req: NewsSearchRequest, intent_article_ids: list[str]) ->
 
 
 def _pending_warning(request: Request, req: NewsSearchRequest) -> str | None:
-    """D15: derived-field filters under-return until the backfill converges.
+    """Derived-field filters under-return until the backfill converges.
 
     A missing or unknown flag counts as pending. The alternative — assuming
     "no news is good news" — would restore exactly the silent gap the flag

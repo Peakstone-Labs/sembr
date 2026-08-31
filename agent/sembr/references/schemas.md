@@ -1,6 +1,6 @@
 # Request body schemas
 
-The bodies agents most often construct are `IntentCreate`, `FeedCreate`, `ExternalFireRequest`, and `ArchiveSearchRequest`. Fields not marked optional are required by the server.
+The bodies agents most often construct are `IntentCreate`, `FeedCreate`, `ExternalFireRequest`, and `NewsSearchRequest`. Fields not marked optional are required by the server.
 
 ## `IntentCreate`
 
@@ -119,7 +119,7 @@ Every field optional — omitted fields fall back to the intent's stored values.
 }
 ```
 
-## `ArchiveSearchRequest` (body for `POST /api/archive/search`)
+## `NewsSearchRequest` (body for `POST /api/news/search`)
 
 Every field is optional and unknown fields are rejected (`extra="forbid"`). A non-blank `query` selects semantic mode; omitting it selects newest-first filter mode.
 
@@ -139,7 +139,7 @@ Every field is optional and unknown fields are rejected (`extra="forbid"`). A no
   "title_contains": "Federal Reserve",   // blank is invalid
   "url_domains": ["reuters.com"],        // [] is invalid
   "min_body_len": 1000,                   // ≥0
-  "matched_intent_ids": [29],             // intent ids captured at archive time; [] is invalid
+  "matched_intent_ids": [29],             // live for recent articles, frozen snapshot for old ones; [] is invalid
   "langs": ["zh", "en"],                // [] is invalid
 
   "include_body": false,                  // default true; body_len remains present
@@ -154,10 +154,11 @@ Mode consistency is strict:
 
 - `min_score` without a semantic `query` → 422.
 - `cursor` together with `query` → 422; semantic deepening uses `exclude_ids`.
-- Empty include filters (`feed_ids`, `url_domains`, `matched_intent_ids`, `langs`) and blank `title_contains` → 422 because silently treating them as “no filter” could expose the whole archive.
+- Empty include filters (`feed_ids`, `url_domains`, `matched_intent_ids`, `langs`) and blank `title_contains` → 422 because silently treating them as “no filter” would return the whole corpus as if filtered.
+- `matched_intent_ids` selecting more than 20 000 articles → 400. That ceiling comes from the number of intents you asked for, **not** from the time window — narrowing `ingested_from_ts` will not reduce it; ask for fewer intents.
 - Empty exclusion lists are valid and mean no exclusion.
 
-### `ArchiveSearchResponse`
+### `NewsSearchResponse`
 
 ```jsonc
 {
@@ -178,8 +179,7 @@ Mode consistency is strict:
       "lang": "en",
       "body_len": 4210,
       "matched_intents": [29, 34],
-      "embedding_model_version": "bge-m3_v1",
-      "archived_at_ts": 1787141000
+      "embedding_model_version": "bge-m3_v1"
     }
   ],
   "warnings": [],
@@ -187,15 +187,30 @@ Mode consistency is strict:
 }
 ```
 
-`feed_name` is best-effort. A null value means either the feed no longer exists or name resolution degraded; check `warnings` before deciding which.
+`feed_name` is best-effort. A null value means either the feed no longer exists or name resolution degraded; check `warnings` before deciding which. The same applies to `matched_intents`: an empty list normally means the article matched no cron-mode intent, but a `warnings` entry about a failed matched-intent lookup means the field is simply unfilled.
 
-### `ArchiveStatsResponse` (`GET /api/archive/stats`)
+Nothing in a hit indicates which store it came from — that is deliberate, and there is no field to add for it.
+
+### `qdrant_stats` (`GET /api/dashboard/maintenance/qdrant_stats`)
+
+Operator surface, not a search surface; unlike the search contract it does expose the storage split.
 
 ```jsonc
 {
-  "points_count": 12345,
-  "earliest_ingested_at_ts": 1780000000,
-  "latest_ingested_at_ts": 1785000000,
-  "alias_ok": true                        // false=mismatch; null=check failed
+  "segments": {
+    "current": {
+      "points_count": 113000,
+      "earliest_ingested_at_ts": 1780000000,
+      "latest_ingested_at_ts": 1785000000,
+      "alias_ok": true,                   // false=mismatch; null=check failed
+      "derived_backfill_pending": 0       // >0 ⇒ derived-field filters under-return
+    },
+    "archive": {
+      "points_count": 12345,
+      "earliest_ingested_at_ts": 1770000000,
+      "latest_ingested_at_ts": 1779999999,
+      "alias_ok": true
+    }
+  }
 }
 ```

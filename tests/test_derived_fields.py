@@ -45,7 +45,7 @@ def test_build_derived_payload_full():
 
 
 def test_build_derived_payload_omits_unparseable():
-    """Design D5: unparseable time / URL leave the key ABSENT, not None."""
+    """Unparseable time / URL leave the key ABSENT, not None."""
     derived = build_derived_payload(
         {
             "title": "无时间戳的稿件",
@@ -78,7 +78,7 @@ def test_build_derived_payload_non_string_title_and_body():
 
 
 def test_to_point_writes_four_derived_fields():
-    """Design D3: the ingest path stamps derived fields, so new points are
+    """The ingest path stamps derived fields, so new points are
     filterable without waiting for the backfill job."""
     point = _to_point(_row(), [0.1] * 4, "bge-m3_v1")
     payload = point.payload

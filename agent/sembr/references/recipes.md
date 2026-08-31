@@ -99,12 +99,12 @@ echo "${STATE}" | jq .
 curl -s "${BASE}/feeds" "${H_TOKEN[@]}" | jq '.[] | {id, name, source_type, poll_interval_minutes, tags}'
 ```
 
-## Search the permanent archive semantically
+## Search the news semantically
 
-This searches retired historical articles and has no notifier or `match_seen` side effect. It does not include articles still in `news_current`.
+One call covers the whole timeline — recent and historical articles alike. Read-only: no notifier, no `match_seen` writes, no rate limit.
 
 ```bash
-ARCHIVE=$(curl -s -X POST "${BASE}/api/archive/search" "${H_JSON[@]}" "${H_TOKEN[@]}" -d '{
+NEWS=$(curl -s -X POST "${BASE}/api/news/search" "${H_JSON[@]}" "${H_TOKEN[@]}" -d '{
   "query": "美联储官员对降息路径的表态",
   "limit": 10,
   "min_score": 0.50,
@@ -112,30 +112,30 @@ ARCHIVE=$(curl -s -X POST "${BASE}/api/archive/search" "${H_JSON[@]}" "${H_TOKEN
   "include_body": false
 }')
 
-echo "${ARCHIVE}" | jq '{warnings, hits: [.hits[] | {id, score, title, url, lang, feed_name}]}'
+echo "${NEWS}" | jq '{warnings, hits: [.hits[] | {id, score, title, url, lang, feed_name}]}'
 ```
 
 For another semantic page, collect the returned ids and send them as `exclude_ids`; semantic mode never uses `cursor`:
 
 ```bash
-EXCLUDE=$(echo "${ARCHIVE}" | jq -c '[.hits[].id]')
+EXCLUDE=$(echo "${NEWS}" | jq -c '[.hits[].id]')
 jq -n --argjson ids "${EXCLUDE}" '{
   query: "美联储官员对降息路径的表态",
   limit: 10,
   min_score: 0.50,
   exclude_ids: $ids,
   include_body: false
-}' | curl -s -X POST "${BASE}/api/archive/search" "${H_JSON[@]}" "${H_TOKEN[@]}" --data-binary @- | jq .
+}' | curl -s -X POST "${BASE}/api/news/search" "${H_JSON[@]}" "${H_TOKEN[@]}" --data-binary @- | jq .
 ```
 
-Always report non-empty `warnings` alongside the hits.
+Always report non-empty `warnings` alongside the hits — one of them means the result may be missing older articles.
 
-## List/filter the archive with cursor pagination
+## List/filter news with cursor pagination
 
-Omitting `query` selects newest-first filter mode. Pass `next_cursor` back verbatim; do not convert it into a Qdrant offset.
+Omitting `query` selects newest-first filter mode. Pass `next_cursor` back verbatim; do not convert it into a Qdrant offset, and do not try to page the two internal stores separately — one cursor covers both.
 
 ```bash
-PAGE=$(curl -s -X POST "${BASE}/api/archive/search" "${H_JSON[@]}" "${H_TOKEN[@]}" -d '{
+PAGE=$(curl -s -X POST "${BASE}/api/news/search" "${H_JSON[@]}" "${H_TOKEN[@]}" -d '{
   "langs": ["zh"],
   "url_domains": ["reuters.com"],
   "limit": 50,
@@ -151,17 +151,17 @@ if [ "${CURSOR}" != "null" ]; then
     limit: 50,
     include_body: false,
     cursor: $cursor
-  }' | curl -s -X POST "${BASE}/api/archive/search" "${H_JSON[@]}" "${H_TOKEN[@]}" --data-binary @- | jq .
+  }' | curl -s -X POST "${BASE}/api/news/search" "${H_JSON[@]}" "${H_TOKEN[@]}" --data-binary @- | jq .
 fi
 ```
 
-## Inspect archive health and size
+## Inspect vector-store health and size
 
 ```bash
-curl -s "${BASE}/api/archive/stats" "${H_TOKEN[@]}" | jq .
+curl -s "${BASE}/api/dashboard/maintenance/qdrant_stats" "${H_TOKEN[@]}" | jq .
 ```
 
-Proceed with semantic ranking only when `alias_ok` is `true`. `false` means an embedding-generation mismatch; `null` means the alias check failed.
+Operator surface: it reports each store separately, unlike search. Proceed with semantic ranking only when every `alias_ok` is `true` — `false` means an embedding-generation mismatch, `null` means the check itself failed. A non-zero `derived_backfill_pending` means filters on publication time, language, url domain or body length still under-return older articles.
 
 ## Add an RSS feed and dry-run it
 
@@ -233,16 +233,16 @@ with httpx.Client(base_url=BASE, headers=HEADERS, timeout=30.0) as c:
     elif result["match_count"] > 50:
         _json(c.put(f"/intents/{intent_id}", json={"threshold": 0.68}))
 
-    # 5. Pull historical coverage from the permanent archive (read-only).
-    archive = _json(c.post("/api/archive/search", json={
+    # 5. Pull broader coverage from the whole news timeline (read-only).
+    news = _json(c.post("/api/news/search", json={
         "query": "Federal Reserve policy impact on emerging-market currencies",
         "limit": 10,
         "min_score": 0.50,
         "include_body": False,
     }))
-    for warning in archive["warnings"]:
-        print("archive warning:", warning)
-    for hit in archive["hits"]:
+    for warning in news["warnings"]:
+        print("search warning:", warning)
+    for hit in news["hits"]:
         print(f"  {hit['score']:.3f}  {hit['title']}  ({hit['url']})")
 
     # 6. Done — daily 07:30 NY-time cron takes over.

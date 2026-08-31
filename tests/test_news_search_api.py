@@ -233,7 +233,7 @@ def test_semantic_merges_two_segments_desc():
 
 
 def test_semantic_merge_equals_union_topk():
-    """R4: the merged page must equal top-k over the union of both stores.
+    """The merged page must equal top-k over the union of both stores.
 
     Positive control on the same data: taking only one segment does NOT equal
     the union's top-k, so the assertion is not passing for free.
@@ -261,7 +261,7 @@ def test_semantic_merge_equals_union_topk():
 
 
 def test_merge_dedupes_by_id_current_wins():
-    """D11: mid-migration a point exists in both stores. It must appear once,
+    """Mid-migration a point exists in both stores. It must appear once,
     and the surviving copy must be the live one — otherwise the answer would
     depend on how far the retention job has progressed."""
     qc = _FakeQdrant(
@@ -280,7 +280,7 @@ def test_merge_dedupes_by_id_current_wins():
 
 
 def test_response_has_no_shard_markers():
-    """D2: neither the response nor the request schema may name a store."""
+    """Neither the response nor the request schema may name a store."""
     qc = _FakeQdrant(semantic={_CURRENT: [_scored("cur-1", 0.5, archived_at_ts=1790000000)]})
     resp = _search(_make_app(qc), {"query": "x"})
 
@@ -344,7 +344,7 @@ def test_semantic_filter_construction():
 
 
 def test_filter_passed_to_client_is_real_qdrant_model():
-    """R7: catches a test-suite stub that replaced qdrant_client.models with
+    """Catches a test-suite stub that replaced qdrant_client.models with
     duck types — every filter assertion in this file would then be vacuous."""
     qc = _FakeQdrant(semantic={_CURRENT: [], _ARCHIVE: []})
     _search(_make_app(qc), {"query": "x", "feed_ids": [1]})
@@ -352,7 +352,7 @@ def test_filter_passed_to_client_is_real_qdrant_model():
 
 
 def test_intent_filter_current_uses_has_id_from_sqlite():
-    """D7: the current store keeps no matched-intent payload, so the filter is
+    """The current store keeps no matched-intent payload, so the filter is
     the article-id set read live from match_seen."""
     qc = _FakeQdrant(semantic={_CURRENT: [], _ARCHIVE: []})
     resp = _search(_make_app(qc), {"query": "x", "matched_intent_ids": [29]})
@@ -375,7 +375,7 @@ def test_intent_filter_archive_uses_payload_match_any():
 
 
 def test_intent_filter_empty_set_skips_current_segment():
-    """D8: `has_id: []` has no defined "restrict to nothing" meaning, so the
+    """`has_id: []` has no defined "restrict to nothing" meaning, so the
     segment is not queried at all."""
     qc = _FakeQdrant(semantic={_ARCHIVE: [_scored("a1", 0.5)]})
     resp = _search(_make_app(qc), {"query": "x", "matched_intent_ids": [4242]})
@@ -387,7 +387,7 @@ def test_intent_filter_empty_set_skips_current_segment():
 
 
 def test_intent_id_set_over_cap_returns_400(monkeypatch):
-    """D9: silently truncating the id set would under-return with no signal."""
+    """Silently truncating the id set would under-return with no signal."""
     from sembr.api import news_search as mod
 
     async def _huge(_conn, _ids):
@@ -427,7 +427,7 @@ def test_hit_matched_intents_archive_from_payload():
 
 
 def test_matched_intents_lookup_failure_degrades_with_warning(monkeypatch):
-    """D19(c): this fills a display field and cannot change which articles came
+    """This fills a display field and cannot change which articles came
     back, so it degrades — but silently returning [] would read as "matched
     nothing", which is the very confusion L2 removed."""
     from sembr.api import news_search as mod
@@ -446,12 +446,12 @@ def test_matched_intents_lookup_failure_degrades_with_warning(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Fan-out failure semantics (D19)
+# Fan-out failure semantics
 # ---------------------------------------------------------------------------
 
 
 def test_segment_failure_fails_whole_request():
-    """D19(a): returning the surviving segment's hits with a 200 is silent
+    """Returning the surviving segment's hits with a 200 is silent
     under-recall — the exact failure the derived fields, the backfill job and
     the pending warning all exist to prevent."""
     qc = _FakeQdrant(
@@ -479,7 +479,7 @@ def test_segment_failure_status_whitelist_is_not_a_range():
 
 
 def test_intent_prequery_failure_fails_whole_request(monkeypatch):
-    """D19(b): degrading to "no intent condition" would answer a narrow
+    """Degrading to "no intent condition" would answer a narrow
     question with the entire corpus."""
     from sembr.api import news_search as mod
 
@@ -502,7 +502,7 @@ def test_intent_prequery_failure_fails_whole_request(monkeypatch):
 
 
 def test_model_version_mismatch_detected_per_segment():
-    """L1/D13: the pre-merge code sampled one payload from the merged list. If
+    """The pre-merge code sampled one payload from the merged list. If
     that representative came from the matching store, the other store's
     incomparable scores were mixed in silently."""
     qc = _FakeQdrant(
@@ -525,7 +525,7 @@ def test_no_version_warning_when_all_segments_match():
 
 
 # ---------------------------------------------------------------------------
-# Backfill pending warning (D15)
+# Backfill pending warning
 # ---------------------------------------------------------------------------
 
 
@@ -558,7 +558,7 @@ def test_no_backfill_warning_without_a_derived_filter():
 
 
 def test_backfill_pending_unknown_is_treated_as_pending():
-    """D15: the flag being absent (process start before the first job round) or
+    """The flag being absent (process start before the first job round) or
     None (a failed count) must warn. Assuming zero would reopen the silent gap
     for the entire startup window."""
     qc = _FakeQdrant(semantic={_CURRENT: [], _ARCHIVE: []})

@@ -494,7 +494,7 @@ def _with_embedder(app: FastAPI, model_version: str = "bge-m3_v1") -> FastAPI:
 
 
 def test_qdrant_stats_returns_both_segments(app_factory):
-    """D16: search hides the sharding; operations cannot. A climbing container
+    """Search hides the sharding; operations cannot. A climbing container
     RSS is only actionable once you know which store is growing."""
     app = _with_embedder(app_factory(_stats_qdrant(pending=7)))
     with TestClient(app) as client:

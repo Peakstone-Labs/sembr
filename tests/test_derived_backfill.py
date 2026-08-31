@@ -49,7 +49,7 @@ def _app() -> SimpleNamespace:
 
 @pytest.mark.asyncio
 async def test_backfill_sets_payload_for_missing_points():
-    """D4: the queue is `IsEmpty(body_len)`, so points that already have the
+    """The queue is `IsEmpty(body_len)`, so points that already have the
     derived fields are never in the working set — and each point gets ITS OWN
     payload (a single set_payload for the whole batch would stamp every point
     with the same body_len)."""
@@ -105,7 +105,7 @@ async def test_backfill_stops_when_queue_is_empty():
 
 @pytest.mark.asyncio
 async def test_backfill_zero_progress_aborts_run(caplog):
-    """D6: a batch that writes without shrinking the queue would otherwise be
+    """A batch that writes without shrinking the queue would otherwise be
     re-fetched for the rest of the wall-clock budget."""
     qc = MagicMock()
     qc.count = AsyncMock(return_value=SimpleNamespace(count=3))
@@ -168,7 +168,7 @@ async def test_backfill_scroll_failure_is_not_raised_out_of_the_job():
 
 @pytest.mark.asyncio
 async def test_initialise_pending_flag_sets_count_before_first_round():
-    """D15: the flag must have a defined value from lifespan onward, not from
+    """The flag must have a defined value from lifespan onward, not from
     the job's first fire two minutes later."""
     qc = MagicMock()
     qc.count = AsyncMock(return_value=SimpleNamespace(count=113_000))
