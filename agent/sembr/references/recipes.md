@@ -136,7 +136,7 @@ Omitting `query` selects newest-first filter mode. Pass `next_cursor` back verba
 
 ```bash
 PAGE=$(curl -s -X POST "${BASE}/api/news/search" "${H_JSON[@]}" "${H_TOKEN[@]}" -d '{
-  "langs": ["zh"],
+  "langs": ["en"],
   "url_domains": ["reuters.com"],
   "limit": 50,
   "include_body": false
@@ -146,7 +146,7 @@ echo "${PAGE}" | jq '{warnings, count: (.hits | length), next_cursor}'
 CURSOR=$(echo "${PAGE}" | jq -c '.next_cursor')
 if [ "${CURSOR}" != "null" ]; then
   jq -n --argjson cursor "${CURSOR}" '{
-    langs: ["zh"],
+    langs: ["en"],
     url_domains: ["reuters.com"],
     limit: 50,
     include_body: false,
