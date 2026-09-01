@@ -11,6 +11,63 @@ Authoritative schema: `GET /openapi.json`. This page is a curated subset trackin
 | `GET /intents/{id}` | Full record for one intent. |
 | `GET /feeds` | List every feed (RSS / NewsAPI / Twitter). |
 
+## News search (read-only)
+
+One endpoint over the whole news timeline — recent and historical alike. It never sends notifications and never writes `match_seen`.
+
+| Method & path | Purpose |
+| --- | --- |
+| `POST /api/news/search` | Semantic retrieval when the JSON body contains a non-blank `query`; otherwise newest-first filtered listing. Request/response shapes: `schemas.md`. |
+| `GET /api/dashboard/maintenance/qdrant_stats` | Operator view: per-store point counts, ingestion time ranges, alias health, backfill queue depth. |
+
+Both require `X-Dashboard-Token` when authentication is configured.
+
+Storage is internally split between a live store and a permanent archive, and the search endpoint hides that completely: it queries both and returns one ranked list. There is no `scope` parameter and no marker on a hit. To restrict by age, use the time-range filters.
+
+Retrieval-mode rules:
+
+- **Semantic mode**: send `query`; paginate/deepen by sending prior point ids in `exclude_ids`. `min_score` is valid only in this mode. There is no cursor.
+- **Filter mode**: omit `query`; a full page returns `next_cursor`. Pass that object back verbatim. Results are ordered newest-first by `ingested_at_ts`.
+- Filters work in both modes: ingestion/publish time ranges, feed include/exclude, title keyword, URL domain, minimum body length, previously matched intent, and language.
+- One page can span both stores; the cursor is a single object either way. Do not try to page the two stores separately.
+- `matched_intent_ids` works across the whole timeline. For recent articles it resolves against the live `match_seen` table; for archived ones against the snapshot taken at archive time. Event-mode intents never write `match_seen` and therefore never appear.
+- The live half of that table is reset when an intent's `text` / sub-texts change, when a summary-history row is deleted, and when the intent is deleted. If it resolves to nothing, the recent window is not queried at all and a `warnings` entry says so — treat that as "the match log was reset", not "the intent matched nothing recently".
+- For "what would this stored intent match right now", use `/api/external/intents/{id}/fire` instead — that runs the intent's own vector and threshold.
+
+**Semantic results are not bit-stable across identical calls.** The query is re-embedded on every request, and the embedding service does not always return the same vector for the same text — measured on a production deployment, five identical embeddings of one phrase produced two distinct vectors differing by up to 1.5e-3 per component, which moves cosine scores by roughly 1e-3. Two identical searches can therefore rank near-tied hits differently, and a hit sitting exactly at the `limit` boundary can fall in or out. Treat the returned **set** as the stable part and the order of near-ties as noise: a reordering is not evidence that the corpus changed, a score is not an identity, and a comparison between two runs should be made on ids rather than ranks. Filter mode is unaffected — it embeds nothing.
+
+Search returns `mode`, `hits`, `warnings`, and `next_cursor`. Always surface non-empty `warnings`: they distinguish degraded feed-name lookup, a degraded matched-intent lookup, an embedding model mismatch, a pagination boundary too large to exclude safely, and a derived-field backfill still in progress (in which case filters on publication time, language, url domain or body length may miss articles ingested before that deployment. Those articles are in the **recent** window, not the deep archive — archived articles were enriched individually and are complete. Publication-time windows can fall back to `ingested_at_ts`, which is unaffected; the language, url-domain and body-length predicates have **no equivalent** while the queue is non-empty, and the affected hits carry `null` in those very fields, so client-side filtering cannot recover them either).
+
+A failure in either store fails the whole request rather than returning half the timeline with a 200, so a successful response is always a complete answer for the filters you sent.
+
+`GET /api/dashboard/maintenance/qdrant_stats` returns:
+
+```jsonc
+{
+  "segments": {
+    "current": {
+      "points_count": 113000,
+      "earliest_ingested_at_ts": 1780000000,
+      "latest_ingested_at_ts": 1785000000,
+      "alias_ok": true,
+      "derived_backfill_pending": 0
+    },
+    "archive": {
+      "points_count": 12345,
+      "earliest_ingested_at_ts": 1770000000,
+      "latest_ingested_at_ts": 1779999999,
+      "alias_ok": true
+    }
+  }
+}
+```
+
+This is the operator surface, so it does expose the storage split — the search contract does not. `alias_ok=false` means the stable alias does not target the collection for the live embedder generation; treat semantic ranking as unreliable. `null` means the alias check itself failed. `derived_backfill_pending > 0` means some points **in the recent window** still lack the derived filter fields, and those filters under-return until it reaches zero; the archive is complete regardless. The field can also be reported by the search side as *unknown* (a failed count), which triggers the same warning **on purpose** — unknown is treated as pending, so a persistent warning during a Qdrant wobble is expected behaviour, not a bug to retry around.
+
+`derived_backfill_quarantined` counts points the backfill has given up on after repeated failed writes, **since this process started** (a restart resets it to 0 and the next few rounds rediscover them). `null` means the count is unavailable, not that it is zero. It is reported alongside `derived_backfill_pending`, never deducted from it — a quarantined point genuinely lacks its fields.
+
+Physical Qdrant collection names are intentionally absent from the contract.
+
 ## Mutate intents
 
 | Method & path | Purpose |

@@ -18,7 +18,8 @@ window.SENSITIVE_MASK = '••••••';
 const SECTION_DEFS = [
   { id: 'embedder',    title: 'Embedder',           prefixes: ['EMBEDDER_'] },
   { id: 'llm',         title: 'LLM Settings',       prefixes: ['LLM_'],
-    exact: ['REDUCE_MODEL', 'META_EXTRACTION_MODEL', 'REDUCE_CONCURRENCY'] },
+    exact: ['REDUCE_MODEL', 'META_EXTRACTION_MODEL', 'REDUCE_CONCURRENCY',
+            'KB_MERGE_MODEL', 'KB_DISTILL_MODEL'] },
   { id: 'newsapi',     title: 'NewsAPI',            prefixes: ['NEWSAPI_'] },
   { id: 'rsshub',      title: 'RSSHub Passthrough', special: 'rsshub' },
   { id: 'smtp',        title: 'Email (SMTP)',       prefixes: ['SMTP_'] },

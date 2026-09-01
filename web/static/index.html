@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/style.css?v=20">
+<link rel="stylesheet" href="/dashboard/style.css?v=21">
 <script defer src="/dashboard/vendor/alpine.min.js"></script>
 <script src="/dashboard/vendor/chart.umd.min.js"></script>
 <script src="/dashboard/vendor/marked.min.js?v=2"></script>
@@ -1249,6 +1249,8 @@
                 <button @click="openAdvanced(intent)" title="Generate / edit the extraction spec">Advanced</button>
                 <button @click="openHistory(intent)"
                         :class="(expandedIntentId===intent.id && expanded.kind==='history') ? 'primary' : ''">History</button>
+                <button @click="$dispatch('kb-open', {intentId: intent.id, intentName: intent.name})"
+                        title="View / edit this intent's knowledge base (events index)">KB</button>
                 <button class="fire-btn" @click="openFire(intent)">Fire</button>
                 <button class="danger" @click="confirmDelete(intent)">Delete</button>
               </div>
@@ -2924,12 +2926,104 @@
 
 </div><!-- /settings-view -->
 
+<!-- ── KB (events index) modal — own Alpine root, opened via the `kb-open` event ── -->
+<div x-data="kbModal()" @kb-open.window="open($event.detail)">
+  <template x-teleport="body">
+    <div class="modal-overlay" x-show="open_" x-cloak @click.self="close()"
+         @keydown.escape.window="open_ && close()">
+      <div class="modal-panel" style="max-width:880px; max-height:90vh; display:flex; flex-direction:column;">
+        <div class="modal-header">
+          <span class="modal-title">KB · Events Index · <span x-text="intentName"></span></span>
+          <button class="modal-close" @click="close()">✕</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 0;">
+          <button @click="rebuildDialog = true" :disabled="rebuilding"
+                  x-text="rebuilding ? 'Rebuilding…' : (exists ? 'Rebuild KB' : 'Build KB')"
+                  title="Re-distill the events index from history (overwrites)"></button>
+          <button @click="lint()" :disabled="linting || !exists"
+                  x-text="linting ? 'Linting…' : 'Lint now'"
+                  title="Run the health-check cleanup now"></button>
+          <button @click="openNewWindow()" title="Open this KB full-screen in a new window">Open in new window</button>
+          <label class="toggle-wrap" style="margin-left:auto;"
+                 :style="toggleBusy ? 'opacity:.6; pointer-events:none; margin-left:auto;' : 'margin-left:auto;'"
+                 title="Auto-update this KB after each scheduled (cron) run for this intent (kb_enabled)">
+            <span class="toggle">
+              <input type="checkbox" :checked="enabled" @change="toggleKbEnabled($event.target.checked)">
+              <span class="toggle-slider"></span>
+            </span>
+            <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;">Enable Auto Update</span>
+          </label>
+        </div>
+        <div x-show="error" class="muted" style="color:#d33; font-size:0.8rem;" x-text="error"></div>
+        <div x-show="status" class="muted" style="font-size:0.8rem;" x-text="status"></div>
+        <div x-show="warnings.length" style="font-size:0.75rem; margin:4px 0;">
+          <div class="muted" style="margin-bottom:2px;">Warnings:</div>
+          <template x-for="w in warnings" :key="w">
+            <div style="padding:2px 0 2px 8px; border-left:2px solid #e0a000;" x-text="w"></div>
+          </template>
+        </div>
+        <div style="display:flex; gap:6px; margin:6px 0 4px;">
+          <button @click="view='edit'" :class="view==='edit' ? 'primary' : ''" style="font-size:0.75rem;">Edit</button>
+          <button @click="view='preview'" :class="view==='preview' ? 'primary' : ''" style="font-size:0.75rem;">Preview</button>
+        </div>
+        <!-- Edit: syntax-highlighted overlay editor (same as Advanced/templates) -->
+        <div class="code-editor" x-show="view==='edit'" style="flex:1; height:auto; min-height:45vh;">
+          <pre class="code-editor-hl" aria-hidden="true" x-ref="kbHl" x-html="highlightMarkdown(content)"></pre>
+          <textarea class="code-editor-input" x-model="content" spellcheck="false" :disabled="loading"
+                    @scroll="$refs.kbHl.scrollTop = $event.target.scrollTop"
+                    placeholder="events.md — one event per line; the &lt;!--k:slug--&gt; anchors are managed automatically."></textarea>
+        </div>
+        <!-- Preview: rendered markdown (.kb-preview styles it; shared with the full-screen split) -->
+        <div class="kb-preview" x-show="view==='preview'" x-html="renderedHtml"
+             style="flex:1; min-height:45vh;"></div>
+        <div class="modal-footer">
+          <span class="muted" style="font-size:0.72rem; margin-right:auto;"
+                x-show="dirty">Unsaved changes</span>
+          <button @click="close()">Close</button>
+          <button class="primary" @click="save()" :disabled="submitting || !dirty"
+                  x-text="submitting ? 'Saving…' : 'Save'"></button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Build/Rebuild confirm dialog (days input + overwrite warning), stacked above the KB modal -->
+  <template x-teleport="body">
+    <div class="modal-overlay" x-show="rebuildDialog" x-cloak @click.self="rebuildDialog=false"
+         style="z-index:600;">
+      <div class="modal-panel" style="max-width:460px;">
+        <div class="modal-header">
+          <span class="modal-title" x-text="exists ? 'Rebuild KB' : 'Build KB'"></span>
+          <button class="modal-close" @click="rebuildDialog=false">✕</button>
+        </div>
+        <div class="muted" style="font-size:0.8rem; margin-bottom:10px;">
+          Distill the events index from the last <strong x-text="rebuildDays"></strong> days of this intent's history.
+        </div>
+        <div x-show="exists" class="fire-warning" style="margin-bottom:12px;">
+          This OVERWRITES the current KB (the previous version stays in git history).
+        </div>
+        <div class="form-field">
+          <label class="field-label">Days of history</label>
+          <input type="number" x-model.number="rebuildDays" min="1" max="365">
+          <span class="field-hint">1 to 365</span>
+        </div>
+        <div class="modal-footer">
+          <button @click="rebuildDialog=false">Cancel</button>
+          <button class="primary" @click="rebuild()" :disabled="rebuilding"
+                  x-text="rebuilding ? 'Building…' : (exists ? 'Rebuild' : 'Build')"></button>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>
+
 <script src="/dashboard/feeds.js?v=6"></script>
 <script src="/dashboard/codehl.js?v=1"></script>
 <script src="/dashboard/intents.js?v=30"></script>
 <script src="/dashboard/templates.js?v=5"></script>
+<script src="/dashboard/kb.js?v=7"></script>
 <script src="/dashboard/logs.js?v=2"></script>
-<script src="/dashboard/settings.js?v=13"></script>
+<script src="/dashboard/settings.js?v=14"></script>
 <script src="/dashboard/maintenance.js?v=1"></script>
 <script src="/dashboard/app.js?v=10"></script>
 </body>

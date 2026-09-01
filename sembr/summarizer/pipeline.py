@@ -167,6 +167,7 @@ class SummaryPipeline:
         prompts_dir: Path = Path("/app/prompts"),
         get_history_text: Callable[[int, int, datetime | None], Awaitable[str]] | None = None,
         on_persist: OnSummaryCallback | None = None,
+        on_kb_ingest: OnSummaryCallback | None = None,
         get_reduce_ctx: Callable[[], tuple[str, int]] | None = None,
     ) -> None:
         self._llm = llm
@@ -178,6 +179,12 @@ class SummaryPipeline:
         self._prompts_dir = prompts_dir
         self._get_history_text = get_history_text
         self._on_persist = on_persist
+        # KB event-index ingest (delta-label/kb SF1). Fires only on the persist
+        # path (cron), after on_persist, in its own never-raise block — so a manual
+        # fire_handle (persist=False) never mutates the KB (design §3.3 / F3), and
+        # an ingest failure can't block notification/email. The callback itself
+        # early-returns when the intent has kb_enabled=0.
+        self._on_kb_ingest = on_kb_ingest
         # Live (model, concurrency) for the facts/map-reduce branch — a callable
         # so dashboard tuning of reduce_model / reduce_concurrency takes effect
         # without a restart (design §4.1). None → facts branch uses a default
@@ -597,6 +604,13 @@ class SummaryPipeline:
                 await self._on_persist(result)
             except Exception:
                 logger.exception("SummaryPipeline on_persist failed for intent_id=%s", intent_id)
+        # KB ingest — persist-path only (guard = persist), after on_persist, in its
+        # own never-raise block isolated from both on_persist and on_summary (F3).
+        if persist and self._on_kb_ingest is not None:
+            try:
+                await self._on_kb_ingest(result)
+            except Exception:
+                logger.exception("SummaryPipeline on_kb_ingest failed for intent_id=%s", intent_id)
         try:
             if self._pre_push_hook is not None and not await self._pre_push_hook(result):
                 return

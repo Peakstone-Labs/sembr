@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from time import monotonic
 from typing import TYPE_CHECKING
@@ -39,10 +40,100 @@ _QDRANT_RETRIEVE_BATCH = 1000
 # one chunk behind reconcile.
 _SQLITE_DELETE_CHUNK = 500
 
+# match_seen sweep fail-safe floor: a zero-hit sweep over at least this many
+# articles is treated as an alias/storage incident rather than a real
+# all-orphan state (production baseline: thousands of live match_seen
+# articles, single-digit true orphans per run).
+_SWEEP_FAILSAFE_MIN = 100
+
+
+async def _sweep_match_seen_orphans(qdrant_handle: QdrantHandle) -> int:
+    """Delete ``match_seen`` rows whose article no longer exists in
+    ``news_current``. Returns the number of rows removed.
+
+    The TTL cascade normally deletes these together with ``feed_items``; rows
+    survive only when a cascade run failed mid-way. The md5 scan above sweeps
+    ``feed_items`` orphans, but ``match_seen`` is keyed by point uuid and has
+    no other cleaner (only intent deletion cascades it). Without this sweep, a
+    leftover ``(intent_id, article_id)`` row silently suppresses the article
+    via skip_seen if the same URL is ever re-collected. The rows are safe to
+    drop on either TTL path: with archiving on, the matched-intent history
+    was copied into the archive payload at migration time; with archiving
+    off (legacy pure delete), the article is gone entirely and a dedup
+    record for a nonexistent article is meaningless — the same end state the
+    completed cascade would have produced.
+    """
+    conn = get_conn()
+    async with conn.execute("SELECT DISTINCT article_id FROM match_seen") as cur:
+        rows = await cur.fetchall()
+
+    article_ids: list[str] = []
+    for (a,) in rows:
+        try:
+            uuid.UUID(a)
+        except (ValueError, AttributeError, TypeError):
+            # A malformed id would 400 the whole retrieve batch; skip it.
+            logger.warning("reconcile: skipping non-uuid match_seen article_id %r", a)
+            continue
+        article_ids.append(a)
+    if not article_ids:
+        return 0
+
+    found: set[str] = set()
+    for i in range(0, len(article_ids), _QDRANT_RETRIEVE_BATCH):
+        batch = article_ids[i : i + _QDRANT_RETRIEVE_BATCH]
+        points = await qdrant_handle.client.retrieve(
+            collection_name=ALIAS_NAME,
+            ids=batch,
+            with_payload=False,
+            with_vectors=False,
+        )
+        found.update(str(p.id) for p in points)
+
+    # Fail-safe: this sweep's orphan verdict is "retrieve found nothing", and
+    # retrieve SUCCEEDS with an empty result when the alias points at a
+    # rebuilt/foreign collection. Wiping all of match_seen in that state
+    # would disable skip_seen dedup wholesale (re-alert storm on the next
+    # matcher tick). Zero hits across a non-trivial scan is far more likely
+    # an alias/storage incident than a real all-orphan state — skip and
+    # scream; rows harmlessly wait for the next run.
+    if not found and len(article_ids) >= _SWEEP_FAILSAFE_MIN:
+        logger.error(
+            "reconcile: match_seen sweep found 0 of %d articles in news_current — "
+            "refusing to treat the whole table as orphaned (alias/storage "
+            "incident suspected); skipping this sweep",
+            len(article_ids),
+        )
+        return 0
+
+    orphans = [a for a in article_ids if a not in found]
+    deleted = 0
+    for i in range(0, len(orphans), _SQLITE_DELETE_CHUNK):
+        chunk = orphans[i : i + _SQLITE_DELETE_CHUNK]
+        async with transaction() as txn:
+            placeholders = ",".join("?" * len(chunk))
+            await txn.execute(f"DELETE FROM match_seen WHERE article_id IN ({placeholders})", chunk)
+            async with txn.execute("SELECT changes()") as cur:
+                deleted += (await cur.fetchone())[0]
+        await asyncio.sleep(0)
+    return deleted
+
+
+async def _safe_sweep_match_seen(qdrant_handle: QdrantHandle) -> int:
+    """Never-raise wrapper: a sweep failure must not take down the feed_items
+    reconcile summary. Failure is visible via the warning; the counter then
+    reads 0, which the warning line disambiguates from "no orphans"."""
+    try:
+        return await _sweep_match_seen_orphans(qdrant_handle)
+    except Exception:
+        logger.warning("reconcile: match_seen orphan sweep failed", exc_info=True)
+        return 0
+
 
 async def _run_reconcile(qdrant_handle: QdrantHandle, settings: Settings) -> None:
     """Scan all ``feed_items.md5`` (excluding in-flight pending) and delete rows
-    whose Qdrant point is missing.
+    whose Qdrant point is missing; then sweep ``match_seen`` rows whose article
+    left ``news_current`` without a completed cascade.
 
     Step 1 excludes ``pending_articles`` to avoid racing with embedder_worker:
     the moment between embedder pulling a row and upserting its point is the
@@ -59,9 +150,12 @@ async def _run_reconcile(qdrant_handle: QdrantHandle, settings: Settings) -> Non
     md5_list = [r[0] for r in rows]
 
     if not md5_list:
+        ms_deleted = await _safe_sweep_match_seen(qdrant_handle)
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info(
-            "reconcile run: scanned=0 found=0 orphan_deleted=0 elapsed_ms=%d interval_hours=%d",
+            "reconcile run: scanned=0 found=0 orphan_deleted=0 "
+            "match_seen_orphans_deleted=%d elapsed_ms=%d interval_hours=%d",
+            ms_deleted,
             elapsed_ms,
             settings.maintenance_interval_hours,
         )
@@ -112,12 +206,16 @@ async def _run_reconcile(qdrant_handle: QdrantHandle, settings: Settings) -> Non
         # fairness; the explicit yield is a defence-in-depth no-op.
         await asyncio.sleep(0)
 
+    ms_deleted = await _safe_sweep_match_seen(qdrant_handle)
+
     elapsed_ms = int((monotonic() - started_at) * 1000)
     logger.info(
-        "reconcile run: scanned=%d found=%d orphan_deleted=%d elapsed_ms=%d interval_hours=%d",
+        "reconcile run: scanned=%d found=%d orphan_deleted=%d "
+        "match_seen_orphans_deleted=%d elapsed_ms=%d interval_hours=%d",
         len(md5_list),
         len(found_ids),
         deleted,
+        ms_deleted,
         elapsed_ms,
         settings.maintenance_interval_hours,
     )

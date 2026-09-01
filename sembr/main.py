@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -42,7 +43,9 @@ from sembr.api.fire import router as fire_router
 from sembr.api.health import router as health_router
 from sembr.api.history import router as history_router
 from sembr.api.intents import router as intents_router
+from sembr.api.kb import router as kb_router
 from sembr.api.maintenance import router as maintenance_router
+from sembr.api.news_search import router as news_search_router
 from sembr.api.prompts import router as prompts_router
 from sembr.api.restart import router as restart_router
 from sembr.api.settings import router as settings_router
@@ -76,11 +79,15 @@ from sembr.db.summary_history import (
 )
 from sembr.embedder.factory import build_embedder
 from sembr.embedder.scheduler import add_embedder_worker_job
+from sembr.kb.lint import add_kb_lint_job
+from sembr.kb.store import KbStore
 from sembr.logbus.install import install_logbus
 from sembr.maintenance import (
     add_dead_ttl_job,
+    add_news_derived_backfill_job,
     add_qdrant_ttl_job,
     add_reconcile_job,
+    initialise_pending_flag,
     manual_prune_sweep_expired,
 )
 from sembr.matcher.backfill_tasks import sweep_expired as backfill_sweep_expired
@@ -97,6 +104,7 @@ from sembr.summarizer.templates import PROMPTS_DIR
 from sembr.vector_store.intents import ALIAS_NAME as _INTENTS_ALIAS
 from sembr.vector_store.intents import ensure_intents_collection
 from sembr.vector_store.news import ensure_news_collection
+from sembr.vector_store.news_archive import ensure_news_archive_collection
 from sembr.vector_store.qdrant import QdrantHandle
 
 logger = logging.getLogger(__name__)
@@ -131,6 +139,29 @@ async def _get_intent_prompt_ctx(
         intent.language,
         history_days,
         intent.extraction_enabled,
+    )
+
+
+async def _kb_ingest(
+    result: SummaryResult,
+    *,
+    store: KbStore,
+    backend,
+    merge_model: str,
+) -> None:
+    """on_kb_ingest callback: incrementally merge a fresh digest into the KB.
+
+    Early-returns when the intent has kb_enabled=0 (so wiring the callback is safe
+    for every intent; only opted-in intents touch the KB). Reached only on the
+    cron persist path (the pipeline guards on persist) and runs in a never-raise
+    block there, so an ingest failure can't block notification/email.
+    """
+    intent = await get_intent(get_conn(), result.intent_id)
+    if intent is None or not intent.kb_enabled:
+        return
+    run_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    await store.ingest(
+        result.intent_id, run_at, result.summary, backend=backend, merge_model=merge_model
     )
 
 
@@ -196,6 +227,12 @@ async def lifespan(app: FastAPI):
     await seed_initial_feeds(conn)
     qdrant = QdrantHandle(settings.qdrant_url)
     await ensure_news_collection(qdrant.client, embedder)
+    # Archive bootstrap runs unconditionally (flag only gates the TTL
+    # migration): /api/news/search fans out to both collections on every
+    # request and must never race a missing one, and creating an empty
+    # collection is free. Must precede router
+    # service so MatchText / order_by find their payload indexes in place.
+    await ensure_news_archive_collection(qdrant.client, embedder)
     # intent-match-enhancement: pass conn so the migration step (SELECT id,text FROM intents)
     # can re-embed main vectors for the new named-vector layout.
     await ensure_intents_collection(qdrant.client, embedder, conn=conn)
@@ -247,6 +284,22 @@ async def lifespan(app: FastAPI):
     add_reconcile_job(scheduler, qdrant, settings)
     add_qdrant_ttl_job(scheduler, qdrant, settings)
     add_dead_ttl_job(scheduler, settings)
+    # The derived-field backfill is deliberately NOT one of those three: it runs
+    # on its own 30-minute cadence with a 2-minute first fire, because a round
+    # cut short by its wall-clock budget has to resume in minutes — until it
+    # converges, every search using a derived-field filter carries an
+    # under-recall warning. Its 2-minute offset also keeps it clear of the
+    # 5/15/25 cluster.
+    #
+    # The pending flag is initialised HERE rather than left to the job's first
+    # round: that two-minute gap — or forever, if job registration failed —
+    # would otherwise serve derived-field queries against an unbackfilled
+    # collection with no warning at all.
+    await initialise_pending_flag(app, qdrant)
+    # Hold the job's state: the quarantine set is the only record of points the
+    # backfill has given up on, and without a handle it would exist solely
+    # inside the job's own closure where no operator can see it.
+    app.state.news_derived_backfill_state = add_news_derived_backfill_job(scheduler, qdrant, app)
     # Sweep expired fire tasks every 5 minutes
     from apscheduler.triggers.interval import IntervalTrigger as _IT  # noqa: PLC0415
 
@@ -312,6 +365,12 @@ async def lifespan(app: FastAPI):
     # Assign on_match before scheduler.start() so first ticks always find a callback
     llm_backend = build_llm_backend(settings)
     email_ch = EmailChannel(settings)
+    # Per-intent KB store (delta-label/kb SF1). One instance shared by the ingest
+    # callback (here), the weekly lint job, and the /api/kb endpoints.
+    kb_store = KbStore()
+    # weekly KB health check + auto-fix (O2); backend+model enable the LLM
+    # near-duplicate thread merge (R2a).
+    add_kb_lint_job(scheduler, kb_store, llm_backend, settings.effective_kb_merge_model)
     pipeline = SummaryPipeline(
         llm=llm_backend,
         get_intent_prompt_ctx=lambda iid: _get_intent_prompt_ctx(iid),
@@ -325,6 +384,9 @@ async def lifespan(app: FastAPI):
             get_conn(), iid, days, now
         ),
         on_persist=lambda r: save_summary(get_conn(), r),
+        on_kb_ingest=lambda r: _kb_ingest(
+            r, store=kb_store, backend=llm_backend, merge_model=settings.effective_kb_merge_model
+        ),
         # Live (reduce_model, reduce_concurrency) for the facts/map-reduce branch
         # — read fresh so dashboard tuning takes effect without a restart.
         get_reduce_ctx=lambda: (
@@ -340,6 +402,8 @@ async def lifespan(app: FastAPI):
     # be set in lifespan adjacent to on_match so both are wired before the
     # first request lands.
     app.state.summary_pipeline = pipeline
+    # KB store handle for the /api/kb endpoints + weekly lint job (P4).
+    app.state.kb_store = kb_store
     app.state.qdrant = qdrant
     app.state.scheduler = scheduler
     app.state.settings = settings
@@ -419,10 +483,12 @@ app.include_router(external_fire_router)
 app.include_router(history_router)
 app.include_router(extraction_spec_router)
 app.include_router(prompts_router)
+app.include_router(kb_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)
 app.include_router(restart_router)
 app.include_router(maintenance_router)
+app.include_router(news_search_router)
 app.include_router(logs_router)
 
 

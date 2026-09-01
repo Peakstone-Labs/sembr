@@ -1,6 +1,6 @@
 ---
 name: sembr
-description: HTTP-API reference for driving a running sembr instance — a self-hosted "intent radar" / Reverse RAG service that vector-matches RSS / NewsAPI / Twitter articles against natural-language intents and emails LLM-analyzed digests. Use when the user asks to create, list, update, delete, or fire (test-run) sembr intents or feeds; when they need IntentCreate / FeedCreate JSON shapes; when they need curl or Python `httpx` recipes against sembr; when they want diagnostic matching via `/api/external/intents/{id}/fire` without notifier side-effects; or when they hit a 401 / 409 / 422 / 429 from a sembr endpoint and need to interpret it.
+description: HTTP-API reference for driving a running sembr instance — a self-hosted "intent radar" / Reverse RAG service that vector-matches RSS / NewsAPI / Twitter articles against natural-language intents and emails LLM-analyzed digests. Use when the user asks to create, list, update, delete, or fire (test-run) sembr intents or feeds; search or filter the permanent news archive; inspect archive health and size; construct sembr request bodies; use curl or Python `httpx` against sembr; run diagnostic matching without notifier side-effects; or interpret sembr HTTP errors.
 ---
 
 # sembr — driving a running instance
@@ -11,7 +11,7 @@ This skill teaches an AI agent to operate a **running** sembr instance over HTTP
 
 sembr is a self-hosted **intent radar**. The user defines a natural-language *intent* (e.g. "Fed policy moves affecting EM currencies"). sembr stores the intent as a vector, continuously ingests articles from RSS / NewsAPI / Twitter, vector-matches new articles against every active intent on a schedule, and pushes an LLM-analyzed digest by email. This is **Reverse RAG** — vectors-as-queries, articles-as-data.
 
-You'll mostly be touching four resources: **intents** (CRUD), **feeds** (CRUD), **fire** (test-run an intent on demand), and **fire-task results**.
+You'll mostly be touching five resources: **intents** (CRUD), **feeds** (CRUD), **fire** (test-run an intent on demand), **fire-task results**, and the read-only **news archive** (historical semantic/filter retrieval).
 
 ## 2. Base URL and auth
 
@@ -24,7 +24,7 @@ BASE = http://<host>:<port>           # default http://localhost:8000
   ```
   X-Dashboard-Token: <token>
   ```
-  Wrong/missing → 401 on gated paths. Empty `DASHBOARD_TOKEN` bypasses auth entirely (local-dev only). When the token is set, every path under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external` (and the corresponding bare paths) is gated. Only `/health` and `/api/dashboard/config` are unauthenticated by design (so monitors and the login page can bootstrap without a token).
+  Wrong/missing → 401 on gated paths. Empty `DASHBOARD_TOKEN` bypasses auth entirely (local-dev only). When the token is set, every path under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external`, and `/api/news` (and the corresponding bare paths) is gated. Only `/health` and `/api/dashboard/config` are unauthenticated by design (so monitors and the login page can bootstrap without a token).
 - Every POST/PUT/PATCH body is JSON. Set `Content-Type: application/json`.
 
 ## 3. Decision — which "fire" endpoint?
@@ -39,12 +39,27 @@ This is the question agents get wrong most often.
 
 Both intent-fire paths are **cron-mode only** — event-mode intents return **409**. Rate limit: **1 per intent (or feed) per 60 s** → 429.
 
+### News search versus intent fire
+
+Use `POST /api/news/search` when the user wants coverage retrieved by an ad-hoc topic or metadata filters. It is read-only: no notifier, no `match_seen` writes, and no rate-limit side effect. It returns source articles, not an LLM summary.
+
+**One call covers the whole timeline.** Recent and historical articles live in two separate vector stores, but that is an internal detail: the endpoint queries both and returns one ranked list. There is no `scope` parameter, nothing in a hit says which store it came from, and you must not try to reconstruct the split — to restrict by age, use the `ingested_*` / `published_*` time filters.
+
+Use `/api/external/intents/{id}/fire` instead when the question is "what would this *stored intent* match right now" — that path runs the intent's own vector and threshold, and returns an LLM summary.
+
+Two properties of `matched_intents` are worth knowing before you read into it:
+
+- **Freshness differs by age.** For recent articles the list is read live from `match_seen`; for older ones it was frozen when the article was archived, so it can still name an intent that no longer exists. Both are correct; neither is a bug.
+- **The live half is reset by three routine operations**, not just intent deletion: changing an intent's `text` or sub-texts (re-embedding invalidates the old dedup log), deleting a summary-history row (it withdraws that row's citations), and deleting the intent. After any of them, `matched_intent_ids` returns only archived matches until the next scan re-populates the table — and the response says so in `warnings`. **An empty result there is a fact about the match table, not about the news.**
+- **Event-mode intents never appear in it.** They match through a different path that does not write `match_seen`, so an article matched by an event-mode intent shows `matched_intents: []` at every age.
+
 ## 4. Workflow signposts
 
 When the user asks for…
 
 - **The full endpoint list** (and which writes vs. reads) → read [`references/endpoints.md`](references/endpoints.md).
 - **To create an intent or feed** (body shape, threshold range, schedule modes, channel discriminated union, source-type configs) → read [`references/schemas.md`](references/schemas.md), then `POST /intents` or `POST /feeds`.
+- **To search/list news across the whole timeline, or inspect vector-store health** → read the news-search sections in [`references/endpoints.md`](references/endpoints.md) and [`references/schemas.md`](references/schemas.md).
 - **Copy-pasteable curl or Python `httpx` recipes** (create intent, sync-fire, async-fire with polling loop, dry-run a new feed) → read [`references/recipes.md`](references/recipes.md).
 - **To interpret an HTTP error** (401 / 409 / 422 / 429 / 503, response body shape) → read [`references/errors.md`](references/errors.md).
 - **A discovery / sanity check** → `GET /health` (no auth), `GET /intents`, `GET /feeds`. If `/health` returns 503, the embedder probe is still warming — sleep 30 s and retry.
@@ -59,7 +74,11 @@ For anything not covered here, the authoritative schema is `GET /openapi.json`. 
 - **Don't `DELETE` intents or feeds without confirming.** Intent delete cascades `match_seen` and isn't reversible from the API.
 - **Honour the rate limit.** 429 means sleep ≥60 s, not retry harder. Check `Retry-After` if present.
 - **Don't commit / store `DASHBOARD_TOKEN`.** It's per-deployment.
-- **Send `X-Dashboard-Token` on every request.** The only token-free paths today are `/health` and `/api/dashboard/config`; everything else under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external` 401s without it.
+- **Send `X-Dashboard-Token` on every request.** The only token-free paths today are `/health` and `/api/dashboard/config`; operational paths under `/intents`, `/feeds`, `/api/dashboard`, `/api/prompts`, `/api/settings`, `/api/external`, and `/api/news` 401 without it when a token is configured.
+- **Don't call Qdrant directly for news research.** Use `POST /api/news/search`; it owns query embedding, the two-store fan-out, stable aliases, validation, feed-name enrichment, and model-generation warnings. Reading the collections yourself gets you half the timeline.
+- **Don't silently discard search `warnings`.** Surface them with the results. A warning about an embedding-generation mismatch means semantic scores are unreliable; a warning that derived fields are still being backfilled means filters on publication time, language, url domain or body length may miss articles ingested before that deployment. Those articles are in the **recent** window, not the deep archive — archived articles were enriched individually and are complete. Publication-time windows can fall back to `ingested_at_ts`, which is unaffected; the language, url-domain and body-length predicates have **no equivalent** while the queue is non-empty, and the affected hits carry `null` in those very fields, so client-side filtering cannot recover them either — say so rather than presenting the short list as complete. Read the direction carefully: the gap is in **recent** coverage, so this is not a warning you can shrug off as "only affects deep history".
+- **Don't read a re-ordering as news.** Semantic mode re-embeds the query on every call and the embedding service is not bit-stable, so two identical searches can rank near-tied hits differently (measured: ~1e-3 of cosine score, enough to swap neighbours and to move the hit sitting on the `limit` boundary). Compare ids, not ranks or scores, and don't report a shuffled list as a change in coverage. `endpoints.md` carries the measurement.
+- **Don't read `GET /api/dashboard/maintenance/qdrant_stats` as a search surface.** It is the operator's view and deliberately exposes the storage split; `alias_ok=false` there means semantic ranking is unreliable, and a non-zero `derived_backfill_pending` means the same under-recall the search warning describes.
 
 ## 6. Discovery and version
 

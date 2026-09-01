@@ -34,6 +34,7 @@ The same key is reused as `LLM_API_KEY` by default — SiliconFlow hosts both BG
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant server URL. The bundled `docker-compose.yml` provisions this address |
 | `SQLITE_PATH` | `/app/data/sembr.db` | SQLite database path inside the container. The host maps `./data/` here via the compose bind mount |
 | `SEMBR_HOST_PORT` | `8000` | Host port exposed by Docker Compose. The in-container bind port is hardcoded to `8000` in the Dockerfile CMD; override the host side here |
+| `QDRANT_ARCHIVE_ENABLED` | `true` | When `true`, the retention job moves expired article vectors into the permanent `news_archive` collection before deleting them from `news_current`; `false` reverts to plain deletion (already-archived points stay searchable). Changing it requires `docker compose up -d --build` so the container is recreated with the new value — a plain restart keeps the old one. **Note**: archived articles exist only in `news_archive`; dropping that collection loses them permanently |
 
 ## Embedder
 
@@ -64,6 +65,8 @@ Opt-in **per intent** (a toggle in the dashboard, not a global env var). When on
 |----------|---------|-------------|
 | `REDUCE_MODEL` | — (reuses `LLM_MODEL`) | Model for per-article structured extraction and the reduce step. Leave blank to reuse the summarization model |
 | `META_EXTRACTION_MODEL` | — (reuses `LLM_MODEL`) | Model the spec auto-generator uses to draft a per-intent extraction spec. Leave blank to reuse the summarization model |
+| `KB_MERGE_MODEL` | — (reuses `LLM_MODEL`) | Model for the per-intent knowledge base's incremental merge (assigning each new digest's events to existing event keys). This runs after every cron digest on KB-enabled intents, so a flash-tier model is the intended choice. Leave blank to reuse the summarization model |
+| `KB_DISTILL_MODEL` | — (reuses `LLM_MODEL`) | Model for knowledge-base cold-start distillation — the one-off "rebuild KB" action, which re-reads the chosen lookback of digests at once. A stronger (pro-tier) model is worth it here because the result seeds every later incremental merge. Leave blank to reuse the summarization model |
 | `REDUCE_CONCURRENCY` | `16` | How many source articles to extract in parallel. Higher clears large digests faster but bursts the provider; lower is gentler on rate limits (1–256) |
 
 ## Email notifier

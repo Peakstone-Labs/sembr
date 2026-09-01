@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-01
+
+### Added
+
+- **Per-intent knowledge base (KB)** — opt-in per intent (`kb_enabled`, default
+  off). Each enabled intent maintains a markdown **event index** (`events.md`):
+  every entry is an event key with its first-seen date, latest date, and current
+  status, grouped into topical sections. After each cron digest the new facts are
+  **incrementally merged** into that index — never re-distilled from scratch — so
+  the file converges instead of growing without bound, and every day's change is
+  a reviewable `git diff`. A weekly lint pass checks for contradictions, stale
+  entries, and orphans, applies its fixes automatically, and commits them, so the
+  git history is the rollback path. Edit any KB from the Intents tab: an inline
+  modal with a highlighted editor and markdown preview, openable full-screen;
+  Build / Rebuild takes a `days` lookback.
+  - **This release produces and maintains the KB only.** The digest's
+    `{history}` slot is unchanged, so an intent with KB enabled emits exactly
+    the same digest as before. Feeding the index back into the reduce step — and
+    with it the incremental-label (`[新增]` / `[持续]` / `[升级]` / `[降级]`)
+    accuracy that motivated the KB — is the next step, not this one.
+- **Permanent news archive** — the retention job now **moves** expired articles
+  into a second collection (`news_archive`) with their vectors instead of
+  deleting them, so news that has aged out of the live window stays semantically
+  searchable indefinitely. A failed archive write aborts the run with nothing
+  deleted, so an article can never end up in neither store. Set
+  `QDRANT_ARCHIVE_ENABLED=false` to revert to plain deletion.
+- **Unified news search — `POST /api/news/search`** — one endpoint over the whole
+  news timeline. The storage split between the live store and the archive is an
+  internal detail: the endpoint queries both and returns a single ranked list,
+  with no `scope` parameter and no marker on a hit. Semantic mode (`query` plus
+  `exclude_ids` to dig deeper) and newest-first filter listing (cursor
+  pagination) share one filter schema: ingestion and publication time windows,
+  feed include/exclude, title keyword, URL domain, minimum body length,
+  previously matched intent, and language. A failure in either store fails the
+  whole request rather than returning half the timeline with a 200.
+  - **Four derived filter fields** (`published_at_ts`, `body_len`, `lang`,
+    `url_domain`) are written by every path that stores an article, and a
+    self-healing background job backfills them onto points written before this
+    release. While that queue is non-empty, filters that depend on those fields
+    return a warning saying so — the gap is in **recent** coverage, not the deep
+    archive.
+  - **`GET /api/dashboard/maintenance/qdrant_stats`** — operator view: per-store
+    point counts, ingestion time ranges, alias health, and backfill queue depth.
+    Unlike search, it does expose the storage split.
+- **New configuration** — `QDRANT_ARCHIVE_ENABLED` (default on; `false` reverts
+  the retention job to plain deletion), `KB_MERGE_MODEL` (model for the KB's
+  incremental merge) and `KB_DISTILL_MODEL` (model for the one-off KB rebuild);
+  both KB models default to `LLM_MODEL`. See
+  [Configuration](docs/configuration.md).
+
+### Fixed
+
+- **newsapi feeds no longer burn their whole quota after an outage** — when a
+  fetch hit the page cap, the feed's cursor advanced to the **oldest** article in
+  the batch, on the theory that the next tick would resume there and walk back
+  through the backlog. It never converges: the API returns newest-first, so every
+  tick re-fetched the same most-recent window and its oldest article always sat a
+  fixed number of articles behind `now()` — the cursor tracked `now()` instead of
+  climbing toward it, the watermark could never fire again, and each tick spent
+  the full page cap forever. Latent until an outage long enough to push the
+  cursor past the fetched window's span, then permanent. The cursor now advances
+  to the **newest** article in the batch, so the watermark fires again within a
+  page or two and cost returns to normal. Articles below the fetched window are
+  forfeited — a deep backlog is a backfill job, not something to pay realtime
+  poll quota for.
+
 ## [1.4.0] - 2026-06-29
 
 ### Added

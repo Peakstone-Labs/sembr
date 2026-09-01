@@ -242,9 +242,23 @@ async def test_concurrent_writer_not_starved_during_qdrant_ttl():
                 ("a" * 32, feed_id),
             )
 
-    ttl_task = asyncio.create_task(_run_qdrant_ttl(qdrant, Settings()))
+    # Legacy pure-delete path: this mock only models scroll+delete, and the
+    # starvation bound being guarded lives in the cascade-delete txns. With
+    # archiving enabled the run would abort at the (unmocked) retrieve stage
+    # before any SQLite write and the latency assertion would pass vacuously.
+    ttl_task = asyncio.create_task(_run_qdrant_ttl(qdrant, Settings(qdrant_archive_enabled=False)))
     writer_task = asyncio.create_task(racing_writer())
     await asyncio.gather(ttl_task, writer_task)
+
+    # Anti-vacuity guards: the TTL run must have actually deleted (not
+    # aborted before its SQLite work), and the archive pipeline must have
+    # stayed out of the picture entirely.
+    qdrant.client.delete.assert_awaited()
+    qdrant.client.retrieve.assert_not_called()
+    qdrant.client.upsert.assert_not_called()
+    async with conn.execute("SELECT COUNT(*) FROM feed_items") as cur:
+        remaining = (await cur.fetchone())[0]
+    assert remaining == 1, "cascade delete did not run (only the racing writer's row may remain)"
 
     assert writer_acquired_at, "writer never finished"
     assert writer_started_at, "writer never started"

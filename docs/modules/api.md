@@ -31,6 +31,7 @@ Interactive API docs are auto-generated at **`/docs`** (Swagger UI) and **`/redo
 | `fire.py` | (none) | `POST /intents/{id}/fire`, `GET /intents/{id}/fire/{task_id}` |
 | `prompts.py` | `/api/prompts` | `GET /templates` (rich), `GET /templates/{kind}/{name}`, `POST /templates/{kind}`, `PUT /templates/{kind}/{name}`, `DELETE /templates/{kind}/{name}`, `POST /templates/{kind}/{name}/rename` |
 | `settings.py` | `/api/settings` | `GET /schema`, `GET /values`, `POST /save` |
+| `news_search.py` | `/api/news` | `POST /search` |
 
 `history.py`, `fire.py`, and `feeds_fire.py` are deliberately separate from the CRUD modules because they own a different lifecycle — they create a `FireTask` in memory, dispatch a background coroutine, and expose a polling endpoint. Splitting them keeps the CRUD routers small and lets the fire-task lifecycle evolve without disturbing the create/update path.
 
@@ -98,6 +99,35 @@ All history endpoints require the intent to have a cron-mode schedule (event-mod
 - **Restart orchestration**: a save that touches a sembr field triggers an api self-restart (delayed `SIGTERM` so the response can flush first, then `restart: unless-stopped` brings the container back); a save that touches a passthrough field triggers a force-recreate of the RSSHub service via `docker compose up -d --force-recreate --no-deps rsshub`. RSSHub failures are downgraded to a `200` response with `rsshub_restart_failed=true` so the api self-restart always still happens — disk and process state converge regardless of the RSSHub outcome.
 
 The `.env` writer (`settings_envfile.py`) is hand-rolled rather than `python-dotenv` because the latter rewrites the whole file on every save and drops the section header comments operators rely on for navigation. The implementation preserves comments, blank lines, and group ordering verbatim, and is backed by a `.env.bak` copy taken before each write — direct in-place writes (rather than tmp+rename) avoid `EBUSY` from Docker Desktop's bind-mounted file system.
+
+## News search
+
+`news_search.py` exposes the whole news corpus for ad-hoc research queries, e.g. an agent pulling months-old coverage on a topic via `curl`.
+
+Storage is split in two — `news_current` holds the retention window, `news_archive` holds everything the retention job has moved out of it (see the vector_store module doc) — and the endpoint hides that split entirely. Every request fans out to both collections concurrently and returns one ranked list: no `scope` parameter, no per-store cursor, nothing on a hit naming a store. Merging each store's top-`limit` and truncating is exactly the top-k of the union, so no over-fetching is needed; a point that exists in both stores mid-migration is de-duplicated in favour of the live copy. A failure in either store fails the whole request rather than returning half the timeline with a 200.
+
+`POST /api/news/search` serves two retrieval modes through one filter schema:
+
+- **Semantic** (body has `query`): the text is embedded and vector-searched. `limit` caps top-k (≤ 100), `min_score` sets a similarity floor, `exclude_ids` removes already-seen hits so repeated calls can dig deeper — though each call re-embeds the query and the embedding backend is not bit-stable (a phrase embedded five times on production yielded two distinct vectors, up to 1.5e-3 apart per component, ~1e-3 of cosine score), so successive pages are not exact slices of one frozen ranking and near-tied hits can swap between two identical requests. Filter mode embeds nothing and is unaffected. Returns 503 while the embedder is still loading.
+- **Filter listing** (no `query`): newest-first by `ingested_at_ts`. A full page returns `next_cursor`; pass it back verbatim to fetch the next page. The cursor exists because Qdrant disables its normal scroll pagination under `order_by` — internally it replays the boundary timestamp plus the ids already returned at that timestamp. `ingested_at_ts` is a global ordering key, so a single cursor addresses both stores and one page can span the boundary between them.
+
+Filters apply in both modes: `ingested_from_ts`/`ingested_to_ts`, `published_from_ts`/`published_to_ts` (absent on articles whose source timestamp was unusable), `feed_ids` / `exclude_feed_ids`, `title_contains` (CJK-safe keyword match), `url_domains`, `min_body_len`, `matched_intent_ids` (compiled per store: a payload match over archived points, and a live `match_seen` lookup for points still inside the retention window — capped at 20 000 selected articles, a ceiling driven by how many intents you ask for and not by the time window), `langs`. `include_body=false` drops the full text from hits for list views. Parameters that only make sense in the other mode (e.g. `min_score` without `query`, `cursor` with `query`) are rejected with 422 instead of being silently ignored.
+
+Each hit carries the article (title, url, body, timestamps), its derived metadata (`lang`, `url_domain`, `body_len`, `matched_intents`, `embedding_model_version`) and a best-effort `feed_name`. The response-level `warnings` array flags degradations the caller would otherwise misread: stored vectors from a different embedding model generation than the live embedder (similarity scores unreliable — checked per store, since a single post-merge sample could be drawn from the matching one and hide the other), a feed-name lookup failure (`feed_name: null` then does not mean the feed was deleted), a matched-intent lookup failure (`matched_intents: []` then does not mean the article matched nothing), a `matched_intent_ids` filter that resolved to no article in the retention window (the live store is then skipped entirely, and the live match log is reset by several routine operations, so an empty result there is a fact about that log rather than about the news), pagination hitting a same-second cluster too large to exclude (results at that timestamp may repeat and paging may not advance past it), and a derived-field backfill still in progress (filters on publication time, language, url domain or body length miss points ingested before that deployment until it converges — note the direction: only `news_current` has a backfill queue and it holds the retention window, so the gap is in **recent** coverage while the archive is complete. Publication-time windows can fall back to `ingested_at_ts`; the other three predicates have no equivalent until the queue drains. See the vector_store module doc).
+
+Unknown request fields are rejected with 422 rather than ignored — the filter names come in singular/plural pairs, and a typo silently dropped would return the whole corpus as if filtered. For the same reason an **empty** include-filter (`"feed_ids": []`, blank `title_contains`) is a 422: "restrict to the empty set" is indistinguishable from "forgot to fill in", so omit the field instead (empty `exclude_*` lists stay valid — no exclusion is unambiguous). A blank `query` is treated as absent (filter mode), never embedded.
+
+Status codes: 422 for request-shape errors caught before Qdrant; 400 when Qdrant explicitly rejects the request content (e.g. malformed point ids); 503 for everything service-side — Qdrant unreachable, collection/alias missing, rate-limited, or the embedder still loading. Treat 400 as "fix the request, don't retry" and 503 as "retry later / report an outage".
+
+The operator-facing counterpart is `GET /api/dashboard/maintenance/qdrant_stats`, which deliberately does the opposite: it reports each store separately (`points_count`, oldest/newest `ingested_at_ts`, `alias_ok`, and `derived_backfill_pending` for the live store). Hiding the split is right for retrieval and wrong for operations — the two collections share one container memory ceiling, so "memory is climbing" is only actionable once you know which store is growing.
+
+The endpoint sits behind the dashboard token gate:
+
+```bash
+curl -s -X POST http://localhost:8000/api/news/search \
+  -H "X-Dashboard-Token: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"query": "衰退信号", "limit": 10, "langs": ["zh"], "include_body": false}'
+```
 
 ## Health
 

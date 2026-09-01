@@ -155,7 +155,7 @@ Deduplication log: which articles each intent has already alerted on.
 
 **Primary key**: composite `(intent_id, article_id)`.
 
-**Lifecycle**: written by matcher via `insert_unseen_returning_new` (single multi-row `INSERT OR IGNORE … RETURNING`). Cleared on intent text mutation via `clear_intent` — the new query vector means previously seen articles must be re-evaluated.
+**Lifecycle**: written by matcher via `insert_unseen_returning_new` (single multi-row `INSERT OR IGNORE … RETURNING`). Cleared on intent text mutation via `clear_intent` — the new query vector means previously seen articles must be re-evaluated. Rows are also deleted by article-side retirement: the retention job cascades them when it archives/expires the article out of `news_current`, deleting a summary-history row cascades its citations' pairs, and the reconcile job sweeps orphaned rows whose article left `news_current` without a completed cascade (a leftover pair would otherwise skip_seen-suppress the article forever if the same URL is re-collected).
 
 ---
 

@@ -63,20 +63,37 @@ class _HasIdCondition:
 
 
 def _install_qdrant_stub() -> None:
-    """Register a minimal qdrant_client.models stub so scan_once imports succeed."""
+    """Register a minimal qdrant_client.models stub so scan_once imports succeed.
+
+    Fill-only: when the real qdrant-client is importable, the real package is
+    loaded and left untouched so the whole suite (this file included)
+    exercises real model validation. The lightweight classes only fill in on
+    machines without qdrant-client installed. The previous version
+    unconditionally overwrote six class names on the REAL module, which
+    silently downgraded every filter-construction assertion in the suite to
+    duck-typed stub attributes.
+    """
     if "qdrant_client" not in sys.modules:
-        qc = ModuleType("qdrant_client")
-        sys.modules["qdrant_client"] = qc
+        try:
+            import qdrant_client  # noqa: F401  (registers the real package)
+        except ImportError:
+            sys.modules["qdrant_client"] = ModuleType("qdrant_client")
     if "qdrant_client.models" not in sys.modules:
-        qc_models = ModuleType("qdrant_client.models")
-        sys.modules["qdrant_client.models"] = qc_models
+        try:
+            import qdrant_client.models  # noqa: F401
+        except ImportError:
+            sys.modules["qdrant_client.models"] = ModuleType("qdrant_client.models")
     qc_models = sys.modules["qdrant_client.models"]
-    qc_models.Range = _Range  # type: ignore[attr-defined]
-    qc_models.MatchAny = _MatchAny  # type: ignore[attr-defined]
-    qc_models.FieldCondition = _FieldCondition  # type: ignore[attr-defined]
-    qc_models.Filter = _Filter  # type: ignore[attr-defined]
-    qc_models.PointIdsList = _PointIdsList  # type: ignore[attr-defined]
-    qc_models.HasIdCondition = _HasIdCondition  # type: ignore[attr-defined]
+    for name, cls in (
+        ("Range", _Range),
+        ("MatchAny", _MatchAny),
+        ("FieldCondition", _FieldCondition),
+        ("Filter", _Filter),
+        ("PointIdsList", _PointIdsList),
+        ("HasIdCondition", _HasIdCondition),
+    ):
+        if not hasattr(qc_models, name):
+            setattr(qc_models, name, cls)
 
 
 _install_qdrant_stub()

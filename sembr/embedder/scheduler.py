@@ -42,6 +42,7 @@ from sembr.db.articles import (
     pull_pending_batch,
 )
 from sembr.db.sqlite import get_conn
+from sembr.vector_store.derived_fields import build_derived_payload
 from sembr.vector_store.news import md5_to_uuid, upsert_news_points
 
 if TYPE_CHECKING:
@@ -62,20 +63,22 @@ POLL_INTERVAL_SECONDS = 30
 
 
 def _to_point(row: PendingRow, vector: list[float], model_version: str) -> PointStruct:
-    return PointStruct(
-        id=md5_to_uuid(row.md5),
-        vector=vector,
-        payload={
-            "url": row.url,
-            "title": row.title,
-            "body": row.body,
-            "published_at": row.published_at,
-            "feed_id": row.feed_id,
-            "embedding_model_version": model_version,
-            # Integer epoch seconds so Qdrant Range filter in matcher scan can compare directly.
-            "ingested_at_ts": int(datetime.now(UTC).timestamp()),
-        },
-    )
+    payload: dict = {
+        "url": row.url,
+        "title": row.title,
+        "body": row.body,
+        "published_at": row.published_at,
+        "feed_id": row.feed_id,
+        "embedding_model_version": model_version,
+        # Integer epoch seconds so Qdrant Range filter in matcher scan can compare directly.
+        "ingested_at_ts": int(datetime.now(UTC).timestamp()),
+    }
+    # Derived filter fields, stamped at ingest through the same helper the
+    # archive migration uses: a point must not change what it matches when it
+    # crosses the retention boundary. This only covers points written from here
+    # on — the ~113k already in the collection are the backfill job's job.
+    payload.update(build_derived_payload(payload))
+    return PointStruct(id=md5_to_uuid(row.md5), vector=vector, payload=payload)
 
 
 def add_embedder_worker_job(

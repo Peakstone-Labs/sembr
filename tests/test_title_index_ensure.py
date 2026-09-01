@@ -32,8 +32,9 @@ async def test_ensure_news_collection_creates_title_text_index():
     embedder = SimpleNamespace(model_version="bge-m3", dim=1024)
     await ensure_news_collection(fake_client, embedder)
 
-    # Three create_payload_index calls: ingested_at_ts, feed_id, title
-    assert fake_client.create_payload_index.call_count == 3
+    # Seven create_payload_index calls: ingested_at_ts, feed_id, title, plus
+    # the four derived-field indexes the unified search endpoint needs.
+    assert fake_client.create_payload_index.call_count == 7
 
     title_call = next(
         c
@@ -79,5 +80,42 @@ async def test_ensure_news_collection_idempotent_when_collection_exists():
 
     fake_client.create_collection.assert_not_called()
     fake_client.update_collection_aliases.assert_not_called()
-    # All three payload indexes still attempted (no-op server-side if existing)
-    assert fake_client.create_payload_index.call_count == 3
+    # All seven payload indexes still attempted (no-op server-side if existing)
+    assert fake_client.create_payload_index.call_count == 7
+
+
+@pytest.mark.asyncio
+async def test_ensure_news_collection_creates_new_indexes():
+    """The four derived-field indexes exist on `news_current` with
+    the same range/lookup split as `news_archive`, but WITHOUT `on_disk` —
+    this is the hot, retention-bounded collection, so its indexes stay
+    resident. A silently-added `on_disk=True` would push matcher-tick filter
+    reads onto disk, which is the whole reason the two collections diverge.
+    """
+    fake_client = MagicMock()
+    fake_client.get_collections = AsyncMock(return_value=SimpleNamespace(collections=[]))
+    fake_client.create_collection = AsyncMock()
+    fake_client.create_payload_index = AsyncMock()
+    fake_client.get_aliases = AsyncMock(return_value=SimpleNamespace(aliases=[]))
+    fake_client.update_collection_aliases = AsyncMock()
+
+    embedder = SimpleNamespace(model_version="bge-m3", dim=1024)
+    await ensure_news_collection(fake_client, embedder)
+
+    by_field = {
+        c.kwargs["field_name"]: c.kwargs["field_schema"]
+        for c in fake_client.create_payload_index.call_args_list
+    }
+    assert {"published_at_ts", "body_len", "url_domain", "lang"} <= set(by_field)
+
+    for field in ("published_at_ts", "body_len"):
+        schema = by_field[field]
+        assert schema.type == "integer"
+        assert schema.range is True
+        assert schema.lookup is False
+        assert getattr(schema, "on_disk", None) is None
+
+    for field in ("url_domain", "lang"):
+        schema = by_field[field]
+        assert schema.type == "keyword"
+        assert getattr(schema, "on_disk", None) is None

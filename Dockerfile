@@ -14,6 +14,10 @@ ENV PYTHONUNBUFFERED=1 \
 # included because sembr digests are frequently Chinese; without it WeasyPrint
 # renders CJK text as tofu boxes. Merged into this single RUN to avoid an extra
 # image layer.
+#
+# `git` is required by the per-intent KB (delta-label/kb): the events index lives
+# in a nested git repo under data/kb/ and ingest/lint/edit commit to it (design
+# §5.3 / R5). Without it those commits are skipped (content still written) + warned.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
@@ -25,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
        > /etc/apt/sources.list.d/docker.list \
     && apt-get update && apt-get install -y --no-install-recommends \
-       docker-ce-cli docker-compose-plugin \
+       docker-ce-cli docker-compose-plugin git \
        libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
        libffi-dev libcairo2 fonts-liberation fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*

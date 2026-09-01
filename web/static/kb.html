@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KB · Events Index</title>
+<link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
+<link rel="stylesheet" href="/dashboard/style.css?v=21">
+<script src="/dashboard/codehl.js?v=1"></script>
+<script src="/dashboard/vendor/marked.min.js?v=2"></script>
+<script src="/dashboard/vendor/dompurify.min.js?v=2"></script>
+<script defer src="/dashboard/vendor/alpine.min.js"></script>
+<script src="/dashboard/kb.js?v=7"></script>
+<style>
+  /* Full-screen standalone editor (the modal's "open in new window" target). */
+  .kb-page { display:flex; flex-direction:column; height:100vh; box-sizing:border-box; padding:14px 18px; gap:8px; }
+  .kb-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  /* Split: highlighted editor (left) + rendered preview (right). */
+  .kb-split { flex:1; display:flex; gap:10px; min-height:0; }
+  .kb-split .code-editor { flex:1; height:auto; }   /* override the fixed 360px */
+  .kb-split .code-editor-hl, .kb-split .code-editor-input { font-size:0.84rem; line-height:1.55; }
+  .kb-split .kb-preview { flex:1; }   /* visuals come from the shared .kb-preview in style.css */
+</style>
+</head>
+<body>
+<div class="kb-page" x-data="kbModal()" x-init="initStandalone()" x-cloak>
+  <div class="kb-bar">
+    <strong>KB · Events Index · <span x-text="intentName"></span></strong>
+    <button @click="rebuildDialog = true" :disabled="rebuilding"
+            x-text="rebuilding ? 'Rebuilding…' : (exists ? 'Rebuild KB' : 'Build KB')"></button>
+    <button @click="lint()" :disabled="linting || !exists"
+            x-text="linting ? 'Linting…' : 'Lint now'"></button>
+    <button @click="load()" :disabled="loading">Reload</button>
+    <label class="toggle-wrap" style="margin-left:auto;"
+           :style="toggleBusy ? 'opacity:.6; pointer-events:none; margin-left:auto;' : 'margin-left:auto;'"
+           title="Auto-update this KB after each scheduled (cron) run for this intent (kb_enabled)">
+      <span class="toggle">
+        <input type="checkbox" :checked="enabled" @change="toggleKbEnabled($event.target.checked)">
+        <span class="toggle-slider"></span>
+      </span>
+      <span class="muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em;">Enable Auto Update</span>
+    </label>
+    <button class="primary" @click="save()" :disabled="submitting || !dirty"
+            x-text="submitting ? 'Saving…' : 'Save'"></button>
+  </div>
+  <div class="kb-bar" style="font-size:0.8rem;">
+    <span class="muted" x-show="dirty">Unsaved changes</span>
+    <span style="color:#d33;" x-show="error" x-text="error"></span>
+    <span class="muted" x-show="status" x-text="status"></span>
+    <span class="muted" x-show="!exists && !loading">KB not built yet — click Build KB.</span>
+  </div>
+  <div x-show="warnings.length" style="font-size:0.75rem;">
+    <template x-for="w in warnings" :key="w">
+      <div style="padding:2px 0 2px 8px; border-left:2px solid #e0a000;" x-text="w"></div>
+    </template>
+  </div>
+  <div class="kb-split">
+    <!-- left: syntax-highlighted overlay editor -->
+    <div class="code-editor">
+      <pre class="code-editor-hl" aria-hidden="true" x-ref="kbHl" x-html="highlightMarkdown(content)"></pre>
+      <textarea class="code-editor-input" x-ref="kbInput" x-model="content" spellcheck="false" :disabled="loading"
+                @scroll="$refs.kbHl.scrollTop = $event.target.scrollTop; syncScroll($event.target, $refs.kbPreview)"
+                placeholder="events.md — one event per line; the <!--k:slug--> anchors are managed automatically."></textarea>
+    </div>
+    <!-- right: rendered markdown, proportional scroll-synced with the editor -->
+    <div class="kb-preview" x-ref="kbPreview" x-html="renderedHtml"
+         @scroll="syncScroll($refs.kbPreview, $refs.kbInput)"></div>
+  </div>
+
+  <!-- Build/Rebuild confirm dialog (days input + overwrite warning) -->
+  <div class="modal-overlay" x-show="rebuildDialog" x-cloak @click.self="rebuildDialog=false"
+       style="z-index:600;">
+    <div class="modal-panel" style="max-width:460px;">
+      <div class="modal-header">
+        <span class="modal-title" x-text="exists ? 'Rebuild KB' : 'Build KB'"></span>
+        <button class="modal-close" @click="rebuildDialog=false">✕</button>
+      </div>
+      <div class="muted" style="font-size:0.8rem; margin-bottom:10px;">
+        Distill the events index from the last <strong x-text="rebuildDays"></strong> days of this intent's history.
+      </div>
+      <div x-show="exists" class="fire-warning" style="margin-bottom:12px;">
+        This OVERWRITES the current KB (the previous version stays in git history).
+      </div>
+      <div class="form-field">
+        <label class="field-label">Days of history</label>
+        <input type="number" x-model.number="rebuildDays" min="1" max="365">
+        <span class="field-hint">1 to 365</span>
+      </div>
+      <div class="modal-footer">
+        <button @click="rebuildDialog=false">Cancel</button>
+        <button class="primary" @click="rebuild()" :disabled="rebuilding"
+                x-text="rebuilding ? 'Building…' : (exists ? 'Rebuild' : 'Build')"></button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

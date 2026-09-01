@@ -30,12 +30,17 @@ _PROTECTED_PREFIXES = (
     "/dashboard/",
     "/api/dashboard/",
     "/api/prompts/",
+    # KB endpoints (delta-label/kb): per-intent events.md read/edit/rebuild/lint.
+    "/api/kb/",
     "/api/settings/",
     "/api/external/",
     # map sub-feature: extract-sources / extractions endpoints live under
     # /api/intents/* (not /intents/*) so an unauthenticated fetch gets a 401
     # JSON rather than a 302 redirect to the login page.
     "/api/intents/",
+    # Unified news search: agent-facing but token-gated like the rest of the
+    # dashboard API surface.
+    "/api/news/",
     "/intents/",
     "/feeds/",
 )
@@ -45,6 +50,7 @@ _PROTECTED_EXACT = frozenset(
         "/api/dashboard",
         "/api/prompts",
         "/api/settings",
+        "/api/news",
         "/intents",
         "/feeds",
     }
