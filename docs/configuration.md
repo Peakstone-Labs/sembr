@@ -65,6 +65,8 @@ Opt-in **per intent** (a toggle in the dashboard, not a global env var). When on
 |----------|---------|-------------|
 | `REDUCE_MODEL` | — (reuses `LLM_MODEL`) | Model for per-article structured extraction and the reduce step. Leave blank to reuse the summarization model |
 | `META_EXTRACTION_MODEL` | — (reuses `LLM_MODEL`) | Model the spec auto-generator uses to draft a per-intent extraction spec. Leave blank to reuse the summarization model |
+| `KB_MERGE_MODEL` | — (reuses `LLM_MODEL`) | Model for the per-intent knowledge base's incremental merge (assigning each new digest's events to existing event keys). This runs after every cron digest on KB-enabled intents, so a flash-tier model is the intended choice. Leave blank to reuse the summarization model |
+| `KB_DISTILL_MODEL` | — (reuses `LLM_MODEL`) | Model for knowledge-base cold-start distillation — the one-off "rebuild KB" action, which re-reads the chosen lookback of digests at once. A stronger (pro-tier) model is worth it here because the result seeds every later incremental merge. Leave blank to reuse the summarization model |
 | `REDUCE_CONCURRENCY` | `16` | How many source articles to extract in parallel. Higher clears large digests faster but bursts the provider; lower is gentler on rate limits (1–256) |
 
 ## Email notifier
