@@ -128,6 +128,8 @@ jq -n --argjson ids "${EXCLUDE}" '{
 }' | curl -s -X POST "${BASE}/api/news/search" "${H_JSON[@]}" "${H_TOKEN[@]}" --data-binary @- | jq .
 ```
 
+Each call re-embeds the query and that embedding is not bit-stable (see `endpoints.md`), so the two pages are not exact slices of one frozen ranking — right at the score boundary an article can land differently between the two calls. It is fine for "show me more like this"; when you need an exhaustive, reproducible sweep, use filter mode with a cursor instead.
+
 Always report non-empty `warnings` alongside the hits — one of them means the result may be missing **recently ingested** articles.
 
 ## List/filter news with cursor pagination
